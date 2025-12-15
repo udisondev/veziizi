@@ -28,9 +28,10 @@ type HTTPConfig struct {
 }
 
 type SessionConfig struct {
-	Secret string `env:"SESSION_SECRET" validate:"required_if=App.Env production"`
-	Name   string `env:"SESSION_NAME" envDefault:"veziizi_session" validate:"required"`
-	MaxAge int    `env:"SESSION_MAX_AGE" envDefault:"86400" validate:"required,min=1"`
+	Secret    string `env:"SESSION_SECRET" validate:"required_if=App.Env production"`
+	Name      string `env:"SESSION_NAME" envDefault:"veziizi_session" validate:"required"`
+	AdminName string `env:"SESSION_ADMIN_NAME" envDefault:"veziizi_admin_session" validate:"required"`
+	MaxAge    int    `env:"SESSION_MAX_AGE" envDefault:"86400" validate:"required,min=1"`
 }
 
 type TelegramConfig struct {

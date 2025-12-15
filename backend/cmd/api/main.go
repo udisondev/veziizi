@@ -7,9 +7,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	adminApp "codeberg.org/udison/veziizi/backend/internal/application/admin"
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events" // register events
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
+	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http"
@@ -64,13 +66,19 @@ func main() {
 	defer publisher.Close()
 
 	sessionManager := session.NewManager(cfg)
+	adminSessionManager := session.NewAdminManager(cfg)
 
-	// Projections
+	// Projections (read-only)
 	membersProjection := projections.NewMembersProjection(txManager)
 	invitationsProjection := projections.NewInvitationsProjection(txManager)
+	pendingOrgsProjection := projections.NewPendingOrganizationsProjection(txManager)
+
+	// Repositories
+	adminRepository := adminRepo.NewRepository(txManager)
 
 	// Application services
-	orgService := orgApp.NewService(txManager, eventStore, publisher, membersProjection, invitationsProjection)
+	orgService := orgApp.NewService(txManager, eventStore, publisher, invitationsProjection)
+	adminService := adminApp.NewService(txManager, eventStore, publisher, pendingOrgsProjection)
 
 	// HTTP server and handlers
 	server := http.NewServer(cfg)
@@ -80,6 +88,9 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(membersProjection, sessionManager)
 	authHandler.RegisterRoutes(server.Router())
+
+	adminHandler := handlers.NewAdminHandler(adminService, adminRepository, adminSessionManager)
+	adminHandler.RegisterRoutes(server.Router())
 
 	go func() {
 		if err := server.Start(); err != nil {

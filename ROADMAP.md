@@ -8,7 +8,7 @@
 **Architecture:** DDD, Event Sourcing, Event Driven, 12-factor app
 
 ## Current Status
-**Phase:** 3 - Platform Admin
+**Phase:** 4 - FreightRequest Domain
 **Status:** Not Started
 **Last Updated:** 2025-12-15
 
@@ -71,17 +71,22 @@
   - [x] POST /api/v1/organizations/:id/members/:memberId/unblock
 
 ### Phase 3: Platform Admin
-**Status:** [ ] Not Started
+**Status:** [x] Completed
 
-- [ ] PlatformAdmin entity
-- [ ] Admin auth (separate session namespace)
-- [ ] HTTP API:
-  - [ ] POST /api/v1/admin/auth/login
-  - [ ] POST /api/v1/admin/auth/logout
-  - [ ] GET /api/v1/admin/organizations (list pending)
-  - [ ] POST /api/v1/admin/organizations/:id/approve
-  - [ ] POST /api/v1/admin/organizations/:id/reject
-  - [ ] GET /api/v1/admin/organizations/:id
+- [x] PlatformAdmin entity (platform_admins table + repository)
+- [x] Admin auth (separate session namespace: veziizi_admin_session)
+- [x] Async watermill subscribers (separate cmd/workers processes):
+  - [x] members worker (updates members_lookup)
+  - [x] invitations worker (updates invitations_lookup)
+  - [x] pending-organizations worker (updates pending_organizations)
+- [x] Worker infrastructure (internal/pkg/worker package)
+- [x] HTTP API:
+  - [x] POST /api/v1/admin/auth/login
+  - [x] POST /api/v1/admin/auth/logout
+  - [x] GET /api/v1/admin/organizations (list pending)
+  - [x] POST /api/v1/admin/organizations/:id/approve
+  - [x] POST /api/v1/admin/organizations/:id/reject
+  - [x] GET /api/v1/admin/organizations/:id
 
 ### Phase 4: FreightRequest Domain
 **Status:** [ ] Not Started
@@ -247,6 +252,9 @@
 | 2024-12-14 | No i18n initially | Russian only for now |
 | 2024-12-14 | Polling first, WebSocket later | Simpler initial implementation |
 | 2024-12-14 | Notifiers as separate cmd processes | 12-factor, scalable workers |
+| 2025-12-15 | Separate handlers (write) from projections (read) | Allows scaling write/read independently |
+| 2025-12-15 | Each watermill subscriber as separate cmd | Can scale each worker type independently |
+| 2025-12-15 | ConsumerGroup per handler for watermill | Each handler tracks its own offset |
 
 ---
 
@@ -277,3 +285,15 @@
 - Auth handlers (login/logout/me) with bcrypt password hashing
 - Organization handlers (register, get, invitations, carrier profile, member management)
 - Address as simple string (planned DaData/Google Places integration later)
+
+### 2025-12-15 - Phase 3 Completed
+- Platform admin with separate session namespace (veziizi_admin_session)
+- Migration 00003_platform_admin.sql (platform_admins + pending_organizations tables)
+- Admin repository using pgxscan
+- Refactored projection updates to async watermill subscribers:
+  - Separated handlers (write) from projections (read) for scalability
+  - Each handler runs as separate process (cmd/workers/*)
+  - Worker boilerplate extracted to internal/pkg/worker package
+- AdminService for approve/reject with event sourcing
+- AdminHandler with all HTTP endpoints
+- Updated Makefile with build-workers and run-workers commands

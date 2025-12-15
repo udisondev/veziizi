@@ -1,5 +1,5 @@
 .PHONY: help up down logs db-shell migrate migrate-down migrate-status migrate-create \
-        build run run-api run-telegram test lint fmt env-init generate
+        build build-api build-workers run-api run-telegram run-workers test lint fmt env-init generate
 
 # Load .env file if exists
 ifneq (,$(wildcard ./.env))
@@ -50,9 +50,17 @@ build: ## Build all binaries
 	go build -o bin/api ./backend/cmd/api
 	go build -o bin/telegram-notifier ./backend/cmd/telegram-notifier
 	go build -o bin/migrator ./backend/cmd/migrator
+	go build -o bin/worker-members ./backend/cmd/workers/members
+	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
+	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
 
 build-api: ## Build API server
 	go build -o bin/api ./backend/cmd/api
+
+build-workers: ## Build all workers
+	go build -o bin/worker-members ./backend/cmd/workers/members
+	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
+	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
 
 # Run
 run-api: ## Run API server
@@ -60,6 +68,11 @@ run-api: ## Run API server
 
 run-telegram: ## Run Telegram notifier
 	go run ./backend/cmd/telegram-notifier
+
+run-workers: ## Run all workers
+	go run ./backend/cmd/workers/members &
+	go run ./backend/cmd/workers/invitations &
+	go run ./backend/cmd/workers/pending-organizations &
 
 # Development
 test: ## Run tests

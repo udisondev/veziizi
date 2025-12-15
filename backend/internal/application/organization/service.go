@@ -23,7 +23,6 @@ type Service struct {
 	db          dbtx.TxManager
 	eventStore  eventstore.Store
 	publisher   *messaging.EventPublisher
-	members     *projections.MembersProjection
 	invitations *projections.InvitationsProjection
 }
 
@@ -31,14 +30,12 @@ func NewService(
 	db dbtx.TxManager,
 	eventStore eventstore.Store,
 	publisher *messaging.EventPublisher,
-	members *projections.MembersProjection,
 	invitations *projections.InvitationsProjection,
 ) *Service {
 	return &Service{
 		db:          db,
 		eventStore:  eventStore,
 		publisher:   publisher,
-		members:     members,
 		invitations: invitations,
 	}
 }
@@ -266,17 +263,7 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 			return fmt.Errorf("failed to save events: %w", err)
 		}
 
-		// Update projections
-		for _, evt := range changes {
-			if err := s.members.Handle(ctx, evt); err != nil {
-				return fmt.Errorf("failed to update members projection: %w", err)
-			}
-			if err := s.invitations.Handle(ctx, evt); err != nil {
-				return fmt.Errorf("failed to update invitations projection: %w", err)
-			}
-		}
-
-		// Publish to message bus
+		// Publish to message bus - watermill subscribers will update projections async
 		if err := s.publisher.Publish(ctx, "organization.events", changes...); err != nil {
 			return fmt.Errorf("failed to publish events: %w", err)
 		}
