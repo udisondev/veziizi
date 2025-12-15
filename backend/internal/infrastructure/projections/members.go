@@ -30,6 +30,7 @@ type MemberLookup struct {
 	PasswordHash   string    `db:"password_hash"`
 	Name           string    `db:"name"`
 	Phone          *string   `db:"phone"`
+	TelegramID     *int64    `db:"telegram_id"`
 	Role           string    `db:"role"`
 	Status         string    `db:"status"`
 	CreatedAt      time.Time `db:"created_at"`
@@ -38,7 +39,7 @@ type MemberLookup struct {
 // GetByEmail retrieves member by email for authentication
 func (p *MembersProjection) GetByEmail(ctx context.Context, email string) (*MemberLookup, error) {
 	query, args, err := p.psql.
-		Select("id", "organization_id", "email", "password_hash", "name", "phone", "role", "status", "created_at").
+		Select("id", "organization_id", "email", "password_hash", "name", "phone", "telegram_id", "role", "status", "created_at").
 		From("members_lookup").
 		Where(squirrel.Eq{"email": email}).
 		ToSql()
@@ -49,6 +50,25 @@ func (p *MembersProjection) GetByEmail(ctx context.Context, email string) (*Memb
 	var m MemberLookup
 	if err := pgxscan.Get(ctx, p.db, &m, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to get member by email: %w", err)
+	}
+
+	return &m, nil
+}
+
+// GetByID retrieves member by ID
+func (p *MembersProjection) GetByID(ctx context.Context, id uuid.UUID) (*MemberLookup, error) {
+	query, args, err := p.psql.
+		Select("id", "organization_id", "email", "password_hash", "name", "phone", "telegram_id", "role", "status", "created_at").
+		From("members_lookup").
+		Where(squirrel.Eq{"id": id}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	var m MemberLookup
+	if err := pgxscan.Get(ctx, p.db, &m, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get member by id: %w", err)
 	}
 
 	return &m, nil

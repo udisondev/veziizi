@@ -7,18 +7,20 @@ import (
 	"os/signal"
 	"syscall"
 
-	adminApp "codeberg.org/udison/veziizi/backend/internal/application/admin"
-	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events" // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events" // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"          // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"   // register events
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/handlers"
+	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/middleware"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -54,8 +56,8 @@ func main() {
 	slog.Info("connected to database")
 
 	txManager := dbtx.NewTxExecutor(pool)
-
 	eventStore := eventstore.NewPostgresStore(txManager)
+	fileStorage := filestorage.NewPostgresStorage(txManager)
 
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 	publisher, err := messaging.NewEventPublisher(pool, wmLogger)
@@ -65,32 +67,35 @@ func main() {
 	}
 	defer publisher.Close()
 
+	// Create factory
+	f := factory.New(txManager, eventStore, publisher, fileStorage)
+
 	sessionManager := session.NewManager(cfg)
 	adminSessionManager := session.NewAdminManager(cfg)
 
-	// Projections (read-only)
-	membersProjection := projections.NewMembersProjection(txManager)
-	invitationsProjection := projections.NewInvitationsProjection(txManager)
-	pendingOrgsProjection := projections.NewPendingOrganizationsProjection(txManager)
-
-	// Repositories
+	// Repositories (not managed by factory)
 	adminRepository := adminRepo.NewRepository(txManager)
-
-	// Application services
-	orgService := orgApp.NewService(txManager, eventStore, publisher, invitationsProjection)
-	adminService := adminApp.NewService(txManager, eventStore, publisher, pendingOrgsProjection)
 
 	// HTTP server and handlers
 	server := http.NewServer(cfg)
 
-	orgHandler := handlers.NewOrganizationHandler(orgService, sessionManager)
+	// Apply auth middleware to all routes
+	server.Router().Use(middleware.RequireAuth(sessionManager))
+
+	orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), sessionManager)
 	orgHandler.RegisterRoutes(server.Router())
 
-	authHandler := handlers.NewAuthHandler(membersProjection, sessionManager)
+	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.OrganizationService(), sessionManager)
 	authHandler.RegisterRoutes(server.Router())
 
-	adminHandler := handlers.NewAdminHandler(adminService, adminRepository, adminSessionManager)
+	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager)
 	adminHandler.RegisterRoutes(server.Router())
+
+	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.FreightRequestsProjection(), sessionManager)
+	frHandler.RegisterRoutes(server.Router())
+
+	orderHandler := handlers.NewOrderHandler(f.OrderService(), f.OrdersProjection(), sessionManager)
+	orderHandler.RegisterRoutes(server.Router())
 
 	go func() {
 		if err := server.Start(); err != nil {

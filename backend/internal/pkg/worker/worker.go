@@ -8,8 +8,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -21,7 +25,9 @@ type Config struct {
 	Topic         string
 	ConsumerGroup string
 	LogFile       string
-	Handler       func(db dbtx.TxManager) message.NoPublishHandlerFunc
+
+	// Handler receives Factory and returns message handler
+	Handler func(f *factory.Factory) message.NoPublishHandlerFunc
 }
 
 func Run(cfg Config) {
@@ -54,8 +60,22 @@ func Run(cfg Config) {
 	}
 	slog.Info(fmt.Sprintf("%s worker connected to database", cfg.Name))
 
-	txManager := dbtx.NewTxExecutor(pool)
 	wmLogger := watermill.NewSlogLogger(slog.Default())
+
+	// Create base dependencies
+	txManager := dbtx.NewTxExecutor(pool)
+	es := eventstore.NewPostgresStore(txManager)
+	fs := filestorage.NewPostgresStorage(txManager)
+
+	publisher, err := messaging.NewEventPublisher(pool, wmLogger)
+	if err != nil {
+		slog.Error("failed to create event publisher", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer publisher.Close()
+
+	// Create factory
+	f := factory.New(txManager, es, publisher, fs)
 
 	subscriber, err := sql.NewSubscriber(
 		sql.BeginnerFromPgx(pool),
@@ -82,8 +102,7 @@ func Run(cfg Config) {
 		os.Exit(1)
 	}
 
-	handler := cfg.Handler(txManager)
-	router.AddConsumerHandler(cfg.Name+"_handler", cfg.Topic, subscriber, handler)
+	router.AddConsumerHandler(cfg.Name+"_handler", cfg.Topic, subscriber, cfg.Handler(f))
 
 	go func() {
 		if err := router.Run(ctx); err != nil {

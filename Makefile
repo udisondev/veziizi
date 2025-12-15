@@ -1,5 +1,6 @@
 .PHONY: help up down logs db-shell migrate migrate-down migrate-status migrate-create \
-        build build-api build-workers run-api run-telegram run-workers test lint fmt env-init generate
+        build build-api build-workers run-api run-telegram run-workers test lint fmt env-init generate \
+        back-dev create-admin create-admin-dev dev-all dev-setup create-test-org
 
 # Load .env file if exists
 ifneq (,$(wildcard ./.env))
@@ -53,6 +54,9 @@ build: ## Build all binaries
 	go build -o bin/worker-members ./backend/cmd/workers/members
 	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
 	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
+	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
+	go build -o bin/worker-orders ./backend/cmd/workers/orders
+	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
 
 build-api: ## Build API server
 	go build -o bin/api ./backend/cmd/api
@@ -61,6 +65,9 @@ build-workers: ## Build all workers
 	go build -o bin/worker-members ./backend/cmd/workers/members
 	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
 	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
+	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
+	go build -o bin/worker-orders ./backend/cmd/workers/orders
+	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
 
 # Run
 run-api: ## Run API server
@@ -73,6 +80,9 @@ run-workers: ## Run all workers
 	go run ./backend/cmd/workers/members &
 	go run ./backend/cmd/workers/invitations &
 	go run ./backend/cmd/workers/pending-organizations &
+	go run ./backend/cmd/workers/freight-requests &
+	go run ./backend/cmd/workers/orders &
+	go run ./backend/cmd/workers/order-creator &
 
 # Development
 test: ## Run tests
@@ -110,5 +120,46 @@ check-env: ## Check if .env exists
 		exit 1; \
 	fi
 
-# All-in-one
-dev: check-env up migrate run-api ## Start all services and run API
+# All-in-one development
+dev-setup: ## Install dev tools (goreman, air)
+	@command -v goreman >/dev/null 2>&1 || go install github.com/mattn/goreman@latest
+	@command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest
+	@echo "Dev tools ready"
+
+dev-all: check-env dev-setup up ## Start everything with hot-reload (API + workers + frontend)
+	@echo "Waiting for PostgreSQL..."
+	@until docker exec veziizi-postgres pg_isready -U $(POSTGRES_USER) >/dev/null 2>&1; do sleep 1; done
+	@echo "PostgreSQL ready, running migrations..."
+	@$(MAKE) migrate
+	@echo "Starting all services..."
+	goreman -f Procfile.dev start
+
+dev: check-env up migrate run-api ## Start DB + API only (without workers/frontend)
+
+# Development with hot-reload
+back-dev: check-env ## Run backend with air (hot-reload)
+	air
+
+# Admin management
+create-admin: check-env ## Create platform admin (interactive)
+	@read -p "Email: " email; \
+	read -p "Name: " name; \
+	read -s -p "Password: " password; echo; \
+	go run ./backend/cmd/tools/create-admin \
+		--email="$$email" \
+		--name="$$name" \
+		--password="$$password"
+
+create-admin-dev: check-env ## Create dev admin (admin@veziizi.local / admin123)
+	go run ./backend/cmd/tools/create-admin \
+		--email="admin@veziizi.local" \
+		--name="Admin" \
+		--password="admin123"
+
+create-test-org: check-env ## Create test org with owner (owner@test.local / test123)
+	go run ./backend/cmd/tools/create-test-org \
+		--email="owner@test.local" \
+		--password="test123" \
+		--name="Test Owner" \
+		--org="Test Organization" \
+		--approve=true

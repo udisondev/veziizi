@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"codeberg.org/udison/veziizi/backend/internal/application/organization"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"github.com/gorilla/mux"
@@ -14,14 +15,20 @@ import (
 )
 
 type AuthHandler struct {
-	members *projections.MembersProjection
-	session *session.Manager
+	members    *projections.MembersProjection
+	orgService *organization.Service
+	session    *session.Manager
 }
 
-func NewAuthHandler(members *projections.MembersProjection, session *session.Manager) *AuthHandler {
+func NewAuthHandler(
+	members *projections.MembersProjection,
+	orgService *organization.Service,
+	session *session.Manager,
+) *AuthHandler {
 	return &AuthHandler{
-		members: members,
-		session: session,
+		members:    members,
+		orgService: orgService,
+		session:    session,
 	}
 }
 
@@ -98,9 +105,20 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 type MeResponse struct {
-	MemberID       string `json:"member_id"`
-	OrganizationID string `json:"organization_id"`
-	Role           string `json:"role"`
+	MemberID       string               `json:"member_id"`
+	OrganizationID string               `json:"organization_id"`
+	Role           string               `json:"role"`
+	Email          string               `json:"email"`
+	Name           string               `json:"name"`
+	Phone          *string              `json:"phone,omitempty"`
+	TelegramID     *int64               `json:"telegram_id,omitempty"`
+	Organization   *OrganizationBrief   `json:"organization,omitempty"`
+}
+
+type OrganizationBrief struct {
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	IsCarrier bool   `json:"is_carrier"`
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
@@ -112,17 +130,34 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	orgID, _ := h.session.GetOrganizationID(r)
 
-	sess, err := h.session.Get(r)
+	// Get member from projection
+	member, err := h.members.GetByID(r.Context(), memberID)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+		slog.Error("failed to get member", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	role, _ := sess.Values[session.KeyRole].(string)
+	// Get organization from event store
+	org, err := h.orgService.Get(r.Context(), orgID)
+	if err != nil {
+		slog.Error("failed to get organization", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, MeResponse{
 		MemberID:       memberID.String(),
 		OrganizationID: orgID.String(),
-		Role:           role,
+		Role:           member.Role,
+		Email:          member.Email,
+		Name:           member.Name,
+		Phone:          member.Phone,
+		TelegramID:     member.TelegramID,
+		Organization: &OrganizationBrief{
+			Name:      org.Name(),
+			Status:    org.Status().String(),
+			IsCarrier: org.IsCarrier(),
+		},
 	})
 }

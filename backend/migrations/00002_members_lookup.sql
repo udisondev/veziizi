@@ -9,6 +9,7 @@ CREATE TABLE members_lookup (
     password_hash VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     phone VARCHAR(50),
+    telegram_id BIGINT,
     role VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL

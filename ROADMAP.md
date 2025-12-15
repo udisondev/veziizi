@@ -8,8 +8,8 @@
 **Architecture:** DDD, Event Sourcing, Event Driven, 12-factor app
 
 ## Current Status
-**Phase:** 4 - FreightRequest Domain
-**Status:** Not Started
+**Phase:** 7 - Frontend (Vue.js)
+**Status:** In Progress
 **Last Updated:** 2025-12-15
 
 ---
@@ -89,66 +89,75 @@
   - [x] GET /api/v1/admin/organizations/:id
 
 ### Phase 4: FreightRequest Domain
-**Status:** [ ] Not Started
+**Status:** [x] Completed
 
-- [ ] Value objects:
-  - [ ] Route, RoutePoint, Address, Coordinates
-  - [ ] CargoInfo, Dimensions, CargoType, ADRClass
-  - [ ] VehicleRequirements, BodyType, LoadingTypes
-  - [ ] Payment, Money, PriceType, VatType, PaymentMethod, PaymentTerms
-- [ ] FreightRequest aggregate + events
-  - [ ] FreightRequestCreated
-  - [ ] FreightRequestUpdated (increments freightVersion)
-  - [ ] FreightRequestCancelled
-  - [ ] FreightRequestExpired
-  - [ ] OfferMade
-  - [ ] OfferWithdrawn
-  - [ ] OfferSelected
-  - [ ] OfferRejected
-  - [ ] OfferConfirmed
-  - [ ] OfferDeclined
-- [ ] Offer entity
-- [ ] Repository with optimistic locking (version + freightVersion)
-- [ ] Projection handlers (freight_requests_projection)
-- [ ] HTTP API:
-  - [ ] POST /api/v1/freight-requests
-  - [ ] GET /api/v1/freight-requests (with filters)
-  - [ ] GET /api/v1/freight-requests/:id
-  - [ ] PATCH /api/v1/freight-requests/:id
-  - [ ] DELETE /api/v1/freight-requests/:id (cancel)
-  - [ ] POST /api/v1/freight-requests/:id/offers
-  - [ ] DELETE /api/v1/freight-requests/:id/offers/:offerId (withdraw)
-  - [ ] POST /api/v1/freight-requests/:id/offers/:offerId/select
-  - [ ] POST /api/v1/freight-requests/:id/offers/:offerId/reject
-  - [ ] POST /api/v1/freight-requests/:id/offers/:offerId/confirm
-  - [ ] POST /api/v1/freight-requests/:id/offers/:offerId/decline
+- [x] Value objects:
+  - [x] Route, RoutePoint, RoutePointType, Coordinates
+  - [x] CargoInfo, Dimensions, CargoType, ADRClass
+  - [x] VehicleRequirements, BodyType, LoadingType, Temperature
+  - [x] Payment, Money, Currency, PriceType, VatType, PaymentMethod, PaymentTerms
+  - [x] FreightRequestStatus, OfferStatus
+- [x] FreightRequest aggregate + events
+  - [x] FreightRequestCreated
+  - [x] FreightRequestUpdated (increments freightVersion)
+  - [x] FreightRequestReassigned
+  - [x] FreightRequestCancelled
+  - [x] FreightRequestExpired
+  - [x] OfferMade
+  - [x] OfferWithdrawn
+  - [x] OfferSelected
+  - [x] OfferRejected
+  - [x] OfferConfirmed
+  - [x] OfferDeclined
+- [x] Offer entity
+- [x] Application service (работает напрямую с event store)
+- [x] Projection handlers + worker (freight_requests_lookup, offers_lookup)
+- [x] HTTP API:
+  - [x] POST /api/v1/freight-requests
+  - [x] GET /api/v1/freight-requests (with filters)
+  - [x] GET /api/v1/freight-requests/:id
+  - [x] PATCH /api/v1/freight-requests/:id
+  - [x] DELETE /api/v1/freight-requests/:id (cancel)
+  - [x] POST /api/v1/freight-requests/:id/reassign
+  - [x] POST /api/v1/freight-requests/:id/offers
+  - [x] GET /api/v1/freight-requests/:id/offers
+  - [x] DELETE /api/v1/freight-requests/:id/offers/:offerId (withdraw)
+  - [x] POST /api/v1/freight-requests/:id/offers/:offerId/select
+  - [x] POST /api/v1/freight-requests/:id/offers/:offerId/reject
+  - [x] POST /api/v1/freight-requests/:id/offers/:offerId/confirm
+  - [x] POST /api/v1/freight-requests/:id/offers/:offerId/decline
 
 ### Phase 5: Order Domain
-**Status:** [ ] Not Started
+**Status:** [x] Completed
 
-- [ ] Order aggregate + events
-  - [ ] OrderCreated (from confirmed offer)
-  - [ ] MessageSent
-  - [ ] DocumentAttached
-  - [ ] CustomerCompleted
-  - [ ] CarrierCompleted
-  - [ ] OrderCompleted (both sides)
-  - [ ] ReviewLeft
-- [ ] Message entity
-- [ ] Document entity
-- [ ] Review entity (value object?)
-- [ ] File storage interface + PostgreSQL implementation
-- [ ] Repository
-- [ ] HTTP API:
-  - [ ] GET /api/v1/orders
-  - [ ] GET /api/v1/orders/:id
-  - [ ] POST /api/v1/orders/:id/messages
-  - [ ] GET /api/v1/orders/:id/messages
-  - [ ] POST /api/v1/orders/:id/documents
-  - [ ] GET /api/v1/orders/:id/documents
-  - [ ] GET /api/v1/orders/:id/documents/:docId
-  - [ ] POST /api/v1/orders/:id/complete
-  - [ ] POST /api/v1/orders/:id/review
+- [x] Order aggregate + events
+  - [x] OrderCreated (from confirmed offer, automatically via order-creator worker)
+  - [x] MessageSent
+  - [x] DocumentAttached
+  - [x] DocumentRemoved
+  - [x] CustomerCompleted
+  - [x] CarrierCompleted
+  - [x] OrderCompleted (both sides)
+  - [x] OrderCancelled (with CancelledByCustomer/CancelledByCarrier status)
+  - [x] ReviewLeft
+- [x] Message entity
+- [x] Document entity
+- [x] Review entity
+- [x] OrderStatus value object (active, customer_completed, carrier_completed, completed, cancelled_by_customer, cancelled_by_carrier)
+- [x] File storage interface + PostgreSQL implementation
+- [x] Application service (works directly with event store)
+- [x] Order Creator handler (listens to OfferConfirmed, creates Order)
+- [x] Projection handler + worker (orders_lookup - ID + filter columns only, no JSONB)
+- [x] HTTP API:
+  - [x] GET /api/v1/orders (list with filters)
+  - [x] GET /api/v1/orders/:id (full order from event store)
+  - [x] POST /api/v1/orders/:id/messages
+  - [x] POST /api/v1/orders/:id/documents (upload)
+  - [x] GET /api/v1/orders/:id/documents/:docId (download)
+  - [x] DELETE /api/v1/orders/:id/documents/:docId
+  - [x] POST /api/v1/orders/:id/complete
+  - [x] POST /api/v1/orders/:id/cancel
+  - [x] POST /api/v1/orders/:id/review
 
 ### Phase 6: Notifications
 **Status:** [ ] Not Started
@@ -173,37 +182,46 @@
   - [ ] PATCH /api/v1/notifications/subscriptions/:id
 
 ### Phase 7: Frontend (Vue.js)
-**Status:** [ ] Not Started
+**Status:** [~] In Progress
 
-- [ ] Project setup (Vite, Vue 3, Tailwind, Vue Router, Pinia)
-- [ ] API client setup
-- [ ] Auth:
-  - [ ] Login page
-  - [ ] Register organization page
-  - [ ] Accept invitation page
-- [ ] Organization:
-  - [ ] Dashboard
+- [x] Project setup (Vite, Vue 3, Tailwind 4, Vue Router, Pinia, Leaflet)
+- [x] API client setup (fetch wrapper with error handling)
+- [x] Auth:
+  - [x] Login page
+  - [x] Register organization page
+  - [x] Accept invitation page
+  - [x] Auth store (Pinia)
+  - [x] Route guards (auth, orgActive, role, carrier, admin)
+- [x] Organization:
+  - [x] Dashboard
+  - [x] Organization status pages (pending, rejected, suspended)
   - [ ] Members management
   - [ ] Invitations
   - [ ] Carrier profile settings
+  - [ ] Organization settings
 - [ ] Freight Requests:
-  - [ ] Create form
-  - [ ] List with filters
+  - [x] Create form (wizard: route, cargo, vehicle, payment, confirmation)
+  - [x] Address autocomplete (Nominatim)
+  - [x] Map preview (Leaflet)
+  - [x] List with filters (all/my, status)
   - [ ] Detail page
-  - [ ] My requests
+  - [ ] My requests (merged into list view)
 - [ ] Offers:
   - [ ] Make offer form
   - [ ] Incoming offers list
-  - [ ] My offers
+  - [ ] My offers page
 - [ ] Orders:
   - [ ] List
   - [ ] Detail page
   - [ ] Chat
   - [ ] Documents
   - [ ] Complete & review
-- [ ] Admin panel:
-  - [ ] Login
-  - [ ] Organizations moderation
+- [x] Admin panel:
+  - [x] Login
+  - [x] Organizations list (pending)
+  - [x] Organization detail view
+- [x] Error pages (403 Forbidden, 404 Not Found)
+- [x] Permission system (usePermissions composable, PermissionGuard component)
 
 ---
 
@@ -222,8 +240,10 @@
 
 **Order**
 - Entities: Message, Document, Review
-- Key fields: freightRequestID, customerOrgID, customerMemberID, carrierOrgID, carrierMemberID, status
-- Statuses: active, completed, cancelled
+- Key fields: freightRequestID, offerID, customerOrgID, customerMemberID, carrierOrgID, carrierMemberID, status
+- Statuses: active, customer_completed, carrier_completed, completed, cancelled_by_customer, cancelled_by_carrier
+- Auto-created from OfferConfirmed event via order-creator worker
+- Reviews can be left after completed OR cancelled
 
 ### Key Versioning
 - `version` - aggregate version (changes on any event)
@@ -255,6 +275,9 @@
 | 2025-12-15 | Separate handlers (write) from projections (read) | Allows scaling write/read independently |
 | 2025-12-15 | Each watermill subscriber as separate cmd | Can scale each worker type independently |
 | 2025-12-15 | ConsumerGroup per handler for watermill | Each handler tracks its own offset |
+| 2025-12-15 | Lookup tables: ID + filter columns only, no JSONB | Full data from event store, avoids duplication |
+| 2025-12-15 | Order auto-created from OfferConfirmed | Decoupled from FreightRequest, uses worker pattern |
+| 2025-12-15 | Factory for services and projections | Lazy-initialized, thread-safe dependency container |
 
 ---
 
@@ -297,3 +320,19 @@
 - AdminService for approve/reject with event sourcing
 - AdminHandler with all HTTP endpoints
 - Updated Makefile with build-workers and run-workers commands
+
+### 2025-12-15 - Phase 5 Completed
+- Order aggregate with full event sourcing
+- Order auto-created via order-creator worker when OfferConfirmed event occurs
+- Detailed status tracking: CustomerCompleted/CarrierCompleted → Completed, CancelledByCustomer/CancelledByCarrier
+- Reviews allowed after Completed OR Cancelled
+- Commands return typed errors instead of separate Can* methods
+- Message, Document, Review entities (stored in aggregate, not separate tables)
+- File storage interface + PostgreSQL implementation (files table)
+- Lookup tables optimized: only ID + filter columns, no JSONB (full data from event store)
+- Two new workers: orders (projection), order-creator (OfferConfirmed → Order)
+- HTTP handlers for all order operations including document upload/download
+- Migration 00005_orders.sql (files table, orders_lookup table)
+- Factory pattern (internal/pkg/factory) for lazy-initialized, thread-safe dependency injection
+- Worker package simplified: receives Factory instead of Deps struct
+- All workers and API use Factory for services and projections
