@@ -20,10 +20,9 @@ type Organization struct {
 	country        values.Country
 	phone          string
 	email          string
-	address        values.Address
-	status         values.OrganizationStatus
-	carrierProfile *values.CarrierProfile
-	createdAt      time.Time
+	address   values.Address
+	status    values.OrganizationStatus
+	createdAt time.Time
 	suspendedAt    *time.Time
 
 	members     map[uuid.UUID]*entities.Member
@@ -102,12 +101,10 @@ func (o *Organization) LegalName() string                   { return o.legalName
 func (o *Organization) Country() values.Country             { return o.country }
 func (o *Organization) Phone() string                       { return o.phone }
 func (o *Organization) Email() string                       { return o.email }
-func (o *Organization) Address() values.Address             { return o.address }
-func (o *Organization) Status() values.OrganizationStatus   { return o.status }
-func (o *Organization) CarrierProfile() *values.CarrierProfile { return o.carrierProfile }
-func (o *Organization) CreatedAt() time.Time                { return o.createdAt }
-func (o *Organization) SuspendedAt() *time.Time             { return o.suspendedAt }
-func (o *Organization) IsCarrier() bool                     { return o.carrierProfile != nil }
+func (o *Organization) Address() values.Address           { return o.address }
+func (o *Organization) Status() values.OrganizationStatus { return o.status }
+func (o *Organization) CreatedAt() time.Time              { return o.createdAt }
+func (o *Organization) SuspendedAt() *time.Time           { return o.suspendedAt }
 
 func (o *Organization) Members() map[uuid.UUID]*entities.Member {
 	return o.members
@@ -209,24 +206,6 @@ func (o *Organization) Update(actorID uuid.UUID, name, phone, email *string, add
 	return nil
 }
 
-func (o *Organization) SetCarrierProfile(actorID uuid.UUID, profile values.CarrierProfile) error {
-	actor, ok := o.members[actorID]
-	if !ok {
-		return ErrMemberNotFound
-	}
-	if !actor.CanManageOrganization() {
-		return ErrInsufficientPermissions
-	}
-
-	o.Apply(events.CarrierProfileSet{
-		BaseEvent: eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
-		Profile:   profile,
-		SetBy:     actorID,
-	})
-
-	return nil
-}
-
 func (o *Organization) CreateInvitation(
 	actorID uuid.UUID,
 	invitationID uuid.UUID,
@@ -234,6 +213,8 @@ func (o *Organization) CreateInvitation(
 	role values.MemberRole,
 	token string,
 	expiresAt time.Time,
+	name *string,
+	phone *string,
 ) error {
 	actor, ok := o.members[actorID]
 	if !ok {
@@ -263,6 +244,8 @@ func (o *Organization) CreateInvitation(
 		Token:        token,
 		CreatedBy:    actorID,
 		ExpiresAt:    expiresAt.Unix(),
+		Name:         name,
+		Phone:        phone,
 	})
 
 	return nil
@@ -272,8 +255,8 @@ func (o *Organization) AcceptInvitation(
 	invitationID uuid.UUID,
 	memberID uuid.UUID,
 	passwordHash string,
-	name string,
-	phone string,
+	name *string,
+	phone *string,
 ) error {
 	inv, ok := o.invitations[invitationID]
 	if !ok {
@@ -286,13 +269,33 @@ func (o *Organization) AcceptInvitation(
 		return ErrInvitationAlreadyUsed
 	}
 
+	// Используем предзаполненные данные из приглашения, если они есть
+	// Иначе используем данные от пользователя
+	finalName := ""
+	if inv.Name() != nil {
+		finalName = *inv.Name()
+	} else if name != nil {
+		finalName = *name
+	} else {
+		return ErrNameRequired
+	}
+
+	finalPhone := ""
+	if inv.Phone() != nil {
+		finalPhone = *inv.Phone()
+	} else if phone != nil {
+		finalPhone = *phone
+	} else {
+		return ErrPhoneRequired
+	}
+
 	o.Apply(events.MemberAdded{
 		BaseEvent:    eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
 		MemberID:     memberID,
 		Email:        inv.Email(),
 		PasswordHash: passwordHash,
-		Name:         name,
-		Phone:        phone,
+		Name:         finalName,
+		Phone:        finalPhone,
 		Role:         inv.Role(),
 		InvitedBy:    ptr(inv.CreatedBy()),
 	})
@@ -438,9 +441,6 @@ func (o *Organization) apply(evt eventstore.Event) {
 			o.address = *e.Address
 		}
 
-	case events.CarrierProfileSet:
-		o.carrierProfile = &e.Profile
-
 	case events.MemberAdded:
 		member := entities.NewMember(
 			e.MemberID,
@@ -475,6 +475,8 @@ func (o *Organization) apply(evt eventstore.Event) {
 			e.Token,
 			e.CreatedBy,
 			time.Unix(e.ExpiresAt, 0),
+			e.Name,
+			e.Phone,
 		)
 		o.invitations[e.InvitationID] = &inv
 

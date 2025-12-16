@@ -105,13 +105,3 @@ export function roleGuard(
     return true
   }
 }
-
-export async function carrierGuard(): Promise<NavigationGuardReturn> {
-  const auth = useAuthStore()
-
-  if (!auth.organization?.is_carrier) {
-    return { name: 'forbidden' }
-  }
-
-  return true
-}

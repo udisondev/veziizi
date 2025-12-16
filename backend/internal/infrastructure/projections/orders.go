@@ -117,7 +117,7 @@ func (p *OrdersProjection) List(ctx context.Context, opts ...OrderFilterOption) 
 	}
 	defer rows.Close()
 
-	var result []OrderListItem
+	result := make([]OrderListItem, 0)
 	for rows.Next() {
 		var item OrderListItem
 		if err := rows.Scan(

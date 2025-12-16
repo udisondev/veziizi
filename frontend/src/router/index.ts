@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { authGuard, orgActiveGuard, roleGuard, carrierGuard, adminGuard } from './guards'
+import { authGuard, orgActiveGuard, roleGuard, adminGuard } from './guards'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -79,6 +79,22 @@ const router = createRouter({
       meta: { title: 'Редактирование заявки' },
     },
 
+    // Organization profile (public view)
+    {
+      path: '/organizations/:id',
+      name: 'organization-profile',
+      component: () => import('@/views/OrganizationProfileView.vue'),
+      meta: { title: 'Профиль организации' },
+    },
+
+    // Member profile (public view)
+    {
+      path: '/members/:id',
+      name: 'member-profile',
+      component: () => import('@/views/MemberProfileView.vue'),
+      meta: { title: 'Профиль сотрудника' },
+    },
+
     // Orders
     {
       path: '/orders',
@@ -115,21 +131,12 @@ const router = createRouter({
       meta: { title: 'Настройки организации' },
       beforeEnter: roleGuard(['owner', 'administrator']),
     },
-    {
-      path: '/organization/carrier-profile',
-      name: 'carrier-profile',
-      component: () => import('@/views/CarrierProfileView.vue'),
-      meta: { title: 'Профиль перевозчика' },
-      beforeEnter: roleGuard(['owner', 'administrator']),
-    },
-
-    // Carrier-only routes
+    // My offers (any organization can make offers now)
     {
       path: '/my-offers',
       name: 'my-offers',
       component: () => import('@/views/MyOffersView.vue'),
       meta: { title: 'Мои офферы' },
-      beforeEnter: carrierGuard,
     },
 
     // Profile

@@ -107,6 +107,11 @@ func (f *FreightRequest) IsExpired() bool {
 	return f.status == values.FreightRequestStatusExpired || time.Now().After(f.expiresAt)
 }
 
+func (f *FreightRequest) CanAcceptOffers() bool {
+	return f.status == values.FreightRequestStatusPublished ||
+		f.status == values.FreightRequestStatusSelected
+}
+
 func (f *FreightRequest) HasSelectedOffer() bool {
 	return f.selectedOffer != nil
 }
@@ -197,10 +202,10 @@ func (f *FreightRequest) MakeOffer(
 	carrierMemberID uuid.UUID,
 	price values.Money,
 	comment string,
-	vehicleInfo string,
-	estimatedDays int,
+	vatType values.VatType,
+	paymentMethod values.PaymentMethod,
 ) error {
-	if !f.IsPublished() {
+	if !f.CanAcceptOffers() {
 		return ErrFreightRequestNotPublished
 	}
 	if f.IsExpired() {
@@ -225,8 +230,8 @@ func (f *FreightRequest) MakeOffer(
 		Price:           price,
 		Comment:         comment,
 		FreightVersion:  f.freightVersion,
-		VehicleInfo:     vehicleInfo,
-		EstimatedDays:   estimatedDays,
+		VatType:         vatType,
+		PaymentMethod:   paymentMethod,
 	})
 
 	return nil
@@ -254,10 +259,17 @@ func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorOrgID uuid.UUID, 
 	return nil
 }
 
-func (f *FreightRequest) SelectOffer(offerID uuid.UUID, actorID uuid.UUID) error {
-	if f.customerMemberID != actorID {
+func (f *FreightRequest) SelectOffer(offerID uuid.UUID, actorID uuid.UUID, actorOrgID uuid.UUID, canManageFreightRequests bool) error {
+	// Проверка: актор должен быть из организации-заказчика
+	if f.customerOrgID != actorOrgID {
 		return ErrNotFreightRequestOwner
 	}
+
+	// Проверка прав: создатель заявки ИЛИ owner/administrator организации
+	if f.customerMemberID != actorID && !canManageFreightRequests {
+		return ErrNotFreightRequestOwner
+	}
+
 	if !f.IsPublished() {
 		return ErrFreightRequestNotPublished
 	}
@@ -282,8 +294,14 @@ func (f *FreightRequest) SelectOffer(offerID uuid.UUID, actorID uuid.UUID) error
 	return nil
 }
 
-func (f *FreightRequest) RejectOffer(offerID uuid.UUID, actorID uuid.UUID, reason string) error {
-	if f.customerMemberID != actorID {
+func (f *FreightRequest) RejectOffer(offerID uuid.UUID, actorID uuid.UUID, actorOrgID uuid.UUID, canManageFreightRequests bool, reason string) error {
+	// Проверка: актор должен быть из организации-заказчика
+	if f.customerOrgID != actorOrgID {
+		return ErrNotFreightRequestOwner
+	}
+
+	// Проверка прав: создатель заявки ИЛИ owner/administrator организации
+	if f.customerMemberID != actorID && !canManageFreightRequests {
 		return ErrNotFreightRequestOwner
 	}
 
@@ -407,8 +425,8 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 			e.Price,
 			e.Comment,
 			e.FreightVersion,
-			e.VehicleInfo,
-			e.EstimatedDays,
+			e.VatType,
+			e.PaymentMethod,
 			e.OccurredAt(),
 		)
 		f.offers[e.OfferID] = &offer

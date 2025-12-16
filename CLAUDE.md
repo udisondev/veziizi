@@ -70,7 +70,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 
 ### Domain Aggregates
 
-- **Organization** — организация с Members и Invitations. Может быть customer и/или carrier (через CarrierProfile)
+- **Organization** — организация с Members и Invitations. Любая организация может быть заказчиком и делать офферы
 - **FreightRequest** — заявка на перевозку с Offers внутри. Два версионирования: `version` (aggregate) и `freightVersion` (только при изменении данных заявки)
 - **Order** — заказ (после подтверждения оффера). Содержит Messages, Documents, Reviews. Создаётся автоматически через order-creator worker при OfferConfirmed
 
@@ -235,7 +235,6 @@ npm run build         # Production build
 - `authGuard` — проверка авторизации (глобальный)
 - `orgActiveGuard` — редирект на статусные страницы если org не active (глобальный)
 - `roleGuard(['owner', 'administrator'])` — проверка роли
-- `carrierGuard` — проверка CarrierProfile
 - `adminGuard` — проверка admin сессии
 
 **Permission System:**

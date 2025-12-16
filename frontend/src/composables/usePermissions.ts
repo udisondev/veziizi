@@ -28,17 +28,11 @@ export function usePermissions() {
     () => auth.organization?.status === 'suspended'
   )
 
-  // Carrier status
-  const isCarrier = computed(() => auth.organization?.is_carrier ?? false)
-
   // Action permissions (combined role + org status)
   const canCreateFreightRequest = computed(() => isOrgActive.value)
 
-  const canMakeOffer = computed(() => isOrgActive.value && isCarrier.value)
-
-  const canBecomeCarrier = computed(
-    () => isOrgActive.value && !isCarrier.value && canManageOrganization.value
-  )
+  // Any active organization can make offers
+  const canMakeOffer = computed(() => isOrgActive.value)
 
   // Resource ownership checks
   const isFreightRequestOwner = (customerOrgId: string): boolean => {
@@ -80,8 +74,24 @@ export function usePermissions() {
     return isOwnerOrAdmin || isCreator
   }
 
-  const canSelectOffer = (customerOrgId: string): boolean => {
-    return isOrgActive.value && isFreightRequestOwner(customerOrgId)
+  const canSelectOffer = (customerOrgId: string, customerMemberId?: string): boolean => {
+    if (!isOrgActive.value || !isFreightRequestOwner(customerOrgId)) {
+      return false
+    }
+    // Владелец или администратор организации, либо создатель заявки
+    const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
+    const isCreator = customerMemberId === auth.memberId
+    return isOwnerOrAdmin || isCreator
+  }
+
+  const canRejectOffer = (customerOrgId: string, customerMemberId?: string): boolean => {
+    if (!isOrgActive.value || !isFreightRequestOwner(customerOrgId)) {
+      return false
+    }
+    // Владелец или администратор организации, либо создатель заявки
+    const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
+    const isCreator = customerMemberId === auth.memberId
+    return isOwnerOrAdmin || isCreator
   }
 
   // Offer action permissions
@@ -92,8 +102,13 @@ export function usePermissions() {
     )
   }
 
-  const canWithdrawOffer = (carrierOrgId: string): boolean => {
-    return isOrgActive.value && isOfferOwner(carrierOrgId)
+  const canWithdrawOffer = (carrierOrgId: string, carrierMemberId: string): boolean => {
+    if (!isOrgActive.value || !isOfferOwner(carrierOrgId)) {
+      return false
+    }
+    const isCreator = carrierMemberId === auth.memberId
+    const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
+    return isCreator || isOwnerOrAdmin
   }
 
   const canConfirmOffer = (carrierOrgId: string): boolean => {
@@ -122,6 +137,34 @@ export function usePermissions() {
     return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
   }
 
+  const canCompleteOrder = (
+    customerOrgId: string,
+    carrierOrgId: string
+  ): boolean => {
+    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
+  }
+
+  const canCancelOrder = (
+    customerOrgId: string,
+    carrierOrgId: string
+  ): boolean => {
+    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
+  }
+
+  const canLeaveOrderReview = (
+    customerOrgId: string,
+    carrierOrgId: string
+  ): boolean => {
+    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
+  }
+
+  const canRemoveOrderDocument = (
+    customerOrgId: string,
+    carrierOrgId: string
+  ): boolean => {
+    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
+  }
+
   return {
     // Role-based
     canManageMembers,
@@ -133,12 +176,10 @@ export function usePermissions() {
     isOrgPending,
     isOrgRejected,
     isOrgSuspended,
-    isCarrier,
 
     // Action permissions
     canCreateFreightRequest,
     canMakeOffer,
-    canBecomeCarrier,
 
     // Resource ownership
     isFreightRequestOwner,
@@ -149,6 +190,7 @@ export function usePermissions() {
     canEditFreightRequest,
     canCancelFreightRequest,
     canSelectOffer,
+    canRejectOffer,
 
     // Offer actions
     canCreateOffer,
@@ -159,5 +201,9 @@ export function usePermissions() {
     canViewOrder,
     canAddOrderMessage,
     canUploadOrderDocument,
+    canCompleteOrder,
+    canCancelOrder,
+    canLeaveOrderReview,
+    canRemoveOrderDocument,
   }
 }

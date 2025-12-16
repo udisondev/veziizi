@@ -5,10 +5,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/organization"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -36,6 +38,7 @@ func (h *AuthHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/auth/login", h.Login).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/auth/logout", h.Logout).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/auth/me", h.Me).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/members/{id}", h.GetMemberProfile).Methods(http.MethodGet)
 }
 
 type LoginRequest struct {
@@ -116,9 +119,8 @@ type MeResponse struct {
 }
 
 type OrganizationBrief struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	IsCarrier bool   `json:"is_carrier"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
@@ -155,9 +157,57 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		Phone:          member.Phone,
 		TelegramID:     member.TelegramID,
 		Organization: &OrganizationBrief{
-			Name:      org.Name(),
-			Status:    org.Status().String(),
-			IsCarrier: org.IsCarrier(),
+			Name:   org.Name(),
+			Status: org.Status().String(),
 		},
+	})
+}
+
+// MemberProfileResponse represents public member profile
+type MemberProfileResponse struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Email            string    `json:"email"`
+	Phone            *string   `json:"phone,omitempty"`
+	OrganizationID   string    `json:"organization_id"`
+	OrganizationName string    `json:"organization_name"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	member, err := h.members.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "member not found")
+			return
+		}
+		slog.Error("failed to get member", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Get organization name
+	org, err := h.orgService.Get(r.Context(), member.OrganizationID)
+	if err != nil {
+		slog.Error("failed to get organization", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, MemberProfileResponse{
+		ID:               member.ID.String(),
+		Name:             member.Name,
+		Email:            member.Email,
+		Phone:            member.Phone,
+		OrganizationID:   member.OrganizationID.String(),
+		OrganizationName: org.Name(),
+		CreatedAt:        member.CreatedAt,
 	})
 }

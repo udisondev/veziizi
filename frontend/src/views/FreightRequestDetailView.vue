@@ -10,6 +10,8 @@ import type {
   Offer,
   MakeOfferRequest,
   Currency,
+  VatType,
+  PaymentMethod,
 } from '@/types/freightRequest'
 import {
   freightRequestStatusLabels,
@@ -24,6 +26,8 @@ import {
   offerStatusLabels,
   offerStatusColors,
   currencyOptions,
+  vatTypeOptions,
+  paymentMethodOptions,
 } from '@/types/freightRequest'
 
 const route = useRoute()
@@ -43,12 +47,20 @@ const showMakeOfferModal = ref(false)
 const showCancelModal = ref(false)
 const cancelReason = ref('')
 
+const showRejectModal = ref(false)
+const rejectOfferId = ref<string | null>(null)
+const rejectReason = ref('')
+
+const showWithdrawModal = ref(false)
+const withdrawOfferId = ref<string | null>(null)
+const withdrawReason = ref('')
+
 // Make offer form
 const offerForm = ref<MakeOfferRequest>({
   price: { amount: 0, currency: 'RUB' as Currency },
   comment: '',
-  vehicle_info: '',
-  estimated_days: 0,
+  vat_type: 'included' as VatType,
+  payment_method: 'bank_transfer' as PaymentMethod,
 })
 
 // Status colors
@@ -70,7 +82,7 @@ const canMakeOffer = computed(() => {
   if (!freightRequest.value) return false
   return (
     permissions.canCreateOffer(freightRequest.value.customer_org_id) &&
-    freightRequest.value.status === 'published'
+    ['published', 'selected'].includes(freightRequest.value.status)
   )
 })
 
@@ -85,6 +97,14 @@ const canCancel = computed(() => {
   )
 })
 
+const canManageOffers = computed(() => {
+  if (!freightRequest.value) return false
+  return permissions.canSelectOffer(
+    freightRequest.value.customer_org_id,
+    freightRequest.value.customer_member_id
+  )
+})
+
 const canEdit = computed(() => {
   if (!freightRequest.value) return false
   return (
@@ -96,16 +116,24 @@ const canEdit = computed(() => {
   )
 })
 
-const myOffer = computed(() => {
-  return offers.value.find((o) => o.carrier_org_id === auth.organizationId)
+const myOffers = computed(() => {
+  return offers.value.filter((o) => o.carrier_org_id === auth.organizationId)
+})
+
+const myActiveOffer = computed(() => {
+  return offers.value.find(
+    (o) =>
+      o.carrier_org_id === auth.organizationId &&
+      ['pending', 'selected'].includes(o.status)
+  )
 })
 
 const visibleOffers = computed(() => {
   if (isOwner.value) {
     return offers.value
   }
-  // Non-owner sees only their own offer
-  return myOffer.value ? [myOffer.value] : []
+  // Non-owner sees only their own offers
+  return myOffers.value
 })
 
 const shortId = computed(() => {
@@ -191,8 +219,8 @@ async function handleMakeOffer() {
         currency: offerForm.value.price.currency,
       },
       comment: offerForm.value.comment || undefined,
-      vehicle_info: offerForm.value.vehicle_info || undefined,
-      estimated_days: offerForm.value.estimated_days || undefined,
+      vat_type: offerForm.value.vat_type,
+      payment_method: offerForm.value.payment_method,
     })
     showMakeOfferModal.value = false
     await loadData()
@@ -216,11 +244,20 @@ async function handleSelectOffer(offerId: string) {
   }
 }
 
-async function handleRejectOffer(offerId: string) {
-  if (!freightRequest.value) return
+function openRejectModal(offerId: string) {
+  rejectOfferId.value = offerId
+  rejectReason.value = ''
+  showRejectModal.value = true
+}
+
+async function confirmRejectOffer() {
+  if (!freightRequest.value || !rejectOfferId.value) return
   actionLoading.value = true
   try {
-    await freightRequestsApi.rejectOffer(freightRequest.value.id, offerId)
+    await freightRequestsApi.rejectOffer(freightRequest.value.id, rejectOfferId.value, rejectReason.value || undefined)
+    showRejectModal.value = false
+    rejectOfferId.value = null
+    rejectReason.value = ''
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -229,11 +266,20 @@ async function handleRejectOffer(offerId: string) {
   }
 }
 
-async function handleWithdrawOffer(offerId: string) {
-  if (!freightRequest.value) return
+function openWithdrawModal(offerId: string) {
+  withdrawOfferId.value = offerId
+  withdrawReason.value = ''
+  showWithdrawModal.value = true
+}
+
+async function confirmWithdrawOffer() {
+  if (!freightRequest.value || !withdrawOfferId.value) return
   actionLoading.value = true
   try {
-    await freightRequestsApi.withdrawOffer(freightRequest.value.id, offerId)
+    await freightRequestsApi.withdrawOffer(freightRequest.value.id, withdrawOfferId.value, withdrawReason.value || undefined)
+    showWithdrawModal.value = false
+    withdrawOfferId.value = null
+    withdrawReason.value = ''
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -577,14 +623,22 @@ onMounted(() => {
                       {{ offerStatusLabels[offer.status] }}
                     </span>
                   </div>
+                  <div v-if="isOwner && offer.carrier_org_name" class="mb-2">
+                    <router-link
+                      :to="`/organizations/${offer.carrier_org_id}`"
+                      class="text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      {{ offer.carrier_org_name }}
+                    </router-link>
+                  </div>
                   <div class="text-sm text-gray-600 space-y-1">
-                    <p v-if="offer.estimated_days">
-                      <span class="text-gray-500">Срок доставки:</span>
-                      {{ offer.estimated_days }} дн.
+                    <p>
+                      <span class="text-gray-500">НДС:</span>
+                      {{ vatTypeLabels[offer.vat_type] }}
                     </p>
-                    <p v-if="offer.vehicle_info">
-                      <span class="text-gray-500">Транспорт:</span>
-                      {{ offer.vehicle_info }}
+                    <p>
+                      <span class="text-gray-500">Способ оплаты:</span>
+                      {{ paymentMethodLabels[offer.payment_method] }}
                     </p>
                     <p v-if="offer.comment">
                       <span class="text-gray-500">Комментарий:</span>
@@ -596,8 +650,8 @@ onMounted(() => {
                   </div>
                 </div>
 
-                <!-- Owner actions -->
-                <div v-if="isOwner && offer.status === 'pending' && freightRequest.status === 'published'" class="flex gap-2">
+                <!-- Owner/Admin actions -->
+                <div v-if="canManageOffers && offer.status === 'pending' && freightRequest.status === 'published'" class="flex gap-2">
                   <button
                     @click="handleSelectOffer(offer.id)"
                     :disabled="actionLoading"
@@ -606,7 +660,7 @@ onMounted(() => {
                     Выбрать
                   </button>
                   <button
-                    @click="handleRejectOffer(offer.id)"
+                    @click="openRejectModal(offer.id)"
                     :disabled="actionLoading"
                     class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-lg disabled:opacity-50"
                   >
@@ -616,9 +670,9 @@ onMounted(() => {
 
                 <!-- Carrier actions (own offer) -->
                 <div v-if="!isOwner && offer.carrier_org_id === auth.organizationId" class="flex gap-2">
-                  <template v-if="offer.status === 'pending'">
+                  <template v-if="offer.status === 'pending' && permissions.canWithdrawOffer(offer.carrier_org_id, offer.carrier_member_id)">
                     <button
-                      @click="handleWithdrawOffer(offer.id)"
+                      @click="openWithdrawModal(offer.id)"
                       :disabled="actionLoading"
                       class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-lg disabled:opacity-50"
                     >
@@ -648,7 +702,7 @@ onMounted(() => {
         </div>
 
         <!-- Make Offer Button -->
-        <div v-if="canMakeOffer && !myOffer" class="flex justify-center">
+        <div v-if="canMakeOffer && !myActiveOffer" class="flex justify-center">
           <button
             @click="showMakeOfferModal = true"
             class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg"
@@ -688,24 +742,27 @@ onMounted(() => {
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Срок доставки (дней)</label>
-            <input
-              v-model.number="offerForm.estimated_days"
-              type="number"
-              min="0"
-              placeholder="0"
+            <label class="block text-sm font-medium text-gray-700 mb-1">НДС</label>
+            <select
+              v-model="offerForm.vat_type"
               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            >
+              <option v-for="opt in vatTypeOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Информация о транспорте</label>
-            <input
-              v-model="offerForm.vehicle_info"
-              type="text"
-              placeholder="Марка, гос. номер..."
+            <label class="block text-sm font-medium text-gray-700 mb-1">Способ оплаты</label>
+            <select
+              v-model="offerForm.payment_method"
               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            >
+              <option v-for="opt in paymentMethodOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
           </div>
 
           <div>
@@ -765,6 +822,76 @@ onMounted(() => {
             class="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50"
           >
             {{ actionLoading ? 'Отмена...' : 'Отменить заявку' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reject Offer Modal -->
+    <div v-if="showRejectModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[1000]">
+      <div class="bg-white rounded-lg p-6 max-w-md w-full">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Отклонить предложение</h3>
+
+        <p class="text-gray-600 mb-4">Вы уверены, что хотите отклонить это предложение?</p>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Причина отклонения</label>
+          <textarea
+            v-model="rejectReason"
+            rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Укажите причину (опционально)..."
+          ></textarea>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            @click="showRejectModal = false"
+            class="flex-1 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+          >
+            Отмена
+          </button>
+          <button
+            @click="confirmRejectOffer"
+            :disabled="actionLoading"
+            class="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50"
+          >
+            {{ actionLoading ? 'Отклонение...' : 'Отклонить' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Withdraw Offer Modal -->
+    <div v-if="showWithdrawModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[1000]">
+      <div class="bg-white rounded-lg p-6 max-w-md w-full">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Отозвать предложение</h3>
+
+        <p class="text-gray-600 mb-4">Вы уверены, что хотите отозвать своё предложение?</p>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Причина отзыва</label>
+          <textarea
+            v-model="withdrawReason"
+            rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Укажите причину (опционально)..."
+          ></textarea>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            @click="showWithdrawModal = false"
+            class="flex-1 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+          >
+            Отмена
+          </button>
+          <button
+            @click="confirmWithdrawOffer"
+            :disabled="actionLoading"
+            class="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg disabled:opacity-50"
+          >
+            {{ actionLoading ? 'Отзыв...' : 'Отозвать' }}
           </button>
         </div>
       </div>

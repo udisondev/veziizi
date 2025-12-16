@@ -17,4 +17,6 @@ var (
 	ErrCannotChangeOwnRole      = errors.New("cannot change own role")
 	ErrCannotBlockSelf          = errors.New("cannot block yourself")
 	ErrEmailAlreadyInvited      = errors.New("email already has pending invitation")
+	ErrNameRequired             = errors.New("name is required")
+	ErrPhoneRequired            = errors.New("phone is required")
 )

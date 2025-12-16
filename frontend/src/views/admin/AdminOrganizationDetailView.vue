@@ -159,10 +159,6 @@ async function handleReject() {
               <dt class="text-sm text-gray-400">Дата регистрации</dt>
               <dd class="text-white">{{ formatDate(organization.created_at) }}</dd>
             </div>
-            <div>
-              <dt class="text-sm text-gray-400">Перевозчик</dt>
-              <dd class="text-white">{{ organization.is_carrier ? 'Да' : 'Нет' }}</dd>
-            </div>
           </dl>
         </div>
 

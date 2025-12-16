@@ -95,14 +95,14 @@ func (e FreightRequestExpired) EventType() string { return TypeFreightRequestExp
 // OfferMade is emitted when carrier makes an offer
 type OfferMade struct {
 	eventstore.BaseEvent
-	OfferID         uuid.UUID    `json:"offer_id"`
-	CarrierOrgID    uuid.UUID    `json:"carrier_org_id"`
-	CarrierMemberID uuid.UUID    `json:"carrier_member_id"`
-	Price           values.Money `json:"price"`
-	Comment         string       `json:"comment,omitempty"`
-	FreightVersion  int          `json:"freight_version"`
-	VehicleInfo     string       `json:"vehicle_info,omitempty"`
-	EstimatedDays   int          `json:"estimated_days,omitempty"`
+	OfferID         uuid.UUID            `json:"offer_id"`
+	CarrierOrgID    uuid.UUID            `json:"carrier_org_id"`
+	CarrierMemberID uuid.UUID            `json:"carrier_member_id"`
+	Price           values.Money         `json:"price"`
+	Comment         string               `json:"comment,omitempty"`
+	FreightVersion  int                  `json:"freight_version"`
+	VatType         values.VatType       `json:"vat_type"`
+	PaymentMethod   values.PaymentMethod `json:"payment_method"`
 }
 
 func (e OfferMade) EventType() string { return TypeOfferMade }

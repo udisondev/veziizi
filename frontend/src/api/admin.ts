@@ -16,8 +16,9 @@ export const adminApi = {
     return api.post('/admin/auth/logout')
   },
 
-  getOrganizations(): Promise<PendingOrganization[]> {
-    return api.get('/admin/organizations')
+  async getOrganizations(): Promise<PendingOrganization[]> {
+    const result = await api.get<PendingOrganization[] | null>('/admin/organizations')
+    return result ?? []
   },
 
   getOrganization(id: string): Promise<OrganizationDetail> {

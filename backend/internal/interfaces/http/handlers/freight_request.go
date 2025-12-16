@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/freightrequest"
+	"codeberg.org/udison/veziizi/backend/internal/application/organization"
 	frDomain "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest"
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/entities"
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/values"
@@ -21,17 +22,20 @@ import (
 
 type FreightRequestHandler struct {
 	service    *freightrequest.Service
+	orgService *organization.Service
 	projection *projections.FreightRequestsProjection
 	session    *session.Manager
 }
 
 func NewFreightRequestHandler(
 	service *freightrequest.Service,
+	orgService *organization.Service,
 	projection *projections.FreightRequestsProjection,
 	session *session.Manager,
 ) *FreightRequestHandler {
 	return &FreightRequestHandler{
 		service:    service,
+		orgService: orgService,
 		projection: projection,
 		session:    session,
 	}
@@ -59,11 +63,12 @@ type FreightRequestResponse struct {
 type OfferResponse struct {
 	ID              uuid.UUID    `json:"id"`
 	CarrierOrgID    uuid.UUID    `json:"carrier_org_id"`
+	CarrierOrgName  string       `json:"carrier_org_name"`
 	CarrierMemberID uuid.UUID    `json:"carrier_member_id"`
 	Price           values.Money `json:"price"`
 	Comment         string       `json:"comment,omitempty"`
-	VehicleInfo     string       `json:"vehicle_info,omitempty"`
-	EstimatedDays   int          `json:"estimated_days,omitempty"`
+	VatType         string       `json:"vat_type"`
+	PaymentMethod   string       `json:"payment_method"`
 	FreightVersion  int          `json:"freight_version"`
 	Status          string       `json:"status"`
 	CreatedAt       time.Time    `json:"created_at"`
@@ -88,15 +93,16 @@ func (h *FreightRequestHandler) toFreightRequestResponse(fr *frDomain.FreightReq
 	}
 }
 
-func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer) OfferResponse {
+func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer, orgName string) OfferResponse {
 	return OfferResponse{
 		ID:              offer.ID(),
 		CarrierOrgID:    offer.CarrierOrgID(),
+		CarrierOrgName:  orgName,
 		CarrierMemberID: offer.CarrierMemberID(),
 		Price:           offer.Price(),
 		Comment:         offer.Comment(),
-		VehicleInfo:     offer.VehicleInfo(),
-		EstimatedDays:   offer.EstimatedDays(),
+		VatType:         offer.VatType().String(),
+		PaymentMethod:   offer.PaymentMethod().String(),
 		FreightVersion:  offer.FreightVersion(),
 		Status:          offer.Status().String(),
 		CreatedAt:       offer.CreatedAt(),
@@ -117,6 +123,8 @@ func (h *FreightRequestHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/reject", h.RejectOffer).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/confirm", h.ConfirmOffer).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/decline", h.DeclineOffer).Methods(http.MethodPost)
+	// My offers (for current organization)
+	r.HandleFunc("/api/v1/offers", h.ListMyOffers).Methods(http.MethodGet)
 }
 
 type CreateFreightRequestRequest struct {
@@ -363,10 +371,10 @@ func (h *FreightRequestHandler) Reassign(w http.ResponseWriter, r *http.Request)
 }
 
 type MakeOfferRequest struct {
-	Price         values.Money `json:"price"`
-	Comment       string       `json:"comment,omitempty"`
-	VehicleInfo   string       `json:"vehicle_info,omitempty"`
-	EstimatedDays int          `json:"estimated_days,omitempty"`
+	Price         values.Money         `json:"price"`
+	Comment       string               `json:"comment,omitempty"`
+	VatType       values.VatType       `json:"vat_type"`
+	PaymentMethod values.PaymentMethod `json:"payment_method"`
 }
 
 type MakeOfferResponse struct {
@@ -404,8 +412,8 @@ func (h *FreightRequestHandler) MakeOffer(w http.ResponseWriter, r *http.Request
 		CarrierMemberID:  memberID,
 		Price:            req.Price,
 		Comment:          req.Comment,
-		VehicleInfo:      req.VehicleInfo,
-		EstimatedDays:    req.EstimatedDays,
+		VatType:          req.VatType,
+		PaymentMethod:    req.PaymentMethod,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -435,12 +443,73 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Собираем уникальные ID организаций
+	orgIDs := make([]uuid.UUID, 0, len(fr.Offers()))
+	seen := make(map[uuid.UUID]bool)
+	for _, offer := range fr.Offers() {
+		if !seen[offer.CarrierOrgID()] {
+			seen[offer.CarrierOrgID()] = true
+			orgIDs = append(orgIDs, offer.CarrierOrgID())
+		}
+	}
+
+	// Загружаем названия организаций
+	orgNames, err := h.orgService.GetNames(r.Context(), orgIDs)
+	if err != nil {
+		slog.Error("failed to get organization names", slog.String("error", err.Error()))
+		// Продолжаем без названий, не критично
+		orgNames = make(map[uuid.UUID]string)
+	}
+
 	offers := make([]OfferResponse, 0, len(fr.Offers()))
 	for _, offer := range fr.Offers() {
-		offers = append(offers, h.toOfferResponse(offer))
+		offers = append(offers, h.toOfferResponse(offer, orgNames[offer.CarrierOrgID()]))
 	}
 
 	writeJSON(w, http.StatusOK, offers)
+}
+
+// ListMyOffers returns all offers made by current organization with freight request data
+func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var opts []projections.OfferFilterOption
+	opts = append(opts, projections.WithCarrierOrgIDAlias(orgID))
+
+	if status := r.URL.Query().Get("status"); status != "" {
+		opts = append(opts, projections.WithOfferStatusAlias(status))
+	}
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		opts = append(opts, projections.WithOfferLimit(limit))
+	}
+
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid offset")
+			return
+		}
+		opts = append(opts, projections.WithOfferOffset(offset))
+	}
+
+	items, err := h.projection.ListOffersWithFreightData(r.Context(), opts...)
+	if err != nil {
+		slog.Error("failed to list my offers", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list offers")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
 }
 
 type WithdrawOfferRequest struct {
@@ -460,6 +529,11 @@ func (h *FreightRequestHandler) WithdrawOffer(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -473,6 +547,7 @@ func (h *FreightRequestHandler) WithdrawOffer(w http.ResponseWriter, r *http.Req
 		FreightRequestID: frID,
 		OfferID:          offerID,
 		ActorOrgID:       orgID,
+		ActorMemberID:    memberID,
 		Reason:           req.Reason,
 	}); err != nil {
 		h.handleDomainError(w, err)
@@ -501,10 +576,17 @@ func (h *FreightRequestHandler) SelectOffer(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	if err := h.service.SelectOffer(r.Context(), freightrequest.SelectOfferInput{
 		FreightRequestID: frID,
 		OfferID:          offerID,
 		ActorID:          memberID,
+		ActorOrgID:       orgID,
 	}); err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -536,6 +618,12 @@ func (h *FreightRequestHandler) RejectOffer(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req RejectOfferRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
@@ -543,6 +631,7 @@ func (h *FreightRequestHandler) RejectOffer(w http.ResponseWriter, r *http.Reque
 		FreightRequestID: frID,
 		OfferID:          offerID,
 		ActorID:          memberID,
+		ActorOrgID:       orgID,
 		Reason:           req.Reason,
 	}); err != nil {
 		h.handleDomainError(w, err)

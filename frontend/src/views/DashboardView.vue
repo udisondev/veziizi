@@ -5,7 +5,7 @@ import OrgStatusBanner from '@/components/ui/OrgStatusBanner.vue'
 import PermissionGuard from '@/components/ui/PermissionGuard.vue'
 
 const auth = useAuthStore()
-const { canManageMembers, canCreateFreightRequest, isCarrier } = usePermissions()
+const { canManageMembers, canCreateFreightRequest } = usePermissions()
 </script>
 
 <template>
@@ -53,18 +53,16 @@ const { canManageMembers, canCreateFreightRequest, isCarrier } = usePermissions(
           </p>
         </router-link>
 
-        <!-- My Offers (carriers only) -->
-        <PermissionGuard :condition="isCarrier">
-          <router-link
-            to="/my-offers"
-            class="bg-white overflow-hidden shadow rounded-lg p-6 hover:shadow-md transition-shadow"
-          >
-            <h3 class="text-lg font-medium text-gray-900">Мои офферы</h3>
-            <p class="mt-1 text-sm text-gray-500">
-              Офферы вашей организации
-            </p>
-          </router-link>
-        </PermissionGuard>
+        <!-- My Offers -->
+        <router-link
+          to="/my-offers"
+          class="bg-white overflow-hidden shadow rounded-lg p-6 hover:shadow-md transition-shadow"
+        >
+          <h3 class="text-lg font-medium text-gray-900">Мои офферы</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Офферы вашей организации
+          </p>
+        </router-link>
 
         <!-- Members (owner/admin only) -->
         <PermissionGuard :condition="canManageMembers">

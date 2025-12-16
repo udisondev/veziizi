@@ -181,8 +181,8 @@ type MakeOfferInput struct {
 	CarrierMemberID  uuid.UUID
 	Price            values.Money
 	Comment          string
-	VehicleInfo      string
-	EstimatedDays    int
+	VatType          values.VatType
+	PaymentMethod    values.PaymentMethod
 }
 
 func (s *Service) MakeOffer(ctx context.Context, input MakeOfferInput) (uuid.UUID, error) {
@@ -198,8 +198,8 @@ func (s *Service) MakeOffer(ctx context.Context, input MakeOfferInput) (uuid.UUI
 		input.CarrierMemberID,
 		input.Price,
 		input.Comment,
-		input.VehicleInfo,
-		input.EstimatedDays,
+		input.VatType,
+		input.PaymentMethod,
 	); err != nil {
 		return uuid.Nil, err
 	}
@@ -215,6 +215,7 @@ type WithdrawOfferInput struct {
 	FreightRequestID uuid.UUID
 	OfferID          uuid.UUID
 	ActorOrgID       uuid.UUID
+	ActorMemberID    uuid.UUID
 	Reason           string
 }
 
@@ -222,6 +223,30 @@ func (s *Service) WithdrawOffer(ctx context.Context, input WithdrawOfferInput) e
 	fr, err := s.Get(ctx, input.FreightRequestID)
 	if err != nil {
 		return err
+	}
+
+	// Получаем оффер для проверки прав
+	offer, ok := fr.GetOffer(input.OfferID)
+	if !ok {
+		return freightrequest.ErrOfferNotFound
+	}
+
+	// Проверка: создатель оффера или admin/owner организации
+	isOfferCreator := offer.CarrierMemberID() == input.ActorMemberID
+	if !isOfferCreator {
+		org, err := s.getOrganization(ctx, input.ActorOrgID)
+		if err != nil {
+			return fmt.Errorf("failed to get organization: %w", err)
+		}
+
+		actor, ok := org.GetMember(input.ActorMemberID)
+		if !ok {
+			return organization.ErrMemberNotFound
+		}
+
+		if !actor.CanManageMembers() {
+			return organization.ErrInsufficientPermissions
+		}
 	}
 
 	if err := fr.WithdrawOffer(input.OfferID, input.ActorOrgID, input.Reason); err != nil {
@@ -235,6 +260,7 @@ type SelectOfferInput struct {
 	FreightRequestID uuid.UUID
 	OfferID          uuid.UUID
 	ActorID          uuid.UUID
+	ActorOrgID       uuid.UUID
 }
 
 func (s *Service) SelectOffer(ctx context.Context, input SelectOfferInput) error {
@@ -243,7 +269,20 @@ func (s *Service) SelectOffer(ctx context.Context, input SelectOfferInput) error
 		return err
 	}
 
-	if err := fr.SelectOffer(input.OfferID, input.ActorID); err != nil {
+	// Получаем роль актора для проверки в доменной логике
+	canManage := false
+	if fr.CustomerOrgID() == input.ActorOrgID {
+		org, err := s.getOrganization(ctx, input.ActorOrgID)
+		if err != nil {
+			return fmt.Errorf("get organization: %w", err)
+		}
+
+		if member, ok := org.GetMember(input.ActorID); ok {
+			canManage = member.Role().CanManageFreightRequests()
+		}
+	}
+
+	if err := fr.SelectOffer(input.OfferID, input.ActorID, input.ActorOrgID, canManage); err != nil {
 		return err
 	}
 
@@ -254,6 +293,7 @@ type RejectOfferInput struct {
 	FreightRequestID uuid.UUID
 	OfferID          uuid.UUID
 	ActorID          uuid.UUID
+	ActorOrgID       uuid.UUID
 	Reason           string
 }
 
@@ -263,7 +303,20 @@ func (s *Service) RejectOffer(ctx context.Context, input RejectOfferInput) error
 		return err
 	}
 
-	if err := fr.RejectOffer(input.OfferID, input.ActorID, input.Reason); err != nil {
+	// Получаем роль актора для проверки в доменной логике
+	canManage := false
+	if fr.CustomerOrgID() == input.ActorOrgID {
+		org, err := s.getOrganization(ctx, input.ActorOrgID)
+		if err != nil {
+			return fmt.Errorf("get organization: %w", err)
+		}
+
+		if member, ok := org.GetMember(input.ActorID); ok {
+			canManage = member.Role().CanManageFreightRequests()
+		}
+	}
+
+	if err := fr.RejectOffer(input.OfferID, input.ActorID, input.ActorOrgID, canManage, input.Reason); err != nil {
 		return err
 	}
 

@@ -5,7 +5,6 @@ export type OrganizationStatus = 'pending' | 'active' | 'rejected' | 'suspended'
 export interface OrganizationBrief {
   name: string
   status: OrganizationStatus
-  is_carrier: boolean
 }
 
 export interface MeResponse {

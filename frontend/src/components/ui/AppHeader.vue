@@ -7,7 +7,7 @@ import { usePermissions } from '@/composables/usePermissions'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-const { canManageMembers, isCarrier } = usePermissions()
+const { canManageMembers } = usePermissions()
 
 const isMenuOpen = ref(false)
 
@@ -15,11 +15,8 @@ const menuItems = computed(() => {
   const items = [
     { to: '/', label: 'Заявки', icon: '📦' },
     { to: '/orders', label: 'Заказы', icon: '📋' },
+    { to: '/my-offers', label: 'Мои офферы', icon: '💰' },
   ]
-
-  if (isCarrier.value) {
-    items.push({ to: '/my-offers', label: 'Мои офферы', icon: '💰' })
-  }
 
   if (canManageMembers.value) {
     items.push(

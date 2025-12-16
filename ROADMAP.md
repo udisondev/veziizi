@@ -43,7 +43,6 @@
   - [x] OrganizationRejected
   - [x] OrganizationSuspended
   - [x] OrganizationUpdated
-  - [x] CarrierProfileSet
 - [x] Member entity + events
   - [x] MemberAdded
   - [x] MemberRoleChanged
@@ -63,7 +62,6 @@
   - [x] POST /api/v1/auth/logout
   - [x] GET /api/v1/auth/me
   - [x] GET /api/v1/organizations/:id
-  - [x] POST /api/v1/organizations/:id/carrier-profile
   - [x] POST /api/v1/organizations/:id/invitations
   - [x] POST /api/v1/invitations/:token/accept
   - [x] PATCH /api/v1/organizations/:id/members/:memberId/role
@@ -197,7 +195,6 @@
   - [x] Organization status pages (pending, rejected, suspended)
   - [ ] Members management
   - [ ] Invitations
-  - [ ] Carrier profile settings
   - [ ] Organization settings
 - [ ] Freight Requests:
   - [x] Create form (wizard: route, cargo, vehicle, payment, confirmation)
@@ -231,7 +228,7 @@
 
 **Organization**
 - Entities: Member, Invitation
-- Key fields: name, inn, legalName, country, status, carrierProfile?, members
+- Key fields: name, inn, legalName, country, status, members
 
 **FreightRequest**
 - Entities: Offer
@@ -260,7 +257,7 @@
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2024-12-14 | Organization universal (customer + carrier) | CarrierProfile determines if can be carrier |
+| 2024-12-14 | Organization universal | Any organization can be customer and make offers |
 | 2024-12-14 | Member = User in org context | Email globally unique, 1 email = 1 member |
 | 2024-12-14 | Offer inside FreightRequest aggregate | Offers are part of freight request lifecycle |
 | 2024-12-14 | Invitation inside Organization aggregate | Invitations are part of org lifecycle |

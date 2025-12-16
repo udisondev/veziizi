@@ -14,8 +14,8 @@ type Offer struct {
 	price           values.Money
 	comment         string
 	freightVersion  int
-	vehicleInfo     string
-	estimatedDays   int
+	vatType         values.VatType
+	paymentMethod   values.PaymentMethod
 	status          values.OfferStatus
 	createdAt       time.Time
 }
@@ -27,8 +27,8 @@ func NewOffer(
 	price values.Money,
 	comment string,
 	freightVersion int,
-	vehicleInfo string,
-	estimatedDays int,
+	vatType values.VatType,
+	paymentMethod values.PaymentMethod,
 	createdAt time.Time,
 ) Offer {
 	return Offer{
@@ -38,23 +38,23 @@ func NewOffer(
 		price:           price,
 		comment:         comment,
 		freightVersion:  freightVersion,
-		vehicleInfo:     vehicleInfo,
-		estimatedDays:   estimatedDays,
+		vatType:         vatType,
+		paymentMethod:   paymentMethod,
 		status:          values.OfferStatusPending,
 		createdAt:       createdAt,
 	}
 }
 
-func (o Offer) ID() uuid.UUID               { return o.id }
-func (o Offer) CarrierOrgID() uuid.UUID     { return o.carrierOrgID }
-func (o Offer) CarrierMemberID() uuid.UUID  { return o.carrierMemberID }
-func (o Offer) Price() values.Money         { return o.price }
-func (o Offer) Comment() string             { return o.comment }
-func (o Offer) FreightVersion() int         { return o.freightVersion }
-func (o Offer) VehicleInfo() string         { return o.vehicleInfo }
-func (o Offer) EstimatedDays() int          { return o.estimatedDays }
-func (o Offer) Status() values.OfferStatus  { return o.status }
-func (o Offer) CreatedAt() time.Time        { return o.createdAt }
+func (o Offer) ID() uuid.UUID                      { return o.id }
+func (o Offer) CarrierOrgID() uuid.UUID            { return o.carrierOrgID }
+func (o Offer) CarrierMemberID() uuid.UUID         { return o.carrierMemberID }
+func (o Offer) Price() values.Money                { return o.price }
+func (o Offer) Comment() string                    { return o.comment }
+func (o Offer) FreightVersion() int                { return o.freightVersion }
+func (o Offer) VatType() values.VatType            { return o.vatType }
+func (o Offer) PaymentMethod() values.PaymentMethod { return o.paymentMethod }
+func (o Offer) Status() values.OfferStatus         { return o.status }
+func (o Offer) CreatedAt() time.Time               { return o.createdAt }
 
 func (o Offer) IsPending() bool   { return o.status == values.OfferStatusPending }
 func (o Offer) IsSelected() bool  { return o.status == values.OfferStatusSelected }

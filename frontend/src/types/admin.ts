@@ -19,14 +19,6 @@ export interface PendingOrganization {
   created_at: string
 }
 
-export interface CarrierProfile {
-  description?: string
-  vehicle_types?: string[]
-  regions?: string[]
-  has_adr: boolean
-  has_refrigerator: boolean
-}
-
 export interface OrganizationMember {
   id: string
   email: string
@@ -47,12 +39,31 @@ export interface OrganizationDetail {
   email: string
   address: string
   status: 'pending' | 'active' | 'suspended' | 'rejected'
-  is_carrier: boolean
-  carrier_profile: CarrierProfile | null
   members: OrganizationMember[]
   created_at: string
 }
 
 export interface RejectRequest {
   reason: string
+}
+
+// Organization rating types
+export interface OrganizationRating {
+  total_reviews: number
+  average_rating: number
+}
+
+export interface OrganizationReview {
+  id: string
+  order_id: string
+  reviewer_org_id: string
+  reviewer_org_name: string
+  rating: number
+  comment: string
+  created_at: string
+}
+
+export interface OrganizationReviewsResponse {
+  items: OrganizationReview[]
+  total: number
 }

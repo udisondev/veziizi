@@ -5,35 +5,46 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/organization"
 	orgDomain "codeberg.org/udison/veziizi/backend/internal/domain/organization"
 	"codeberg.org/udison/veziizi/backend/internal/domain/organization/values"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
 type OrganizationHandler struct {
-	service *organization.Service
-	session *session.Manager
+	service           *organization.Service
+	ratingsProjection *projections.OrganizationRatingsProjection
+	session           *session.Manager
 }
 
-func NewOrganizationHandler(service *organization.Service, session *session.Manager) *OrganizationHandler {
+func NewOrganizationHandler(
+	service *organization.Service,
+	ratingsProjection *projections.OrganizationRatingsProjection,
+	session *session.Manager,
+) *OrganizationHandler {
 	return &OrganizationHandler{
-		service: service,
-		session: session,
+		service:           service,
+		ratingsProjection: ratingsProjection,
+		session:           session,
 	}
 }
 
 func (h *OrganizationHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/organizations", h.Register).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/organizations/{id}", h.Get).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/organizations/{id}/rating", h.GetRating).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/organizations/{id}/reviews", h.ListReviews).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/organizations/{id}/invitations", h.CreateInvitation).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/organizations/{id}/carrier-profile", h.SetCarrierProfile).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/organizations/{id}/invitations", h.ListInvitations).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/role", h.ChangeMemberRole).Methods(http.MethodPatch)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/block", h.BlockMember).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/unblock", h.UnblockMember).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/invitations/{token}", h.GetInvitation).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/invitations/{token}/accept", h.AcceptInvitation).Methods(http.MethodPost)
 }
 
@@ -117,12 +128,15 @@ func (h *OrganizationHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateInvitationRequest struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	Email string  `json:"email"`
+	Role  string  `json:"role"`
+	Name  *string `json:"name,omitempty"`  // предзаполненное ФИО
+	Phone *string `json:"phone,omitempty"` // предзаполненный телефон
 }
 
 type CreateInvitationResponse struct {
 	InvitationID string `json:"invitation_id"`
+	Token        string `json:"token"` // для ручного тестирования (пока нет отправки email)
 }
 
 func (h *OrganizationHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
@@ -151,11 +165,13 @@ func (h *OrganizationHandler) CreateInvitation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	invID, err := h.service.CreateInvitation(r.Context(), organization.CreateInvitationInput{
+	output, err := h.service.CreateInvitation(r.Context(), organization.CreateInvitationInput{
 		OrganizationID: orgID,
 		ActorID:        actorID,
 		Email:          req.Email,
 		Role:           role,
+		Name:           req.Name,
+		Phone:          req.Phone,
 	})
 	if err != nil {
 		handleDomainError(w, err)
@@ -163,14 +179,15 @@ func (h *OrganizationHandler) CreateInvitation(w http.ResponseWriter, r *http.Re
 	}
 
 	writeJSON(w, http.StatusCreated, CreateInvitationResponse{
-		InvitationID: invID.String(),
+		InvitationID: output.InvitationID.String(),
+		Token:        output.Token,
 	})
 }
 
 type AcceptInvitationRequest struct {
-	Password string `json:"password"`
-	Name     string `json:"name"`
-	Phone    string `json:"phone"`
+	Password string  `json:"password"`
+	Name     *string `json:"name,omitempty"`  // опционально, если предзаполнено в приглашении
+	Phone    *string `json:"phone,omitempty"` // опционально, если предзаполнено в приглашении
 }
 
 type AcceptInvitationResponse struct {
@@ -203,6 +220,106 @@ func (h *OrganizationHandler) AcceptInvitation(w http.ResponseWriter, r *http.Re
 		OrganizationID: output.OrganizationID.String(),
 		MemberID:       output.MemberID.String(),
 	})
+}
+
+// GetInvitation возвращает данные приглашения по токену (публичный endpoint)
+type InvitationResponse struct {
+	ID               string  `json:"id"`
+	OrganizationID   string  `json:"organization_id"`
+	OrganizationName string  `json:"organization_name"`
+	Email            string  `json:"email"`
+	Role             string  `json:"role"`
+	Name             *string `json:"name,omitempty"`
+	Phone            *string `json:"phone,omitempty"`
+	Status           string  `json:"status"`
+	ExpiresAt        string  `json:"expires_at"`
+}
+
+func (h *OrganizationHandler) GetInvitation(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	token := vars["token"]
+
+	inv, err := h.service.GetInvitationByToken(r.Context(), token)
+	if err != nil {
+		handleDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, InvitationResponse{
+		ID:               inv.ID.String(),
+		OrganizationID:   inv.OrganizationID.String(),
+		OrganizationName: inv.OrganizationName,
+		Email:            inv.Email,
+		Role:             inv.Role,
+		Name:             inv.Name,
+		Phone:            inv.Phone,
+		Status:           inv.Status,
+		ExpiresAt:        inv.ExpiresAt.Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// ListInvitations возвращает список приглашений организации
+type InvitationListItem struct {
+	ID        string  `json:"id"`
+	Email     string  `json:"email"`
+	Role      string  `json:"role"`
+	Name      *string `json:"name,omitempty"`
+	Phone     *string `json:"phone,omitempty"`
+	Status    string  `json:"status"`
+	ExpiresAt string  `json:"expires_at"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type InvitationListResponse struct {
+	Items []InvitationListItem `json:"items"`
+}
+
+func (h *OrganizationHandler) ListInvitations(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orgID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+
+	// Проверяем авторизацию
+	_, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// Получаем опциональный фильтр по статусу
+	var status *string
+	if s := r.URL.Query().Get("status"); s != "" {
+		status = &s
+	}
+
+	invitations, err := h.service.ListInvitations(r.Context(), organization.ListInvitationsInput{
+		OrganizationID: orgID,
+		Status:         status,
+	})
+	if err != nil {
+		slog.Error("failed to list invitations", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list invitations")
+		return
+	}
+
+	items := make([]InvitationListItem, 0, len(invitations))
+	for _, inv := range invitations {
+		items = append(items, InvitationListItem{
+			ID:        inv.ID.String(),
+			Email:     inv.Email,
+			Role:      inv.Role,
+			Name:      inv.Name,
+			Phone:     inv.Phone,
+			Status:    inv.Status,
+			ExpiresAt: inv.ExpiresAt.Format("2006-01-02T15:04:05Z"),
+			CreatedAt: inv.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, InvitationListResponse{Items: items})
 }
 
 type ChangeMemberRoleRequest struct {
@@ -326,54 +443,6 @@ func (h *OrganizationHandler) UnblockMember(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type SetCarrierProfileRequest struct {
-	Description    string   `json:"description"`
-	VehicleTypes   []string `json:"vehicle_types"`
-	Regions        []string `json:"regions"`
-	HasADR         bool     `json:"has_adr"`
-	HasRefrigerator bool    `json:"has_refrigerator"`
-}
-
-func (h *OrganizationHandler) SetCarrierProfile(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid organization id")
-		return
-	}
-
-	actorID, ok := h.session.GetMemberID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	var req SetCarrierProfileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	profile := values.CarrierProfile{
-		Description:    req.Description,
-		VehicleTypes:   req.VehicleTypes,
-		Regions:        req.Regions,
-		HasADR:         req.HasADR,
-		HasRefrigerator: req.HasRefrigerator,
-	}
-
-	if err := h.service.SetCarrierProfile(r.Context(), organization.SetCarrierProfileInput{
-		OrganizationID: orgID,
-		ActorID:        actorID,
-		Profile:        profile,
-	}); err != nil {
-		handleDomainError(w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, orgDomain.ErrOrganizationNotFound):
@@ -398,6 +467,10 @@ func handleDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "cannot block yourself")
 	case errors.Is(err, orgDomain.ErrMemberCannotBeRemoved):
 		writeError(w, http.StatusBadRequest, "owner cannot be removed")
+	case errors.Is(err, orgDomain.ErrNameRequired):
+		writeError(w, http.StatusBadRequest, "name is required")
+	case errors.Is(err, orgDomain.ErrPhoneRequired):
+		writeError(w, http.StatusBadRequest, "phone is required")
 	default:
 		slog.Error("unhandled domain error", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -405,19 +478,17 @@ func handleDomainError(w http.ResponseWriter, err error) {
 }
 
 type OrganizationResponse struct {
-	ID             string                  `json:"id"`
-	Name           string                  `json:"name"`
-	INN            string                  `json:"inn"`
-	LegalName      string                  `json:"legal_name"`
-	Country        string                  `json:"country"`
-	Phone          string                  `json:"phone"`
-	Email          string                  `json:"email"`
-	Address        string                  `json:"address"`
-	Status         string                  `json:"status"`
-	IsCarrier      bool                    `json:"is_carrier"`
-	CarrierProfile *values.CarrierProfile  `json:"carrier_profile,omitempty"`
-	Members        []MemberResponse        `json:"members"`
-	CreatedAt      string                  `json:"created_at"`
+	ID        string           `json:"id"`
+	Name      string           `json:"name"`
+	INN       string           `json:"inn"`
+	LegalName string           `json:"legal_name"`
+	Country   string           `json:"country"`
+	Phone     string           `json:"phone"`
+	Email     string           `json:"email"`
+	Address   string           `json:"address"`
+	Status    string           `json:"status"`
+	Members   []MemberResponse `json:"members"`
+	CreatedAt string           `json:"created_at"`
 }
 
 type MemberResponse struct {
@@ -445,20 +516,109 @@ func mapOrganizationToResponse(org *orgDomain.Organization) OrganizationResponse
 	}
 
 	return OrganizationResponse{
-		ID:             org.ID().String(),
-		Name:           org.Name(),
-		INN:            org.INN(),
-		LegalName:      org.LegalName(),
-		Country:        org.Country().String(),
-		Phone:          org.Phone(),
-		Email:          org.Email(),
-		Address:        org.Address().String(),
-		Status:         org.Status().String(),
-		IsCarrier:      org.IsCarrier(),
-		CarrierProfile: org.CarrierProfile(),
-		Members:        members,
-		CreatedAt:      org.CreatedAt().Format("2006-01-02T15:04:05Z"),
+		ID:        org.ID().String(),
+		Name:      org.Name(),
+		INN:       org.INN(),
+		LegalName: org.LegalName(),
+		Country:   org.Country().String(),
+		Phone:     org.Phone(),
+		Email:     org.Email(),
+		Address:   org.Address().String(),
+		Status:    org.Status().String(),
+		Members:   members,
+		CreatedAt: org.CreatedAt().Format("2006-01-02T15:04:05Z"),
 	}
+}
+
+// Rating response types
+
+type RatingResponse struct {
+	TotalReviews  int     `json:"total_reviews"`
+	AverageRating float64 `json:"average_rating"`
+}
+
+type OrgReviewResponse struct {
+	ID              string `json:"id"`
+	OrderID         string `json:"order_id"`
+	ReviewerOrgID   string `json:"reviewer_org_id"`
+	ReviewerOrgName string `json:"reviewer_org_name"`
+	Rating          int    `json:"rating"`
+	Comment         string `json:"comment"`
+	CreatedAt       string `json:"created_at"`
+}
+
+type ReviewsListResponse struct {
+	Items []OrgReviewResponse `json:"items"`
+	Total int                 `json:"total"`
+}
+
+func (h *OrganizationHandler) GetRating(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+
+	rating, err := h.ratingsProjection.GetRating(r.Context(), id)
+	if err != nil {
+		slog.Error("failed to get rating", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to get rating")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, RatingResponse{
+		TotalReviews:  rating.TotalReviews,
+		AverageRating: rating.AverageRating,
+	})
+}
+
+func (h *OrganizationHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+
+	// Parse pagination params
+	limit := 10
+	offset := 0
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	reviews, total, err := h.ratingsProjection.ListReviews(r.Context(), id, limit, offset)
+	if err != nil {
+		slog.Error("failed to list reviews", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list reviews")
+		return
+	}
+
+	items := make([]OrgReviewResponse, 0, len(reviews))
+	for _, review := range reviews {
+		items = append(items, OrgReviewResponse{
+			ID:              review.ID.String(),
+			OrderID:         review.OrderID.String(),
+			ReviewerOrgID:   review.ReviewerOrgID.String(),
+			ReviewerOrgName: review.ReviewerOrgName,
+			Rating:          review.Rating,
+			Comment:         review.Comment,
+			CreatedAt:       review.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, ReviewsListResponse{
+		Items: items,
+		Total: total,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {

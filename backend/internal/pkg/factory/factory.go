@@ -51,6 +51,9 @@ type Factory struct {
 
 	ordersProjection *projections.OrdersProjection
 	ordersOnce       sync.Once
+
+	ratingsProjection *projections.OrganizationRatingsProjection
+	ratingsOnce       sync.Once
 }
 
 // New creates a new Factory with base dependencies
@@ -151,4 +154,11 @@ func (f *Factory) OrdersProjection() *projections.OrdersProjection {
 		f.ordersProjection = projections.NewOrdersProjection(f.db)
 	})
 	return f.ordersProjection
+}
+
+func (f *Factory) OrganizationRatingsProjection() *projections.OrganizationRatingsProjection {
+	f.ratingsOnce.Do(func() {
+		f.ratingsProjection = projections.NewOrganizationRatingsProjection(f.db)
+	})
+	return f.ratingsProjection
 }

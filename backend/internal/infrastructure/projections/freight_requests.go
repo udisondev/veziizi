@@ -194,6 +194,19 @@ func WithOfferOffset(offset int) OfferFilterOption {
 	}
 }
 
+// Filter options with table alias for JOIN queries
+func WithCarrierOrgIDAlias(id uuid.UUID) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"o.carrier_org_id": id})
+	}
+}
+
+func WithOfferStatusAlias(status string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"o.status": status})
+	}
+}
+
 func (p *FreightRequestsProjection) GetOfferByID(ctx context.Context, id uuid.UUID) (*OfferListItem, error) {
 	query, args, err := p.psql.
 		Select("id", "freight_request_id", "carrier_org_id", "status", "created_at").
@@ -248,6 +261,69 @@ func (p *FreightRequestsProjection) ListOffers(ctx context.Context, opts ...Offe
 			&item.CarrierOrgID,
 			&item.Status,
 			&item.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, item)
+	}
+
+	return result, nil
+}
+
+// OfferWithFreightData represents offer with joined freight request data for "My Offers" page
+type OfferWithFreightData struct {
+	ID                 uuid.UUID `json:"id"`
+	FreightRequestID   uuid.UUID `json:"freight_request_id"`
+	CarrierOrgID       uuid.UUID `json:"carrier_org_id"`
+	Status             string    `json:"status"`
+	CreatedAt          time.Time `json:"created_at"`
+	OriginAddress      *string   `json:"origin_address,omitempty"`
+	DestinationAddress *string   `json:"destination_address,omitempty"`
+	CargoWeight        *float64  `json:"cargo_weight,omitempty"`
+	PriceAmount        *int64    `json:"price_amount,omitempty"`
+	PriceCurrency      *string   `json:"price_currency,omitempty"`
+}
+
+func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Context, opts ...OfferFilterOption) ([]OfferWithFreightData, error) {
+	builder := p.psql.
+		Select(
+			"o.id", "o.freight_request_id", "o.carrier_org_id", "o.status", "o.created_at",
+			"fr.origin_address", "fr.destination_address", "fr.cargo_weight",
+			"fr.price_amount", "fr.price_currency",
+		).
+		From("offers_lookup o").
+		LeftJoin("freight_requests_lookup fr ON fr.id = o.freight_request_id").
+		OrderBy("o.created_at DESC")
+
+	for _, opt := range opts {
+		builder = opt(builder)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select query: %w", err)
+	}
+
+	rows, err := p.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query offers with freight data: %w", err)
+	}
+	defer rows.Close()
+
+	var result []OfferWithFreightData
+	for rows.Next() {
+		var item OfferWithFreightData
+		if err := rows.Scan(
+			&item.ID,
+			&item.FreightRequestID,
+			&item.CarrierOrgID,
+			&item.Status,
+			&item.CreatedAt,
+			&item.OriginAddress,
+			&item.DestinationAddress,
+			&item.CargoWeight,
+			&item.PriceAmount,
+			&item.PriceCurrency,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}

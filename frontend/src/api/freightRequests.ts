@@ -21,7 +21,7 @@ export const freightRequestsApi = {
     return api.post('/freight-requests', data)
   },
 
-  list(params?: FreightRequestListParams): Promise<FreightRequestListItem[]> {
+  async list(params?: FreightRequestListParams): Promise<FreightRequestListItem[]> {
     const searchParams = new URLSearchParams()
     if (params?.customer_org_id) searchParams.set('customer_org_id', params.customer_org_id)
     if (params?.status) searchParams.set('status', params.status)
@@ -29,7 +29,8 @@ export const freightRequestsApi = {
     if (params?.offset) searchParams.set('offset', params.offset.toString())
 
     const query = searchParams.toString()
-    return api.get(`/freight-requests${query ? `?${query}` : ''}`)
+    const result = await api.get<FreightRequestListItem[] | null>(`/freight-requests${query ? `?${query}` : ''}`)
+    return result ?? []
   },
 
   get(id: string): Promise<FreightRequest> {
@@ -45,8 +46,9 @@ export const freightRequestsApi = {
   },
 
   // Offers
-  listOffers(frId: string): Promise<Offer[]> {
-    return api.get(`/freight-requests/${frId}/offers`)
+  async listOffers(frId: string): Promise<Offer[]> {
+    const result = await api.get<Offer[] | null>(`/freight-requests/${frId}/offers`)
+    return result ?? []
   },
 
   makeOffer(frId: string, data: MakeOfferRequest): Promise<MakeOfferResponse> {

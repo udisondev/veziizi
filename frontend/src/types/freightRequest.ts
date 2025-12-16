@@ -301,11 +301,12 @@ export type OfferStatus =
 export interface Offer {
   id: string
   carrier_org_id: string
+  carrier_org_name: string
   carrier_member_id: string
   price: Money
   comment?: string
-  vehicle_info?: string
-  estimated_days?: number
+  vat_type: VatType
+  payment_method: PaymentMethod
   freight_version: number
   status: OfferStatus
   created_at: string
@@ -314,8 +315,8 @@ export interface Offer {
 export interface MakeOfferRequest {
   price: Money
   comment?: string
-  vehicle_info?: string
-  estimated_days?: number
+  vat_type: VatType
+  payment_method: PaymentMethod
 }
 
 export interface MakeOfferResponse {
@@ -339,3 +340,13 @@ export const offerStatusColors: Record<OfferStatus, string> = {
   withdrawn: 'bg-gray-100 text-gray-800',
   declined: 'bg-orange-100 text-orange-800',
 }
+
+export const offerStatusOptions = [
+  { value: '' as const, label: 'Все статусы' },
+  { value: 'pending' as const, label: 'Ожидает' },
+  { value: 'selected' as const, label: 'Выбран' },
+  { value: 'confirmed' as const, label: 'Подтверждён' },
+  { value: 'rejected' as const, label: 'Отклонён' },
+  { value: 'withdrawn' as const, label: 'Отозван' },
+  { value: 'declined' as const, label: 'Отказ' },
+]

@@ -82,7 +82,7 @@ func main() {
 	// Apply auth middleware to all routes
 	server.Router().Use(middleware.RequireAuth(sessionManager))
 
-	orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), sessionManager)
+	orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), sessionManager)
 	orgHandler.RegisterRoutes(server.Router())
 
 	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.OrganizationService(), sessionManager)
@@ -91,10 +91,10 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager)
 	adminHandler.RegisterRoutes(server.Router())
 
-	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.FreightRequestsProjection(), sessionManager)
+	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), sessionManager)
 	frHandler.RegisterRoutes(server.Router())
 
-	orderHandler := handlers.NewOrderHandler(f.OrderService(), f.OrdersProjection(), sessionManager)
+	orderHandler := handlers.NewOrderHandler(f.OrderService(), f.OrganizationService(), f.MembersProjection(), f.OrdersProjection(), sessionManager)
 	orderHandler.RegisterRoutes(server.Router())
 
 	go func() {

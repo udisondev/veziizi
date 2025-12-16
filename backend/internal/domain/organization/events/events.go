@@ -14,9 +14,8 @@ const (
 	TypeOrganizationApproved  = "organization.approved"
 	TypeOrganizationRejected  = "organization.rejected"
 	TypeOrganizationSuspended = "organization.suspended"
-	TypeOrganizationUpdated   = "organization.updated"
-	TypeCarrierProfileSet     = "organization.carrier_profile_set"
-	TypeMemberAdded           = "member.added"
+	TypeOrganizationUpdated = "organization.updated"
+	TypeMemberAdded         = "member.added"
 	TypeMemberRoleChanged     = "member.role_changed"
 	TypeMemberBlocked         = "member.blocked"
 	TypeMemberUnblocked       = "member.unblocked"
@@ -31,7 +30,6 @@ func init() {
 	eventstore.RegisterEventType[OrganizationRejected](TypeOrganizationRejected)
 	eventstore.RegisterEventType[OrganizationSuspended](TypeOrganizationSuspended)
 	eventstore.RegisterEventType[OrganizationUpdated](TypeOrganizationUpdated)
-	eventstore.RegisterEventType[CarrierProfileSet](TypeCarrierProfileSet)
 	eventstore.RegisterEventType[MemberAdded](TypeMemberAdded)
 	eventstore.RegisterEventType[MemberRoleChanged](TypeMemberRoleChanged)
 	eventstore.RegisterEventType[MemberBlocked](TypeMemberBlocked)
@@ -93,15 +91,6 @@ type OrganizationUpdated struct {
 
 func (e OrganizationUpdated) EventType() string { return TypeOrganizationUpdated }
 
-// CarrierProfileSet is emitted when organization becomes a carrier
-type CarrierProfileSet struct {
-	eventstore.BaseEvent
-	Profile values.CarrierProfile `json:"profile"`
-	SetBy   uuid.UUID             `json:"set_by"` // member ID
-}
-
-func (e CarrierProfileSet) EventType() string { return TypeCarrierProfileSet }
-
 // MemberAdded is emitted when new member joins organization
 type MemberAdded struct {
 	eventstore.BaseEvent
@@ -155,6 +144,8 @@ type InvitationCreated struct {
 	Token        string            `json:"token"`
 	CreatedBy    uuid.UUID         `json:"created_by"` // member ID
 	ExpiresAt    int64             `json:"expires_at"` // unix timestamp
+	Name         *string           `json:"name,omitempty"`  // предзаполненное ФИО
+	Phone        *string           `json:"phone,omitempty"` // предзаполненный телефон
 }
 
 func (e InvitationCreated) EventType() string { return TypeInvitationCreated }

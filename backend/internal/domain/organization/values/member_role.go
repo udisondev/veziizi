@@ -20,3 +20,8 @@ func (r MemberRole) CanManageOrganization() bool {
 func (r MemberRole) CanBeRemoved() bool {
 	return r != MemberRoleOwner
 }
+
+// CanManageFreightRequests returns true if role can manage freight requests (select/reject offers)
+func (r MemberRole) CanManageFreightRequests() bool {
+	return r == MemberRoleOwner || r == MemberRoleAdministrator
+}

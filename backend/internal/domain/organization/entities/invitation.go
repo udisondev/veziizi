@@ -16,6 +16,8 @@ type Invitation struct {
 	createdBy uuid.UUID
 	createdAt time.Time
 	expiresAt time.Time
+	name      *string // предзаполненное ФИО (опционально)
+	phone     *string // предзаполненный телефон (опционально)
 }
 
 func NewInvitation(
@@ -25,6 +27,8 @@ func NewInvitation(
 	token string,
 	createdBy uuid.UUID,
 	expiresAt time.Time,
+	name *string,
+	phone *string,
 ) Invitation {
 	return Invitation{
 		id:        id,
@@ -35,17 +39,21 @@ func NewInvitation(
 		createdBy: createdBy,
 		createdAt: time.Now().UTC(),
 		expiresAt: expiresAt,
+		name:      name,
+		phone:     phone,
 	}
 }
 
-func (i Invitation) ID() uuid.UUID                  { return i.id }
-func (i Invitation) Email() string                  { return i.email }
-func (i Invitation) Role() values.MemberRole        { return i.role }
-func (i Invitation) Token() string                  { return i.token }
+func (i Invitation) ID() uuid.UUID                   { return i.id }
+func (i Invitation) Email() string                   { return i.email }
+func (i Invitation) Role() values.MemberRole         { return i.role }
+func (i Invitation) Token() string                   { return i.token }
 func (i Invitation) Status() values.InvitationStatus { return i.status }
-func (i Invitation) CreatedBy() uuid.UUID           { return i.createdBy }
-func (i Invitation) CreatedAt() time.Time           { return i.createdAt }
-func (i Invitation) ExpiresAt() time.Time           { return i.expiresAt }
+func (i Invitation) CreatedBy() uuid.UUID            { return i.createdBy }
+func (i Invitation) CreatedAt() time.Time            { return i.createdAt }
+func (i Invitation) ExpiresAt() time.Time            { return i.expiresAt }
+func (i Invitation) Name() *string                   { return i.name }
+func (i Invitation) Phone() *string                  { return i.phone }
 
 func (i Invitation) IsExpired() bool {
 	return time.Now().UTC().After(i.expiresAt)
@@ -73,6 +81,8 @@ func RestoreInvitation(
 	createdBy uuid.UUID,
 	createdAt time.Time,
 	expiresAt time.Time,
+	name *string,
+	phone *string,
 ) Invitation {
 	return Invitation{
 		id:        id,
@@ -83,5 +93,7 @@ func RestoreInvitation(
 		createdBy: createdBy,
 		createdAt: createdAt,
 		expiresAt: expiresAt,
+		name:      name,
+		phone:     phone,
 	}
 }

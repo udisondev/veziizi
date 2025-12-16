@@ -281,7 +281,16 @@ func (o *Order) LeaveReview(reviewerOrgID uuid.UUID, rating int, comment string)
 	if !o.IsParticipant(reviewerOrgID) {
 		return ErrNotOrderParticipant
 	}
-	if !o.status.IsFinished() {
+	if o.status.IsCancelled() {
+		return ErrCannotLeaveReview
+	}
+	// Allow review after own side completed (not waiting for both sides)
+	isCustomer := reviewerOrgID == o.customerOrgID
+	isCarrier := reviewerOrgID == o.carrierOrgID
+	if isCustomer && !o.customerCompleted {
+		return ErrCannotLeaveReview
+	}
+	if isCarrier && !o.carrierCompleted {
 		return ErrCannotLeaveReview
 	}
 	if rating < 1 || rating > 5 {

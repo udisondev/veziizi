@@ -10,6 +10,7 @@ import (
 	"time"
 
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
+	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order/entities"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
@@ -19,20 +20,26 @@ import (
 )
 
 type OrderHandler struct {
-	service    *orderApp.Service
-	projection *projections.OrdersProjection
-	session    *session.Manager
+	service           *orderApp.Service
+	orgService        *orgApp.Service
+	membersProjection *projections.MembersProjection
+	projection        *projections.OrdersProjection
+	session           *session.Manager
 }
 
 func NewOrderHandler(
 	service *orderApp.Service,
+	orgService *orgApp.Service,
+	membersProjection *projections.MembersProjection,
 	projection *projections.OrdersProjection,
 	session *session.Manager,
 ) *OrderHandler {
 	return &OrderHandler{
-		service:    service,
-		projection: projection,
-		session:    session,
+		service:           service,
+		orgService:        orgService,
+		membersProjection: membersProjection,
+		projection:        projection,
+		session:           session,
 	}
 }
 
@@ -116,9 +123,13 @@ type OrderResponse struct {
 	FreightRequestID uuid.UUID          `json:"freight_request_id"`
 	OfferID          uuid.UUID          `json:"offer_id"`
 	CustomerOrgID    uuid.UUID          `json:"customer_org_id"`
+	CustomerOrgName  string             `json:"customer_org_name"`
 	CustomerMemberID uuid.UUID          `json:"customer_member_id"`
+	CustomerMemberName string           `json:"customer_member_name"`
 	CarrierOrgID     uuid.UUID          `json:"carrier_org_id"`
+	CarrierOrgName   string             `json:"carrier_org_name"`
 	CarrierMemberID  uuid.UUID          `json:"carrier_member_id"`
+	CarrierMemberName string            `json:"carrier_member_name"`
 	Status           string             `json:"status"`
 	Messages         []MessageResponse  `json:"messages"`
 	Documents        []DocumentResponse `json:"documents"`
@@ -169,6 +180,29 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := orderToResponse(o)
+
+	// Load organization names
+	orgNames, err := h.orgService.GetNames(r.Context(), []uuid.UUID{o.CustomerOrgID(), o.CarrierOrgID()})
+	if err != nil {
+		slog.Error("failed to get organization names", slog.String("error", err.Error()))
+	} else {
+		resp.CustomerOrgName = orgNames[o.CustomerOrgID()]
+		resp.CarrierOrgName = orgNames[o.CarrierOrgID()]
+	}
+
+	// Load member names
+	if customerMember, err := h.membersProjection.GetByID(r.Context(), o.CustomerMemberID()); err != nil {
+		slog.Error("failed to get customer member", slog.String("error", err.Error()))
+	} else {
+		resp.CustomerMemberName = customerMember.Name
+	}
+
+	if carrierMember, err := h.membersProjection.GetByID(r.Context(), o.CarrierMemberID()); err != nil {
+		slog.Error("failed to get carrier member", slog.String("error", err.Error()))
+	} else {
+		resp.CarrierMemberName = carrierMember.Name
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 

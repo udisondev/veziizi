@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 
+	"codeberg.org/udison/veziizi/backend/internal/application/organization"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order/events"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order/values"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -16,14 +18,22 @@ import (
 )
 
 type OrdersHandler struct {
-	db   dbtx.TxManager
-	psql squirrel.StatementBuilderType
+	db                dbtx.TxManager
+	psql              squirrel.StatementBuilderType
+	orgService        *organization.Service
+	ratingsProjection *projections.OrganizationRatingsProjection
 }
 
-func NewOrdersHandler(db dbtx.TxManager) *OrdersHandler {
+func NewOrdersHandler(
+	db dbtx.TxManager,
+	orgService *organization.Service,
+	ratingsProjection *projections.OrganizationRatingsProjection,
+) *OrdersHandler {
 	return &OrdersHandler{
-		db:   db,
-		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		db:                db,
+		psql:              squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		orgService:        orgService,
+		ratingsProjection: ratingsProjection,
 	}
 }
 
@@ -66,8 +76,7 @@ func (h *OrdersHandler) handleEvent(ctx context.Context, evt eventstore.Event) e
 		slog.Debug("document removed", slog.String("order_id", e.AggregateID().String()))
 		return nil
 	case events.ReviewLeft:
-		slog.Debug("review left", slog.String("order_id", e.AggregateID().String()))
-		return nil
+		return h.onReviewLeft(ctx, e)
 	}
 	return nil
 }
@@ -152,4 +161,75 @@ func (h *OrdersHandler) updateStatus(ctx context.Context, id uuid.UUID, status s
 	}
 
 	return nil
+}
+
+func (h *OrdersHandler) onReviewLeft(ctx context.Context, e events.ReviewLeft) error {
+	// Get order info to determine who was reviewed
+	customerOrgID, carrierOrgID, err := h.getOrderParticipants(ctx, e.AggregateID())
+	if err != nil {
+		return fmt.Errorf("get order participants: %w", err)
+	}
+
+	// Determine reviewed org (the counterparty of reviewer)
+	var reviewedOrgID uuid.UUID
+	if e.ReviewerOrgID == customerOrgID {
+		reviewedOrgID = carrierOrgID
+	} else {
+		reviewedOrgID = customerOrgID
+	}
+
+	// Get reviewer org name
+	reviewerOrgName := ""
+	org, err := h.orgService.Get(ctx, e.ReviewerOrgID)
+	if err != nil {
+		slog.Error("failed to get reviewer org", slog.String("error", err.Error()))
+	} else if org.Version() > 0 {
+		reviewerOrgName = org.Name()
+	}
+
+	// Add review to lookup
+	review := projections.ReviewListItem{
+		ID:              e.ReviewID,
+		OrderID:         e.AggregateID(),
+		ReviewerOrgID:   e.ReviewerOrgID,
+		ReviewerOrgName: reviewerOrgName,
+		Rating:          e.Rating,
+		Comment:         e.Comment,
+		CreatedAt:       e.OccurredAt(),
+	}
+
+	if err := h.ratingsProjection.AddReview(ctx, review, reviewedOrgID); err != nil {
+		return fmt.Errorf("add review: %w", err)
+	}
+
+	// Update aggregated rating
+	if err := h.ratingsProjection.UpdateRating(ctx, reviewedOrgID, e.Rating); err != nil {
+		return fmt.Errorf("update rating: %w", err)
+	}
+
+	slog.Debug("review processed",
+		slog.String("order_id", e.AggregateID().String()),
+		slog.String("reviewer", e.ReviewerOrgID.String()),
+		slog.String("reviewed", reviewedOrgID.String()),
+		slog.Int("rating", e.Rating),
+	)
+
+	return nil
+}
+
+func (h *OrdersHandler) getOrderParticipants(ctx context.Context, id uuid.UUID) (customerOrgID, carrierOrgID uuid.UUID, err error) {
+	query, args, err := h.psql.
+		Select("customer_org_id", "carrier_org_id").
+		From("orders_lookup").
+		Where(squirrel.Eq{"id": id}).
+		ToSql()
+	if err != nil {
+		return uuid.Nil, uuid.Nil, fmt.Errorf("build select query: %w", err)
+	}
+
+	if err := h.db.QueryRow(ctx, query, args...).Scan(&customerOrgID, &carrierOrgID); err != nil {
+		return uuid.Nil, uuid.Nil, fmt.Errorf("get order participants: %w", err)
+	}
+
+	return customerOrgID, carrierOrgID, nil
 }
