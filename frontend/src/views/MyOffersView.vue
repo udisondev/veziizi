@@ -17,8 +17,38 @@ const items = ref<MyOfferListItem[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
-// Filters
+// Filters (applied state)
 const statusFilter = ref<OfferStatus | ''>('')
+
+// Temp filters for modal
+const tempStatus = ref<OfferStatus | ''>('')
+const showFilterModal = ref(false)
+
+// Computed
+const hasActiveFilters = computed(() => statusFilter.value !== '')
+
+// Modal functions
+function openFilterModal() {
+  tempStatus.value = statusFilter.value
+  showFilterModal.value = true
+}
+
+function applyFilters() {
+  statusFilter.value = tempStatus.value
+  showFilterModal.value = false
+}
+
+function clearFilters() {
+  tempStatus.value = ''
+}
+
+function resetAllFilters() {
+  statusFilter.value = ''
+}
+
+function closeFilterModal() {
+  showFilterModal.value = false
+}
 
 // Action state
 const actionLoading = ref<string | null>(null)
@@ -201,22 +231,39 @@ onMounted(() => {
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-900 mb-4 sm:mb-0">Мои офферы</h1>
+      <h1 class="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-0">Предложения</h1>
+
+      <button
+        @click="openFilterModal"
+        class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+          />
+        </svg>
+        Фильтры
+        <span
+          v-if="hasActiveFilters"
+          class="w-2 h-2 bg-blue-600 rounded-full"
+        ></span>
+      </button>
     </div>
 
-    <!-- Filters -->
-    <div class="bg-white shadow rounded-lg p-4 mb-6">
-      <div class="flex flex-col sm:flex-row gap-4">
-        <!-- Status filter -->
-        <select
-          v-model="statusFilter"
-          class="block w-full sm:w-48 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-        >
-          <option v-for="opt in offerStatusOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
+    <!-- Active filters indicator -->
+    <div v-if="hasActiveFilters" class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6 flex items-center justify-between">
+      <div class="text-sm text-blue-700">
+        Статус: {{ offerStatusOptions.find(o => o.value === statusFilter)?.label }}
       </div>
+      <button
+        @click="resetAllFilters"
+        class="text-blue-600 hover:text-blue-800 text-sm underline whitespace-nowrap ml-2"
+      >
+        Сбросить
+      </button>
     </div>
 
     <!-- Action error -->
@@ -239,7 +286,7 @@ onMounted(() => {
     <!-- Empty state -->
     <div v-else-if="items.length === 0" class="bg-white shadow rounded-lg p-12 text-center">
       <div class="text-gray-400 text-5xl mb-4">📝</div>
-      <h3 class="text-lg font-medium text-gray-900 mb-2">Офферов пока нет</h3>
+      <h3 class="text-lg font-medium text-gray-900 mb-2">Предложений пока нет</h3>
       <p class="text-gray-500 mb-4">
         Вы ещё не делали предложений на заявки
       </p>
@@ -381,5 +428,52 @@ onMounted(() => {
         </div>
       </div>
     </Teleport>
+
+    <!-- Filter Modal -->
+    <div v-if="showFilterModal" class="fixed inset-0 bg-black/25 flex items-center justify-center p-4 z-50" @click="closeFilterModal">
+      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
+        <h2 class="text-xl font-bold mb-4">Фильтры</h2>
+
+        <div class="space-y-4">
+          <!-- Status -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Статус
+            </label>
+            <select
+              v-model="tempStatus"
+              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option v-for="opt in offerStatusOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2 mt-6">
+          <button
+            @click="applyFilters"
+            class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Применить
+          </button>
+          <div class="flex gap-2">
+            <button
+              @click="clearFilters"
+              class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+            >
+              Очистить
+            </button>
+            <button
+              @click="closeFilterModal"
+              class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

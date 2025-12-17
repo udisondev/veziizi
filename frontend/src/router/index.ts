@@ -114,14 +114,7 @@ const router = createRouter({
       path: '/members',
       name: 'members',
       component: () => import('@/views/MembersView.vue'),
-      meta: { title: 'Сотрудники' },
-    },
-    {
-      path: '/invitations',
-      name: 'invitations',
-      component: () => import('@/views/InvitationsView.vue'),
-      meta: { title: 'Приглашения' },
-      beforeEnter: roleGuard(['owner', 'administrator']),
+      meta: { title: 'Штат' },
     },
     {
       path: '/organization/settings',
@@ -135,7 +128,7 @@ const router = createRouter({
       path: '/my-offers',
       name: 'my-offers',
       component: () => import('@/views/MyOffersView.vue'),
-      meta: { title: 'Мои офферы' },
+      meta: { title: 'Предложения' },
     },
 
     // Profile

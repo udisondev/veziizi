@@ -15,13 +15,12 @@ const menuItems = computed(() => {
   const items = [
     { to: '/', label: 'Заявки', icon: '📦' },
     { to: '/orders', label: 'Заказы', icon: '📋' },
-    { to: '/my-offers', label: 'Мои офферы', icon: '💰' },
-    { to: '/members', label: 'Сотрудники', icon: '👥' },
+    { to: '/my-offers', label: 'Предложения', icon: '💰' },
+    { to: '/members', label: 'Штат', icon: '👥' },
   ]
 
   if (canManageMembers.value) {
     items.push(
-      { to: '/invitations', label: 'Приглашения', icon: '✉️' },
       { to: '/organization/settings', label: 'Настройки', icon: '⚙️' },
     )
   }
