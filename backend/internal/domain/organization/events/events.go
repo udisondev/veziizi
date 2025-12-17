@@ -22,6 +22,7 @@ const (
 	TypeInvitationCreated     = "invitation.created"
 	TypeInvitationAccepted    = "invitation.accepted"
 	TypeInvitationExpired     = "invitation.expired"
+	TypeInvitationCancelled   = "invitation.cancelled"
 )
 
 func init() {
@@ -37,6 +38,7 @@ func init() {
 	eventstore.RegisterEventType[InvitationCreated](TypeInvitationCreated)
 	eventstore.RegisterEventType[InvitationAccepted](TypeInvitationAccepted)
 	eventstore.RegisterEventType[InvitationExpired](TypeInvitationExpired)
+	eventstore.RegisterEventType[InvitationCancelled](TypeInvitationCancelled)
 }
 
 // OrganizationCreated is emitted when organization is registered
@@ -166,3 +168,12 @@ type InvitationExpired struct {
 }
 
 func (e InvitationExpired) EventType() string { return TypeInvitationExpired }
+
+// InvitationCancelled is emitted when invitation is cancelled
+type InvitationCancelled struct {
+	eventstore.BaseEvent
+	InvitationID uuid.UUID `json:"invitation_id"`
+	CancelledBy  uuid.UUID `json:"cancelled_by"` // member ID
+}
+
+func (e InvitationCancelled) EventType() string { return TypeInvitationCancelled }

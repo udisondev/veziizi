@@ -20,6 +20,6 @@ const showHeader = computed(() => {
 <template>
   <div class="min-h-screen bg-gray-100">
     <AppHeader v-if="showHeader" />
-    <RouterView />
+    <RouterView :key="route.path" />
   </div>
 </template>

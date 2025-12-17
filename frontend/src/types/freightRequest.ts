@@ -161,7 +161,44 @@ export interface FreightRequestListItem {
   price_amount?: number
   price_currency?: Currency
   body_types?: BodyType[]
+  customer_org_name?: string
+  customer_org_inn?: string
+  customer_org_country?: string
+  customer_member_id?: string
 }
+
+// Filter types
+export type OwnershipFilter = 'all' | 'my_org' | 'my'
+
+export type Country = 'RU' | 'KZ' | 'BY'
+
+export const countryLabels: Record<Country, string> = {
+  RU: 'Россия',
+  KZ: 'Казахстан',
+  BY: 'Беларусь',
+}
+
+export const ownershipOptions: { value: OwnershipFilter; label: string }[] = [
+  { value: 'all', label: 'Все заявки' },
+  { value: 'my_org', label: 'Моей организации' },
+  { value: 'my', label: 'Мои' },
+]
+
+export const countryOptions: { value: Country | ''; label: string }[] = [
+  { value: '', label: 'Все страны' },
+  { value: 'RU', label: 'Россия' },
+  { value: 'KZ', label: 'Казахстан' },
+  { value: 'BY', label: 'Беларусь' },
+]
+
+export const statusOptions: { value: FreightRequestStatus | ''; label: string }[] = [
+  { value: '', label: 'Все статусы' },
+  { value: 'published', label: 'Опубликованы' },
+  { value: 'selected', label: 'Выбран перевозчик' },
+  { value: 'confirmed', label: 'Подтверждены' },
+  { value: 'cancelled', label: 'Отменены' },
+  { value: 'expired', label: 'Истекли' },
+]
 
 // Labels для UI
 export const cargoTypeLabels: Record<CargoType, string> = {

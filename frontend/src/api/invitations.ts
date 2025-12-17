@@ -30,4 +30,9 @@ export const invitationsApi = {
   accept(token: string, data: AcceptInvitationRequest): Promise<AcceptInvitationResponse> {
     return api.post(`/invitations/${token}/accept`, data)
   },
+
+  // Отменить приглашение (требует авторизации)
+  cancel(orgId: string, invitationId: string): Promise<void> {
+    return api.delete(`/organizations/${orgId}/invitations/${invitationId}`)
+  },
 }

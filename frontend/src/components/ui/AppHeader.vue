@@ -16,11 +16,11 @@ const menuItems = computed(() => {
     { to: '/', label: 'Заявки', icon: '📦' },
     { to: '/orders', label: 'Заказы', icon: '📋' },
     { to: '/my-offers', label: 'Мои офферы', icon: '💰' },
+    { to: '/members', label: 'Сотрудники', icon: '👥' },
   ]
 
   if (canManageMembers.value) {
     items.push(
-      { to: '/members', label: 'Сотрудники', icon: '👥' },
       { to: '/invitations', label: 'Приглашения', icon: '✉️' },
       { to: '/organization/settings', label: 'Настройки', icon: '⚙️' },
     )
@@ -70,7 +70,7 @@ async function logout() {
             <!-- Dropdown menu -->
             <div
               v-if="isMenuOpen"
-              class="absolute left-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50"
+              class="absolute left-0 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50"
             >
               <div class="py-1">
                 <button

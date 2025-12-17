@@ -3,10 +3,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { vMaska } from 'maska/vue'
 import { invitationsApi } from '@/api/invitations'
+import { useAuthStore } from '@/stores/auth'
 import type { InvitationDetails, AcceptInvitationRequest } from '@/types/invitation'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 const token = computed(() => route.params.token as string)
 
@@ -15,6 +17,7 @@ const isLoading = ref(true)
 const isSubmitting = ref(false)
 const loadError = ref<string | null>(null)
 const submitError = ref<string | null>(null)
+const showSuccess = ref(false)
 
 // Invitation data
 const invitation = ref<InvitationDetails | null>(null)
@@ -146,11 +149,20 @@ async function handleSubmit() {
 
     await invitationsApi.accept(token.value, request)
 
-    // Redirect to login with success message
-    router.push({
-      path: '/login',
-      query: { invitation_accepted: 'true' },
-    })
+    // Показать анимацию успеха
+    showSuccess.value = true
+
+    // Редирект через 2 секунды (проверка авторизации)
+    setTimeout(() => {
+      if (auth.isAuthenticated) {
+        router.push('/')
+      } else {
+        router.push({
+          path: '/login',
+          query: { invitation_accepted: 'true' },
+        })
+      }
+    }, 2000)
   } catch (e: any) {
     if (e?.message?.includes('expired')) {
       submitError.value = 'Приглашение истекло'
@@ -181,7 +193,16 @@ onMounted(() => {
 
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
-    <div class="max-w-md w-full space-y-8">
+    <!-- Success animation -->
+    <div v-if="showSuccess" class="success-overlay">
+      <div class="success-circle">
+        <svg class="checkmark" viewBox="0 0 24 24" fill="white">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      </div>
+    </div>
+
+    <div v-else class="max-w-md w-full space-y-8">
       <!-- Loading -->
       <div v-if="isLoading" class="text-center py-12">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -197,12 +218,12 @@ onMounted(() => {
           <h3 class="text-lg font-medium text-red-800 mb-2">Ошибка</h3>
           <p class="text-red-600">{{ loadError }}</p>
         </div>
-        <router-link
-          to="/login"
+        <button
+          @click="router.push('/login')"
           class="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           Перейти к входу
-        </router-link>
+        </button>
       </div>
 
       <!-- Form -->
@@ -328,3 +349,47 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.success-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  animation: fadeIn 0.3s ease-out;
+  z-index: 50;
+}
+
+.success-circle {
+  width: 80px;
+  height: 80px;
+  background: #22c55e;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: scaleIn 0.4s ease-out, rotate180 0.6s ease-out 0.4s forwards;
+}
+
+.checkmark {
+  width: 40px;
+  height: 40px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0); }
+  to { transform: scale(1); }
+}
+
+@keyframes rotate180 {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+</style>

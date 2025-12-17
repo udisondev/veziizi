@@ -7,8 +7,11 @@ import (
 	"os"
 
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest"
 	frEvents "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
+	"codeberg.org/udison/veziizi/backend/internal/domain/organization"
+	orgEvents "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
@@ -93,6 +96,24 @@ func main() {
 			priceCurrency = &curr
 		}
 
+		// Load organization data
+		var orgName, orgINN, orgCountry *string
+		orgEvts, err := es.Load(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
+		if err != nil {
+			slog.Warn("failed to load organization",
+				slog.String("id", id.String()),
+				slog.String("org_id", fr.CustomerOrgID().String()),
+				slog.String("error", err.Error()))
+		} else if len(orgEvts) > 0 {
+			org := organization.NewFromEvents(fr.CustomerOrgID(), orgEvts)
+			name := org.Name()
+			inn := org.INN()
+			country := org.Country().String()
+			orgName = &name
+			orgINN = &inn
+			orgCountry = &country
+		}
+
 		query, args, err := psql.
 			Update("freight_requests_lookup").
 			Set("origin_address", originAddr).
@@ -102,6 +123,10 @@ func main() {
 			Set("price_amount", priceAmount).
 			Set("price_currency", priceCurrency).
 			Set("body_types", bodyTypes).
+			Set("customer_org_name", orgName).
+			Set("customer_org_inn", orgINN).
+			Set("customer_org_country", orgCountry).
+			Set("customer_member_id", fr.CustomerMemberID()).
 			Where(squirrel.Eq{"id": id}).
 			ToSql()
 		if err != nil {
@@ -118,6 +143,7 @@ func main() {
 			slog.String("id", id.String()),
 			slog.String("origin", originAddr),
 			slog.String("destination", destAddr),
+			slog.Any("org_name", orgName),
 		)
 	}
 

@@ -94,6 +94,14 @@ export function usePermissions() {
     return isOwnerOrAdmin || isCreator
   }
 
+  // Переназначить ответственного может только владелец или администратор
+  const canReassignFreightRequest = (customerOrgId: string): boolean => {
+    if (!isOrgActive.value || !isFreightRequestOwner(customerOrgId)) {
+      return false
+    }
+    return auth.role === 'owner' || auth.role === 'administrator'
+  }
+
   // Offer action permissions
   const canCreateOffer = (customerOrgId: string): boolean => {
     return (
@@ -191,6 +199,7 @@ export function usePermissions() {
     canCancelFreightRequest,
     canSelectOffer,
     canRejectOffer,
+    canReassignFreightRequest,
 
     // Offer actions
     canCreateOffer,

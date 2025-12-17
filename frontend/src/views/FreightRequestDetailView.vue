@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
+import { membersApi, type MemberProfile } from '@/api/members'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
@@ -38,6 +39,7 @@ const permissions = usePermissions()
 // State
 const freightRequest = ref<FreightRequest | null>(null)
 const offers = ref<Offer[]>([])
+const creatorProfile = ref<MemberProfile | null>(null)
 const isLoading = ref(true)
 const error = ref('')
 const actionLoading = ref(false)
@@ -54,6 +56,7 @@ const rejectReason = ref('')
 const showWithdrawModal = ref(false)
 const withdrawOfferId = ref<string | null>(null)
 const withdrawReason = ref('')
+
 
 // Make offer form
 const offerForm = ref<MakeOfferRequest>({
@@ -116,6 +119,14 @@ const canEdit = computed(() => {
   )
 })
 
+const canReassign = computed(() => {
+  if (!freightRequest.value) return false
+  return (
+    permissions.canReassignFreightRequest(freightRequest.value.customer_org_id) &&
+    ['published', 'selected'].includes(freightRequest.value.status)
+  )
+})
+
 const myOffers = computed(() => {
   return offers.value.filter((o) => o.carrier_org_id === auth.organizationId)
 })
@@ -145,6 +156,7 @@ const shortId = computed(() => {
 async function loadData() {
   isLoading.value = true
   error.value = ''
+  creatorProfile.value = null
   try {
     const id = route.params.id as string
     const [fr, offersList] = await Promise.all([
@@ -153,6 +165,15 @@ async function loadData() {
     ])
     freightRequest.value = fr
     offers.value = offersList
+
+    // Загружаем профиль создателя, если это член той же организации
+    if (fr.customer_org_id === auth.organizationId) {
+      try {
+        creatorProfile.value = await membersApi.getProfile(fr.customer_member_id)
+      } catch {
+        // Игнорируем ошибку загрузки профиля, это не критично
+      }
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка загрузки'
   } finally {
@@ -288,6 +309,17 @@ async function confirmWithdrawOffer() {
   }
 }
 
+function goToReassign() {
+  if (!freightRequest.value) return
+  router.push({
+    path: '/members',
+    query: {
+      selectFor: 'freightRequest',
+      frId: freightRequest.value.id,
+    },
+  })
+}
+
 async function handleConfirmOffer(offerId: string) {
   if (!freightRequest.value) return
   actionLoading.value = true
@@ -352,29 +384,45 @@ onMounted(() => {
         </div>
 
         <!-- Header -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div class="flex flex-col gap-3 sm:gap-4">
             <div>
-              <h1 class="text-2xl font-bold text-gray-900">Заявка #{{ shortId }}</h1>
+              <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Заявка #{{ shortId }}</h1>
+              <p v-if="creatorProfile" class="text-gray-600 text-sm mt-1">
+                Ответственный:
+                <router-link
+                  :to="`/members/${freightRequest.customer_member_id}`"
+                  class="text-blue-600 hover:text-blue-800"
+                >
+                  {{ creatorProfile.name }}
+                </router-link>
+                <button
+                  v-if="canReassign"
+                  @click="goToReassign"
+                  class="ml-2 text-gray-400 hover:text-gray-600 text-xs"
+                >
+                  Ред.
+                </button>
+              </p>
               <p class="text-gray-500 text-sm mt-1">
                 Создана {{ formatDateTime(freightRequest.created_at) }}
               </p>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
               <span :class="[statusColors[freightRequest.status], 'px-3 py-1 rounded-full text-sm font-medium']">
                 {{ freightRequestStatusLabels[freightRequest.status] }}
               </span>
               <router-link
                 v-if="canEdit"
                 :to="`/freight-requests/${freightRequest.id}/edit`"
-                class="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium"
+                class="px-3 py-1.5 sm:px-4 sm:py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium"
               >
                 Редактировать
               </router-link>
               <button
                 v-if="canCancel"
                 @click="showCancelModal = true"
-                class="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium"
+                class="px-3 py-1.5 sm:px-4 sm:py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium"
               >
                 Отменить
               </button>
@@ -383,7 +431,7 @@ onMounted(() => {
         </div>
 
         <!-- Route Section -->
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white rounded-lg shadow p-4 sm:p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">Маршрут</h2>
 
           <!-- Map -->
@@ -444,7 +492,7 @@ onMounted(() => {
         </div>
 
         <!-- Cargo Section -->
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white rounded-lg shadow p-4 sm:p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">Груз</h2>
           <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -483,7 +531,7 @@ onMounted(() => {
         </div>
 
         <!-- Vehicle Requirements Section -->
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white rounded-lg shadow p-4 sm:p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">Требования к транспорту</h2>
           <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="sm:col-span-2">
@@ -545,7 +593,7 @@ onMounted(() => {
         </div>
 
         <!-- Payment Section -->
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="bg-white rounded-lg shadow p-4 sm:p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">Оплата</h2>
 
           <!-- Если цена указана -->
@@ -584,13 +632,13 @@ onMounted(() => {
         </div>
 
         <!-- Comment -->
-        <div v-if="freightRequest.comment" class="bg-white rounded-lg shadow p-6">
+        <div v-if="freightRequest.comment" class="bg-white rounded-lg shadow p-4 sm:p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-2">Комментарий</h2>
           <p class="text-gray-700">{{ freightRequest.comment }}</p>
         </div>
 
         <!-- Offers Section -->
-        <div v-if="visibleOffers.length > 0 || isOwner" class="bg-white rounded-lg shadow p-6">
+        <div v-if="visibleOffers.length > 0 || isOwner" class="bg-white rounded-lg shadow p-4 sm:p-6">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold text-gray-900">
               Предложения
@@ -896,5 +944,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
   </div>
 </template>

@@ -9,6 +9,8 @@ import (
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/values"
+	"codeberg.org/udison/veziizi/backend/internal/domain/organization"
+	orgEvents "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
@@ -17,14 +19,16 @@ import (
 )
 
 type FreightRequestsHandler struct {
-	db   dbtx.TxManager
-	psql squirrel.StatementBuilderType
+	db         dbtx.TxManager
+	eventStore eventstore.Store
+	psql       squirrel.StatementBuilderType
 }
 
-func NewFreightRequestsHandler(db dbtx.TxManager) *FreightRequestsHandler {
+func NewFreightRequestsHandler(db dbtx.TxManager, eventStore eventstore.Store) *FreightRequestsHandler {
 	return &FreightRequestsHandler{
-		db:   db,
-		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		db:         db,
+		eventStore: eventStore,
+		psql:       squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
 }
 
@@ -87,17 +91,36 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 		priceCurrency = &curr
 	}
 
+	// Load organization data for denormalization
+	var orgName, orgINN, orgCountry *string
+	orgEvts, err := h.eventStore.Load(ctx, e.CustomerOrgID, orgEvents.AggregateType)
+	if err != nil {
+		slog.Warn("failed to load organization for denormalization",
+			slog.String("org_id", e.CustomerOrgID.String()),
+			slog.String("error", err.Error()))
+	} else if len(orgEvts) > 0 {
+		org := organization.NewFromEvents(e.CustomerOrgID, orgEvts)
+		name := org.Name()
+		inn := org.INN()
+		country := org.Country().String()
+		orgName = &name
+		orgINN = &inn
+		orgCountry = &country
+	}
+
 	query, args, err := h.psql.
 		Insert("freight_requests_lookup").
 		Columns(
 			"id", "customer_org_id", "status", "expires_at", "created_at",
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
+			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 		).
 		Values(
 			e.AggregateID(), e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
 			originAddr, destAddr, e.Cargo.Type.String(), e.Cargo.Weight,
 			priceAmount, priceCurrency, bodyTypes,
+			orgName, orgINN, orgCountry, e.CustomerMemberID,
 		).
 		ToSql()
 	if err != nil {

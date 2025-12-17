@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"sort"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/organization"
@@ -24,6 +25,7 @@ type Service struct {
 	eventStore  eventstore.Store
 	publisher   *messaging.EventPublisher
 	invitations *projections.InvitationsProjection
+	members     *projections.MembersProjection
 }
 
 func NewService(
@@ -31,12 +33,14 @@ func NewService(
 	eventStore eventstore.Store,
 	publisher *messaging.EventPublisher,
 	invitations *projections.InvitationsProjection,
+	members *projections.MembersProjection,
 ) *Service {
 	return &Service{
 		db:          db,
 		eventStore:  eventStore,
 		publisher:   publisher,
 		invitations: invitations,
+		members:     members,
 	}
 }
 
@@ -117,6 +121,53 @@ func (s *Service) GetNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]
 	return result, nil
 }
 
+// MemberInfo содержит данные сотрудника для отображения
+type MemberInfo struct {
+	ID               uuid.UUID
+	OrganizationID   uuid.UUID
+	OrganizationName string
+	Name             string
+	Email            string
+	Phone            string
+	Role             string
+	Status           string
+	CreatedAt        time.Time
+}
+
+// GetMemberByID возвращает данные сотрудника по ID из event store
+func (s *Service) GetMemberByID(ctx context.Context, memberID uuid.UUID) (*MemberInfo, error) {
+	// 1. Получить org_id из проекции (lookup)
+	lookup, err := s.members.GetByID(ctx, memberID)
+	if err != nil {
+		return nil, organization.ErrMemberNotFound
+	}
+
+	// 2. Загрузить organization из event store
+	org, err := s.Get(ctx, lookup.OrganizationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get organization: %w", err)
+	}
+
+	// 3. Найти member в organization
+	member, ok := org.GetMember(memberID)
+	if !ok {
+		return nil, organization.ErrMemberNotFound
+	}
+
+	// 4. Вернуть MemberInfo
+	return &MemberInfo{
+		ID:               member.ID(),
+		OrganizationID:   org.ID(),
+		OrganizationName: org.Name(),
+		Name:             member.Name(),
+		Email:            member.Email(),
+		Phone:            member.Phone(),
+		Role:             member.Role().String(),
+		Status:           member.Status().String(),
+		CreatedAt:        member.CreatedAt(),
+	}, nil
+}
+
 type CreateInvitationInput struct {
 	OrganizationID uuid.UUID
 	ActorID        uuid.UUID
@@ -153,6 +204,25 @@ func (s *Service) CreateInvitation(ctx context.Context, input CreateInvitationIn
 		InvitationID: invitationID,
 		Token:        token,
 	}, nil
+}
+
+type CancelInvitationInput struct {
+	OrganizationID uuid.UUID
+	ActorID        uuid.UUID
+	InvitationID   uuid.UUID
+}
+
+func (s *Service) CancelInvitation(ctx context.Context, input CancelInvitationInput) error {
+	org, err := s.Get(ctx, input.OrganizationID)
+	if err != nil {
+		return err
+	}
+
+	if err := org.CancelInvitation(input.ActorID, input.InvitationID); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, org)
 }
 
 type AcceptInvitationInput struct {
@@ -243,30 +313,40 @@ func (s *Service) GetInvitationByToken(ctx context.Context, token string) (*Invi
 // ListInvitationsInput параметры для получения списка приглашений
 type ListInvitationsInput struct {
 	OrganizationID uuid.UUID
-	Status         *string // фильтр по статусу (pending, accepted, expired)
+	Status         *string // фильтр по статусу (pending, accepted, expired, cancelled)
 }
 
-// ListInvitations возвращает список приглашений организации
+// ListInvitations возвращает список приглашений организации (напрямую из event store)
 func (s *Service) ListInvitations(ctx context.Context, input ListInvitationsInput) ([]InvitationInfo, error) {
-	invitations, err := s.invitations.ListByOrganization(ctx, input.OrganizationID, input.Status)
+	org, err := s.Get(ctx, input.OrganizationID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list invitations: %w", err)
+		return nil, fmt.Errorf("failed to get organization: %w", err)
 	}
 
-	result := make([]InvitationInfo, 0, len(invitations))
-	for _, inv := range invitations {
+	result := make([]InvitationInfo, 0, len(org.Invitations()))
+	for _, inv := range org.Invitations() {
+		// Фильтр по статусу
+		if input.Status != nil && inv.Status().String() != *input.Status {
+			continue
+		}
+
 		result = append(result, InvitationInfo{
-			ID:             inv.ID,
-			OrganizationID: inv.OrganizationID,
-			Email:          inv.Email,
-			Role:           inv.Role,
-			Name:           inv.Name,
-			Phone:          inv.Phone,
-			Status:         inv.Status,
-			ExpiresAt:      inv.ExpiresAt,
-			CreatedAt:      inv.CreatedAt,
+			ID:             inv.ID(),
+			OrganizationID: input.OrganizationID,
+			Email:          inv.Email(),
+			Role:           inv.Role().String(),
+			Name:           inv.Name(),
+			Phone:          inv.Phone(),
+			Status:         inv.Status().String(),
+			ExpiresAt:      inv.ExpiresAt(),
+			CreatedAt:      inv.CreatedAt(),
 		})
 	}
+
+	// Сортировка по дате создания (новые сначала)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.After(result[j].CreatedAt)
+	})
 
 	return result, nil
 }

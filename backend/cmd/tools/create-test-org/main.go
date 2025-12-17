@@ -52,10 +52,11 @@ func main() {
 	defer publisher.Close()
 
 	invitations := projections.NewInvitationsProjection(txManager)
+	members := projections.NewMembersProjection(txManager)
 	pendingOrgs := projections.NewPendingOrganizationsProjection(txManager)
 
 	// Create services
-	orgService := organization.NewService(txManager, evtStore, publisher, invitations)
+	orgService := organization.NewService(txManager, evtStore, publisher, invitations, members)
 	adminService := admin.NewService(txManager, evtStore, publisher, pendingOrgs)
 
 	// Register organization

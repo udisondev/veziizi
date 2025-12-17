@@ -109,13 +109,12 @@ const router = createRouter({
       meta: { title: 'Заказ' },
     },
 
-    // Organization management (owner/administrator only)
+    // Organization members (доступно всем сотрудникам)
     {
       path: '/members',
       name: 'members',
       component: () => import('@/views/MembersView.vue'),
       meta: { title: 'Сотрудники' },
-      beforeEnter: roleGuard(['owner', 'administrator']),
     },
     {
       path: '/invitations',

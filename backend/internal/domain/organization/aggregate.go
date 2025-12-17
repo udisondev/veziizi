@@ -251,6 +251,32 @@ func (o *Organization) CreateInvitation(
 	return nil
 }
 
+func (o *Organization) CancelInvitation(actorID, invitationID uuid.UUID) error {
+	actor, ok := o.members[actorID]
+	if !ok {
+		return ErrMemberNotFound
+	}
+	if !actor.CanManageMembers() {
+		return ErrInsufficientPermissions
+	}
+
+	inv, ok := o.invitations[invitationID]
+	if !ok {
+		return ErrInvitationNotFound
+	}
+	if !inv.CanBeCancelled() {
+		return ErrInvitationCannotBeCancelled
+	}
+
+	o.Apply(events.InvitationCancelled{
+		BaseEvent:    eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		InvitationID: invitationID,
+		CancelledBy:  actorID,
+	})
+
+	return nil
+}
+
 func (o *Organization) AcceptInvitation(
 	invitationID uuid.UUID,
 	memberID uuid.UUID,
@@ -488,6 +514,11 @@ func (o *Organization) apply(evt eventstore.Event) {
 	case events.InvitationExpired:
 		if inv, ok := o.invitations[e.InvitationID]; ok {
 			inv.Expire()
+		}
+
+	case events.InvitationCancelled:
+		if inv, ok := o.invitations[e.InvitationID]; ok {
+			inv.Cancel()
 		}
 	}
 }

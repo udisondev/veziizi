@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/organization"
+	orgDomain "codeberg.org/udison/veziizi/backend/internal/domain/organization"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
@@ -169,6 +170,8 @@ type MemberProfileResponse struct {
 	Name             string    `json:"name"`
 	Email            string    `json:"email"`
 	Phone            *string   `json:"phone,omitempty"`
+	Role             string    `json:"role"`
+	Status           string    `json:"status"`
 	OrganizationID   string    `json:"organization_id"`
 	OrganizationName string    `json:"organization_name"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -182,9 +185,9 @@ func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	member, err := h.members.GetByID(r.Context(), id)
+	member, err := h.orgService.GetMemberByID(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, orgDomain.ErrMemberNotFound) {
 			writeError(w, http.StatusNotFound, "member not found")
 			return
 		}
@@ -193,21 +196,20 @@ func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get organization name
-	org, err := h.orgService.Get(r.Context(), member.OrganizationID)
-	if err != nil {
-		slog.Error("failed to get organization", slog.String("error", err.Error()))
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+	var phone *string
+	if member.Phone != "" {
+		phone = &member.Phone
 	}
 
 	writeJSON(w, http.StatusOK, MemberProfileResponse{
 		ID:               member.ID.String(),
 		Name:             member.Name,
 		Email:            member.Email,
-		Phone:            member.Phone,
+		Phone:            phone,
+		Role:             member.Role,
+		Status:           member.Status,
 		OrganizationID:   member.OrganizationID.String(),
-		OrganizationName: org.Name(),
+		OrganizationName: member.OrganizationName,
 		CreatedAt:        member.CreatedAt,
 	})
 }

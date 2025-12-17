@@ -343,16 +343,16 @@ onMounted(() => {
         </div>
 
         <!-- Header Card -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div class="flex flex-col gap-3 sm:gap-4">
             <div>
-              <h1 class="text-2xl font-bold text-gray-900">Заказ #{{ shortId }}</h1>
+              <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Заказ #{{ shortId }}</h1>
               <p class="text-gray-500 text-sm mt-1">
                 Создан {{ formatDateTime(order.created_at) }}
                 <span v-if="myRole" class="ml-2 text-blue-600">({{ myRole }})</span>
               </p>
             </div>
-            <div class="flex items-center gap-3 flex-wrap">
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
               <span :class="[orderStatusColors[order.status], 'px-3 py-1 rounded-full text-sm font-medium']">
                 {{ orderStatusLabels[order.status] }}
               </span>
@@ -361,7 +361,7 @@ onMounted(() => {
                 v-if="canComplete"
                 @click="handleComplete"
                 :disabled="actionLoading"
-                class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+                class="px-3 py-1.5 sm:px-4 sm:py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
               >
                 Завершить
               </button>
@@ -369,7 +369,7 @@ onMounted(() => {
               <button
                 v-if="canCancel"
                 @click="showCancelModal = true"
-                class="px-4 py-2 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg border border-red-200"
+                class="px-3 py-1.5 sm:px-4 sm:py-2 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg border border-red-200"
               >
                 Отменить
               </button>
@@ -377,7 +377,7 @@ onMounted(() => {
               <button
                 v-if="canLeaveReview"
                 @click="showReviewModal = true"
-                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
+                class="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
               >
                 Оставить отзыв
               </button>
@@ -413,7 +413,7 @@ onMounted(() => {
             </nav>
           </div>
 
-          <div class="p-6">
+          <div class="p-4 sm:p-6">
             <!-- Info Tab -->
             <div v-if="activeTab === 'info'" class="space-y-6">
               <!-- Counterparty info -->
@@ -479,7 +479,7 @@ onMounted(() => {
               <!-- Messages List -->
               <div
                 ref="messagesContainer"
-                class="h-80 overflow-y-auto border border-gray-200 rounded-lg p-4 mb-4 space-y-3"
+                class="h-48 sm:h-64 md:h-80 overflow-y-auto border border-gray-200 rounded-lg p-3 sm:p-4 mb-4 space-y-3"
               >
                 <div v-if="sortedMessages.length === 0" class="text-center text-gray-500 py-8">
                   Сообщений пока нет
@@ -503,7 +503,7 @@ onMounted(() => {
               </div>
 
               <!-- Message Input -->
-              <div v-if="canSendMessage" class="flex gap-2">
+              <div v-if="canSendMessage" class="flex flex-col gap-2 sm:flex-row">
                 <input
                   v-model="messageInput"
                   @keyup.enter="handleSendMessage"
@@ -515,7 +515,7 @@ onMounted(() => {
                 <button
                   @click="handleSendMessage"
                   :disabled="!messageInput.trim() || actionLoading"
-                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+                  class="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
                 >
                   Отправить
                 </button>

@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/worker"
@@ -15,7 +16,7 @@ func main() {
 		ConsumerGroup: "freight_requests_projection",
 		LogFile:       "freight-requests-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewFreightRequestsHandler(f.DB()).Handle
+			return handlers.NewFreightRequestsHandler(f.DB(), f.EventStore()).Handle
 		},
 	})
 }

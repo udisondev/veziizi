@@ -2,7 +2,7 @@
 export type InvitationRole = 'employee' | 'administrator'
 
 // Статусы приглашений
-export type InvitationStatus = 'pending' | 'accepted' | 'expired'
+export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'cancelled'
 
 // Запрос на создание приглашения
 export interface CreateInvitationRequest {

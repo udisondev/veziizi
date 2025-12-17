@@ -93,7 +93,7 @@ func (f *Factory) FileStorage() filestorage.FileStorage {
 
 func (f *Factory) OrganizationService() *orgApp.Service {
 	f.orgOnce.Do(func() {
-		f.orgService = orgApp.NewService(f.db, f.eventStore, f.publisher, f.InvitationsProjection())
+		f.orgService = orgApp.NewService(f.db, f.eventStore, f.publisher, f.InvitationsProjection(), f.MembersProjection())
 	})
 	return f.orgService
 }

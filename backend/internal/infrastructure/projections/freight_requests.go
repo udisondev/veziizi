@@ -25,18 +25,22 @@ func NewFreightRequestsProjection(db dbtx.TxManager) *FreightRequestsProjection 
 // FreightRequestListItem represents data for listing
 // Includes display fields for UI, full data from event store when needed
 type FreightRequestListItem struct {
-	ID                 uuid.UUID `json:"id"`
-	CustomerOrgID      uuid.UUID `json:"customer_org_id"`
-	Status             string    `json:"status"`
-	ExpiresAt          time.Time `json:"expires_at"`
-	CreatedAt          time.Time `json:"created_at"`
-	OriginAddress      *string   `json:"origin_address,omitempty"`
-	DestinationAddress *string   `json:"destination_address,omitempty"`
-	CargoType          *string   `json:"cargo_type,omitempty"`
-	CargoWeight        *float64  `json:"cargo_weight,omitempty"`
-	PriceAmount        *int64    `json:"price_amount,omitempty"`
-	PriceCurrency      *string   `json:"price_currency,omitempty"`
-	BodyTypes          []string  `json:"body_types,omitempty"`
+	ID                 uuid.UUID  `json:"id"`
+	CustomerOrgID      uuid.UUID  `json:"customer_org_id"`
+	Status             string     `json:"status"`
+	ExpiresAt          time.Time  `json:"expires_at"`
+	CreatedAt          time.Time  `json:"created_at"`
+	OriginAddress      *string    `json:"origin_address,omitempty"`
+	DestinationAddress *string    `json:"destination_address,omitempty"`
+	CargoType          *string    `json:"cargo_type,omitempty"`
+	CargoWeight        *float64   `json:"cargo_weight,omitempty"`
+	PriceAmount        *int64     `json:"price_amount,omitempty"`
+	PriceCurrency      *string    `json:"price_currency,omitempty"`
+	BodyTypes          []string   `json:"body_types,omitempty"`
+	CustomerOrgName    *string    `json:"customer_org_name,omitempty"`
+	CustomerOrgINN     *string    `json:"customer_org_inn,omitempty"`
+	CustomerOrgCountry *string    `json:"customer_org_country,omitempty"`
+	CustomerMemberID   *uuid.UUID `json:"customer_member_id,omitempty"`
 }
 
 type FilterOption func(squirrel.SelectBuilder) squirrel.SelectBuilder
@@ -65,12 +69,37 @@ func WithOffset(offset int) FilterOption {
 	}
 }
 
+func WithCustomerMemberID(id uuid.UUID) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"customer_member_id": id})
+	}
+}
+
+func WithOrgNameLike(name string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.ILike{"customer_org_name": "%" + name + "%"})
+	}
+}
+
+func WithOrgINN(inn string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.ILike{"customer_org_inn": "%" + inn + "%"})
+	}
+}
+
+func WithOrgCountry(country string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"customer_org_country": country})
+	}
+}
+
 func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (*FreightRequestListItem, error) {
 	query, args, err := p.psql.
 		Select(
 			"id", "customer_org_id", "status", "expires_at", "created_at",
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
+			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 		).
 		From("freight_requests_lookup").
 		Where(squirrel.Eq{"id": id}).
@@ -93,6 +122,10 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 		&item.PriceAmount,
 		&item.PriceCurrency,
 		&item.BodyTypes,
+		&item.CustomerOrgName,
+		&item.CustomerOrgINN,
+		&item.CustomerOrgCountry,
+		&item.CustomerMemberID,
 	); err != nil {
 		return nil, fmt.Errorf("get freight request: %w", err)
 	}
@@ -106,6 +139,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			"id", "customer_org_id", "status", "expires_at", "created_at",
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
+			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 		).
 		From("freight_requests_lookup").
 		OrderBy("created_at DESC")
@@ -141,6 +175,10 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			&item.PriceAmount,
 			&item.PriceCurrency,
 			&item.BodyTypes,
+			&item.CustomerOrgName,
+			&item.CustomerOrgINN,
+			&item.CustomerOrgCountry,
+			&item.CustomerMemberID,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}

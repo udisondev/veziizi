@@ -11,7 +11,11 @@ import type {
 
 export interface FreightRequestListParams {
   customer_org_id?: string
+  member_id?: string
   status?: string
+  org_name?: string
+  org_inn?: string
+  org_country?: string
   limit?: number
   offset?: number
 }
@@ -24,7 +28,11 @@ export const freightRequestsApi = {
   async list(params?: FreightRequestListParams): Promise<FreightRequestListItem[]> {
     const searchParams = new URLSearchParams()
     if (params?.customer_org_id) searchParams.set('customer_org_id', params.customer_org_id)
+    if (params?.member_id) searchParams.set('member_id', params.member_id)
     if (params?.status) searchParams.set('status', params.status)
+    if (params?.org_name) searchParams.set('org_name', params.org_name)
+    if (params?.org_inn) searchParams.set('org_inn', params.org_inn)
+    if (params?.org_country) searchParams.set('org_country', params.org_country)
     if (params?.limit) searchParams.set('limit', params.limit.toString())
     if (params?.offset) searchParams.set('offset', params.offset.toString())
 
@@ -73,5 +81,9 @@ export const freightRequestsApi = {
 
   declineOffer(frId: string, offerId: string, reason?: string): Promise<void> {
     return api.post(`/freight-requests/${frId}/offers/${offerId}/decline`, reason ? { reason } : undefined)
+  },
+
+  reassign(frId: string, newMemberId: string): Promise<void> {
+    return api.post(`/freight-requests/${frId}/reassign`, { new_member_id: newMemberId })
   },
 }

@@ -51,6 +51,8 @@ func (h *InvitationsHandler) handleEvent(ctx context.Context, evt eventstore.Eve
 		return h.onInvitationAccepted(ctx, e)
 	case events.InvitationExpired:
 		return h.onInvitationExpired(ctx, e)
+	case events.InvitationCancelled:
+		return h.onInvitationCancelled(ctx, e)
 	}
 	return nil
 }
@@ -108,5 +110,23 @@ func (h *InvitationsHandler) onInvitationExpired(ctx context.Context, e events.I
 	}
 
 	slog.Debug("invitation expired", slog.String("invitation_id", e.InvitationID.String()))
+	return nil
+}
+
+func (h *InvitationsHandler) onInvitationCancelled(ctx context.Context, e events.InvitationCancelled) error {
+	query, args, err := h.psql.
+		Update("invitations_lookup").
+		Set("status", "cancelled").
+		Where(squirrel.Eq{"id": e.InvitationID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to update invitation: %w", err)
+	}
+
+	slog.Debug("invitation cancelled", slog.String("invitation_id", e.InvitationID.String()))
 	return nil
 }

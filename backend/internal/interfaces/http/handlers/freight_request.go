@@ -189,8 +189,29 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithCustomerOrgID(orgID))
 	}
 
+	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
+		memberID, err := uuid.Parse(memberIDStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid member_id")
+			return
+		}
+		opts = append(opts, projections.WithCustomerMemberID(memberID))
+	}
+
 	if status := r.URL.Query().Get("status"); status != "" {
 		opts = append(opts, projections.WithStatus(status))
+	}
+
+	if orgName := r.URL.Query().Get("org_name"); orgName != "" {
+		opts = append(opts, projections.WithOrgNameLike(orgName))
+	}
+
+	if orgINN := r.URL.Query().Get("org_inn"); orgINN != "" {
+		opts = append(opts, projections.WithOrgINN(orgINN))
+	}
+
+	if orgCountry := r.URL.Query().Get("org_country"); orgCountry != "" {
+		opts = append(opts, projections.WithOrgCountry(orgCountry))
 	}
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {

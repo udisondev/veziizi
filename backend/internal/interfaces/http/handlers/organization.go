@@ -41,6 +41,7 @@ func (h *OrganizationHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/organizations/{id}/reviews", h.ListReviews).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/organizations/{id}/invitations", h.CreateInvitation).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/organizations/{id}/invitations", h.ListInvitations).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/organizations/{id}/invitations/{invitationId}", h.CancelInvitation).Methods(http.MethodDelete)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/role", h.ChangeMemberRole).Methods(http.MethodPatch)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/block", h.BlockMember).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/unblock", h.UnblockMember).Methods(http.MethodPost)
@@ -322,6 +323,37 @@ func (h *OrganizationHandler) ListInvitations(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, InvitationListResponse{Items: items})
 }
 
+func (h *OrganizationHandler) CancelInvitation(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orgID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+	invitationID, err := uuid.Parse(vars["invitationId"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid invitation id")
+		return
+	}
+
+	actorID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.service.CancelInvitation(r.Context(), organization.CancelInvitationInput{
+		OrganizationID: orgID,
+		ActorID:        actorID,
+		InvitationID:   invitationID,
+	}); err != nil {
+		handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type ChangeMemberRoleRequest struct {
 	Role string `json:"role"`
 }
@@ -455,6 +487,8 @@ func handleDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusGone, "invitation expired")
 	case errors.Is(err, orgDomain.ErrInvitationAlreadyUsed):
 		writeError(w, http.StatusConflict, "invitation already used")
+	case errors.Is(err, orgDomain.ErrInvitationCannotBeCancelled):
+		writeError(w, http.StatusConflict, "invitation cannot be cancelled")
 	case errors.Is(err, orgDomain.ErrMemberAlreadyExists):
 		writeError(w, http.StatusConflict, "member already exists")
 	case errors.Is(err, orgDomain.ErrEmailAlreadyInvited):

@@ -1,3 +1,18 @@
+// View mode for orders list
+export type ViewMode = 'all' | 'as_customer' | 'as_carrier'
+
+export const viewModeOptions: { value: ViewMode; label: string }[] = [
+  { value: 'all', label: 'Все заказы' },
+  { value: 'as_customer', label: 'Как заказчик' },
+  { value: 'as_carrier', label: 'Как перевозчик' },
+]
+
+export const viewModeLabels: Record<ViewMode, string> = {
+  all: 'Все заказы',
+  as_customer: 'Как заказчик',
+  as_carrier: 'Как перевозчик',
+}
+
 // Order statuses (synchronized with backend values/status.go)
 export type OrderStatus =
   | 'active'

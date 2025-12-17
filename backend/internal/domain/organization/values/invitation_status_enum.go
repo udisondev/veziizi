@@ -19,6 +19,8 @@ const (
 	InvitationStatusAccepted InvitationStatus = "accepted"
 	// InvitationStatusExpired is a InvitationStatus of type expired.
 	InvitationStatusExpired InvitationStatus = "expired"
+	// InvitationStatusCancelled is a InvitationStatus of type cancelled.
+	InvitationStatusCancelled InvitationStatus = "cancelled"
 )
 
 var ErrInvalidInvitationStatus = fmt.Errorf("not a valid InvitationStatus, try [%s]", strings.Join(_InvitationStatusNames, ", "))
@@ -27,6 +29,7 @@ var _InvitationStatusNames = []string{
 	string(InvitationStatusPending),
 	string(InvitationStatusAccepted),
 	string(InvitationStatusExpired),
+	string(InvitationStatusCancelled),
 }
 
 // InvitationStatusNames returns a list of possible string values of InvitationStatus.
@@ -49,9 +52,10 @@ func (x InvitationStatus) IsValid() bool {
 }
 
 var _InvitationStatusValue = map[string]InvitationStatus{
-	"pending":  InvitationStatusPending,
-	"accepted": InvitationStatusAccepted,
-	"expired":  InvitationStatusExpired,
+	"pending":   InvitationStatusPending,
+	"accepted":  InvitationStatusAccepted,
+	"expired":   InvitationStatusExpired,
+	"cancelled": InvitationStatusCancelled,
 }
 
 // ParseInvitationStatus attempts to convert a string to a InvitationStatus.
