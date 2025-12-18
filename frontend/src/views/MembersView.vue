@@ -7,6 +7,7 @@ import { vMaska } from 'maska/vue'
 import { membersApi } from '@/api/members'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { invitationsApi } from '@/api/invitations'
+import { historyApi } from '@/api/history'
 import type { MemberListItem, MemberRole, MemberStatus } from '@/types/member'
 import type { InvitationListItem, InvitationStatus, InvitationRole } from '@/types/invitation'
 import {
@@ -17,15 +18,24 @@ import {
   roleOptions,
   statusOptions,
 } from '@/types/member'
+import EventHistory from '@/components/EventHistory.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const { canManageInvitations } = usePermissions()
+const { canManageInvitations, canViewHistory } = usePermissions()
 
 // Tabs
-type TabType = 'members' | 'invitations'
+type TabType = 'members' | 'invitations' | 'history'
 const currentTab = ref<TabType>('members')
+
+// History loader
+function loadOrganizationHistory(limit: number, offset: number) {
+  if (!auth.organizationId) {
+    return Promise.resolve({ items: [], total: 0 })
+  }
+  return historyApi.getOrganizationHistory(auth.organizationId, { limit, offset })
+}
 
 // Selection mode (for reassigning freight request responsible)
 const isSelectionMode = computed(() => route.query.selectFor === 'freightRequest')
@@ -438,7 +448,7 @@ watch(currentTab, (tab) => {
 
       <!-- Tab switcher -->
       <div
-        v-if="canManageInvitations && !isSelectionMode"
+        v-if="(canManageInvitations || canViewHistory) && !isSelectionMode"
         class="bg-white rounded-lg p-3 mb-6 flex gap-6"
       >
         <label class="flex items-center gap-2 cursor-pointer">
@@ -451,7 +461,7 @@ watch(currentTab, (tab) => {
           />
           <span class="text-sm font-medium text-gray-700">Сотрудники</span>
         </label>
-        <label class="flex items-center gap-2 cursor-pointer">
+        <label v-if="canManageInvitations" class="flex items-center gap-2 cursor-pointer">
           <input
             type="radio"
             name="tab"
@@ -460,6 +470,16 @@ watch(currentTab, (tab) => {
             class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
           />
           <span class="text-sm font-medium text-gray-700">Приглашения</span>
+        </label>
+        <label v-if="canViewHistory" class="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="tab"
+            value="history"
+            v-model="currentTab"
+            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+          />
+          <span class="text-sm font-medium text-gray-700">История</span>
         </label>
       </div>
 
@@ -747,6 +767,13 @@ watch(currentTab, (tab) => {
             </div>
           </div>
         </template>
+      </template>
+
+      <!-- History Tab Content -->
+      <template v-if="currentTab === 'history'">
+        <div class="bg-white rounded-lg shadow p-6">
+          <EventHistory :load-fn="loadOrganizationHistory" />
+        </div>
       </template>
 
       <!-- Filter Modal -->

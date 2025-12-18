@@ -46,6 +46,8 @@ func (h *MembersHandler) handleEvent(ctx context.Context, evt eventstore.Event) 
 	switch e := evt.(type) {
 	case events.MemberAdded:
 		return h.onMemberAdded(ctx, e)
+	case events.MemberRemoved:
+		return h.onMemberRemoved(ctx, e)
 	case events.MemberRoleChanged:
 		return h.onMemberRoleChanged(ctx, e)
 	case events.MemberBlocked:
@@ -71,6 +73,23 @@ func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded
 	}
 
 	slog.Debug("member added to lookup", slog.String("member_id", e.MemberID.String()))
+	return nil
+}
+
+func (h *MembersHandler) onMemberRemoved(ctx context.Context, e events.MemberRemoved) error {
+	query, args, err := h.psql.
+		Delete("members_lookup").
+		Where(squirrel.Eq{"id": e.MemberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build delete query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to delete member: %w", err)
+	}
+
+	slog.Debug("member removed from lookup", slog.String("member_id", e.MemberID.String()))
 	return nil
 }
 

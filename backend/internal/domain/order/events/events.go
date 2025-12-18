@@ -36,6 +36,7 @@ func init() {
 // OrderCreated is emitted when a new order is created from confirmed offer
 type OrderCreated struct {
 	eventstore.BaseEvent
+	OrderNumber      int64                  `json:"order_number"`
 	FreightRequestID uuid.UUID              `json:"freight_request_id"`
 	OfferID          uuid.UUID              `json:"offer_id"`
 	CustomerOrgID    uuid.UUID              `json:"customer_org_id"`

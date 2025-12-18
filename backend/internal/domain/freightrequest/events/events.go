@@ -40,6 +40,7 @@ func init() {
 // FreightRequestCreated is emitted when a new freight request is published
 type FreightRequestCreated struct {
 	eventstore.BaseEvent
+	RequestNumber       int64                      `json:"request_number"`
 	CustomerOrgID       uuid.UUID                  `json:"customer_org_id"`
 	CustomerMemberID    uuid.UUID                  `json:"customer_member_id"`
 	Route               values.Route               `json:"route"`

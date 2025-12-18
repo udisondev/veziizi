@@ -14,6 +14,7 @@ import (
 type FreightRequest struct {
 	aggregate.Base
 
+	requestNumber       int64
 	customerOrgID       uuid.UUID
 	customerMemberID    uuid.UUID
 	route               values.Route
@@ -34,6 +35,7 @@ type FreightRequest struct {
 // New creates a new FreightRequest (published immediately)
 func New(
 	id uuid.UUID,
+	requestNumber int64,
 	customerOrgID uuid.UUID,
 	customerMemberID uuid.UUID,
 	route values.Route,
@@ -50,6 +52,7 @@ func New(
 
 	fr.Apply(events.FreightRequestCreated{
 		BaseEvent:           eventstore.NewBaseEvent(id, events.AggregateType, fr.Version()+1),
+		RequestNumber:       requestNumber,
 		CustomerOrgID:       customerOrgID,
 		CustomerMemberID:    customerMemberID,
 		Route:               route,
@@ -79,6 +82,7 @@ func NewFromEvents(id uuid.UUID, evts []eventstore.Event) *FreightRequest {
 }
 
 // Getters
+func (f *FreightRequest) RequestNumber() int64                      { return f.requestNumber }
 func (f *FreightRequest) CustomerOrgID() uuid.UUID                  { return f.customerOrgID }
 func (f *FreightRequest) CustomerMemberID() uuid.UUID               { return f.customerMemberID }
 func (f *FreightRequest) Route() values.Route                       { return f.route }
@@ -376,6 +380,7 @@ func (f *FreightRequest) Apply(evt eventstore.Event) {
 func (f *FreightRequest) apply(evt eventstore.Event) {
 	switch e := evt.(type) {
 	case events.FreightRequestCreated:
+		f.requestNumber = e.RequestNumber
 		f.customerOrgID = e.CustomerOrgID
 		f.customerMemberID = e.CustomerMemberID
 		f.route = e.Route

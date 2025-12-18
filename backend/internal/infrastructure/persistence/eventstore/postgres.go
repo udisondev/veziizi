@@ -298,3 +298,61 @@ type Snapshot struct {
 	Version       int64     `db:"version"`
 	Data          []byte    `db:"data"`
 }
+
+func (s *PostgresStore) LoadPaginated(ctx context.Context, aggregateID uuid.UUID, aggregateType string, limit, offset int) ([]EventEnvelope, int, error) {
+	// Get total count
+	countQuery, countArgs, err := s.psql.
+		Select("COUNT(*)").
+		From("events").
+		Where(squirrel.Eq{
+			"aggregate_id":   aggregateID,
+			"aggregate_type": aggregateType,
+		}).
+		ToSql()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+
+	var total int
+	if err := s.db.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("failed to count events: %w", err)
+	}
+
+	if total == 0 {
+		return nil, 0, ErrAggregateNotFound
+	}
+
+	// Get paginated events (newest first)
+	query, args, err := s.psql.
+		Select("id", "aggregate_id", "aggregate_type", "event_type", "version", "data", "metadata", "occurred_at").
+		From("events").
+		Where(squirrel.Eq{
+			"aggregate_id":   aggregateID,
+			"aggregate_type": aggregateType,
+		}).
+		OrderBy("version DESC").
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query events: %w", err)
+	}
+	defer rows.Close()
+
+	var dbRows []eventRow
+	if err := pgxscan.ScanAll(&dbRows, rows); err != nil {
+		return nil, 0, fmt.Errorf("failed to scan events: %w", err)
+	}
+
+	envelopes := make([]EventEnvelope, 0, len(dbRows))
+	for _, row := range dbRows {
+		envelopes = append(envelopes, row.toEnvelope())
+	}
+
+	return envelopes, total, nil
+}

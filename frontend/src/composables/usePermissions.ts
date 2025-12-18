@@ -17,6 +17,10 @@ export function usePermissions() {
     () => auth.role === 'owner' || auth.role === 'administrator'
   )
 
+  const canViewHistory = computed(
+    () => auth.role === 'owner' || auth.role === 'administrator'
+  )
+
   // Organization status checks
   const isOrgActive = computed(() => auth.organization?.status === 'active')
 
@@ -110,11 +114,11 @@ export function usePermissions() {
     )
   }
 
-  const canWithdrawOffer = (carrierOrgId: string, carrierMemberId: string): boolean => {
+  const canWithdrawOffer = (carrierOrgId: string, carrierMemberId?: string): boolean => {
     if (!isOrgActive.value || !isOfferOwner(carrierOrgId)) {
       return false
     }
-    const isCreator = carrierMemberId === auth.memberId
+    const isCreator = carrierMemberId ? carrierMemberId === auth.memberId : false
     const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
     return isCreator || isOwnerOrAdmin
   }
@@ -178,6 +182,7 @@ export function usePermissions() {
     canManageMembers,
     canManageOrganization,
     canManageInvitations,
+    canViewHistory,
 
     // Organization status
     isOrgActive,

@@ -25,6 +25,7 @@ export type OrderStatus =
 // Order list item (from projection)
 export interface OrderListItem {
   id: string
+  order_number: number
   freight_request_id: string
   customer_org_id: string
   carrier_org_id: string
@@ -63,6 +64,7 @@ export interface OrderReview {
 // Full order data (from GET /orders/{id})
 export interface Order {
   id: string
+  order_number: number
   freight_request_id: string
   offer_id: string
   customer_org_id: string

@@ -19,9 +19,12 @@ var publicPrefixes = []struct {
 	prefix string
 	method string
 }{
-	{"/api/v1/invitations/", http.MethodGet},   // get invitation by token
-	{"/api/v1/invitations/", http.MethodPost},  // accept invitation
-	{"/api/v1/admin/auth/", http.MethodPost},   // admin login/logout
+	{"/api/v1/invitations/", http.MethodGet},  // get invitation by token
+	{"/api/v1/invitations/", http.MethodPost}, // accept invitation
+	{"/api/v1/admin/auth/", http.MethodPost},  // admin login/logout
+	{"/api/v1/dev/", http.MethodGet},          // dev endpoints (status, users)
+	{"/api/v1/dev/", http.MethodPost},         // dev endpoints (switch user)
+	{"/api/v1/dev/", http.MethodDelete},       // dev endpoints (delete user)
 }
 
 // isPublicPath checks if the path and method combination is public

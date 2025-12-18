@@ -422,6 +422,45 @@ func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
 	return nil
 }
 
+// RemoveMember removes member from organization (dev only, no permission checks)
+func (o *Organization) RemoveMember(memberID uuid.UUID) error {
+	member, ok := o.members[memberID]
+	if !ok {
+		return ErrMemberNotFound
+	}
+
+	if member.Role() == values.MemberRoleOwner {
+		return ErrMemberCannotBeRemoved
+	}
+
+	o.Apply(events.MemberRemoved{
+		BaseEvent: eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		MemberID:  memberID,
+	})
+
+	return nil
+}
+
+// AddMemberDirect adds member directly without invitation (for seeding/dev)
+func (o *Organization) AddMemberDirect(memberID uuid.UUID, email, passwordHash, name, phone string, role values.MemberRole) error {
+	if _, exists := o.GetMemberByEmail(email); exists {
+		return ErrMemberAlreadyExists
+	}
+
+	o.Apply(events.MemberAdded{
+		BaseEvent:    eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		MemberID:     memberID,
+		Email:        email,
+		PasswordHash: passwordHash,
+		Name:         name,
+		Phone:        phone,
+		Role:         role,
+		InvitedBy:    nil,
+	})
+
+	return nil
+}
+
 // Apply applies event and records it as change
 func (o *Organization) Apply(evt eventstore.Event) {
 	o.apply(evt)
@@ -477,6 +516,9 @@ func (o *Organization) apply(evt eventstore.Event) {
 			e.Role,
 		)
 		o.members[e.MemberID] = &member
+
+	case events.MemberRemoved:
+		delete(o.members, e.MemberID)
 
 	case events.MemberRoleChanged:
 		if m, ok := o.members[e.MemberID]; ok {

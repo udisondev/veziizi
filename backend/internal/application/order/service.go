@@ -12,6 +12,7 @@ import (
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/sequence"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"github.com/google/uuid"
 )
@@ -21,6 +22,7 @@ type Service struct {
 	eventStore  eventstore.Store
 	publisher   *messaging.EventPublisher
 	fileStorage filestorage.FileStorage
+	seqGen      *sequence.Generator
 }
 
 func NewService(
@@ -28,12 +30,14 @@ func NewService(
 	eventStore eventstore.Store,
 	publisher *messaging.EventPublisher,
 	fileStorage filestorage.FileStorage,
+	seqGen *sequence.Generator,
 ) *Service {
 	return &Service{
 		db:          db,
 		eventStore:  eventStore,
 		publisher:   publisher,
 		fileStorage: fileStorage,
+		seqGen:      seqGen,
 	}
 }
 
@@ -61,35 +65,52 @@ type CreateFromOfferInput struct {
 // CreateFromConfirmedOffer creates an order from a confirmed offer
 // Called by order-creator worker when OfferConfirmed event is received
 func (s *Service) CreateFromConfirmedOffer(ctx context.Context, input CreateFromOfferInput) (uuid.UUID, error) {
-	fr, err := s.getFreightRequest(ctx, input.FreightRequestID)
+	var resultID uuid.UUID
+
+	err := s.db.InTx(ctx, func(ctx context.Context) error {
+		orderNumber, err := s.seqGen.NextOrderNumber(ctx)
+		if err != nil {
+			return fmt.Errorf("get next order number: %w", err)
+		}
+
+		fr, err := s.getFreightRequest(ctx, input.FreightRequestID)
+		if err != nil {
+			return err
+		}
+
+		offer, ok := fr.GetOffer(input.OfferID)
+		if !ok {
+			return freightrequest.ErrOfferNotFound
+		}
+
+		id := uuid.New()
+		o := order.New(
+			id,
+			orderNumber,
+			input.FreightRequestID,
+			input.OfferID,
+			fr.CustomerOrgID(),
+			fr.CustomerMemberID(),
+			offer.CarrierOrgID(),
+			offer.CarrierMemberID(),
+			fr.Route(),
+			fr.Cargo(),
+			fr.Payment(),
+		)
+
+		if err := s.saveAndPublish(ctx, o); err != nil {
+			return err
+		}
+
+		resultID = id
+		return nil
+	})
+
 	if err != nil {
 		return uuid.Nil, err
 	}
 
-	offer, ok := fr.GetOffer(input.OfferID)
-	if !ok {
-		return uuid.Nil, freightrequest.ErrOfferNotFound
-	}
-
-	id := uuid.New()
-	o := order.New(
-		id,
-		input.FreightRequestID,
-		input.OfferID,
-		fr.CustomerOrgID(),
-		fr.CustomerMemberID(),
-		offer.CarrierOrgID(),
-		offer.CarrierMemberID(),
-		fr.Route(),
-		fr.Cargo(),
-		fr.Payment(),
-	)
-
-	if err := s.saveAndPublish(ctx, o); err != nil {
-		return uuid.Nil, err
-	}
-
-	return id, nil
+	return resultID, nil
 }
 
 type SendMessageInput struct {

@@ -73,3 +73,79 @@ func (p *MembersProjection) GetByID(ctx context.Context, id uuid.UUID) (*MemberL
 
 	return &m, nil
 }
+
+// DevMemberItem represents minimal member data for dev switcher (no password_hash)
+type DevMemberItem struct {
+	ID             uuid.UUID `db:"id" json:"id"`
+	OrganizationID uuid.UUID `db:"organization_id" json:"organization_id"`
+	Email          string    `db:"email" json:"email"`
+	Name           string    `db:"name" json:"name"`
+	Role           string    `db:"role" json:"role"`
+	Status         string    `db:"status" json:"status"`
+}
+
+// ListAll returns all members for dev user switcher (dev mode only)
+func (p *MembersProjection) ListAll(ctx context.Context, search string, limit int) ([]DevMemberItem, error) {
+	builder := p.psql.
+		Select("id", "organization_id", "email", "name", "role", "status").
+		From("members_lookup").
+		OrderBy("created_at DESC")
+
+	if search != "" {
+		builder = builder.Where(
+			squirrel.Or{
+				squirrel.ILike{"email": "%" + search + "%"},
+				squirrel.ILike{"name": "%" + search + "%"},
+			},
+		)
+	}
+
+	if limit > 0 {
+		builder = builder.Limit(uint64(limit))
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+
+	var members []DevMemberItem
+	if err := pgxscan.Select(ctx, p.db, &members, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to list members: %w", err)
+	}
+
+	return members, nil
+}
+
+// GetNames возвращает имена членов по их ID
+func (p *MembersProjection) GetNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	if len(ids) == 0 {
+		return make(map[uuid.UUID]string), nil
+	}
+
+	query, args, err := p.psql.
+		Select("id", "name").
+		From("members_lookup").
+		Where(squirrel.Eq{"id": ids}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	type idName struct {
+		ID   uuid.UUID `db:"id"`
+		Name string    `db:"name"`
+	}
+
+	var rows []idName
+	if err := pgxscan.Select(ctx, p.db, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get member names: %w", err)
+	}
+
+	result := make(map[uuid.UUID]string, len(rows))
+	for _, row := range rows {
+		result[row.ID] = row.Name
+	}
+
+	return result, nil
+}

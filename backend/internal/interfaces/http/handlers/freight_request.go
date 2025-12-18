@@ -21,23 +21,26 @@ import (
 )
 
 type FreightRequestHandler struct {
-	service    *freightrequest.Service
-	orgService *organization.Service
-	projection *projections.FreightRequestsProjection
-	session    *session.Manager
+	service           *freightrequest.Service
+	orgService        *organization.Service
+	projection        *projections.FreightRequestsProjection
+	membersProjection *projections.MembersProjection
+	session           *session.Manager
 }
 
 func NewFreightRequestHandler(
 	service *freightrequest.Service,
 	orgService *organization.Service,
 	projection *projections.FreightRequestsProjection,
+	membersProjection *projections.MembersProjection,
 	session *session.Manager,
 ) *FreightRequestHandler {
 	return &FreightRequestHandler{
-		service:    service,
-		orgService: orgService,
-		projection: projection,
-		session:    session,
+		service:           service,
+		orgService:        orgService,
+		projection:        projection,
+		membersProjection: membersProjection,
+		session:           session,
 	}
 }
 
@@ -45,6 +48,7 @@ func NewFreightRequestHandler(
 
 type FreightRequestResponse struct {
 	ID                  uuid.UUID                  `json:"id"`
+	RequestNumber       int64                      `json:"request_number"`
 	CustomerOrgID       uuid.UUID                  `json:"customer_org_id"`
 	CustomerMemberID    uuid.UUID                  `json:"customer_member_id"`
 	Route               values.Route               `json:"route"`
@@ -61,22 +65,24 @@ type FreightRequestResponse struct {
 }
 
 type OfferResponse struct {
-	ID              uuid.UUID    `json:"id"`
-	CarrierOrgID    uuid.UUID    `json:"carrier_org_id"`
-	CarrierOrgName  string       `json:"carrier_org_name"`
-	CarrierMemberID uuid.UUID    `json:"carrier_member_id"`
-	Price           values.Money `json:"price"`
-	Comment         string       `json:"comment,omitempty"`
-	VatType         string       `json:"vat_type"`
-	PaymentMethod   string       `json:"payment_method"`
-	FreightVersion  int          `json:"freight_version"`
-	Status          string       `json:"status"`
-	CreatedAt       time.Time    `json:"created_at"`
+	ID                uuid.UUID    `json:"id"`
+	CarrierOrgID      uuid.UUID    `json:"carrier_org_id"`
+	CarrierOrgName    string       `json:"carrier_org_name,omitempty"`
+	CarrierMemberID   *uuid.UUID   `json:"carrier_member_id,omitempty"`
+	CarrierMemberName string       `json:"carrier_member_name,omitempty"`
+	Price             values.Money `json:"price"`
+	Comment           string       `json:"comment,omitempty"`
+	VatType           string       `json:"vat_type"`
+	PaymentMethod     string       `json:"payment_method"`
+	FreightVersion    int          `json:"freight_version"`
+	Status            string       `json:"status"`
+	CreatedAt         time.Time    `json:"created_at"`
 }
 
 func (h *FreightRequestHandler) toFreightRequestResponse(fr *frDomain.FreightRequest) FreightRequestResponse {
 	return FreightRequestResponse{
 		ID:                  fr.ID(),
+		RequestNumber:       fr.RequestNumber(),
 		CustomerOrgID:       fr.CustomerOrgID(),
 		CustomerMemberID:    fr.CustomerMemberID(),
 		Route:               fr.Route(),
@@ -93,20 +99,32 @@ func (h *FreightRequestHandler) toFreightRequestResponse(fr *frDomain.FreightReq
 	}
 }
 
-func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer, orgName string) OfferResponse {
-	return OfferResponse{
-		ID:              offer.ID(),
-		CarrierOrgID:    offer.CarrierOrgID(),
-		CarrierOrgName:  orgName,
-		CarrierMemberID: offer.CarrierMemberID(),
-		Price:           offer.Price(),
-		Comment:         offer.Comment(),
-		VatType:         offer.VatType().String(),
-		PaymentMethod:   offer.PaymentMethod().String(),
-		FreightVersion:  offer.FreightVersion(),
-		Status:          offer.Status().String(),
-		CreatedAt:       offer.CreatedAt(),
+// toOfferResponse преобразует оффер в ответ API.
+// isOfferOwner определяет, является ли текущий пользователь владельцем оффера (перевозчиком).
+// Только владелец оффера видит информацию о сотруднике (member_id, member_name).
+// Заказчик видит только информацию об организации.
+func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer, orgName, memberName string, isOfferOwner bool) OfferResponse {
+	resp := OfferResponse{
+		ID:             offer.ID(),
+		CarrierOrgID:   offer.CarrierOrgID(),
+		CarrierOrgName: orgName,
+		Price:          offer.Price(),
+		Comment:        offer.Comment(),
+		VatType:        offer.VatType().String(),
+		PaymentMethod:  offer.PaymentMethod().String(),
+		FreightVersion: offer.FreightVersion(),
+		Status:         offer.Status().String(),
+		CreatedAt:      offer.CreatedAt(),
 	}
+
+	// Информация о сотруднике только для владельца оффера
+	if isOfferOwner {
+		memberID := offer.CarrierMemberID()
+		resp.CarrierMemberID = &memberID
+		resp.CarrierMemberName = memberName
+	}
+
+	return resp
 }
 
 func (h *FreightRequestHandler) RegisterRoutes(r *mux.Router) {
@@ -263,7 +281,18 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, h.toFreightRequestResponse(fr))
+	resp := h.toFreightRequestResponse(fr)
+
+	// Fallback: load request_number from lookup for old events without it
+	if resp.RequestNumber == 0 {
+		if lookup, err := h.projection.GetByID(r.Context(), id); err != nil {
+			slog.Error("failed to get freight request lookup", slog.String("error", err.Error()))
+		} else {
+			resp.RequestNumber = lookup.RequestNumber
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type UpdateFreightRequestRequest struct {
@@ -452,6 +481,12 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	currentOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	fr, err := h.service.Get(r.Context(), frID)
 	if err != nil {
 		slog.Error("failed to get freight request", slog.String("error", err.Error()))
@@ -464,13 +499,31 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Собираем уникальные ID организаций
-	orgIDs := make([]uuid.UUID, 0, len(fr.Offers()))
-	seen := make(map[uuid.UUID]bool)
+	// Фильтруем офферы по правам доступа:
+	// - Заказчик видит все офферы
+	// - Перевозчик видит только свои офферы
+	// - Посторонние не видят ничего
+	isOwner := fr.CustomerOrgID() == currentOrgID
+	filteredOffers := make([]*entities.Offer, 0)
 	for _, offer := range fr.Offers() {
-		if !seen[offer.CarrierOrgID()] {
-			seen[offer.CarrierOrgID()] = true
+		if isOwner || offer.CarrierOrgID() == currentOrgID {
+			filteredOffers = append(filteredOffers, offer)
+		}
+	}
+
+	// Собираем уникальные ID организаций и членов
+	orgIDs := make([]uuid.UUID, 0, len(filteredOffers))
+	memberIDs := make([]uuid.UUID, 0, len(filteredOffers))
+	seenOrgs := make(map[uuid.UUID]bool)
+	seenMembers := make(map[uuid.UUID]bool)
+	for _, offer := range filteredOffers {
+		if !seenOrgs[offer.CarrierOrgID()] {
+			seenOrgs[offer.CarrierOrgID()] = true
 			orgIDs = append(orgIDs, offer.CarrierOrgID())
+		}
+		if !seenMembers[offer.CarrierMemberID()] {
+			seenMembers[offer.CarrierMemberID()] = true
+			memberIDs = append(memberIDs, offer.CarrierMemberID())
 		}
 	}
 
@@ -478,13 +531,25 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 	orgNames, err := h.orgService.GetNames(r.Context(), orgIDs)
 	if err != nil {
 		slog.Error("failed to get organization names", slog.String("error", err.Error()))
-		// Продолжаем без названий, не критично
 		orgNames = make(map[uuid.UUID]string)
 	}
 
-	offers := make([]OfferResponse, 0, len(fr.Offers()))
-	for _, offer := range fr.Offers() {
-		offers = append(offers, h.toOfferResponse(offer, orgNames[offer.CarrierOrgID()]))
+	// Загружаем имена членов
+	memberNames, err := h.membersProjection.GetNames(r.Context(), memberIDs)
+	if err != nil {
+		slog.Error("failed to get member names", slog.String("error", err.Error()))
+		memberNames = make(map[uuid.UUID]string)
+	}
+
+	offers := make([]OfferResponse, 0, len(filteredOffers))
+	for _, offer := range filteredOffers {
+		isOfferOwner := offer.CarrierOrgID() == currentOrgID
+		offers = append(offers, h.toOfferResponse(
+			offer,
+			orgNames[offer.CarrierOrgID()],
+			memberNames[offer.CarrierMemberID()],
+			isOfferOwner,
+		))
 	}
 
 	writeJSON(w, http.StatusOK, offers)

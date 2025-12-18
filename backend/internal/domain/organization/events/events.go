@@ -14,8 +14,9 @@ const (
 	TypeOrganizationApproved  = "organization.approved"
 	TypeOrganizationRejected  = "organization.rejected"
 	TypeOrganizationSuspended = "organization.suspended"
-	TypeOrganizationUpdated = "organization.updated"
-	TypeMemberAdded         = "member.added"
+	TypeOrganizationUpdated   = "organization.updated"
+	TypeMemberAdded           = "member.added"
+	TypeMemberRemoved         = "member.removed"
 	TypeMemberRoleChanged     = "member.role_changed"
 	TypeMemberBlocked         = "member.blocked"
 	TypeMemberUnblocked       = "member.unblocked"
@@ -32,6 +33,7 @@ func init() {
 	eventstore.RegisterEventType[OrganizationSuspended](TypeOrganizationSuspended)
 	eventstore.RegisterEventType[OrganizationUpdated](TypeOrganizationUpdated)
 	eventstore.RegisterEventType[MemberAdded](TypeMemberAdded)
+	eventstore.RegisterEventType[MemberRemoved](TypeMemberRemoved)
 	eventstore.RegisterEventType[MemberRoleChanged](TypeMemberRoleChanged)
 	eventstore.RegisterEventType[MemberBlocked](TypeMemberBlocked)
 	eventstore.RegisterEventType[MemberUnblocked](TypeMemberUnblocked)
@@ -106,6 +108,14 @@ type MemberAdded struct {
 }
 
 func (e MemberAdded) EventType() string { return TypeMemberAdded }
+
+// MemberRemoved is emitted when member is removed from organization (dev only)
+type MemberRemoved struct {
+	eventstore.BaseEvent
+	MemberID uuid.UUID `json:"member_id"`
+}
+
+func (e MemberRemoved) EventType() string { return TypeMemberRemoved }
 
 // MemberRoleChanged is emitted when member role is changed
 type MemberRoleChanged struct {

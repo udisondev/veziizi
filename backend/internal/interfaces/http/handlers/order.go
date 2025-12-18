@@ -56,8 +56,31 @@ func (h *OrderHandler) RegisterRoutes(r *mux.Router) {
 }
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
+	// Получить данные сессии для проверки доступа
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	role, _ := h.session.GetRole(r)
+
 	var opts []projections.OrderFilterOption
 
+	// Принудительная фильтрация по доступу
+	if role == "owner" || role == "administrator" {
+		// Admin/owner видят все заказы своей организации
+		opts = append(opts, projections.OrderWithOrgID(orgID))
+	} else {
+		// Обычные сотрудники видят только свои заказы
+		opts = append(opts, projections.OrderWithMemberID(memberID))
+	}
+
+	// Дополнительные фильтры (применяются поверх фильтра доступа)
 	if customerOrgID := r.URL.Query().Get("customer_org_id"); customerOrgID != "" {
 		id, err := uuid.Parse(customerOrgID)
 		if err != nil {
@@ -120,6 +143,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 // OrderResponse represents full order data loaded from event store
 type OrderResponse struct {
 	ID               uuid.UUID          `json:"id"`
+	OrderNumber      int64              `json:"order_number"`
 	FreightRequestID uuid.UUID          `json:"freight_request_id"`
 	OfferID          uuid.UUID          `json:"offer_id"`
 	CustomerOrgID    uuid.UUID          `json:"customer_org_id"`
@@ -172,6 +196,19 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Получить данные сессии для проверки доступа
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	role, _ := h.session.GetRole(r)
+
 	o, err := h.service.Get(r.Context(), id)
 	if err != nil {
 		slog.Error("failed to get order", slog.String("error", err.Error()))
@@ -179,7 +216,22 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Проверить доступ
+	if !o.CanAccess(orgID, memberID, role) {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
 	resp := orderToResponse(o)
+
+	// Fallback: load order_number from lookup for old events without it
+	if resp.OrderNumber == 0 {
+		if lookup, err := h.projection.GetByID(r.Context(), id); err != nil {
+			slog.Error("failed to get order lookup", slog.String("error", err.Error()))
+		} else {
+			resp.OrderNumber = lookup.OrderNumber
+		}
+	}
 
 	// Load organization names
 	orgNames, err := h.orgService.GetNames(r.Context(), []uuid.UUID{o.CustomerOrgID(), o.CarrierOrgID()})
@@ -227,6 +279,7 @@ func orderToResponse(o *order.Order) OrderResponse {
 
 	return OrderResponse{
 		ID:               o.ID(),
+		OrderNumber:      o.OrderNumber(),
 		FreightRequestID: o.FreightRequestID(),
 		OfferID:          o.OfferID(),
 		CustomerOrgID:    o.CustomerOrgID(),

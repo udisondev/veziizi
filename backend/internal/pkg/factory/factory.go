@@ -5,11 +5,13 @@ import (
 
 	adminApp "codeberg.org/udison/veziizi/backend/internal/application/admin"
 	frApp "codeberg.org/udison/veziizi/backend/internal/application/freightrequest"
+	historyApp "codeberg.org/udison/veziizi/backend/internal/application/history"
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/sequence"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 )
@@ -36,6 +38,9 @@ type Factory struct {
 	orderService *orderApp.Service
 	orderOnce    sync.Once
 
+	historyService *historyApp.Service
+	historyOnce    sync.Once
+
 	// Projections (lazy)
 	membersProjection     *projections.MembersProjection
 	membersOnce           sync.Once
@@ -54,6 +59,10 @@ type Factory struct {
 
 	ratingsProjection *projections.OrganizationRatingsProjection
 	ratingsOnce       sync.Once
+
+	// Sequence generator (lazy)
+	seqGen     *sequence.Generator
+	seqGenOnce sync.Once
 }
 
 // New creates a new Factory with base dependencies
@@ -107,16 +116,23 @@ func (f *Factory) AdminService() *adminApp.Service {
 
 func (f *Factory) FreightRequestService() *frApp.Service {
 	f.frOnce.Do(func() {
-		f.frService = frApp.NewService(f.db, f.eventStore, f.publisher)
+		f.frService = frApp.NewService(f.db, f.eventStore, f.publisher, f.SequenceGenerator())
 	})
 	return f.frService
 }
 
 func (f *Factory) OrderService() *orderApp.Service {
 	f.orderOnce.Do(func() {
-		f.orderService = orderApp.NewService(f.db, f.eventStore, f.publisher, f.fileStorage)
+		f.orderService = orderApp.NewService(f.db, f.eventStore, f.publisher, f.fileStorage, f.SequenceGenerator())
 	})
 	return f.orderService
+}
+
+func (f *Factory) HistoryService() *historyApp.Service {
+	f.historyOnce.Do(func() {
+		f.historyService = historyApp.NewService(f.eventStore, f.MembersProjection())
+	})
+	return f.historyService
 }
 
 // Projections
@@ -161,4 +177,11 @@ func (f *Factory) OrganizationRatingsProjection() *projections.OrganizationRatin
 		f.ratingsProjection = projections.NewOrganizationRatingsProjection(f.db)
 	})
 	return f.ratingsProjection
+}
+
+func (f *Factory) SequenceGenerator() *sequence.Generator {
+	f.seqGenOnce.Do(func() {
+		f.seqGen = sequence.NewGenerator(f.db)
+	})
+	return f.seqGen
 }

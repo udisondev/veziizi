@@ -3,9 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { membersApi, type MemberProfile } from '@/api/members'
+import { historyApi } from '@/api/history'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
+import EventHistory from '@/components/EventHistory.vue'
 import type {
   FreightRequest,
   Offer,
@@ -43,6 +45,24 @@ const creatorProfile = ref<MemberProfile | null>(null)
 const isLoading = ref(true)
 const error = ref('')
 const actionLoading = ref(false)
+
+// Tabs
+type TabType = 'details' | 'history'
+const currentTab = ref<TabType>('details')
+
+// History loader
+function loadFreightRequestHistory(limit: number, offset: number) {
+  const id = route.params.id as string
+  return historyApi.getFreightRequestHistory(id, { limit, offset })
+}
+
+// Check if user can view history
+const canViewHistory = computed(() => {
+  if (!freightRequest.value) return false
+  // Only owner/admin of the customer organization can view history
+  if (freightRequest.value.customer_org_id !== auth.organizationId) return false
+  return auth.role === 'owner' || auth.role === 'administrator'
+})
 
 // Modals
 const showMakeOfferModal = ref(false)
@@ -147,9 +167,9 @@ const visibleOffers = computed(() => {
   return myOffers.value
 })
 
-const shortId = computed(() => {
-  if (!freightRequest.value) return ''
-  return freightRequest.value.id.slice(0, 8)
+const requestNumber = computed(() => {
+  if (!freightRequest.value) return 0
+  return freightRequest.value.request_number
 })
 
 // Methods
@@ -383,11 +403,37 @@ onMounted(() => {
           <button @click="error = ''" class="ml-4 text-red-600">&times;</button>
         </div>
 
+        <!-- Tab switcher -->
+        <div v-if="canViewHistory" class="bg-white rounded-lg p-3 flex gap-6">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="frTab"
+              value="details"
+              v-model="currentTab"
+              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+            />
+            <span class="text-sm font-medium text-gray-700">Детали заявки</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="frTab"
+              value="history"
+              v-model="currentTab"
+              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+            />
+            <span class="text-sm font-medium text-gray-700">История</span>
+          </label>
+        </div>
+
+        <!-- Details Tab -->
+        <template v-if="currentTab === 'details'">
         <!-- Header -->
         <div class="bg-white rounded-lg shadow p-4 sm:p-6">
           <div class="flex flex-col gap-3 sm:gap-4">
             <div>
-              <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Заявка #{{ shortId }}</h1>
+              <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Заявка #{{ requestNumber }}</h1>
               <p v-if="creatorProfile" class="text-gray-600 text-sm mt-1">
                 Ответственный:
                 <router-link
@@ -671,12 +717,21 @@ onMounted(() => {
                       {{ offerStatusLabels[offer.status] }}
                     </span>
                   </div>
-                  <div v-if="isOwner && offer.carrier_org_name" class="mb-2">
+                  <div v-if="offer.carrier_org_name || offer.carrier_member_name" class="mb-2 flex flex-wrap items-center gap-x-2">
                     <router-link
+                      v-if="isOwner && offer.carrier_org_name"
                       :to="`/organizations/${offer.carrier_org_id}`"
                       class="text-blue-600 hover:text-blue-800 font-medium"
                     >
                       {{ offer.carrier_org_name }}
+                    </router-link>
+                    <span v-if="isOwner && offer.carrier_org_name && offer.carrier_member_name" class="text-gray-400">•</span>
+                    <router-link
+                      v-if="offer.carrier_member_name"
+                      :to="`/members/${offer.carrier_member_id}`"
+                      class="text-blue-600 hover:text-blue-800"
+                    >
+                      {{ offer.carrier_member_name }}
                     </router-link>
                   </div>
                   <div class="text-sm text-gray-600 space-y-1">
@@ -758,6 +813,15 @@ onMounted(() => {
             Сделать предложение
           </button>
         </div>
+        </template>
+
+        <!-- History Tab -->
+        <template v-if="currentTab === 'history'">
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">История изменений</h2>
+            <EventHistory :load-fn="loadFreightRequestHistory" />
+          </div>
+        </template>
       </div>
     </main>
 

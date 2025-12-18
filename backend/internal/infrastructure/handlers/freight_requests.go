@@ -111,13 +111,13 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 	query, args, err := h.psql.
 		Insert("freight_requests_lookup").
 		Columns(
-			"id", "customer_org_id", "status", "expires_at", "created_at",
+			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 		).
 		Values(
-			e.AggregateID(), e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
+			e.AggregateID(), e.RequestNumber, e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
 			originAddr, destAddr, e.Cargo.Type.String(), e.Cargo.Weight,
 			priceAmount, priceCurrency, bodyTypes,
 			orgName, orgINN, orgCountry, e.CustomerMemberID,
@@ -131,7 +131,7 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 		return fmt.Errorf("insert freight request: %w", err)
 	}
 
-	slog.Debug("freight request created", slog.String("id", e.AggregateID().String()))
+	slog.Debug("freight request created", slog.String("id", e.AggregateID().String()), slog.Int64("request_number", e.RequestNumber))
 	return nil
 }
 
@@ -198,8 +198,22 @@ func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.Freight
 }
 
 func (h *FreightRequestsHandler) onReassigned(ctx context.Context, e events.FreightRequestReassigned) error {
-	// No filter columns changed, full data loaded from event store
-	slog.Debug("freight request reassigned", slog.String("id", e.AggregateID().String()))
+	query, args, err := h.psql.
+		Update("freight_requests_lookup").
+		Set("customer_member_id", e.NewMemberID).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build reassign query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update customer_member_id: %w", err)
+	}
+
+	slog.Debug("freight request reassigned",
+		slog.String("id", e.AggregateID().String()),
+		slog.String("new_member_id", e.NewMemberID.String()))
 	return nil
 }
 

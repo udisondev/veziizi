@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFreightRequestForm } from '@/composables/useFreightRequestForm'
 import { freightRequestsApi } from '@/api/freightRequests'
@@ -34,6 +34,14 @@ onMounted(() => {
     form.loadFromRequest(props.initialData)
   }
 })
+
+// Прокрутка наверх при смене шага
+watch(
+  () => form.currentStep.value,
+  () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+)
 
 async function handleSubmit() {
   isLoading.value = true

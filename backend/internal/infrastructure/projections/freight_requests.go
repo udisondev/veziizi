@@ -26,6 +26,7 @@ func NewFreightRequestsProjection(db dbtx.TxManager) *FreightRequestsProjection 
 // Includes display fields for UI, full data from event store when needed
 type FreightRequestListItem struct {
 	ID                 uuid.UUID  `json:"id"`
+	RequestNumber      int64      `json:"request_number"`
 	CustomerOrgID      uuid.UUID  `json:"customer_org_id"`
 	Status             string     `json:"status"`
 	ExpiresAt          time.Time  `json:"expires_at"`
@@ -93,10 +94,16 @@ func WithOrgCountry(country string) FilterOption {
 	}
 }
 
+func WithRequestNumber(num int64) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"request_number": num})
+	}
+}
+
 func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (*FreightRequestListItem, error) {
 	query, args, err := p.psql.
 		Select(
-			"id", "customer_org_id", "status", "expires_at", "created_at",
+			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
@@ -111,6 +118,7 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 	var item FreightRequestListItem
 	if err := p.db.QueryRow(ctx, query, args...).Scan(
 		&item.ID,
+		&item.RequestNumber,
 		&item.CustomerOrgID,
 		&item.Status,
 		&item.ExpiresAt,
@@ -136,7 +144,7 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOption) ([]FreightRequestListItem, error) {
 	builder := p.psql.
 		Select(
-			"id", "customer_org_id", "status", "expires_at", "created_at",
+			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
@@ -164,6 +172,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 		var item FreightRequestListItem
 		if err := rows.Scan(
 			&item.ID,
+			&item.RequestNumber,
 			&item.CustomerOrgID,
 			&item.Status,
 			&item.ExpiresAt,

@@ -84,8 +84,8 @@ func (h *OrdersHandler) handleEvent(ctx context.Context, evt eventstore.Event) e
 func (h *OrdersHandler) onCreated(ctx context.Context, e events.OrderCreated) error {
 	query, args, err := h.psql.
 		Insert("orders_lookup").
-		Columns("id", "freight_request_id", "customer_org_id", "carrier_org_id", "status", "created_at").
-		Values(e.AggregateID(), e.FreightRequestID, e.CustomerOrgID, e.CarrierOrgID, values.OrderStatusActive.String(), e.OccurredAt()).
+		Columns("id", "order_number", "freight_request_id", "customer_org_id", "carrier_org_id", "customer_member_id", "carrier_member_id", "status", "created_at").
+		Values(e.AggregateID(), e.OrderNumber, e.FreightRequestID, e.CustomerOrgID, e.CarrierOrgID, e.CustomerMemberID, e.CarrierMemberID, values.OrderStatusActive.String(), e.OccurredAt()).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert query: %w", err)
@@ -95,7 +95,7 @@ func (h *OrdersHandler) onCreated(ctx context.Context, e events.OrderCreated) er
 		return fmt.Errorf("insert order: %w", err)
 	}
 
-	slog.Debug("order created", slog.String("id", e.AggregateID().String()))
+	slog.Debug("order created", slog.String("id", e.AggregateID().String()), slog.Int64("order_number", e.OrderNumber))
 	return nil
 }
 

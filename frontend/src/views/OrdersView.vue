@@ -198,7 +198,7 @@ onMounted(() => {
               </span>
             </div>
             <div class="text-sm text-gray-600">
-              Заказ #{{ item.id.slice(0, 8) }}
+              Заказ #{{ item.order_number }}
             </div>
           </div>
 

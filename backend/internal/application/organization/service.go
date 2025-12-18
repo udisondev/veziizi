@@ -410,6 +410,55 @@ func (s *Service) UnblockMember(ctx context.Context, input UnblockMemberInput) e
 	return s.saveAndPublish(ctx, org)
 }
 
+// DevRemoveMember removes member from organization (dev only, no permission checks)
+func (s *Service) DevRemoveMember(ctx context.Context, orgID, memberID uuid.UUID) error {
+	org, err := s.Get(ctx, orgID)
+	if err != nil {
+		return err
+	}
+
+	if err := org.RemoveMember(memberID); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, org)
+}
+
+// AddMemberInput for direct member addition (seeding/dev)
+type AddMemberInput struct {
+	OrganizationID uuid.UUID
+	Email          string
+	Password       string
+	Name           string
+	Phone          string
+	Role           values.MemberRole
+}
+
+// AddMemberDirect adds member directly without invitation (for seeding/dev)
+func (s *Service) AddMemberDirect(ctx context.Context, input AddMemberInput) (uuid.UUID, error) {
+	org, err := s.Get(ctx, input.OrganizationID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	memberID := uuid.New()
+
+	if err := org.AddMemberDirect(memberID, input.Email, string(passwordHash), input.Name, input.Phone, input.Role); err != nil {
+		return uuid.Nil, err
+	}
+
+	if err := s.saveAndPublish(ctx, org); err != nil {
+		return uuid.Nil, err
+	}
+
+	return memberID, nil
+}
+
 func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organization) error {
 	changes := org.Changes()
 	if len(changes) == 0 {

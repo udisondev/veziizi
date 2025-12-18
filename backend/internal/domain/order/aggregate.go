@@ -16,6 +16,7 @@ import (
 type Order struct {
 	aggregate.Base
 
+	orderNumber      int64
 	freightRequestID uuid.UUID
 	offerID          uuid.UUID
 	customerOrgID    uuid.UUID
@@ -43,6 +44,7 @@ type Order struct {
 // New creates a new Order from confirmed offer
 func New(
 	id uuid.UUID,
+	orderNumber int64,
 	freightRequestID uuid.UUID,
 	offerID uuid.UUID,
 	customerOrgID uuid.UUID,
@@ -62,6 +64,7 @@ func New(
 
 	o.Apply(events.OrderCreated{
 		BaseEvent:        eventstore.NewBaseEvent(id, events.AggregateType, o.Version()+1),
+		OrderNumber:      orderNumber,
 		FreightRequestID: freightRequestID,
 		OfferID:          offerID,
 		CustomerOrgID:    customerOrgID,
@@ -94,6 +97,7 @@ func NewFromEvents(id uuid.UUID, evts []eventstore.Event) *Order {
 }
 
 // Getters
+func (o *Order) OrderNumber() int64            { return o.orderNumber }
 func (o *Order) FreightRequestID() uuid.UUID   { return o.freightRequestID }
 func (o *Order) OfferID() uuid.UUID            { return o.offerID }
 func (o *Order) CustomerOrgID() uuid.UUID      { return o.customerOrgID }
@@ -138,6 +142,16 @@ func (o *Order) HasReviewFrom(orgID uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+// CanAccess проверяет может ли пользователь видеть заказ
+// Owner/Admin видят все заказы своей организации
+// Обычные сотрудники видят только свои заказы (где они ответственные)
+func (o *Order) CanAccess(orgID, memberID uuid.UUID, role string) bool {
+	if (role == "owner" || role == "administrator") && o.IsParticipant(orgID) {
+		return true
+	}
+	return o.customerMemberID == memberID || o.carrierMemberID == memberID
 }
 
 // Commands
@@ -321,6 +335,7 @@ func (o *Order) Apply(evt eventstore.Event) {
 func (o *Order) apply(evt eventstore.Event) {
 	switch e := evt.(type) {
 	case events.OrderCreated:
+		o.orderNumber = e.OrderNumber
 		o.freightRequestID = e.FreightRequestID
 		o.offerID = e.OfferID
 		o.customerOrgID = e.CustomerOrgID

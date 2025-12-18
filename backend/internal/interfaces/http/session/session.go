@@ -94,6 +94,20 @@ func (m *Manager) SetAuth(r *http.Request, w http.ResponseWriter, memberID, orgI
 	return m.Save(r, w, session)
 }
 
+func (m *Manager) GetRole(r *http.Request) (string, bool) {
+	session, err := m.Get(r)
+	if err != nil {
+		return "", false
+	}
+
+	role, ok := session.Values[KeyRole].(string)
+	if !ok {
+		return "", false
+	}
+
+	return role, true
+}
+
 func (m *Manager) Clear(r *http.Request, w http.ResponseWriter) error {
 	session, err := m.Get(r)
 	if err != nil {

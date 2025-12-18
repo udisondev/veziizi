@@ -134,6 +134,7 @@ export interface CreateFreightRequestResponse {
 
 export interface FreightRequest {
   id: string
+  request_number: number
   customer_org_id: string
   customer_member_id: string
   route: Route
@@ -150,6 +151,7 @@ export interface FreightRequest {
 // List item with display data (from projection)
 export interface FreightRequestListItem {
   id: string
+  request_number: number
   customer_org_id: string
   status: FreightRequestStatus
   expires_at: string
@@ -338,8 +340,9 @@ export type OfferStatus =
 export interface Offer {
   id: string
   carrier_org_id: string
-  carrier_org_name: string
-  carrier_member_id: string
+  carrier_org_name?: string
+  carrier_member_id?: string
+  carrier_member_name?: string
   price: Money
   comment?: string
   vat_type: VatType

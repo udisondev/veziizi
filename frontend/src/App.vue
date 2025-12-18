@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppHeader from '@/components/ui/AppHeader.vue'
+import DevUserSwitcher from '@/components/dev/DevUserSwitcher.vue'
+import { devApi } from '@/api/dev'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -15,11 +17,25 @@ const showHeader = computed(() => {
   // Show only for authenticated users
   return auth.isAuthenticated
 })
+
+const isDevMode = ref(false)
+
+onMounted(async () => {
+  if (import.meta.env.DEV) {
+    try {
+      const status = await devApi.getStatus()
+      isDevMode.value = status.enabled
+    } catch {
+      isDevMode.value = false
+    }
+  }
+})
 </script>
 
 <template>
   <div class="min-h-screen bg-gray-100">
     <AppHeader v-if="showHeader" />
     <RouterView :key="route.path" />
+    <DevUserSwitcher v-if="isDevMode" />
   </div>
 </template>

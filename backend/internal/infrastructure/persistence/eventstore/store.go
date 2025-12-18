@@ -16,4 +16,9 @@ type Store interface {
 	// Load retrieves events for an aggregate (snapshot + subsequent events).
 	// Returns ErrAggregateNotFound if no events exist.
 	Load(ctx context.Context, aggregateID uuid.UUID, aggregateType string) ([]Event, error)
+
+	// LoadPaginated retrieves events for an aggregate with pagination.
+	// Returns events in descending order (newest first).
+	// Returns events, total count, and error.
+	LoadPaginated(ctx context.Context, aggregateID uuid.UUID, aggregateType string, limit, offset int) ([]EventEnvelope, int, error)
 }

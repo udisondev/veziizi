@@ -26,9 +26,12 @@ func NewOrdersProjection(db dbtx.TxManager) *OrdersProjection {
 // Full order data is loaded from event store when needed
 type OrderListItem struct {
 	ID               uuid.UUID `json:"id"`
+	OrderNumber      int64     `json:"order_number"`
 	FreightRequestID uuid.UUID `json:"freight_request_id"`
 	CustomerOrgID    uuid.UUID `json:"customer_org_id"`
 	CarrierOrgID     uuid.UUID `json:"carrier_org_id"`
+	CustomerMemberID uuid.UUID `json:"customer_member_id"`
+	CarrierMemberID  uuid.UUID `json:"carrier_member_id"`
 	Status           string    `json:"status"`
 	CreatedAt        time.Time `json:"created_at"`
 }
@@ -71,9 +74,47 @@ func OrderWithOffset(offset int) OrderFilterOption {
 	}
 }
 
+func OrderWithNumber(num int64) OrderFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"order_number": num})
+	}
+}
+
+func OrderWithCustomerMemberID(id uuid.UUID) OrderFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"customer_member_id": id})
+	}
+}
+
+func OrderWithCarrierMemberID(id uuid.UUID) OrderFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"carrier_member_id": id})
+	}
+}
+
+// OrderWithMemberID фильтрует заказы где пользователь = customer OR carrier
+func OrderWithMemberID(id uuid.UUID) OrderFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Or{
+			squirrel.Eq{"customer_member_id": id},
+			squirrel.Eq{"carrier_member_id": id},
+		})
+	}
+}
+
+// OrderWithOrgID фильтрует заказы где организация = customer OR carrier
+func OrderWithOrgID(id uuid.UUID) OrderFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Or{
+			squirrel.Eq{"customer_org_id": id},
+			squirrel.Eq{"carrier_org_id": id},
+		})
+	}
+}
+
 func (p *OrdersProjection) GetByID(ctx context.Context, id uuid.UUID) (*OrderListItem, error) {
 	query, args, err := p.psql.
-		Select("id", "freight_request_id", "customer_org_id", "carrier_org_id", "status", "created_at").
+		Select("id", "order_number", "freight_request_id", "customer_org_id", "carrier_org_id", "customer_member_id", "carrier_member_id", "status", "created_at").
 		From("orders_lookup").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -84,9 +125,12 @@ func (p *OrdersProjection) GetByID(ctx context.Context, id uuid.UUID) (*OrderLis
 	var item OrderListItem
 	if err := p.db.QueryRow(ctx, query, args...).Scan(
 		&item.ID,
+		&item.OrderNumber,
 		&item.FreightRequestID,
 		&item.CustomerOrgID,
 		&item.CarrierOrgID,
+		&item.CustomerMemberID,
+		&item.CarrierMemberID,
 		&item.Status,
 		&item.CreatedAt,
 	); err != nil {
@@ -98,7 +142,7 @@ func (p *OrdersProjection) GetByID(ctx context.Context, id uuid.UUID) (*OrderLis
 
 func (p *OrdersProjection) List(ctx context.Context, opts ...OrderFilterOption) ([]OrderListItem, error) {
 	builder := p.psql.
-		Select("id", "freight_request_id", "customer_org_id", "carrier_org_id", "status", "created_at").
+		Select("id", "order_number", "freight_request_id", "customer_org_id", "carrier_org_id", "customer_member_id", "carrier_member_id", "status", "created_at").
 		From("orders_lookup").
 		OrderBy("created_at DESC")
 
@@ -122,9 +166,12 @@ func (p *OrdersProjection) List(ctx context.Context, opts ...OrderFilterOption) 
 		var item OrderListItem
 		if err := rows.Scan(
 			&item.ID,
+			&item.OrderNumber,
 			&item.FreightRequestID,
 			&item.CustomerOrgID,
 			&item.CarrierOrgID,
+			&item.CustomerMemberID,
+			&item.CarrierMemberID,
 			&item.Status,
 			&item.CreatedAt,
 		); err != nil {

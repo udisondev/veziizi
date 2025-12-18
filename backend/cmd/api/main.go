@@ -91,11 +91,21 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager)
 	adminHandler.RegisterRoutes(server.Router())
 
-	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), sessionManager)
+	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), sessionManager)
 	frHandler.RegisterRoutes(server.Router())
 
 	orderHandler := handlers.NewOrderHandler(f.OrderService(), f.OrganizationService(), f.MembersProjection(), f.OrdersProjection(), sessionManager)
 	orderHandler.RegisterRoutes(server.Router())
+
+	historyHandler := handlers.NewHistoryHandler(f.HistoryService(), f.FreightRequestService(), f.OrderService(), sessionManager)
+	historyHandler.RegisterRoutes(server.Router())
+
+	// Dev handler (only in development mode)
+	if cfg.IsDevelopment() {
+		devHandler := handlers.NewDevHandler(cfg, f.MembersProjection(), f.OrganizationService(), sessionManager)
+		devHandler.RegisterRoutes(server.Router())
+		slog.Info("dev user switcher enabled")
+	}
 
 	go func() {
 		if err := server.Start(); err != nil {

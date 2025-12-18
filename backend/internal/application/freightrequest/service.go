@@ -12,6 +12,7 @@ import (
 	orgEvents "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/sequence"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"github.com/google/uuid"
 )
@@ -22,17 +23,20 @@ type Service struct {
 	db         dbtx.TxManager
 	eventStore eventstore.Store
 	publisher  *messaging.EventPublisher
+	seqGen     *sequence.Generator
 }
 
 func NewService(
 	db dbtx.TxManager,
 	eventStore eventstore.Store,
 	publisher *messaging.EventPublisher,
+	seqGen *sequence.Generator,
 ) *Service {
 	return &Service{
 		db:         db,
 		eventStore: eventStore,
 		publisher:  publisher,
+		seqGen:     seqGen,
 	}
 }
 
@@ -69,24 +73,41 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (uuid.UUID, err
 		expiresAt = *input.ExpiresAt
 	}
 
-	id := uuid.New()
-	fr := freightrequest.New(
-		id,
-		input.CustomerOrgID,
-		input.CustomerMemberID,
-		input.Route,
-		input.Cargo,
-		input.VehicleRequirements,
-		input.Payment,
-		input.Comment,
-		expiresAt,
-	)
+	var resultID uuid.UUID
 
-	if err := s.saveAndPublish(ctx, fr); err != nil {
+	err := s.db.InTx(ctx, func(ctx context.Context) error {
+		requestNumber, err := s.seqGen.NextRequestNumber(ctx)
+		if err != nil {
+			return fmt.Errorf("get next request number: %w", err)
+		}
+
+		id := uuid.New()
+		fr := freightrequest.New(
+			id,
+			requestNumber,
+			input.CustomerOrgID,
+			input.CustomerMemberID,
+			input.Route,
+			input.Cargo,
+			input.VehicleRequirements,
+			input.Payment,
+			input.Comment,
+			expiresAt,
+		)
+
+		if err := s.saveAndPublish(ctx, fr); err != nil {
+			return err
+		}
+
+		resultID = id
+		return nil
+	})
+
+	if err != nil {
 		return uuid.Nil, err
 	}
 
-	return id, nil
+	return resultID, nil
 }
 
 type UpdateInput struct {
