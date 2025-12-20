@@ -20,4 +20,8 @@ var (
 	ErrEmailAlreadyInvited      = errors.New("email already has pending invitation")
 	ErrNameRequired             = errors.New("name is required")
 	ErrPhoneRequired            = errors.New("phone is required")
+	ErrAlreadyFraudster         = errors.New("organization is already marked as fraudster")
+	ErrNotFraudster             = errors.New("organization is not marked as fraudster")
+	ErrDisposableEmail          = errors.New("disposable email addresses are not allowed")
+	ErrRegistrationVelocity     = errors.New("too many registration attempts")
 )

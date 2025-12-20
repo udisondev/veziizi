@@ -3,8 +3,12 @@ import type { RegisterRequest, RegisterResponse } from '@/types/registration'
 import type { OrganizationDetail, OrganizationRating, OrganizationReviewsResponse } from '@/types/admin'
 
 export const organizationsApi = {
-  register(data: RegisterRequest): Promise<RegisterResponse> {
-    return api.post('/organizations', data)
+  register(data: RegisterRequest, fingerprint?: string): Promise<RegisterResponse> {
+    const headers: Record<string, string> = {}
+    if (fingerprint) {
+      headers['X-Fingerprint'] = fingerprint
+    }
+    return api.post('/organizations', data, { headers })
   },
 
   get(id: string): Promise<OrganizationDetail> {

@@ -15,6 +15,7 @@ export class ApiClient {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest', // SEC-005: CSRF protection
         ...options.headers,
       },
       credentials: 'include',
@@ -38,10 +39,15 @@ export class ApiClient {
     return this.request<T>(path, { method: 'GET' })
   }
 
-  post<T>(path: string, body?: unknown): Promise<T> {
+  post<T>(
+    path: string,
+    body?: unknown,
+    options?: { headers?: Record<string, string> }
+  ): Promise<T> {
     return this.request<T>(path, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
+      headers: options?.headers,
     })
   }
 

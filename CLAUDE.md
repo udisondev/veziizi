@@ -73,6 +73,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 - **Organization** — организация с Members и Invitations. Любая организация может быть заказчиком и делать офферы
 - **FreightRequest** — заявка на перевозку с Offers внутри. Два версионирования: `version` (aggregate) и `freightVersion` (только при изменении данных заявки)
 - **Order** — заказ (после подтверждения оффера). Содержит Messages, Documents, Reviews. Создаётся автоматически через order-creator worker при OfferConfirmed
+- **Review** — отдельный агрегат для защиты рейтингов от накрутки. Создаётся из Order.ReviewLeft через review-receiver worker. Проходит анализ на фрод и модерацию
 
 ### Key Patterns
 
@@ -84,8 +85,9 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 
 **Factory** (`backend/internal/pkg/factory/`):
 - Lazy-initialized, thread-safe dependency container (sync.Once)
-- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`
-- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`
+- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`, `ReviewService()`, `HistoryService()`
+- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`
+- Creates analyzers: `ReviewAnalyzer()`, `SessionAnalyzer()`
 - Used by both API and workers
 
 **Transaction Propagation** (`backend/internal/pkg/dbtx/`):
@@ -102,6 +104,8 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 - Each worker runs as separate process (`backend/cmd/workers/*`)
 - Handler receives `*factory.Factory` for dependency access
 - Each worker has its own ConsumerGroup for independent offset tracking
+- `worker.Run(Config)` — event-driven workers (watermill subscribers)
+- `worker.RunScheduled(ScheduledConfig)` — scheduled workers (ticker-based, e.g. review-activator)
 
 **Worker Topics & Consumers:**
 | Worker | Topic | ConsumerGroup | Purpose |
@@ -112,12 +116,22 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 | freight-requests | freightrequest.events | freight_requests | Update freight_requests_lookup, offers_lookup |
 | orders | order.events | orders | Update orders_lookup |
 | order-creator | freightrequest.events | order_creator | Create Order on OfferConfirmed |
+| review-receiver | order.events | review_receiver | Create Review on ReviewLeft |
+| review-analyzer | review.events | review_analyzer | Fraud detection, weight calculation |
+| reviews-projection | review.events | reviews_projection | Update reviews_lookup, fraud_signals, interaction_stats, ratings |
+| review-activator | scheduled (1 min) | - | Activate approved reviews after activation_date |
+| fraudster-handler | organization.events | fraudster_handler | Deactivate reviews when org marked as fraudster |
+| order-fraud-analyzer | order.events | order_fraud_analyzer | Detect order fraud: cancel patterns, ghost deliveries, circular orders |
 
 **Event Imports per Worker:**
-- `members`, `invitations`, `pending-organizations`: `organization/events`
+- `members`, `invitations`, `pending-organizations`, `fraudster-handler`: `organization/events`
 - `freight-requests`: `freightrequest/events`
-- `orders`: `order/events`
+- `orders`, `order-fraud-analyzer`: `order/events`
 - `order-creator`: `freightrequest/events`, `order/events` (слушает freightrequest, создаёт order)
+- `review-receiver`: `order/events` (слушает order, создаёт review)
+- `review-analyzer`: `review/events` (анализирует review на фрод)
+- `reviews-projection`: `review/events` (обновляет lookup таблицы)
+- `review-activator`: `review/events` (scheduled, активирует отзывы)
 
 **Lookup Tables (Projections)**:
 - Store only ID + filter columns (status, org_id, etc.), no JSONB
@@ -168,6 +182,7 @@ import (
     _ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
+    _ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
 )
 ```
 Без этого `eventstore.EventEnvelope.UnmarshalEvent()` вернёт ошибку "unknown event type".
@@ -185,24 +200,33 @@ backend/
 │       ├── pending-organizations/
 │       ├── freight-requests/
 │       ├── orders/
-│       └── order-creator/
+│       ├── order-creator/
+│       ├── review-receiver/
+│       ├── review-analyzer/
+│       ├── reviews-projection/
+│       ├── review-activator/
+│       ├── fraudster-handler/
+│       └── order-fraud-analyzer/
 ├── internal/
 │   ├── application/      # Application services (use cases)
 │   │   ├── organization/
 │   │   ├── admin/
 │   │   ├── freightrequest/
-│   │   └── order/
+│   │   ├── order/
+│   │   ├── review/
+│   │   └── session/       # SessionAnalyzer for fraud detection
 │   ├── domain/           # Aggregates, entities, events, value objects
 │   │   ├── organization/
 │   │   ├── freightrequest/
-│   │   └── order/
+│   │   ├── order/
+│   │   └── review/
 │   ├── infrastructure/
 │   │   ├── handlers/     # Watermill event handlers (write side)
 │   │   ├── messaging/    # Watermill publisher
 │   │   ├── persistence/  # Event store, repositories, file storage (DB/S3)
 │   │   └── projections/  # Read models (lookup tables)
-│   ├── interfaces/http/  # HTTP handlers, session, server
-│   └── pkg/              # Shared packages (aggregate, config, dbtx, factory, worker)
+│   ├── interfaces/http/  # HTTP handlers, session, server, middleware (rate_limiter)
+│   └── pkg/              # Shared packages (aggregate, config, dbtx, factory, worker, geoip, httputil)
 └── migrations/           # Goose SQL migrations
 
 frontend/
@@ -211,12 +235,12 @@ frontend/
 │   ├── components/       # Vue components
 │   │   ├── freight-request/  # Wizard steps, shared components
 │   │   └── ui/           # Reusable UI (AppHeader, PermissionGuard)
-│   ├── composables/      # Vue composables (usePermissions, useAddressSearch)
+│   ├── composables/      # Vue composables (usePermissions, useAddressSearch, useFingerprint)
 │   ├── router/           # Vue Router + guards (auth, orgActive, role, carrier, admin)
 │   ├── stores/           # Pinia stores (auth, admin)
 │   ├── types/            # TypeScript interfaces
 │   └── views/            # Page components
-│       └── admin/        # Admin panel views
+│       └── admin/        # Admin panel views (Organizations, Reviews, Fraudsters)
 └── package.json
 ```
 

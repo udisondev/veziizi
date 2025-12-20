@@ -5,6 +5,13 @@ import type {
   PendingOrganization,
   OrganizationDetail,
   RejectRequest,
+  PendingReviewsResponse,
+  PendingReview,
+  ApproveReviewRequest,
+  RejectReviewRequest,
+  FraudstersResponse,
+  MarkFraudsterRequest,
+  UnmarkFraudsterRequest,
 } from '@/types/admin'
 
 export const adminApi = {
@@ -31,5 +38,35 @@ export const adminApi = {
 
   rejectOrganization(id: string, data: RejectRequest): Promise<void> {
     return api.post(`/admin/organizations/${id}/reject`, data)
+  },
+
+  // Reviews moderation
+  async getPendingReviews(limit = 20, offset = 0): Promise<PendingReviewsResponse> {
+    return api.get(`/admin/reviews?limit=${limit}&offset=${offset}`)
+  },
+
+  getReview(id: string): Promise<PendingReview> {
+    return api.get(`/admin/reviews/${id}`)
+  },
+
+  approveReview(id: string, data: ApproveReviewRequest): Promise<void> {
+    return api.post(`/admin/reviews/${id}/approve`, data)
+  },
+
+  rejectReview(id: string, data: RejectReviewRequest): Promise<void> {
+    return api.post(`/admin/reviews/${id}/reject`, data)
+  },
+
+  // Fraudsters management
+  async getFraudsters(limit = 20, offset = 0): Promise<FraudstersResponse> {
+    return api.get(`/admin/fraudsters?limit=${limit}&offset=${offset}`)
+  },
+
+  markFraudster(orgId: string, data: MarkFraudsterRequest): Promise<void> {
+    return api.post(`/admin/organizations/${orgId}/mark-fraudster`, data)
+  },
+
+  unmarkFraudster(orgId: string, data: UnmarkFraudsterRequest): Promise<void> {
+    return api.post(`/admin/organizations/${orgId}/unmark-fraudster`, data)
   },
 }

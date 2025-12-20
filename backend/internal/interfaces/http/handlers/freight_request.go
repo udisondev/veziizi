@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/freightrequest"
@@ -16,6 +15,7 @@ import (
 	orgDomain "codeberg.org/udison/veziizi/backend/internal/domain/organization"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -196,7 +196,16 @@ func (h *FreightRequestHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
+	// SEC-009: Получаем orgID пользователя для фильтрации
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var opts []projections.FilterOption
+	status := r.URL.Query().Get("status")
+	isMarketRequest := r.URL.Query().Get("mode") == "market" || status == "published"
 
 	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
 		orgID, err := uuid.Parse(orgIDStr)
@@ -204,7 +213,18 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid customer_org_id")
 			return
 		}
+		// SEC-009: Разрешаем чужие организации только для просмотра опубликованных заявок (маркет)
+		if orgID != sessionOrgID && !isMarketRequest {
+			writeError(w, http.StatusForbidden, "access denied to other organization's freight requests")
+			return
+		}
 		opts = append(opts, projections.WithCustomerOrgID(orgID))
+	} else if isMarketRequest {
+		// SEC-009: Режим маркета - показываем опубликованные заявки от всех организаций
+		// Фильтр по customer_org_id не добавляется
+	} else {
+		// SEC-009: По умолчанию показываем только заявки своей организации
+		opts = append(opts, projections.WithCustomerOrgID(sessionOrgID))
 	}
 
 	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
@@ -216,8 +236,11 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithCustomerMemberID(memberID))
 	}
 
-	if status := r.URL.Query().Get("status"); status != "" {
+	// SEC-009: В режиме маркета принудительно фильтруем по статусу "published"
+	if status != "" {
 		opts = append(opts, projections.WithStatus(status))
+	} else if isMarketRequest {
+		opts = append(opts, projections.WithStatus("published"))
 	}
 
 	if orgName := r.URL.Query().Get("org_name"); orgName != "" {
@@ -232,23 +255,10 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithOrgCountry(orgCountry))
 	}
 
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid limit")
-			return
-		}
-		opts = append(opts, projections.WithLimit(limit))
-	}
-
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid offset")
-			return
-		}
-		opts = append(opts, projections.WithOffset(offset))
-	}
+	// SEC-016: Валидированная пагинация
+	pagination := httputil.ParsePagination(r)
+	opts = append(opts, projections.WithLimit(pagination.Limit))
+	opts = append(opts, projections.WithOffset(pagination.Offset))
 
 	items, err := h.projection.List(r.Context(), opts...)
 	if err != nil {
@@ -570,23 +580,10 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		opts = append(opts, projections.WithOfferStatusAlias(status))
 	}
 
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid limit")
-			return
-		}
-		opts = append(opts, projections.WithOfferLimit(limit))
-	}
-
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid offset")
-			return
-		}
-		opts = append(opts, projections.WithOfferOffset(offset))
-	}
+	// SEC-016: Валидированная пагинация
+	pagination := httputil.ParsePagination(r)
+	opts = append(opts, projections.WithOfferLimit(pagination.Limit))
+	opts = append(opts, projections.WithOfferOffset(pagination.Offset))
 
 	items, err := h.projection.ListOffersWithFreightData(r.Context(), opts...)
 	if err != nil {

@@ -66,7 +66,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create publisher: %v", err)
 	}
-	defer publisher.Close()
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			log.Printf("failed to close publisher: %v", err)
+		}
+	}()
 
 	invitations := projections.NewInvitationsProjection(txManager)
 	members := projections.NewMembersProjection(txManager)

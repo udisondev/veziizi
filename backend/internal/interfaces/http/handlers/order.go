@@ -6,7 +6,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
@@ -399,7 +401,11 @@ func (h *OrderHandler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "file is required")
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("failed to close uploaded file", slog.String("error", err.Error()))
+		}
+	}()
 
 	data, err := io.ReadAll(file)
 	if err != nil {
@@ -408,11 +414,23 @@ func (h *OrderHandler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SEC-004: Санитизация имени файла для предотвращения path traversal
+	filename := filepath.Base(header.Filename)
+	filename = strings.TrimSpace(filename)
+	if filename == "" || filename == "." || filename == ".." {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	// Ограничить длину имени файла
+	if len(filename) > 255 {
+		filename = filename[:255]
+	}
+
 	if err := h.service.AttachDocument(r.Context(), orderApp.AttachDocumentInput{
 		OrderID:          orderID,
 		UploaderOrgID:    orgID,
 		UploaderMemberID: memberID,
-		Name:             header.Filename,
+		Name:             filename,
 		Data:             data,
 	}); err != nil {
 		h.handleDomainError(w, err)
@@ -432,6 +450,30 @@ func (h *OrderHandler) DownloadDocument(w http.ResponseWriter, r *http.Request) 
 	docID, err := uuid.Parse(vars["docId"])
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid document id")
+		return
+	}
+
+	// SEC-002: Проверка авторизации перед загрузкой документа
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	role, _ := h.session.GetRole(r)
+
+	// Загрузить заказ и проверить доступ
+	order, err := h.service.Get(r.Context(), orderID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "order not found")
+		return
+	}
+	if !order.CanAccess(orgID, memberID, role) {
+		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
 

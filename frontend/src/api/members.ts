@@ -25,7 +25,8 @@ export const membersApi = {
   },
 
   async listByOrganization(orgId: string): Promise<MemberListItem[]> {
-    const org = await api.get<OrganizationWithMembers>(`/organizations/${orgId}`)
+    // SEC-019: используем /full endpoint для получения списка членов (только своя организация)
+    const org = await api.get<OrganizationWithMembers>(`/organizations/${orgId}/full`)
     return org.members ?? []
   },
 

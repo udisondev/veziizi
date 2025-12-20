@@ -8,9 +8,12 @@ import (
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/organization"
+	sessionApp "codeberg.org/udison/veziizi/backend/internal/application/session"
 	orgDomain "codeberg.org/udison/veziizi/backend/internal/domain/organization"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/geoip"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
@@ -18,20 +21,26 @@ import (
 )
 
 type AuthHandler struct {
-	members    *projections.MembersProjection
-	orgService *organization.Service
-	session    *session.Manager
+	members         *projections.MembersProjection
+	orgService      *organization.Service
+	session         *session.Manager
+	sessionAnalyzer *sessionApp.SessionAnalyzer
+	geoIP           *geoip.Service
 }
 
 func NewAuthHandler(
 	members *projections.MembersProjection,
 	orgService *organization.Service,
 	session *session.Manager,
+	sessionAnalyzer *sessionApp.SessionAnalyzer,
+	geoIP *geoip.Service,
 ) *AuthHandler {
 	return &AuthHandler{
-		members:    members,
-		orgService: orgService,
-		session:    session,
+		members:         members,
+		orgService:      orgService,
+		session:         session,
+		sessionAnalyzer: sessionAnalyzer,
+		geoIP:           geoIP,
 	}
 }
 
@@ -62,6 +71,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract client metadata for fraud tracking
+	meta := httputil.GetClientMetadata(r)
+
 	member, err := h.members.GetByEmail(r.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -74,13 +86,75 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if member.Status != "active" {
+		// Record failed login (blocked)
+		if err := h.members.RecordLoginHistory(
+			r.Context(), member.ID, member.OrganizationID,
+			meta.IP, meta.Fingerprint, meta.UserAgent, "failed_blocked",
+		); err != nil {
+			slog.Error("failed to record login history", slog.String("error", err.Error()))
+		}
 		writeError(w, http.StatusForbidden, "account is blocked")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(member.PasswordHash), []byte(req.Password)); err != nil {
+		// Record failed login (wrong password)
+		if err := h.members.RecordLoginHistory(
+			r.Context(), member.ID, member.OrganizationID,
+			meta.IP, meta.Fingerprint, meta.UserAgent, "failed_password",
+		); err != nil {
+			slog.Error("failed to record login history", slog.String("error", err.Error()))
+		}
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
+	}
+
+	// Record successful login in history
+	if err := h.members.RecordLoginHistory(
+		r.Context(), member.ID, member.OrganizationID,
+		meta.IP, meta.Fingerprint, meta.UserAgent, "success",
+	); err != nil {
+		slog.Error("failed to record login history", slog.String("error", err.Error()))
+	}
+
+	// Update last_login_* fields
+	if err := h.members.RecordLogin(r.Context(), member.ID, meta.IP, meta.Fingerprint); err != nil {
+		slog.Error("failed to update last login", slog.String("error", err.Error()))
+	}
+
+	// Analyze login for fraud signals (geo jump, session anomaly)
+	if h.sessionAnalyzer != nil {
+		// Enrich with geo data if GeoIP is available
+		var geoCountry, geoCity string
+		var geoLat, geoLon float64
+		if h.geoIP != nil && h.geoIP.IsAvailable() {
+			geo := h.geoIP.Lookup(meta.IP)
+			geoCountry = geo.Country
+			geoCity = geo.City
+			geoLat = geo.Latitude
+			geoLon = geo.Longitude
+		}
+
+		loginInput := sessionApp.LoginAnalysisInput{
+			MemberID:       member.ID,
+			OrganizationID: member.OrganizationID,
+			IPAddress:      meta.IP,
+			Fingerprint:    meta.Fingerprint,
+			UserAgent:      meta.UserAgent,
+			GeoCountry:     geoCountry,
+			GeoCity:        geoCity,
+			GeoLat:         geoLat,
+			GeoLon:         geoLon,
+			LoginTime:      time.Now(),
+		}
+		if result, err := h.sessionAnalyzer.AnalyzeLogin(r.Context(), loginInput); err != nil {
+			slog.Error("failed to analyze login", slog.String("error", err.Error()))
+		} else if result.IsSuspicious {
+			slog.Warn("suspicious login detected",
+				slog.String("member_id", member.ID.String()),
+				slog.Any("signals", result.Signals),
+			)
+		}
 	}
 
 	if err := h.session.SetAuth(r, w, member.ID, member.OrganizationID, member.Role); err != nil {
@@ -185,6 +259,13 @@ func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SEC-017: Проверяем авторизацию
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	member, err := h.orgService.GetMemberByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, orgDomain.ErrMemberNotFound) {
@@ -193,6 +274,13 @@ func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.Error("failed to get member", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// SEC-017: Разрешаем доступ только к членам своей организации
+	// TODO: Добавить проверку связанных заказов для доступа к контрагентам
+	if member.OrganizationID != sessionOrgID {
+		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
 

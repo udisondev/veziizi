@@ -42,6 +42,15 @@ func (h *DevHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/dev/users/{id}", h.DeleteUser).Methods(http.MethodDelete)
 }
 
+// RegisterRoutesWithRouter registers dev routes on a subrouter (relative paths)
+// SEC-001: Use this with DevOnly middleware for additional protection
+func (h *DevHandler) RegisterRoutesWithRouter(r *mux.Router) {
+	r.HandleFunc("/status", h.Status).Methods(http.MethodGet)
+	r.HandleFunc("/users", h.ListUsers).Methods(http.MethodGet)
+	r.HandleFunc("/switch", h.SwitchUser).Methods(http.MethodPost)
+	r.HandleFunc("/users/{id}", h.DeleteUser).Methods(http.MethodDelete)
+}
+
 type DevUserResponse struct {
 	ID                 string `json:"id"`
 	OrganizationID     string `json:"organization_id"`

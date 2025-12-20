@@ -24,6 +24,8 @@ const (
 	TypeInvitationAccepted    = "invitation.accepted"
 	TypeInvitationExpired     = "invitation.expired"
 	TypeInvitationCancelled   = "invitation.cancelled"
+	TypeFraudsterMarked       = "fraudster.marked"
+	TypeFraudsterUnmarked     = "fraudster.unmarked"
 )
 
 func init() {
@@ -41,6 +43,8 @@ func init() {
 	eventstore.RegisterEventType[InvitationAccepted](TypeInvitationAccepted)
 	eventstore.RegisterEventType[InvitationExpired](TypeInvitationExpired)
 	eventstore.RegisterEventType[InvitationCancelled](TypeInvitationCancelled)
+	eventstore.RegisterEventType[FraudsterMarked](TypeFraudsterMarked)
+	eventstore.RegisterEventType[FraudsterUnmarked](TypeFraudsterUnmarked)
 }
 
 // OrganizationCreated is emitted when organization is registered
@@ -105,6 +109,10 @@ type MemberAdded struct {
 	Phone        string            `json:"phone,omitempty"`
 	Role         values.MemberRole `json:"role"`
 	InvitedBy    *uuid.UUID        `json:"invited_by,omitempty"` // nil for owner
+	// Registration metadata for fraud detection
+	RegistrationIP          string `json:"registration_ip,omitempty"`
+	RegistrationFingerprint string `json:"registration_fingerprint,omitempty"`
+	RegistrationUserAgent   string `json:"registration_user_agent,omitempty"`
 }
 
 func (e MemberAdded) EventType() string { return TypeMemberAdded }
@@ -187,3 +195,22 @@ type InvitationCancelled struct {
 }
 
 func (e InvitationCancelled) EventType() string { return TypeInvitationCancelled }
+
+// FraudsterMarked is emitted when admin marks organization as fraudster
+type FraudsterMarked struct {
+	eventstore.BaseEvent
+	MarkedBy    uuid.UUID `json:"marked_by"`    // admin ID
+	IsConfirmed bool      `json:"is_confirmed"` // true = confirmed, false = suspected
+	Reason      string    `json:"reason"`
+}
+
+func (e FraudsterMarked) EventType() string { return TypeFraudsterMarked }
+
+// FraudsterUnmarked is emitted when admin removes fraudster status
+type FraudsterUnmarked struct {
+	eventstore.BaseEvent
+	UnmarkedBy uuid.UUID `json:"unmarked_by"` // admin ID
+	Reason     string    `json:"reason"`
+}
+
+func (e FraudsterUnmarked) EventType() string { return TypeFraudsterUnmarked }

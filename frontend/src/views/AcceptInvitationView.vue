@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { vMaska } from 'maska/vue'
 import { invitationsApi } from '@/api/invitations'
 import { useAuthStore } from '@/stores/auth'
+import { getFingerprint } from '@/composables/useFingerprint'
 import type { InvitationDetails, AcceptInvitationRequest } from '@/types/invitation'
 
 const route = useRoute()
@@ -147,7 +148,8 @@ async function handleSubmit() {
       request.phone = form.value.phone.trim()
     }
 
-    await invitationsApi.accept(token.value, request)
+    const fingerprint = await getFingerprint()
+    await invitationsApi.accept(token.value, request, fingerprint)
 
     // Показать анимацию успеха
     showSuccess.value = true

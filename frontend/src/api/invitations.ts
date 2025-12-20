@@ -27,8 +27,12 @@ export const invitationsApi = {
   },
 
   // Принять приглашение (публичный)
-  accept(token: string, data: AcceptInvitationRequest): Promise<AcceptInvitationResponse> {
-    return api.post(`/invitations/${token}/accept`, data)
+  accept(token: string, data: AcceptInvitationRequest, fingerprint?: string): Promise<AcceptInvitationResponse> {
+    const headers: Record<string, string> = {}
+    if (fingerprint) {
+      headers['X-Fingerprint'] = fingerprint
+    }
+    return api.post(`/invitations/${token}/accept`, data, { headers })
   },
 
   // Отменить приглашение (требует авторизации)

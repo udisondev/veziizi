@@ -78,13 +78,15 @@ func WithCustomerMemberID(id uuid.UUID) FilterOption {
 
 func WithOrgNameLike(name string) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		return b.Where(squirrel.ILike{"customer_org_name": "%" + name + "%"})
+		// SEC-014: Экранируем спецсимволы ILIKE
+		return b.Where(squirrel.ILike{"customer_org_name": WrapLikePattern(name)})
 	}
 }
 
 func WithOrgINN(inn string) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		return b.Where(squirrel.ILike{"customer_org_inn": "%" + inn + "%"})
+		// SEC-014: Экранируем спецсимволы ILIKE
+		return b.Where(squirrel.ILike{"customer_org_inn": WrapLikePattern(inn)})
 	}
 }
 

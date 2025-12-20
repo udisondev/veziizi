@@ -18,13 +18,20 @@ type AdminManager struct {
 }
 
 func NewAdminManager(cfg *config.Config) *AdminManager {
-	store := sessions.NewCookieStore([]byte(cfg.Session.Secret))
+	// SEC-006: Использовать отдельный ключ для admin сессий если установлен
+	secret := cfg.Session.AdminSecret
+	if secret == "" {
+		// Fallback на основной secret если AdminSecret не установлен
+		secret = cfg.Session.Secret
+	}
+
+	store := sessions.NewCookieStore([]byte(secret))
 	store.Options = &sessions.Options{
 		Path:     "/api/v1/admin",
 		MaxAge:   cfg.Session.MaxAge,
 		HttpOnly: true,
 		Secure:   cfg.IsProduction(),
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode, // SEC-006: Strict для admin
 	}
 
 	return &AdminManager{

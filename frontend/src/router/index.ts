@@ -160,6 +160,27 @@ const router = createRouter({
       meta: { admin: true, title: 'Детали организации' },
       beforeEnter: adminGuard,
     },
+    {
+      path: '/admin/organizations',
+      name: 'admin-organizations-list',
+      component: () => import('@/views/admin/AdminOrganizationsView.vue'),
+      meta: { admin: true, title: 'Организации на модерации' },
+      beforeEnter: adminGuard,
+    },
+    {
+      path: '/admin/reviews',
+      name: 'admin-reviews',
+      component: () => import('@/views/admin/AdminReviewsView.vue'),
+      meta: { admin: true, title: 'Отзывы на модерации' },
+      beforeEnter: adminGuard,
+    },
+    {
+      path: '/admin/fraudsters',
+      name: 'admin-fraudsters',
+      component: () => import('@/views/admin/AdminFraudstersView.vue'),
+      meta: { admin: true, title: 'Накрутчики' },
+      beforeEnter: adminGuard,
+    },
 
     // Error pages
     {

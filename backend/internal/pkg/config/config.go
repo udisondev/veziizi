@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -14,6 +16,7 @@ type Config struct {
 	Session  SessionConfig
 	Telegram TelegramConfig
 	App      AppConfig
+	GeoIP    GeoIPConfig
 }
 
 type DatabaseConfig struct {
@@ -28,10 +31,11 @@ type HTTPConfig struct {
 }
 
 type SessionConfig struct {
-	Secret    string `env:"SESSION_SECRET" validate:"required_if=App.Env production"`
-	Name      string `env:"SESSION_NAME" envDefault:"veziizi_session" validate:"required"`
-	AdminName string `env:"SESSION_ADMIN_NAME" envDefault:"veziizi_admin_session" validate:"required"`
-	MaxAge    int    `env:"SESSION_MAX_AGE" envDefault:"86400" validate:"required,min=1"`
+	Secret      string `env:"SESSION_SECRET" validate:"required_if=App.Env production"`
+	AdminSecret string `env:"SESSION_ADMIN_SECRET"` // SEC-006: Отдельный ключ для admin сессий
+	Name        string `env:"SESSION_NAME" envDefault:"veziizi_session" validate:"required"`
+	AdminName   string `env:"SESSION_ADMIN_NAME" envDefault:"veziizi_admin_session" validate:"required"`
+	MaxAge      int    `env:"SESSION_MAX_AGE" envDefault:"86400" validate:"required,min=1"`
 }
 
 type TelegramConfig struct {
@@ -41,6 +45,12 @@ type TelegramConfig struct {
 type AppConfig struct {
 	Env      string `env:"APP_ENV" envDefault:"development" validate:"required,oneof=development production"`
 	LogLevel string `env:"LOG_LEVEL" envDefault:"debug" validate:"required,oneof=debug info warn error"`
+}
+
+type GeoIPConfig struct {
+	// Path to MaxMind GeoLite2-City.mmdb database file
+	// Download from: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+	DatabasePath string `env:"GEOIP_DATABASE_PATH" envDefault:""`
 }
 
 func Load() (*Config, error) {
@@ -54,7 +64,26 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
+	// SEC-013: Предупреждение о небезопасном SSL режиме в production
+	cfg.validateSecuritySettings()
+
 	return cfg, nil
+}
+
+// validateSecuritySettings проверяет критические настройки безопасности
+func (c *Config) validateSecuritySettings() {
+	if c.IsProduction() {
+		// SEC-013: Проверка SSL для PostgreSQL
+		if strings.Contains(c.Database.URL, "sslmode=disable") {
+			slog.Warn("SEC-013: CRITICAL - PostgreSQL sslmode=disable in production!",
+				slog.String("recommendation", "use sslmode=require or sslmode=verify-full"))
+		}
+
+		// SEC-006: Проверка отдельного ключа для admin сессий
+		if c.Session.AdminSecret == "" {
+			slog.Warn("SEC-006: SESSION_ADMIN_SECRET not set, using SESSION_SECRET for admin sessions")
+		}
+	}
 }
 
 func (c *Config) IsDevelopment() bool {

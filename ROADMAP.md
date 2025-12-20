@@ -8,9 +8,9 @@
 **Architecture:** DDD, Event Sourcing, Event Driven, 12-factor app
 
 ## Current Status
-**Phase:** 7 - Frontend (Vue.js)
-**Status:** In Progress
-**Last Updated:** 2025-12-15
+**Phase:** 6 - Rating Fraud Protection
+**Status:** Completed
+**Last Updated:** 2025-12-19
 
 ---
 
@@ -157,8 +157,103 @@
   - [x] POST /api/v1/orders/:id/cancel
   - [x] POST /api/v1/orders/:id/review
 
-### Phase 6: Notifications
+### Phase 6: Rating Fraud Protection
+**Status:** [x] Completed
+**Last Updated:** 2025-12-19
+
+Система защиты рейтингов от накрутки. Реализуется поэтапно.
+
+#### Архитектура
+
+**Новый Review Aggregate** (отдельный от Order):
+```
+Order.ReviewLeft → review-receiver → Review.Received
+                                          ↓
+                                  review-analyzer
+                                          ↓
+                        Review.Analyzed (fraud check + weight calc)
+                                          ↓
+                    ┌─────────────────────┴─────────────────────┐
+                    ↓                                           ↓
+           Auto-approved                              Pending Moderation
+           (no fraud signals)                         (Admin Panel)
+                    ↓                                           ↓
+           Review.Approved                    Review.Approved / Review.Rejected
+                    ↓
+           review-activator (scheduled, 7/14 дней)
+                    ↓
+           Review.Activated → organization_ratings (weighted)
+```
+
+**Статусы отзыва:** `pending_analysis` → `pending_moderation` / `approved` → `active` / `rejected` / `deactivated`
+
+#### Механизмы защиты
+
+1. **Весовая система рейтинга:**
+   ```
+   weight = order_amount_weight × org_age_weight × diversity_weight × reputation_weight
+   ```
+   - order_amount_weight: 100К+ ₽ = 1.0, 50К = 0.9, 10К = 0.7, 1К = 0.5, меньше = 0.3
+   - org_age_weight: >12 мес = 1.0, 6-12 = 0.8, 3-6 = 0.6, <3 мес = 0.3
+   - diversity_weight: 1-й отзыв от контрагента = 1.0, 2-й = 0.5, 3+ = 0.1
+   - reputation_weight: накрутчик = 0.0, подозрительный = 0.3, нормальный = 1.0
+
+2. **Fraud Signals (аномалии):**
+   | Сигнал | Severity | Описание |
+   |--------|----------|----------|
+   | mutual_reviews | high | Взаимные отзывы > 5 раз за месяц |
+   | fast_completion | medium | Заказ завершен < 2 часов |
+   | perfect_ratings | medium | 100% пятерок от контрагента (>3 отзывов) |
+   | new_org_burst | medium | Новая орг получила >10 отзывов за неделю |
+   | same_ip | high | Совпадение IP при регистрации |
+   | same_fingerprint | high | Совпадение device fingerprint |
+   | geo_mismatch | high | Заказ завершён вдали от точки выгрузки (будущее, требует GPS) |
+
+3. **Отложенное влияние:** 7 дней (обычные) / 14 дней (подозрительные)
+
+4. **Репутация рецензентов:** При пометке организации как накрутчика — все её отзывы обесцениваются
+
+#### Новые таблицы
+
+| Таблица | Назначение |
+|---------|------------|
+| reviews_lookup | Отзывы с весами, fraud_score, статусами |
+| review_fraud_signals | Детализация обнаруженных аномалий |
+| org_interaction_stats | Статистика взаимодействий между организациями |
+| org_reviewer_reputation | Репутация организации как рецензента |
+| org_registration_metadata | IP/fingerprint для sock puppet detection |
+
+#### Новые Workers
+
+| Worker | Topic | ConsumerGroup | Назначение |
+|--------|-------|---------------|------------|
+| review-receiver | order.events | review_receiver | Создает Review aggregate при ReviewLeft |
+| review-analyzer | review.events | review_analyzer | Fraud detection, weight calculation |
+| reviews-projection | review.events | reviews_projection | Обновляет lookup таблицы |
+| review-activator | cron (1 мин) | - | Активирует одобренные отзывы |
+| fraudster-handler | organization.events | fraudster_handler | Деактивирует отзывы накрутчиков |
+
+#### Подфазы
+
+- [x] **6.1 Инфраструктура** — миграция, Review aggregate, events, values, ReviewService
+- [x] **6.2 Review Receiver** — worker слушает order.events, создает Review
+- [x] **6.3 Review Analyzer** — fraud detection, weight calculation (Analyzer service, FraudDataProjection, review-analyzer worker)
+- [x] **6.4 Reviews Projection** — ReviewsProjection, ReviewsProjectionHandler, reviews-projection worker (обновляет reviews_lookup, review_fraud_signals, org_interaction_stats, org_reviewer_reputation, organization_ratings)
+- [x] **6.5 Review Activator** — scheduled worker для активации (RunScheduled в worker package, review-activator worker)
+- [x] **6.6 Admin Moderation** — API endpoints (AdminHandler), frontend (AdminReviewsView.vue) для модерации
+- [x] **6.7 Reviewer Reputation** — пометка накрутчиков, деактивация отзывов
+- [x] **6.8 Registration Metadata** — сбор IP/fingerprint при регистрации (FingerprintJS на frontend, хранение в MemberAdded event, login history tracking)
+
+#### Будущие улучшения (требуют GPS)
+
+- [ ] geo_mismatch signal — проверка что заказ завершён в точке выгрузки
+- [ ] GPS-трекинг маршрута перевозчика
+
+---
+
+### Phase 7: Notifications
 **Status:** [ ] Not Started
+**Depends on:** Phase 6 (notifications about fraud/moderation)
 
 - [ ] Notification service interface
 - [ ] NotificationSubscription entity
@@ -179,8 +274,8 @@
   - [ ] DELETE /api/v1/notifications/subscriptions/:id
   - [ ] PATCH /api/v1/notifications/subscriptions/:id
 
-### Phase 7: Frontend (Vue.js)
-**Status:** [~] In Progress
+### Phase 8: Frontend (Vue.js)
+**Status:** [~] In Progress (parallel with Phase 6)
 
 - [x] Project setup (Vite, Vue 3, Tailwind 4, Vue Router, Pinia, Leaflet)
 - [x] API client setup (fetch wrapper with error handling)
@@ -333,3 +428,13 @@
 - Factory pattern (internal/pkg/factory) for lazy-initialized, thread-safe dependency injection
 - Worker package simplified: receives Factory instead of Deps struct
 - All workers and API use Factory for services and projections
+
+### 2025-12-19 - Phase 6 Completed
+- Review aggregate с полным event sourcing (pending_analysis → pending_moderation/approved → active/rejected/deactivated)
+- Fraud detection система с 6 сигналами: mutual_reviews, fast_completion, perfect_ratings, new_org_burst, same_ip, same_fingerprint
+- Весовая система рейтинга: order_amount × org_age × diversity × reputation weights
+- 4 новых воркера: review-receiver, review-analyzer, reviews-projection, review-activator
+- Scheduled worker pattern (RunScheduled) для review-activator
+- Admin moderation endpoints + AdminReviewsView.vue
+- Registration metadata: FingerprintJS на frontend, member_login_history table, same_ip/same_fingerprint fraud signals
+- Organization ratings projection с weighted average calculation

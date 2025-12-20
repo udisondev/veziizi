@@ -57,6 +57,12 @@ build: ## Build all binaries
 	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
 	go build -o bin/worker-orders ./backend/cmd/workers/orders
 	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
+	go build -o bin/worker-review-receiver ./backend/cmd/workers/review-receiver
+	go build -o bin/worker-review-analyzer ./backend/cmd/workers/review-analyzer
+	go build -o bin/worker-reviews-projection ./backend/cmd/workers/reviews-projection
+	go build -o bin/worker-review-activator ./backend/cmd/workers/review-activator
+	go build -o bin/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler
+	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
 
 build-api: ## Build API server
 	go build -o bin/api ./backend/cmd/api
@@ -68,6 +74,12 @@ build-workers: ## Build all workers
 	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
 	go build -o bin/worker-orders ./backend/cmd/workers/orders
 	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
+	go build -o bin/worker-review-receiver ./backend/cmd/workers/review-receiver
+	go build -o bin/worker-review-analyzer ./backend/cmd/workers/review-analyzer
+	go build -o bin/worker-reviews-projection ./backend/cmd/workers/reviews-projection
+	go build -o bin/worker-review-activator ./backend/cmd/workers/review-activator
+	go build -o bin/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler
+	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
 
 # Run
 run-api: ## Run API server
@@ -83,6 +95,12 @@ run-workers: ## Run all workers
 	go run ./backend/cmd/workers/freight-requests &
 	go run ./backend/cmd/workers/orders &
 	go run ./backend/cmd/workers/order-creator &
+	go run ./backend/cmd/workers/review-receiver &
+	go run ./backend/cmd/workers/review-analyzer &
+	go run ./backend/cmd/workers/reviews-projection &
+	go run ./backend/cmd/workers/review-activator &
+	go run ./backend/cmd/workers/fraudster-handler &
+	go run ./backend/cmd/workers/order-fraud-analyzer &
 
 # Development
 test: ## Run tests

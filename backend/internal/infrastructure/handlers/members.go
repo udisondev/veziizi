@@ -59,10 +59,30 @@ func (h *MembersHandler) handleEvent(ctx context.Context, evt eventstore.Event) 
 }
 
 func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded) error {
+	// Преобразуем пустые строки в nil для INET колонок
+	var regIP, regFingerprint, regUserAgent any
+	if e.RegistrationIP != "" {
+		regIP = e.RegistrationIP
+	}
+	if e.RegistrationFingerprint != "" {
+		regFingerprint = e.RegistrationFingerprint
+	}
+	if e.RegistrationUserAgent != "" {
+		regUserAgent = e.RegistrationUserAgent
+	}
+
 	query, args, err := h.psql.
 		Insert("members_lookup").
-		Columns("id", "organization_id", "email", "password_hash", "name", "phone", "telegram_id", "role", "status", "created_at").
-		Values(e.MemberID, e.AggregateID(), e.Email, e.PasswordHash, e.Name, e.Phone, nil, e.Role.String(), "active", e.OccurredAt()).
+		Columns(
+			"id", "organization_id", "email", "password_hash", "name", "phone",
+			"telegram_id", "role", "status", "created_at",
+			"registration_ip", "registration_fingerprint", "registration_user_agent",
+		).
+		Values(
+			e.MemberID, e.AggregateID(), e.Email, e.PasswordHash, e.Name, e.Phone,
+			nil, e.Role.String(), "active", e.OccurredAt(),
+			regIP, regFingerprint, regUserAgent,
+		).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("failed to build insert query: %w", err)

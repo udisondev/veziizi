@@ -25,6 +25,13 @@ type Organization struct {
 	createdAt time.Time
 	suspendedAt    *time.Time
 
+	// Fraudster status
+	isConfirmedFraudster bool
+	isSuspectedFraudster bool
+	fraudsterMarkedAt    *time.Time
+	fraudsterMarkedBy    *uuid.UUID
+	fraudsterReason      string
+
 	members     map[uuid.UUID]*entities.Member
 	invitations map[uuid.UUID]*entities.Invitation
 }
@@ -44,6 +51,10 @@ func New(
 	ownerPasswordHash string,
 	ownerName string,
 	ownerPhone string,
+	// Registration metadata for fraud detection
+	registrationIP string,
+	registrationFingerprint string,
+	registrationUserAgent string,
 ) *Organization {
 	org := &Organization{
 		Base:        aggregate.NewBase(id),
@@ -65,14 +76,17 @@ func New(
 
 	// Apply MemberAdded for owner
 	org.Apply(events.MemberAdded{
-		BaseEvent:    eventstore.NewBaseEvent(id, events.AggregateType, org.Version()+1),
-		MemberID:     ownerID,
-		Email:        ownerEmail,
-		PasswordHash: ownerPasswordHash,
-		Name:         ownerName,
-		Phone:        ownerPhone,
-		Role:         values.MemberRoleOwner,
-		InvitedBy:    nil,
+		BaseEvent:               eventstore.NewBaseEvent(id, events.AggregateType, org.Version()+1),
+		MemberID:                ownerID,
+		Email:                   ownerEmail,
+		PasswordHash:            ownerPasswordHash,
+		Name:                    ownerName,
+		Phone:                   ownerPhone,
+		Role:                    values.MemberRoleOwner,
+		InvitedBy:               nil,
+		RegistrationIP:          registrationIP,
+		RegistrationFingerprint: registrationFingerprint,
+		RegistrationUserAgent:   registrationUserAgent,
 	})
 
 	return org
@@ -105,6 +119,14 @@ func (o *Organization) Address() values.Address           { return o.address }
 func (o *Organization) Status() values.OrganizationStatus { return o.status }
 func (o *Organization) CreatedAt() time.Time              { return o.createdAt }
 func (o *Organization) SuspendedAt() *time.Time           { return o.suspendedAt }
+
+// Fraudster getters
+func (o *Organization) IsConfirmedFraudster() bool   { return o.isConfirmedFraudster }
+func (o *Organization) IsSuspectedFraudster() bool   { return o.isSuspectedFraudster }
+func (o *Organization) IsFraudster() bool            { return o.isConfirmedFraudster || o.isSuspectedFraudster }
+func (o *Organization) FraudsterMarkedAt() *time.Time { return o.fraudsterMarkedAt }
+func (o *Organization) FraudsterMarkedBy() *uuid.UUID { return o.fraudsterMarkedBy }
+func (o *Organization) FraudsterReason() string       { return o.fraudsterReason }
 
 func (o *Organization) Members() map[uuid.UUID]*entities.Member {
 	return o.members
@@ -283,6 +305,9 @@ func (o *Organization) AcceptInvitation(
 	passwordHash string,
 	name *string,
 	phone *string,
+	registrationIP string,
+	registrationFingerprint string,
+	registrationUserAgent string,
 ) error {
 	inv, ok := o.invitations[invitationID]
 	if !ok {
@@ -316,14 +341,17 @@ func (o *Organization) AcceptInvitation(
 	}
 
 	o.Apply(events.MemberAdded{
-		BaseEvent:    eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
-		MemberID:     memberID,
-		Email:        inv.Email(),
-		PasswordHash: passwordHash,
-		Name:         finalName,
-		Phone:        finalPhone,
-		Role:         inv.Role(),
-		InvitedBy:    ptr(inv.CreatedBy()),
+		BaseEvent:               eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		MemberID:                memberID,
+		Email:                   inv.Email(),
+		PasswordHash:            passwordHash,
+		Name:                    finalName,
+		Phone:                   finalPhone,
+		Role:                    inv.Role(),
+		InvitedBy:               ptr(inv.CreatedBy()),
+		RegistrationIP:          registrationIP,
+		RegistrationFingerprint: registrationFingerprint,
+		RegistrationUserAgent:   registrationUserAgent,
 	})
 
 	o.Apply(events.InvitationAccepted{
@@ -461,6 +489,37 @@ func (o *Organization) AddMemberDirect(memberID uuid.UUID, email, passwordHash, 
 	return nil
 }
 
+// MarkAsFraudster marks organization as fraudster (admin action)
+func (o *Organization) MarkAsFraudster(adminID uuid.UUID, isConfirmed bool, reason string) error {
+	if o.IsFraudster() {
+		return ErrAlreadyFraudster
+	}
+
+	o.Apply(events.FraudsterMarked{
+		BaseEvent:   eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		MarkedBy:    adminID,
+		IsConfirmed: isConfirmed,
+		Reason:      reason,
+	})
+
+	return nil
+}
+
+// UnmarkFraudster removes fraudster status (admin action)
+func (o *Organization) UnmarkFraudster(adminID uuid.UUID, reason string) error {
+	if !o.IsFraudster() {
+		return ErrNotFraudster
+	}
+
+	o.Apply(events.FraudsterUnmarked{
+		BaseEvent:  eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		UnmarkedBy: adminID,
+		Reason:     reason,
+	})
+
+	return nil
+}
+
 // Apply applies event and records it as change
 func (o *Organization) Apply(evt eventstore.Event) {
 	o.apply(evt)
@@ -562,6 +621,24 @@ func (o *Organization) apply(evt eventstore.Event) {
 		if inv, ok := o.invitations[e.InvitationID]; ok {
 			inv.Cancel()
 		}
+
+	case events.FraudsterMarked:
+		if e.IsConfirmed {
+			o.isConfirmedFraudster = true
+		} else {
+			o.isSuspectedFraudster = true
+		}
+		now := e.OccurredAt()
+		o.fraudsterMarkedAt = &now
+		o.fraudsterMarkedBy = &e.MarkedBy
+		o.fraudsterReason = e.Reason
+
+	case events.FraudsterUnmarked:
+		o.isConfirmedFraudster = false
+		o.isSuspectedFraudster = false
+		o.fraudsterMarkedAt = nil
+		o.fraudsterMarkedBy = nil
+		o.fraudsterReason = ""
 	}
 }
 

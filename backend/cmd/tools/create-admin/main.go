@@ -13,6 +13,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// SEC-007: bcrypt cost 12 вместо DefaultCost (10)
+const bcryptCost = 12
+
 func main() {
 	email := flag.String("email", "", "Admin email (required)")
 	name := flag.String("name", "", "Admin name (required)")
@@ -34,7 +37,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	defer conn.Close(ctx)
+	defer func() {
+		if err := conn.Close(ctx); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
+	}()
 
 	// Check if email already exists
 	var exists bool
@@ -49,7 +56,7 @@ func main() {
 	}
 
 	// Hash password
-	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcryptCost)
 	if err != nil {
 		log.Fatalf("failed to hash password: %v", err)
 	}

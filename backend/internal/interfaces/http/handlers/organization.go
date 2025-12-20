@@ -12,6 +12,7 @@ import (
 	"codeberg.org/udison/veziizi/backend/internal/domain/organization/values"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -37,6 +38,7 @@ func NewOrganizationHandler(
 func (h *OrganizationHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/organizations", h.Register).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/organizations/{id}", h.Get).Methods(http.MethodGet)
+	r.HandleFunc("/api/v1/organizations/{id}/full", h.GetFull).Methods(http.MethodGet) // SEC-019: полные данные только для членов
 	r.HandleFunc("/api/v1/organizations/{id}/rating", h.GetRating).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/organizations/{id}/reviews", h.ListReviews).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/organizations/{id}/invitations", h.CreateInvitation).Methods(http.MethodPost)
@@ -81,18 +83,24 @@ func (h *OrganizationHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract client metadata for fraud detection
+	meta := httputil.GetClientMetadata(r)
+
 	output, err := h.service.Register(r.Context(), organization.RegisterInput{
-		Name:          req.Name,
-		INN:           req.INN,
-		LegalName:     req.LegalName,
-		Country:       country,
-		Phone:         req.Phone,
-		Email:         req.Email,
-		Address:       values.Address(req.Address),
-		OwnerEmail:    req.OwnerEmail,
-		OwnerPassword: req.OwnerPassword,
-		OwnerName:     req.OwnerName,
-		OwnerPhone:    req.OwnerPhone,
+		Name:                    req.Name,
+		INN:                     req.INN,
+		LegalName:               req.LegalName,
+		Country:                 country,
+		Phone:                   req.Phone,
+		Email:                   req.Email,
+		Address:                 values.Address(req.Address),
+		OwnerEmail:              req.OwnerEmail,
+		OwnerPassword:           req.OwnerPassword,
+		OwnerName:               req.OwnerName,
+		OwnerPhone:              req.OwnerPhone,
+		RegistrationIP:          meta.IP,
+		RegistrationFingerprint: meta.Fingerprint,
+		RegistrationUserAgent:   meta.UserAgent,
 	})
 	if err != nil {
 		slog.Error("failed to register organization", slog.String("error", err.Error()))
@@ -106,11 +114,50 @@ func (h *OrganizationHandler) Register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Get возвращает публичный профиль организации (SEC-019: без персональных данных)
 func (h *OrganizationHandler) Get(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := uuid.Parse(vars["id"])
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+
+	org, err := h.service.Get(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, orgDomain.ErrOrganizationNotFound) {
+			writeError(w, http.StatusNotFound, "organization not found")
+			return
+		}
+		slog.Error("failed to get organization", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to get organization")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapOrganizationToPublicResponse(org))
+}
+
+// GetFull возвращает полные данные организации (только для членов организации)
+// SEC-019: BOLA fix - проверяем принадлежность пользователя к организации
+func (h *OrganizationHandler) GetFull(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+
+	// Проверяем авторизацию
+	_, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// SEC-019: BOLA fix - только члены организации могут видеть полные данные
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != id {
+		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
 
@@ -206,11 +253,17 @@ func (h *OrganizationHandler) AcceptInvitation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Extract client metadata for fraud detection
+	meta := httputil.GetClientMetadata(r)
+
 	output, err := h.service.AcceptInvitation(r.Context(), organization.AcceptInvitationInput{
-		Token:    token,
-		Password: req.Password,
-		Name:     req.Name,
-		Phone:    req.Phone,
+		Token:                   token,
+		Password:                req.Password,
+		Name:                    req.Name,
+		Phone:                   req.Phone,
+		RegistrationIP:          meta.IP,
+		RegistrationFingerprint: meta.Fingerprint,
+		RegistrationUserAgent:   meta.UserAgent,
 	})
 	if err != nil {
 		handleDomainError(w, err)
@@ -290,6 +343,13 @@ func (h *OrganizationHandler) ListInvitations(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// SEC-008: BOLA fix - проверяем что пользователь принадлежит к запрашиваемой организации
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != orgID {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
 	// Получаем опциональный фильтр по статусу
 	var status *string
 	if s := r.URL.Query().Get("status"); s != "" {
@@ -342,6 +402,13 @@ func (h *OrganizationHandler) CancelInvitation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// SEC-008: BOLA fix - проверяем принадлежность к организации
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != orgID {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
 	if err := h.service.CancelInvitation(r.Context(), organization.CancelInvitationInput{
 		OrganizationID: orgID,
 		ActorID:        actorID,
@@ -374,6 +441,13 @@ func (h *OrganizationHandler) ChangeMemberRole(w http.ResponseWriter, r *http.Re
 	actorID, ok := h.session.GetMemberID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// SEC-008: BOLA fix - проверяем принадлежность к организации
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != orgID {
+		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
 
@@ -425,6 +499,13 @@ func (h *OrganizationHandler) BlockMember(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// SEC-008: BOLA fix - проверяем принадлежность к организации
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != orgID {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
 	var req BlockMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -460,6 +541,13 @@ func (h *OrganizationHandler) UnblockMember(w http.ResponseWriter, r *http.Reque
 	actorID, ok := h.session.GetMemberID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// SEC-008: BOLA fix - проверяем принадлежность к организации
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != orgID {
+		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
 
@@ -511,6 +599,22 @@ func handleDomainError(w http.ResponseWriter, err error) {
 	}
 }
 
+// PublicOrganizationResponse - публичный профиль организации (для маркета, контрагентов)
+// SEC-019: Содержит контактные данные организации, но НЕ содержит список сотрудников (members)
+type PublicOrganizationResponse struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	INN       string `json:"inn"`
+	LegalName string `json:"legal_name"`
+	Country   string `json:"country"`
+	Phone     string `json:"phone"`
+	Email     string `json:"email"`
+	Address   string `json:"address"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+}
+
+// OrganizationResponse - полные данные организации (только для членов организации)
 type OrganizationResponse struct {
 	ID        string           `json:"id"`
 	Name      string           `json:"name"`
@@ -533,6 +637,21 @@ type MemberResponse struct {
 	Role      string `json:"role"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
+}
+
+func mapOrganizationToPublicResponse(org *orgDomain.Organization) PublicOrganizationResponse {
+	return PublicOrganizationResponse{
+		ID:        org.ID().String(),
+		Name:      org.Name(),
+		INN:       org.INN(),
+		LegalName: org.LegalName(),
+		Country:   org.Country().String(),
+		Phone:     org.Phone(),
+		Email:     org.Email(),
+		Address:   org.Address().String(),
+		Status:    org.Status().String(),
+		CreatedAt: org.CreatedAt().Format("2006-01-02T15:04:05Z"),
+	}
 }
 
 func mapOrganizationToResponse(org *orgDomain.Organization) OrganizationResponse {
@@ -567,18 +686,20 @@ func mapOrganizationToResponse(org *orgDomain.Organization) OrganizationResponse
 // Rating response types
 
 type RatingResponse struct {
-	TotalReviews  int     `json:"total_reviews"`
-	AverageRating float64 `json:"average_rating"`
+	TotalReviews    int     `json:"total_reviews"`
+	AverageRating   float64 `json:"average_rating"`
+	WeightedAverage float64 `json:"weighted_average"`
+	PendingReviews  int     `json:"pending_reviews"`
 }
 
 type OrgReviewResponse struct {
-	ID              string `json:"id"`
-	OrderID         string `json:"order_id"`
-	ReviewerOrgID   string `json:"reviewer_org_id"`
-	ReviewerOrgName string `json:"reviewer_org_name"`
-	Rating          int    `json:"rating"`
-	Comment         string `json:"comment"`
-	CreatedAt       string `json:"created_at"`
+	ID            string  `json:"id"`
+	OrderID       string  `json:"order_id"`
+	ReviewerOrgID string  `json:"reviewer_org_id"`
+	Rating        int     `json:"rating"`
+	Comment       string  `json:"comment"`
+	Weight        float64 `json:"weight"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 type ReviewsListResponse struct {
@@ -602,8 +723,10 @@ func (h *OrganizationHandler) GetRating(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, RatingResponse{
-		TotalReviews:  rating.TotalReviews,
-		AverageRating: rating.AverageRating,
+		TotalReviews:    rating.TotalReviews,
+		AverageRating:   rating.AverageRating,
+		WeightedAverage: rating.WeightedAverage,
+		PendingReviews:  rating.PendingReviews,
 	})
 }
 
@@ -639,13 +762,13 @@ func (h *OrganizationHandler) ListReviews(w http.ResponseWriter, r *http.Request
 	items := make([]OrgReviewResponse, 0, len(reviews))
 	for _, review := range reviews {
 		items = append(items, OrgReviewResponse{
-			ID:              review.ID.String(),
-			OrderID:         review.OrderID.String(),
-			ReviewerOrgID:   review.ReviewerOrgID.String(),
-			ReviewerOrgName: review.ReviewerOrgName,
-			Rating:          review.Rating,
-			Comment:         review.Comment,
-			CreatedAt:       review.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			ID:            review.ID.String(),
+			OrderID:       review.OrderID.String(),
+			ReviewerOrgID: review.ReviewerOrgID.String(),
+			Rating:        review.Rating,
+			Comment:       review.Comment,
+			Weight:        review.FinalWeight,
+			CreatedAt:     review.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		})
 	}
 

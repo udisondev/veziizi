@@ -8,6 +8,8 @@ import (
 	historyApp "codeberg.org/udison/veziizi/backend/internal/application/history"
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
+	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
+	sessionApp "codeberg.org/udison/veziizi/backend/internal/application/session"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
@@ -41,6 +43,9 @@ type Factory struct {
 	historyService *historyApp.Service
 	historyOnce    sync.Once
 
+	reviewService *reviewApp.Service
+	reviewOnce    sync.Once
+
 	// Projections (lazy)
 	membersProjection     *projections.MembersProjection
 	membersOnce           sync.Once
@@ -59,6 +64,25 @@ type Factory struct {
 
 	ratingsProjection *projections.OrganizationRatingsProjection
 	ratingsOnce       sync.Once
+
+	fraudDataProjection *projections.FraudDataProjection
+	fraudDataOnce       sync.Once
+
+	reviewsProjection *projections.ReviewsProjection
+	reviewsOnce       sync.Once
+
+	orderFraudProjection *projections.OrderFraudProjection
+	orderFraudOnce       sync.Once
+
+	sessionFraudProjection *projections.SessionFraudProjection
+	sessionFraudOnce       sync.Once
+
+	// Analyzers (lazy)
+	reviewAnalyzer *reviewApp.Analyzer
+	analyzerOnce   sync.Once
+
+	sessionAnalyzer *sessionApp.SessionAnalyzer
+	sessionOnce     sync.Once
 
 	// Sequence generator (lazy)
 	seqGen     *sequence.Generator
@@ -135,6 +159,13 @@ func (f *Factory) HistoryService() *historyApp.Service {
 	return f.historyService
 }
 
+func (f *Factory) ReviewService() *reviewApp.Service {
+	f.reviewOnce.Do(func() {
+		f.reviewService = reviewApp.NewService(f.db, f.eventStore, f.publisher)
+	})
+	return f.reviewService
+}
+
 // Projections
 
 func (f *Factory) MembersProjection() *projections.MembersProjection {
@@ -177,6 +208,53 @@ func (f *Factory) OrganizationRatingsProjection() *projections.OrganizationRatin
 		f.ratingsProjection = projections.NewOrganizationRatingsProjection(f.db)
 	})
 	return f.ratingsProjection
+}
+
+func (f *Factory) FraudDataProjection() *projections.FraudDataProjection {
+	f.fraudDataOnce.Do(func() {
+		f.fraudDataProjection = projections.NewFraudDataProjection(f.db)
+	})
+	return f.fraudDataProjection
+}
+
+func (f *Factory) ReviewsProjection() *projections.ReviewsProjection {
+	f.reviewsOnce.Do(func() {
+		f.reviewsProjection = projections.NewReviewsProjection(f.db)
+	})
+	return f.reviewsProjection
+}
+
+func (f *Factory) OrderFraudProjection() *projections.OrderFraudProjection {
+	f.orderFraudOnce.Do(func() {
+		f.orderFraudProjection = projections.NewOrderFraudProjection(f.db)
+	})
+	return f.orderFraudProjection
+}
+
+func (f *Factory) SessionFraudProjection() *projections.SessionFraudProjection {
+	f.sessionFraudOnce.Do(func() {
+		f.sessionFraudProjection = projections.NewSessionFraudProjection(f.db)
+	})
+	return f.sessionFraudProjection
+}
+
+// Analyzers
+
+func (f *Factory) ReviewAnalyzer() *reviewApp.Analyzer {
+	f.analyzerOnce.Do(func() {
+		f.reviewAnalyzer = reviewApp.NewAnalyzer(
+			f.FraudDataProjection(),
+			f.MembersProjection(),
+		)
+	})
+	return f.reviewAnalyzer
+}
+
+func (f *Factory) SessionAnalyzer() *sessionApp.SessionAnalyzer {
+	f.sessionOnce.Do(func() {
+		f.sessionAnalyzer = sessionApp.NewSessionAnalyzer(f.SessionFraudProjection())
+	})
+	return f.sessionAnalyzer
 }
 
 func (f *Factory) SequenceGenerator() *sequence.Generator {

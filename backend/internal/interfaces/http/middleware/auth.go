@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -22,9 +23,7 @@ var publicPrefixes = []struct {
 	{"/api/v1/invitations/", http.MethodGet},  // get invitation by token
 	{"/api/v1/invitations/", http.MethodPost}, // accept invitation
 	{"/api/v1/admin/auth/", http.MethodPost},  // admin login/logout
-	{"/api/v1/dev/", http.MethodGet},          // dev endpoints (status, users)
-	{"/api/v1/dev/", http.MethodPost},         // dev endpoints (switch user)
-	{"/api/v1/dev/", http.MethodDelete},       // dev endpoints (delete user)
+	// DEV ENDPOINTS REMOVED - SEC-001: они защищены через DevOnly middleware и проверку IsDevelopment()
 }
 
 // isPublicPath checks if the path and method combination is public
@@ -94,5 +93,7 @@ func RequireAdminAuth(adminSession *session.AdminManager) func(http.Handler) htt
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": message}); err != nil {
+		slog.Error("failed to encode error response", slog.String("error", err.Error()))
+	}
 }

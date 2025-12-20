@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"os"
 
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest"
 	frEvents "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 	"codeberg.org/udison/veziizi/backend/internal/domain/organization"

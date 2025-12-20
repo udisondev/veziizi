@@ -92,10 +92,12 @@ func (p *MembersProjection) ListAll(ctx context.Context, search string, limit in
 		OrderBy("created_at DESC")
 
 	if search != "" {
+		// SEC-014: Экранируем спецсимволы ILIKE
+		escapedSearch := WrapLikePattern(search)
 		builder = builder.Where(
 			squirrel.Or{
-				squirrel.ILike{"email": "%" + search + "%"},
-				squirrel.ILike{"name": "%" + search + "%"},
+				squirrel.ILike{"email": escapedSearch},
+				squirrel.ILike{"name": escapedSearch},
 			},
 		)
 	}
@@ -145,6 +147,251 @@ func (p *MembersProjection) GetNames(ctx context.Context, ids []uuid.UUID) (map[
 	result := make(map[uuid.UUID]string, len(rows))
 	for _, row := range rows {
 		result[row.ID] = row.Name
+	}
+
+	return result, nil
+}
+
+// RecordLogin updates last_login_* fields after successful login
+func (p *MembersProjection) RecordLogin(ctx context.Context, memberID uuid.UUID, ip, fingerprint string) error {
+	builder := p.psql.
+		Update("members_lookup").
+		Set("last_login_at", squirrel.Expr("NOW()")).
+		Where(squirrel.Eq{"id": memberID})
+
+	if ip != "" {
+		builder = builder.Set("last_login_ip", ip)
+	}
+	if fingerprint != "" {
+		builder = builder.Set("last_login_fingerprint", fingerprint)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build update query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to update last login: %w", err)
+	}
+
+	return nil
+}
+
+// LoginHistoryEntry represents a login history record
+type LoginHistoryEntry struct {
+	ID             uuid.UUID `db:"id"`
+	MemberID       uuid.UUID `db:"member_id"`
+	OrganizationID uuid.UUID `db:"organization_id"`
+	IPAddress      *string   `db:"ip_address"`
+	Fingerprint    *string   `db:"fingerprint"`
+	UserAgent      *string   `db:"user_agent"`
+	Status         string    `db:"status"`
+	CreatedAt      time.Time `db:"created_at"`
+}
+
+// RecordLoginHistory records a login attempt in history
+func (p *MembersProjection) RecordLoginHistory(
+	ctx context.Context,
+	memberID, orgID uuid.UUID,
+	ip, fingerprint, userAgent, status string,
+) error {
+	var ipVal, fpVal, uaVal any
+	if ip != "" {
+		ipVal = ip
+	}
+	if fingerprint != "" {
+		fpVal = fingerprint
+	}
+	if userAgent != "" {
+		uaVal = userAgent
+	}
+
+	query, args, err := p.psql.
+		Insert("member_login_history").
+		Columns("member_id", "organization_id", "ip_address", "fingerprint", "user_agent", "status").
+		Values(memberID, orgID, ipVal, fpVal, uaVal, status).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build insert query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to insert login history: %w", err)
+	}
+
+	return nil
+}
+
+// GetLoginHistory retrieves login history for a member
+func (p *MembersProjection) GetLoginHistory(ctx context.Context, memberID uuid.UUID, limit int) ([]LoginHistoryEntry, error) {
+	query, args, err := p.psql.
+		Select("id", "member_id", "organization_id", "ip_address", "fingerprint", "user_agent", "status", "created_at").
+		From("member_login_history").
+		Where(squirrel.Eq{"member_id": memberID}).
+		OrderBy("created_at DESC").
+		Limit(uint64(limit)).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	var entries []LoginHistoryEntry
+	if err := pgxscan.Select(ctx, p.db, &entries, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get login history: %w", err)
+	}
+
+	return entries, nil
+}
+
+// MemberMetadata contains registration and login metadata for a member
+type MemberMetadata struct {
+	MemberID                uuid.UUID  `db:"id"`
+	OrganizationID          uuid.UUID  `db:"organization_id"`
+	RegistrationIP          *string    `db:"registration_ip"`
+	RegistrationFingerprint *string    `db:"registration_fingerprint"`
+	LastLoginIP             *string    `db:"last_login_ip"`
+	LastLoginFingerprint    *string    `db:"last_login_fingerprint"`
+	LastLoginAt             *time.Time `db:"last_login_at"`
+}
+
+// GetOrganizationsByIP finds organization IDs that have members with matching IP
+// (either registration_ip or last_login_ip)
+func (p *MembersProjection) GetOrganizationsByIP(ctx context.Context, ip string) ([]uuid.UUID, error) {
+	query, args, err := p.psql.
+		Select("DISTINCT organization_id").
+		From("members_lookup").
+		Where(squirrel.Or{
+			squirrel.Eq{"registration_ip": ip},
+			squirrel.Eq{"last_login_ip": ip},
+		}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	var orgIDs []uuid.UUID
+	if err := pgxscan.Select(ctx, p.db, &orgIDs, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get organizations by IP: %w", err)
+	}
+
+	return orgIDs, nil
+}
+
+// GetOrganizationsByFingerprint finds organization IDs that have members with matching fingerprint
+// (either registration_fingerprint or last_login_fingerprint)
+func (p *MembersProjection) GetOrganizationsByFingerprint(ctx context.Context, fingerprint string) ([]uuid.UUID, error) {
+	query, args, err := p.psql.
+		Select("DISTINCT organization_id").
+		From("members_lookup").
+		Where(squirrel.Or{
+			squirrel.Eq{"registration_fingerprint": fingerprint},
+			squirrel.Eq{"last_login_fingerprint": fingerprint},
+		}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	var orgIDs []uuid.UUID
+	if err := pgxscan.Select(ctx, p.db, &orgIDs, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get organizations by fingerprint: %w", err)
+	}
+
+	return orgIDs, nil
+}
+
+// GetMemberMetadata retrieves metadata for all members of an organization
+func (p *MembersProjection) GetMemberMetadata(ctx context.Context, orgID uuid.UUID) ([]MemberMetadata, error) {
+	query, args, err := p.psql.
+		Select(
+			"id", "organization_id",
+			"registration_ip", "registration_fingerprint",
+			"last_login_ip", "last_login_fingerprint", "last_login_at",
+		).
+		From("members_lookup").
+		Where(squirrel.Eq{"organization_id": orgID}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	var metadata []MemberMetadata
+	if err := pgxscan.Select(ctx, p.db, &metadata, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get member metadata: %w", err)
+	}
+
+	return metadata, nil
+}
+
+// RegistrationVelocity contains velocity check thresholds
+var RegistrationVelocity = struct {
+	MaxRegistrationsPerIPPerHour           int
+	MaxRegistrationsPerFingerprintPer24h   int
+}{
+	MaxRegistrationsPerIPPerHour:           3,
+	MaxRegistrationsPerFingerprintPer24h:   2,
+}
+
+// RegistrationVelocityResult contains velocity check result
+type RegistrationVelocityResult struct {
+	IsTooFast           bool
+	IPRegistrations     int
+	FPRegistrations     int
+	BlockReason         string
+}
+
+// CheckRegistrationVelocity checks if registration is happening too fast from same IP/fingerprint
+// Returns true if velocity exceeds thresholds
+func (p *MembersProjection) CheckRegistrationVelocity(ctx context.Context, ip, fingerprint string) (*RegistrationVelocityResult, error) {
+	result := &RegistrationVelocityResult{}
+
+	// Check IP velocity (last hour)
+	if ip != "" {
+		query := `
+			SELECT COUNT(*)
+			FROM members_lookup
+			WHERE registration_ip = $1
+			  AND created_at > NOW() - INTERVAL '1 hour'
+		`
+		var count int
+		if err := p.db.QueryRow(ctx, query, ip).Scan(&count); err != nil {
+			return nil, fmt.Errorf("failed to check IP velocity: %w", err)
+		}
+		result.IPRegistrations = count
+
+		if count >= RegistrationVelocity.MaxRegistrationsPerIPPerHour {
+			result.IsTooFast = true
+			result.BlockReason = fmt.Sprintf(
+				"too many registrations from this IP (%d in last hour, max %d)",
+				count, RegistrationVelocity.MaxRegistrationsPerIPPerHour,
+			)
+			return result, nil
+		}
+	}
+
+	// Check fingerprint velocity (last 24 hours)
+	if fingerprint != "" {
+		query := `
+			SELECT COUNT(*)
+			FROM members_lookup
+			WHERE registration_fingerprint = $1
+			  AND created_at > NOW() - INTERVAL '24 hours'
+		`
+		var count int
+		if err := p.db.QueryRow(ctx, query, fingerprint).Scan(&count); err != nil {
+			return nil, fmt.Errorf("failed to check fingerprint velocity: %w", err)
+		}
+		result.FPRegistrations = count
+
+		if count >= RegistrationVelocity.MaxRegistrationsPerFingerprintPer24h {
+			result.IsTooFast = true
+			result.BlockReason = fmt.Sprintf(
+				"too many registrations from this device (%d in last 24 hours, max %d)",
+				count, RegistrationVelocity.MaxRegistrationsPerFingerprintPer24h,
+			)
+			return result, nil
+		}
 	}
 
 	return result, nil

@@ -5,4 +5,10 @@ worker-pending-orgs: go run ./backend/cmd/workers/pending-organizations
 worker-freight: go run ./backend/cmd/workers/freight-requests
 worker-orders: go run ./backend/cmd/workers/orders
 worker-order-creator: go run ./backend/cmd/workers/order-creator
+worker-review-receiver: go run ./backend/cmd/workers/review-receiver
+worker-review-analyzer: go run ./backend/cmd/workers/review-analyzer
+worker-reviews-projection: go run ./backend/cmd/workers/reviews-projection
+worker-review-activator: go run ./backend/cmd/workers/review-activator
+worker-fraudster-handler: go run ./backend/cmd/workers/fraudster-handler
+worker-order-fraud-analyzer: go run ./backend/cmd/workers/order-fraud-analyzer
 frontend: cd frontend && npm run dev

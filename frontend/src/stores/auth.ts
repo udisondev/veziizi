@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth'
+import { getFingerprint } from '@/composables/useFingerprint'
 import type {
   MemberRole,
   OrganizationBrief,
@@ -24,7 +25,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(credentials: LoginRequest): Promise<void> {
     isLoading.value = true
     try {
-      await authApi.login(credentials)
+      const fingerprint = await getFingerprint()
+      await authApi.login(credentials, fingerprint)
       await fetchMe()
     } finally {
       isLoading.value = false

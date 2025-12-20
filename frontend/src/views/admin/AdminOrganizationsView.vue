@@ -55,7 +55,20 @@ async function handleLogout() {
     <!-- Header -->
     <header class="bg-gray-800 shadow">
       <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-        <h1 class="text-xl font-bold text-white">Панель администратора</h1>
+        <div class="flex items-center gap-6">
+          <h1 class="text-xl font-bold text-white">Панель администратора</h1>
+          <nav class="flex gap-4">
+            <router-link to="/admin/organizations" class="text-white text-sm font-medium">
+              Организации
+            </router-link>
+            <router-link to="/admin/reviews" class="text-gray-400 hover:text-white text-sm">
+              Отзывы
+            </router-link>
+            <router-link to="/admin/fraudsters" class="text-gray-400 hover:text-white text-sm">
+              Накрутчики
+            </router-link>
+          </nav>
+        </div>
         <div class="flex items-center gap-4">
           <span class="text-gray-400 text-sm">{{ admin.email }}</span>
           <button

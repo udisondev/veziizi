@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
@@ -277,7 +278,12 @@ type eventRow struct {
 func (r eventRow) toEnvelope() EventEnvelope {
 	var metadata map[string]string
 	if len(r.Metadata) > 0 {
-		_ = json.Unmarshal(r.Metadata, &metadata)
+		// SEC-018: Логируем ошибки unmarshal вместо игнорирования
+		if err := json.Unmarshal(r.Metadata, &metadata); err != nil {
+			slog.Error("SEC-018: failed to unmarshal event metadata",
+				slog.String("event_id", r.ID.String()),
+				slog.String("error", err.Error()))
+		}
 	}
 
 	return EventEnvelope{

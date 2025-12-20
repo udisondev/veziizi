@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -19,6 +20,9 @@ import (
 )
 
 const invitationTTL = 7 * 24 * time.Hour // 7 days
+
+// SEC-007: bcrypt cost 12 вместо DefaultCost (10) для защиты от GPU перебора
+const bcryptCost = 12
 
 type Service struct {
 	db          dbtx.TxManager
@@ -56,6 +60,10 @@ type RegisterInput struct {
 	OwnerPassword string
 	OwnerName     string
 	OwnerPhone    string
+	// Registration metadata for fraud detection
+	RegistrationIP          string
+	RegistrationFingerprint string
+	RegistrationUserAgent   string
 }
 
 type RegisterOutput struct {
@@ -64,7 +72,12 @@ type RegisterOutput struct {
 }
 
 func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterOutput, error) {
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.OwnerPassword), bcrypt.DefaultCost)
+	// Validate registration (email pattern + velocity)
+	if err := s.validateRegistration(ctx, input.OwnerEmail, input.RegistrationIP, input.RegistrationFingerprint); err != nil {
+		return nil, err
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.OwnerPassword), bcryptCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -86,6 +99,9 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterO
 		string(passwordHash),
 		input.OwnerName,
 		input.OwnerPhone,
+		input.RegistrationIP,
+		input.RegistrationFingerprint,
+		input.RegistrationUserAgent,
 	)
 
 	if err := s.saveAndPublish(ctx, org); err != nil {
@@ -230,6 +246,10 @@ type AcceptInvitationInput struct {
 	Password string
 	Name     *string // опционально, если не предзаполнено в приглашении
 	Phone    *string // опционально, если не предзаполнено в приглашении
+	// Registration metadata for fraud detection
+	RegistrationIP          string
+	RegistrationFingerprint string
+	RegistrationUserAgent   string
 }
 
 type AcceptInvitationOutput struct {
@@ -243,19 +263,33 @@ func (s *Service) AcceptInvitation(ctx context.Context, input AcceptInvitationIn
 		return nil, organization.ErrInvitationNotFound
 	}
 
+	// Validate registration (email pattern + velocity)
+	if err := s.validateRegistration(ctx, inv.Email, input.RegistrationIP, input.RegistrationFingerprint); err != nil {
+		return nil, err
+	}
+
 	org, err := s.Get(ctx, inv.OrganizationID)
 	if err != nil {
 		return nil, err
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcryptCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	memberID := uuid.New()
 
-	if err := org.AcceptInvitation(inv.ID, memberID, string(passwordHash), input.Name, input.Phone); err != nil {
+	if err := org.AcceptInvitation(
+		inv.ID,
+		memberID,
+		string(passwordHash),
+		input.Name,
+		input.Phone,
+		input.RegistrationIP,
+		input.RegistrationFingerprint,
+		input.RegistrationUserAgent,
+	); err != nil {
 		return nil, err
 	}
 
@@ -441,7 +475,7 @@ func (s *Service) AddMemberDirect(ctx context.Context, input AddMemberInput) (uu
 		return uuid.Nil, err
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcryptCost)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -457,6 +491,53 @@ func (s *Service) AddMemberDirect(ctx context.Context, input AddMemberInput) (uu
 	}
 
 	return memberID, nil
+}
+
+// validateRegistration checks email patterns and registration velocity
+// Returns error if registration should be blocked
+func (s *Service) validateRegistration(ctx context.Context, email, ip, fingerprint string) error {
+	// 1. Check email pattern (disposable domains, suspicious patterns)
+	emailResult := values.ValidateEmail(email)
+	if !emailResult.IsValid {
+		return fmt.Errorf("invalid email: %s", emailResult.BlockReason)
+	}
+	if emailResult.IsSuspect && emailResult.BlockReason != "" {
+		// Disposable email - block
+		slog.Warn("registration blocked: suspicious email",
+			slog.String("email", email),
+			slog.String("reason", emailResult.Reason),
+		)
+		return organization.ErrDisposableEmail
+	}
+	if emailResult.IsSuspect {
+		// Suspicious pattern but not blocking - just log
+		slog.Info("registration: suspicious email pattern detected",
+			slog.String("email", email),
+			slog.String("reason", emailResult.Reason),
+		)
+	}
+
+	// 2. Check registration velocity (IP + fingerprint)
+	velocityResult, err := s.members.CheckRegistrationVelocity(ctx, ip, fingerprint)
+	if err != nil {
+		slog.Error("failed to check registration velocity",
+			slog.String("error", err.Error()),
+			slog.String("ip", ip),
+		)
+		// Don't block on error, just log
+		return nil
+	}
+	if velocityResult.IsTooFast {
+		slog.Warn("registration blocked: velocity exceeded",
+			slog.String("ip", ip),
+			slog.String("reason", velocityResult.BlockReason),
+			slog.Int("ip_registrations", velocityResult.IPRegistrations),
+			slog.Int("fp_registrations", velocityResult.FPRegistrations),
+		)
+		return fmt.Errorf("%w: %s", organization.ErrRegistrationVelocity, velocityResult.BlockReason)
+	}
+
+	return nil
 }
 
 func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organization) error {

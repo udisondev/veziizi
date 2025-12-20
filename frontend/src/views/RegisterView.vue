@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { vMaska } from 'maska/vue'
 import { useRegistrationForm, innLabels, innPlaceholders, countryNames } from '@/composables/useRegistrationForm'
 import { organizationsApi } from '@/api/organizations'
+import { getFingerprint } from '@/composables/useFingerprint'
 import type { Country } from '@/types/registration'
 
 const router = useRouter()
@@ -28,7 +29,8 @@ async function handleSubmit() {
   isLoading.value = true
 
   try {
-    await organizationsApi.register(requestData.value)
+    const fingerprint = await getFingerprint()
+    await organizationsApi.register(requestData.value, fingerprint)
     router.push({
       path: '/login',
       query: { registered: 'true' },

@@ -105,3 +105,46 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 		return nil
 	})
 }
+
+// MarkFraudsterInput contains data for marking organization as fraudster
+type MarkFraudsterInput struct {
+	AdminID        uuid.UUID
+	OrganizationID uuid.UUID
+	IsConfirmed    bool
+	Reason         string
+}
+
+// MarkFraudster marks organization as fraudster
+func (s *Service) MarkFraudster(ctx context.Context, input MarkFraudsterInput) error {
+	org, err := s.GetOrganization(ctx, input.OrganizationID)
+	if err != nil {
+		return err
+	}
+
+	if err := org.MarkAsFraudster(input.AdminID, input.IsConfirmed, input.Reason); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, org)
+}
+
+// UnmarkFraudsterInput contains data for unmarking organization as fraudster
+type UnmarkFraudsterInput struct {
+	AdminID        uuid.UUID
+	OrganizationID uuid.UUID
+	Reason         string
+}
+
+// UnmarkFraudster removes fraudster status from organization
+func (s *Service) UnmarkFraudster(ctx context.Context, input UnmarkFraudsterInput) error {
+	org, err := s.GetOrganization(ctx, input.OrganizationID)
+	if err != nil {
+		return err
+	}
+
+	if err := org.UnmarkFraudster(input.AdminID, input.Reason); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, org)
+}
