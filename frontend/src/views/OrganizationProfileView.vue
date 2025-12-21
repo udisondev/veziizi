@@ -137,8 +137,8 @@ watch(() => route.params.id, () => {
         <div class="bg-white rounded-lg shadow p-6">
           <div class="flex items-start justify-between">
             <div>
-              <h1 class="text-2xl font-bold text-gray-900">{{ organization.name }}</h1>
-              <p class="text-gray-500 mt-1">{{ organization.legal_name }}</p>
+              <h1 class="text-2xl font-bold text-gray-900 break-words">{{ organization.name }}</h1>
+              <p class="text-gray-500 mt-1 break-words">{{ organization.legal_name }}</p>
 
               <!-- Rating -->
               <div v-if="rating" class="flex items-center gap-2 mt-3">
@@ -188,7 +188,7 @@ watch(() => route.params.id, () => {
             </div>
             <div class="sm:col-span-2">
               <dt class="text-sm text-gray-500">Адрес</dt>
-              <dd class="text-gray-900">{{ organization.address }}</dd>
+              <dd class="text-gray-900 break-words">{{ organization.address }}</dd>
             </div>
             <div>
               <dt class="text-sm text-gray-500">Дата регистрации</dt>
@@ -237,7 +237,7 @@ watch(() => route.params.id, () => {
                   {{ formatDateTime(review.created_at) }}
                 </div>
               </div>
-              <p v-if="review.comment" class="text-gray-700 mt-2">{{ review.comment }}</p>
+              <p v-if="review.comment" class="text-gray-700 mt-2 break-words">{{ review.comment }}</p>
             </div>
 
             <!-- Load More Button -->

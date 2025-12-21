@@ -9,6 +9,8 @@ import (
 	frEvents "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order/events"
+	"codeberg.org/udison/veziizi/backend/internal/domain/organization"
+	orgEvents "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
@@ -301,4 +303,95 @@ func (s *Service) saveAndPublish(ctx context.Context, o *order.Order) error {
 		o.ClearChanges()
 		return nil
 	})
+}
+
+func (s *Service) getOrganization(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
+	evts, err := s.eventStore.Load(ctx, id, orgEvents.AggregateType)
+	if err != nil {
+		return nil, fmt.Errorf("load organization: %w", err)
+	}
+	return organization.NewFromEvents(id, evts), nil
+}
+
+type ReassignMemberInput struct {
+	OrderID     uuid.UUID
+	ActorID     uuid.UUID
+	ActorOrgID  uuid.UUID
+	NewMemberID uuid.UUID
+}
+
+// ReassignCustomerMember переназначает ответственного со стороны заказчика
+func (s *Service) ReassignCustomerMember(ctx context.Context, input ReassignMemberInput) error {
+	// Проверяем права актора (owner/administrator организации-заказчика)
+	org, err := s.getOrganization(ctx, input.ActorOrgID)
+	if err != nil {
+		return err
+	}
+
+	actor, ok := org.GetMember(input.ActorID)
+	if !ok {
+		return organization.ErrMemberNotFound
+	}
+	if !actor.CanManageMembers() {
+		return organization.ErrInsufficientPermissions
+	}
+
+	// Проверяем что новый member существует в организации
+	if _, ok := org.GetMember(input.NewMemberID); !ok {
+		return organization.ErrMemberNotFound
+	}
+
+	o, err := s.Get(ctx, input.OrderID)
+	if err != nil {
+		return err
+	}
+
+	// Проверяем что актор из организации-заказчика
+	if o.CustomerOrgID() != input.ActorOrgID {
+		return order.ErrNotOrderParticipant
+	}
+
+	if err := o.ReassignCustomerMember(input.ActorID, input.NewMemberID); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, o)
+}
+
+// ReassignCarrierMember переназначает ответственного со стороны перевозчика
+func (s *Service) ReassignCarrierMember(ctx context.Context, input ReassignMemberInput) error {
+	// Проверяем права актора (owner/administrator организации-перевозчика)
+	org, err := s.getOrganization(ctx, input.ActorOrgID)
+	if err != nil {
+		return err
+	}
+
+	actor, ok := org.GetMember(input.ActorID)
+	if !ok {
+		return organization.ErrMemberNotFound
+	}
+	if !actor.CanManageMembers() {
+		return organization.ErrInsufficientPermissions
+	}
+
+	// Проверяем что новый member существует в организации
+	if _, ok := org.GetMember(input.NewMemberID); !ok {
+		return organization.ErrMemberNotFound
+	}
+
+	o, err := s.Get(ctx, input.OrderID)
+	if err != nil {
+		return err
+	}
+
+	// Проверяем что актор из организации-перевозчика
+	if o.CarrierOrgID() != input.ActorOrgID {
+		return order.ErrNotOrderParticipant
+	}
+
+	if err := o.ReassignCarrierMember(input.ActorID, input.NewMemberID); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, o)
 }

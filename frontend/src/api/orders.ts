@@ -94,4 +94,9 @@ export const ordersApi = {
   leaveReview(orderId: string, data: LeaveReviewRequest): Promise<void> {
     return api.post(`/orders/${orderId}/review`, data)
   },
+
+  // Reassign responsible member in order
+  reassign(orderId: string, newMemberId: string): Promise<void> {
+    return api.post(`/orders/${orderId}/reassign`, { new_member_id: newMemberId })
+  },
 }

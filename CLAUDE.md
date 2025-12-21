@@ -87,7 +87,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 **Factory** (`backend/internal/pkg/factory/`):
 - Lazy-initialized, thread-safe dependency container (sync.Once)
 - Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`, `ReviewService()`, `HistoryService()`
-- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`
+- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `OrganizationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`
 - Creates analyzers: `ReviewAnalyzer()`, `SessionAnalyzer()`
 - Used by both API and workers
 
@@ -114,6 +114,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 | members | organization.events | members | Update members_lookup |
 | invitations | organization.events | invitations | Update invitations_lookup |
 | pending-organizations | organization.events | pending_organizations | Update pending_organizations |
+| organizations | organization.events | organizations_projection | Update organizations_lookup |
 | freight-requests | freightrequest.events | freight_requests | Update freight_requests_lookup, offers_lookup |
 | orders | order.events | orders | Update orders_lookup |
 | order-creator | freightrequest.events | order_creator | Create Order on OfferConfirmed |
@@ -125,7 +126,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 | order-fraud-analyzer | order.events | order_fraud_analyzer | Detect order fraud: cancel patterns, ghost deliveries, circular orders |
 
 **Event Imports per Worker:**
-- `members`, `invitations`, `pending-organizations`, `fraudster-handler`: `organization/events`
+- `members`, `invitations`, `pending-organizations`, `organizations`, `fraudster-handler`: `organization/events`
 - `freight-requests`: `freightrequest/events`
 - `orders`, `order-fraud-analyzer`: `order/events`
 - `order-creator`: `freightrequest/events`, `order/events` (слушает freightrequest, создаёт order)
@@ -214,6 +215,7 @@ backend/
 │       ├── members/
 │       ├── invitations/
 │       ├── pending-organizations/
+│       ├── organizations/
 │       ├── freight-requests/
 │       ├── orders/
 │       ├── order-creator/

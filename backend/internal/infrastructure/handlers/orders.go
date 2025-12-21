@@ -69,6 +69,10 @@ func (h *OrdersHandler) handleEvent(ctx context.Context, evt eventstore.Event) e
 		// ReviewLeft теперь обрабатывается в review-receiver worker
 		slog.Debug("review left (handled by review-receiver)", slog.String("order_id", e.AggregateID().String()))
 		return nil
+	case events.CustomerMemberReassigned:
+		return h.onCustomerMemberReassigned(ctx, e)
+	case events.CarrierMemberReassigned:
+		return h.onCarrierMemberReassigned(ctx, e)
 	}
 	return nil
 }
@@ -152,6 +156,46 @@ func (h *OrdersHandler) updateStatus(ctx context.Context, id uuid.UUID, status s
 		return fmt.Errorf("update order status: %w", err)
 	}
 
+	return nil
+}
+
+func (h *OrdersHandler) onCustomerMemberReassigned(ctx context.Context, e events.CustomerMemberReassigned) error {
+	query, args, err := h.psql.
+		Update("orders_lookup").
+		Set("customer_member_id", e.NewMemberID).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build customer member reassign query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update customer_member_id: %w", err)
+	}
+
+	slog.Debug("order customer member reassigned",
+		slog.String("order_id", e.AggregateID().String()),
+		slog.String("new_member_id", e.NewMemberID.String()))
+	return nil
+}
+
+func (h *OrdersHandler) onCarrierMemberReassigned(ctx context.Context, e events.CarrierMemberReassigned) error {
+	query, args, err := h.psql.
+		Update("orders_lookup").
+		Set("carrier_member_id", e.NewMemberID).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build carrier member reassign query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update carrier_member_id: %w", err)
+	}
+
+	slog.Debug("order carrier member reassigned",
+		slog.String("order_id", e.AggregateID().String()),
+		slog.String("new_member_id", e.NewMemberID.String()))
 	return nil
 }
 

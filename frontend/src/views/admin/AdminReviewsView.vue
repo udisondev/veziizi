@@ -212,7 +212,7 @@ async function handleLogout() {
                   Fraud Score: {{ (review.fraud_score * 100).toFixed(0) }}%
                 </span>
               </div>
-              <p v-if="review.comment" class="text-gray-300 mb-2">{{ review.comment }}</p>
+              <p v-if="review.comment" class="text-gray-300 mb-2 break-words">{{ review.comment }}</p>
               <div class="text-sm text-gray-500">
                 <span>Сумма заказа: {{ formatCurrency(review.order_amount, review.order_currency) }}</span>
                 <span class="mx-2">|</span>
@@ -249,7 +249,7 @@ async function handleLogout() {
                 <div class="font-medium">
                   {{ signalTypeLabels[signal.type] || signal.type }}
                 </div>
-                <div class="text-xs opacity-80">{{ signal.description }}</div>
+                <div class="text-xs opacity-80 break-words">{{ signal.description }}</div>
               </div>
             </div>
           </div>

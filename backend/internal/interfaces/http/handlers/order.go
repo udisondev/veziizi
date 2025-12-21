@@ -15,6 +15,7 @@ import (
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order"
 	"codeberg.org/udison/veziizi/backend/internal/domain/order/entities"
+	"codeberg.org/udison/veziizi/backend/internal/domain/organization"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
@@ -55,6 +56,7 @@ func (h *OrderHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/orders/{id}/complete", h.Complete).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/orders/{id}/cancel", h.Cancel).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/orders/{id}/review", h.LeaveReview).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/orders/{id}/reassign", h.Reassign).Methods(http.MethodPost)
 }
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -630,6 +632,72 @@ func (h *OrderHandler) LeaveReview(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type ReassignOrderRequest struct {
+	NewMemberID string `json:"new_member_id"`
+}
+
+func (h *OrderHandler) Reassign(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orderID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req ReassignOrderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	newMemberID, err := uuid.Parse(req.NewMemberID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid new_member_id")
+		return
+	}
+
+	// Определяем какой метод вызывать в зависимости от организации актора
+	o, err := h.service.Get(r.Context(), orderID)
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	input := orderApp.ReassignMemberInput{
+		OrderID:     orderID,
+		ActorID:     memberID,
+		ActorOrgID:  orgID,
+		NewMemberID: newMemberID,
+	}
+
+	if o.CustomerOrgID() == orgID {
+		err = h.service.ReassignCustomerMember(r.Context(), input)
+	} else if o.CarrierOrgID() == orgID {
+		err = h.service.ReassignCarrierMember(r.Context(), input)
+	} else {
+		writeError(w, http.StatusForbidden, "not an order participant")
+		return
+	}
+
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *OrderHandler) handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, order.ErrOrderNotFound):
@@ -658,6 +726,12 @@ func (h *OrderHandler) handleDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "not document owner")
 	case errors.Is(err, order.ErrEmptyMessage):
 		writeError(w, http.StatusBadRequest, "message content is empty")
+	case errors.Is(err, order.ErrCannotReassignFinishedOrder):
+		writeError(w, http.StatusConflict, "cannot reassign finished order")
+	case errors.Is(err, organization.ErrMemberNotFound):
+		writeError(w, http.StatusNotFound, "member not found")
+	case errors.Is(err, organization.ErrInsufficientPermissions):
+		writeError(w, http.StatusForbidden, "insufficient permissions")
 	default:
 		slog.Error("unhandled domain error", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")

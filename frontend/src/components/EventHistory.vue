@@ -92,9 +92,9 @@ watch(page, loadData)
           :class="getSeverityClass(event.display.severity)"
         >
           <!-- Header: Title and date -->
-          <div class="flex items-start justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <span class="font-medium text-gray-900">
+          <div class="flex items-start justify-between mb-2 gap-2">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+              <span class="font-medium text-gray-900 break-words">
                 {{ event.display.title }}
               </span>
               <span
@@ -110,7 +110,7 @@ watch(page, loadData)
           </div>
 
           <!-- Description -->
-          <p class="text-sm text-gray-600 mb-3">
+          <p class="text-sm text-gray-600 mb-3 break-words">
             {{ event.display.description }}
           </p>
 
@@ -129,7 +129,7 @@ watch(page, loadData)
             <div class="grid grid-cols-2 gap-2">
               <template v-for="field in event.display.fields" :key="field.label">
                 <div class="text-sm text-gray-500">{{ field.label }}</div>
-                <div class="text-sm text-gray-900 font-medium">{{ field.value }}</div>
+                <div class="text-sm text-gray-900 font-medium break-words">{{ field.value }}</div>
               </template>
             </div>
           </div>
@@ -137,17 +137,20 @@ watch(page, loadData)
           <!-- Diffs -->
           <div
             v-if="event.display.diffs && event.display.diffs.length > 0"
-            class="space-y-2"
+            class="space-y-3"
           >
             <div
               v-for="diff in event.display.diffs"
               :key="diff.label"
-              class="flex items-center gap-2 text-sm"
+              class="text-sm"
             >
-              <span class="text-gray-500">{{ diff.label }}:</span>
-              <span class="text-red-600 line-through">{{ diff.old_value }}</span>
-              <span class="text-gray-400">&rarr;</span>
-              <span class="text-green-600 font-medium">{{ diff.new_value }}</span>
+              <div class="text-gray-500 mb-1">{{ diff.label }}:</div>
+              <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 pl-2">
+                <span class="text-red-600 line-through break-words">{{ diff.old_value }}</span>
+                <span class="text-gray-400 hidden sm:inline">&rarr;</span>
+                <span class="text-gray-400 sm:hidden">&darr;</span>
+                <span class="text-green-600 font-medium break-words">{{ diff.new_value }}</span>
+              </div>
             </div>
           </div>
 

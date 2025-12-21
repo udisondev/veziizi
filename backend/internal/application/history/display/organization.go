@@ -115,15 +115,10 @@ func (f *OrganizationFormatter) formatOrganizationSuspended(e events.Organizatio
 	return view
 }
 
-func (f *OrganizationFormatter) formatOrganizationUpdated(ctx context.Context, e events.OrganizationUpdated, resolver EntityResolver) DisplayView {
+func (f *OrganizationFormatter) formatOrganizationUpdated(_ context.Context, e events.OrganizationUpdated, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Организация обновлена", "Данные организации изменены").
 		WithIcon("edit").
 		WithSeverity("info")
-
-	updatedBy := resolver.ResolveMember(ctx, e.UpdatedBy)
-	if updatedBy != "" {
-		view.AddField("Изменил", updatedBy)
-	}
 
 	// Показываем что изменилось
 	if e.Name != nil {
@@ -142,7 +137,7 @@ func (f *OrganizationFormatter) formatOrganizationUpdated(ctx context.Context, e
 	return view
 }
 
-func (f *OrganizationFormatter) formatMemberAdded(ctx context.Context, e events.MemberAdded, resolver EntityResolver) DisplayView {
+func (f *OrganizationFormatter) formatMemberAdded(_ context.Context, e events.MemberAdded, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Сотрудник добавлен", "В организацию добавлен новый сотрудник").
 		WithIcon("user-plus").
 		WithSeverity("success")
@@ -150,13 +145,6 @@ func (f *OrganizationFormatter) formatMemberAdded(ctx context.Context, e events.
 	view.AddField("Имя", e.Name)
 	view.AddField("Email", e.Email)
 	view.AddField("Роль", translateRole(e.Role.String()))
-
-	if e.InvitedBy != nil {
-		invitedBy := resolver.ResolveMember(ctx, *e.InvitedBy)
-		if invitedBy != "" {
-			view.AddField("Пригласил", invitedBy)
-		}
-	}
 
 	return view
 }
@@ -194,11 +182,6 @@ func (f *OrganizationFormatter) formatMemberRoleChanged(ctx context.Context, e e
 		view.AddField("Сотрудник", memberName)
 	}
 
-	changedBy := resolver.ResolveMember(ctx, e.ChangedBy)
-	if changedBy != "" {
-		view.AddField("Изменил", changedBy)
-	}
-
 	view.AddDiff("Роль", translateRole(e.OldRole.String()), translateRole(e.NewRole.String()))
 
 	return view
@@ -217,11 +200,6 @@ func (f *OrganizationFormatter) formatMemberBlocked(ctx context.Context, e event
 
 	if memberName != "" {
 		view.AddField("Сотрудник", memberName)
-	}
-
-	blockedBy := resolver.ResolveMember(ctx, e.BlockedBy)
-	if blockedBy != "" {
-		view.AddField("Заблокировал", blockedBy)
 	}
 
 	if e.Reason != "" {
@@ -246,15 +224,10 @@ func (f *OrganizationFormatter) formatMemberUnblocked(ctx context.Context, e eve
 		view.AddField("Сотрудник", memberName)
 	}
 
-	unblockedBy := resolver.ResolveMember(ctx, e.UnblockedBy)
-	if unblockedBy != "" {
-		view.AddField("Разблокировал", unblockedBy)
-	}
-
 	return view
 }
 
-func (f *OrganizationFormatter) formatInvitationCreated(ctx context.Context, e events.InvitationCreated, resolver EntityResolver) DisplayView {
+func (f *OrganizationFormatter) formatInvitationCreated(_ context.Context, e events.InvitationCreated, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Приглашение создано", "Отправлено приглашение для нового сотрудника").
 		WithIcon("mail").
 		WithSeverity("info")
@@ -264,11 +237,6 @@ func (f *OrganizationFormatter) formatInvitationCreated(ctx context.Context, e e
 
 	if e.Name != nil && *e.Name != "" {
 		view.AddField("Имя", *e.Name)
-	}
-
-	createdBy := resolver.ResolveMember(ctx, e.CreatedBy)
-	if createdBy != "" {
-		view.AddField("Создал", createdBy)
 	}
 
 	return view
@@ -298,17 +266,10 @@ func (f *OrganizationFormatter) formatInvitationExpired() DisplayView {
 		WithSeverity("warning")
 }
 
-func (f *OrganizationFormatter) formatInvitationCancelled(ctx context.Context, e events.InvitationCancelled, resolver EntityResolver) DisplayView {
-	view := NewDisplayView("Приглашение отменено", "Приглашение было отменено").
+func (f *OrganizationFormatter) formatInvitationCancelled(_ context.Context, _ events.InvitationCancelled, _ EntityResolver) DisplayView {
+	return NewDisplayView("Приглашение отменено", "Приглашение было отменено").
 		WithIcon("x").
 		WithSeverity("warning")
-
-	cancelledBy := resolver.ResolveMember(ctx, e.CancelledBy)
-	if cancelledBy != "" {
-		view.AddField("Отменил", cancelledBy)
-	}
-
-	return view
 }
 
 func (f *OrganizationFormatter) formatFraudsterMarked(e events.FraudsterMarked) DisplayView {

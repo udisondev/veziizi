@@ -107,7 +107,7 @@ func main() {
 	orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), sessionManager)
 	orgHandler.RegisterRoutes(server.Router())
 
-	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
+	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.OrdersProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
 	authHandler.RegisterRoutes(server.Router())
 
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())

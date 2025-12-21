@@ -123,8 +123,8 @@ async function handleReject() {
         <!-- Header -->
         <div class="flex justify-between items-start">
           <div>
-            <h1 class="text-2xl font-bold text-white">{{ organization.name }}</h1>
-            <p class="text-gray-400">{{ organization.legal_name }}</p>
+            <h1 class="text-2xl font-bold text-white break-words">{{ organization.name }}</h1>
+            <p class="text-gray-400 break-words">{{ organization.legal_name }}</p>
           </div>
           <span :class="[statusColors[organization.status], 'px-3 py-1 rounded-full text-sm text-white']">
             {{ statusNames[organization.status] }}
@@ -153,7 +153,7 @@ async function handleReject() {
             </div>
             <div class="col-span-2">
               <dt class="text-sm text-gray-400">Адрес</dt>
-              <dd class="text-white">{{ organization.address }}</dd>
+              <dd class="text-white break-words">{{ organization.address }}</dd>
             </div>
             <div>
               <dt class="text-sm text-gray-400">Дата регистрации</dt>

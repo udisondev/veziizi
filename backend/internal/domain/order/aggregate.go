@@ -325,6 +325,57 @@ func (o *Order) LeaveReview(reviewerOrgID uuid.UUID, rating int, comment string)
 	return nil
 }
 
+// CanReassign проверяет можно ли переназначить ответственного
+// Разрешено в статусах: active, customer_completed, carrier_completed
+func (o *Order) CanReassign() bool {
+	switch o.status {
+	case values.OrderStatusActive,
+		values.OrderStatusCustomerCompleted,
+		values.OrderStatusCarrierCompleted:
+		return true
+	default:
+		return false
+	}
+}
+
+// ReassignCustomerMember переназначает ответственного со стороны заказчика
+func (o *Order) ReassignCustomerMember(actorID, newMemberID uuid.UUID) error {
+	if !o.CanReassign() {
+		return ErrCannotReassignFinishedOrder
+	}
+	if o.customerMemberID == newMemberID {
+		return nil // no-op
+	}
+
+	o.Apply(events.CustomerMemberReassigned{
+		BaseEvent:    eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		OldMemberID:  o.customerMemberID,
+		NewMemberID:  newMemberID,
+		ReassignedBy: actorID,
+	})
+
+	return nil
+}
+
+// ReassignCarrierMember переназначает ответственного со стороны перевозчика
+func (o *Order) ReassignCarrierMember(actorID, newMemberID uuid.UUID) error {
+	if !o.CanReassign() {
+		return ErrCannotReassignFinishedOrder
+	}
+	if o.carrierMemberID == newMemberID {
+		return nil // no-op
+	}
+
+	o.Apply(events.CarrierMemberReassigned{
+		BaseEvent:    eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		OldMemberID:  o.carrierMemberID,
+		NewMemberID:  newMemberID,
+		ReassignedBy: actorID,
+	})
+
+	return nil
+}
+
 // Apply applies event and records it as change
 func (o *Order) Apply(evt eventstore.Event) {
 	o.apply(evt)
@@ -408,5 +459,11 @@ func (o *Order) apply(evt eventstore.Event) {
 			e.OccurredAt(),
 		)
 		o.reviews[e.ReviewID] = &review
+
+	case events.CustomerMemberReassigned:
+		o.customerMemberID = e.NewMemberID
+
+	case events.CarrierMemberReassigned:
+		o.carrierMemberID = e.NewMemberID
 	}
 }

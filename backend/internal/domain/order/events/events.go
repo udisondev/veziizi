@@ -10,15 +10,17 @@ const AggregateType = "order"
 
 // Event type constants
 const (
-	TypeOrderCreated       = "order.created"
-	TypeOrderCancelled     = "order.cancelled"
-	TypeCustomerCompleted  = "order.customer_completed"
-	TypeCarrierCompleted   = "order.carrier_completed"
-	TypeOrderCompleted     = "order.completed"
-	TypeMessageSent        = "order.message_sent"
-	TypeDocumentAttached   = "order.document_attached"
-	TypeDocumentRemoved    = "order.document_removed"
-	TypeReviewLeft         = "order.review_left"
+	TypeOrderCreated             = "order.created"
+	TypeOrderCancelled           = "order.cancelled"
+	TypeCustomerCompleted        = "order.customer_completed"
+	TypeCarrierCompleted         = "order.carrier_completed"
+	TypeOrderCompleted           = "order.completed"
+	TypeMessageSent              = "order.message_sent"
+	TypeDocumentAttached         = "order.document_attached"
+	TypeDocumentRemoved          = "order.document_removed"
+	TypeReviewLeft               = "order.review_left"
+	TypeCustomerMemberReassigned = "order.customer_member_reassigned"
+	TypeCarrierMemberReassigned  = "order.carrier_member_reassigned"
 )
 
 func init() {
@@ -31,6 +33,8 @@ func init() {
 	eventstore.RegisterEventType[DocumentAttached](TypeDocumentAttached)
 	eventstore.RegisterEventType[DocumentRemoved](TypeDocumentRemoved)
 	eventstore.RegisterEventType[ReviewLeft](TypeReviewLeft)
+	eventstore.RegisterEventType[CustomerMemberReassigned](TypeCustomerMemberReassigned)
+	eventstore.RegisterEventType[CarrierMemberReassigned](TypeCarrierMemberReassigned)
 }
 
 // OrderCreated is emitted when a new order is created from confirmed offer
@@ -126,3 +130,23 @@ type ReviewLeft struct {
 }
 
 func (e ReviewLeft) EventType() string { return TypeReviewLeft }
+
+// CustomerMemberReassigned is emitted when customer side reassigns responsible member
+type CustomerMemberReassigned struct {
+	eventstore.BaseEvent
+	OldMemberID  uuid.UUID `json:"old_member_id"`
+	NewMemberID  uuid.UUID `json:"new_member_id"`
+	ReassignedBy uuid.UUID `json:"reassigned_by"`
+}
+
+func (e CustomerMemberReassigned) EventType() string { return TypeCustomerMemberReassigned }
+
+// CarrierMemberReassigned is emitted when carrier side reassigns responsible member
+type CarrierMemberReassigned struct {
+	eventstore.BaseEvent
+	OldMemberID  uuid.UUID `json:"old_member_id"`
+	NewMemberID  uuid.UUID `json:"new_member_id"`
+	ReassignedBy uuid.UUID `json:"reassigned_by"`
+}
+
+func (e CarrierMemberReassigned) EventType() string { return TypeCarrierMemberReassigned }

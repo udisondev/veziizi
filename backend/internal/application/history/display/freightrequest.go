@@ -71,23 +71,13 @@ func (f *FreightRequestFormatter) formatCreated(ctx context.Context, e events.Fr
 		view.AddField("Заказчик", customerOrg)
 	}
 
-	createdBy := resolver.ResolveMember(ctx, e.CustomerMemberID)
-	if createdBy != "" {
-		view.AddField("Создал", createdBy)
-	}
-
 	return view
 }
 
-func (f *FreightRequestFormatter) formatUpdated(ctx context.Context, e events.FreightRequestUpdated, resolver EntityResolver) DisplayView {
+func (f *FreightRequestFormatter) formatUpdated(_ context.Context, e events.FreightRequestUpdated, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Заявка обновлена", "Данные заявки изменены").
 		WithIcon("edit").
 		WithSeverity("info")
-
-	updatedBy := resolver.ResolveMember(ctx, e.UpdatedBy)
-	if updatedBy != "" {
-		view.AddField("Изменил", updatedBy)
-	}
 
 	// Показываем что изменилось
 	var changes []string
@@ -122,11 +112,6 @@ func (f *FreightRequestFormatter) formatReassigned(ctx context.Context, e events
 		WithIcon("user-switch").
 		WithSeverity("info")
 
-	reassignedBy := resolver.ResolveMember(ctx, e.ReassignedBy)
-	if reassignedBy != "" {
-		view.AddField("Переназначил", reassignedBy)
-	}
-
 	if oldMember != "" && newMember != "" {
 		view.AddDiff("Ответственный", oldMember, newMember)
 	} else {
@@ -141,15 +126,10 @@ func (f *FreightRequestFormatter) formatReassigned(ctx context.Context, e events
 	return view
 }
 
-func (f *FreightRequestFormatter) formatCancelled(ctx context.Context, e events.FreightRequestCancelled, resolver EntityResolver) DisplayView {
+func (f *FreightRequestFormatter) formatCancelled(_ context.Context, e events.FreightRequestCancelled, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Заявка отменена", "Заявка на перевозку отменена").
 		WithIcon("x-circle").
 		WithSeverity("warning")
-
-	cancelledBy := resolver.ResolveMember(ctx, e.CancelledBy)
-	if cancelledBy != "" {
-		view.AddField("Отменил", cancelledBy)
-	}
 
 	if e.Reason != "" {
 		view.AddField("Причина", e.Reason)
@@ -174,11 +154,6 @@ func (f *FreightRequestFormatter) formatOfferMade(ctx context.Context, e events.
 		view.AddField("Перевозчик", carrierOrg)
 	}
 
-	carrierMember := resolver.ResolveMember(ctx, e.CarrierMemberID)
-	if carrierMember != "" {
-		view.AddField("Сотрудник", carrierMember)
-	}
-
 	view.AddFieldWithType("Цена", formatMoney(e.Price), "money")
 	view.AddField("НДС", translateVatType(e.VatType.String()))
 	view.AddField("Способ оплаты", translatePaymentMethod(e.PaymentMethod.String()))
@@ -190,16 +165,11 @@ func (f *FreightRequestFormatter) formatOfferMade(ctx context.Context, e events.
 	return view
 }
 
-func (f *FreightRequestFormatter) formatOfferWithdrawn(ctx context.Context, e events.OfferWithdrawn, resolver EntityResolver) DisplayView {
+func (f *FreightRequestFormatter) formatOfferWithdrawn(_ context.Context, e events.OfferWithdrawn, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Оффер отозван", "Перевозчик отозвал своё предложение").
 		WithIcon("undo").
 		WithSeverity("warning")
 
-	withdrawnBy := resolver.ResolveMember(ctx, e.WithdrawnBy)
-	if withdrawnBy != "" {
-		view.AddField("Отозвал", withdrawnBy)
-	}
-
 	if e.Reason != "" {
 		view.AddField("Причина", e.Reason)
 	}
@@ -207,29 +177,17 @@ func (f *FreightRequestFormatter) formatOfferWithdrawn(ctx context.Context, e ev
 	return view
 }
 
-func (f *FreightRequestFormatter) formatOfferSelected(ctx context.Context, e events.OfferSelected, resolver EntityResolver) DisplayView {
-	view := NewDisplayView("Оффер выбран", "Заказчик выбрал предложение перевозчика").
+func (f *FreightRequestFormatter) formatOfferSelected(_ context.Context, _ events.OfferSelected, _ EntityResolver) DisplayView {
+	return NewDisplayView("Оффер выбран", "Заказчик выбрал предложение перевозчика").
 		WithIcon("check").
 		WithSeverity("success")
-
-	selectedBy := resolver.ResolveMember(ctx, e.SelectedBy)
-	if selectedBy != "" {
-		view.AddField("Выбрал", selectedBy)
-	}
-
-	return view
 }
 
-func (f *FreightRequestFormatter) formatOfferRejected(ctx context.Context, e events.OfferRejected, resolver EntityResolver) DisplayView {
+func (f *FreightRequestFormatter) formatOfferRejected(_ context.Context, e events.OfferRejected, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Оффер отклонён", "Заказчик отклонил предложение").
 		WithIcon("x").
 		WithSeverity("warning")
 
-	rejectedBy := resolver.ResolveMember(ctx, e.RejectedBy)
-	if rejectedBy != "" {
-		view.AddField("Отклонил", rejectedBy)
-	}
-
 	if e.Reason != "" {
 		view.AddField("Причина", e.Reason)
 	}
@@ -237,28 +195,16 @@ func (f *FreightRequestFormatter) formatOfferRejected(ctx context.Context, e eve
 	return view
 }
 
-func (f *FreightRequestFormatter) formatOfferConfirmed(ctx context.Context, e events.OfferConfirmed, resolver EntityResolver) DisplayView {
-	view := NewDisplayView("Оффер подтверждён", "Перевозчик подтвердил заказ").
+func (f *FreightRequestFormatter) formatOfferConfirmed(_ context.Context, _ events.OfferConfirmed, _ EntityResolver) DisplayView {
+	return NewDisplayView("Оффер подтверждён", "Перевозчик подтвердил заказ").
 		WithIcon("check-circle").
 		WithSeverity("success")
-
-	confirmedBy := resolver.ResolveMember(ctx, e.ConfirmedBy)
-	if confirmedBy != "" {
-		view.AddField("Подтвердил", confirmedBy)
-	}
-
-	return view
 }
 
-func (f *FreightRequestFormatter) formatOfferDeclined(ctx context.Context, e events.OfferDeclined, resolver EntityResolver) DisplayView {
+func (f *FreightRequestFormatter) formatOfferDeclined(_ context.Context, e events.OfferDeclined, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Оффер отклонён перевозчиком", "Перевозчик отказался от заказа").
 		WithIcon("x-circle").
 		WithSeverity("error")
-
-	declinedBy := resolver.ResolveMember(ctx, e.DeclinedBy)
-	if declinedBy != "" {
-		view.AddField("Отклонил", declinedBy)
-	}
 
 	if e.Reason != "" {
 		view.AddField("Причина", e.Reason)

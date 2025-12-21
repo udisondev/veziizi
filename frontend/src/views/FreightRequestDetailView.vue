@@ -2,10 +2,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
+import { ordersApi } from '@/api/orders'
 import { membersApi, type MemberProfile } from '@/api/members'
 import { historyApi } from '@/api/history'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
+import type { OrderListItem } from '@/types/order'
 import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
 import EventHistory from '@/components/EventHistory.vue'
 import type {
@@ -42,6 +44,7 @@ const permissions = usePermissions()
 const freightRequest = ref<FreightRequest | null>(null)
 const offers = ref<Offer[]>([])
 const creatorProfile = ref<MemberProfile | null>(null)
+const linkedOrder = ref<OrderListItem | null>(null)
 const isLoading = ref(true)
 const error = ref('')
 const actionLoading = ref(false)
@@ -147,6 +150,38 @@ const canReassign = computed(() => {
   )
 })
 
+// Может видеть ссылку на заказ: владельцы/администраторы организаций заказчика и перевозчика, ответственный за заявку
+const canViewOrderLink = computed(() => {
+  if (!freightRequest.value || !linkedOrder.value) return false
+
+  const fr = freightRequest.value
+  const order = linkedOrder.value
+  const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
+
+  // Владелец/администратор организации заказчика
+  if (isOwnerOrAdmin && fr.customer_org_id === auth.organizationId) {
+    return true
+  }
+
+  // Владелец/администратор организации перевозчика
+  if (isOwnerOrAdmin && order.carrier_org_id === auth.organizationId) {
+    return true
+  }
+
+  // Ответственный за заявку
+  if (fr.customer_member_id === auth.memberId) {
+    return true
+  }
+
+  // Ответственный за оффер (перевозчик, который сделал подтверждённый оффер)
+  const confirmedOffer = offers.value.find(o => o.status === 'confirmed')
+  if (confirmedOffer && confirmedOffer.carrier_member_id === auth.memberId) {
+    return true
+  }
+
+  return false
+})
+
 const myOffers = computed(() => {
   return offers.value.filter((o) => o.carrier_org_id === auth.organizationId)
 })
@@ -177,6 +212,7 @@ async function loadData() {
   isLoading.value = true
   error.value = ''
   creatorProfile.value = null
+  linkedOrder.value = null
   try {
     const id = route.params.id as string
     const [fr, offersList] = await Promise.all([
@@ -192,6 +228,18 @@ async function loadData() {
         creatorProfile.value = await membersApi.getProfile(fr.customer_member_id)
       } catch {
         // Игнорируем ошибку загрузки профиля, это не критично
+      }
+    }
+
+    // Загружаем связанный заказ, если заявка подтверждена
+    if (fr.status === 'confirmed') {
+      try {
+        const orders = await ordersApi.list({ freight_request_id: fr.id })
+        if (orders.length > 0 && orders[0]) {
+          linkedOrder.value = orders[0]
+        }
+      } catch {
+        // Игнорируем ошибку загрузки заказа, это не критично
       }
     }
   } catch (e) {
@@ -404,27 +452,14 @@ onMounted(() => {
         </div>
 
         <!-- Tab switcher -->
-        <div v-if="canViewHistory" class="bg-white rounded-lg p-3 flex gap-6">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="frTab"
-              value="details"
-              v-model="currentTab"
-              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-            />
-            <span class="text-sm font-medium text-gray-700">Детали заявки</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="frTab"
-              value="history"
-              v-model="currentTab"
-              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-            />
-            <span class="text-sm font-medium text-gray-700">История</span>
-          </label>
+        <div v-if="canViewHistory" class="mb-6">
+          <select
+            v-model="currentTab"
+            class="w-full sm:w-auto px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+          >
+            <option value="details">Детали заявки</option>
+            <option value="history">История</option>
+          </select>
         </div>
 
         <!-- Details Tab -->
@@ -458,6 +493,17 @@ onMounted(() => {
               <span :class="[statusColors[freightRequest.status], 'px-3 py-1 rounded-full text-sm font-medium']">
                 {{ freightRequestStatusLabels[freightRequest.status] }}
               </span>
+              <!-- Ссылка на заказ для подтверждённых заявок -->
+              <router-link
+                v-if="canViewOrderLink && linkedOrder"
+                :to="`/orders/${linkedOrder.id}`"
+                class="px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-lg text-sm font-medium inline-flex items-center gap-1.5"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Заказ #{{ linkedOrder.order_number }}
+              </router-link>
               <router-link
                 v-if="canEdit"
                 :to="`/freight-requests/${freightRequest.id}/edit`"
@@ -512,7 +558,7 @@ onMounted(() => {
                       {{ getPointTypeLabel(point) }}
                     </span>
                   </div>
-                  <p class="font-medium text-gray-900">{{ point.address }}</p>
+                  <p class="font-medium text-gray-900 break-words">{{ point.address }}</p>
                   <div class="mt-2 text-sm text-gray-600 space-y-1">
                     <p>
                       <span class="text-gray-500">Дата:</span>
@@ -529,7 +575,7 @@ onMounted(() => {
                       {{ point.contact_name }}
                       <template v-if="point.contact_phone">, {{ point.contact_phone }}</template>
                     </p>
-                    <p v-if="point.comment" class="text-gray-500 italic">{{ point.comment }}</p>
+                    <p v-if="point.comment" class="text-gray-500 italic break-words">{{ point.comment }}</p>
                   </div>
                 </div>
               </div>
@@ -543,7 +589,7 @@ onMounted(() => {
           <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <dt class="text-sm text-gray-500">Описание</dt>
-              <dd class="text-gray-900">{{ freightRequest.cargo.description }}</dd>
+              <dd class="text-gray-900 break-words">{{ freightRequest.cargo.description }}</dd>
             </div>
             <div>
               <dt class="text-sm text-gray-500">Тип груза</dt>
@@ -680,7 +726,7 @@ onMounted(() => {
         <!-- Comment -->
         <div v-if="freightRequest.comment" class="bg-white rounded-lg shadow p-4 sm:p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-2">Комментарий</h2>
-          <p class="text-gray-700">{{ freightRequest.comment }}</p>
+          <p class="text-gray-700 break-words">{{ freightRequest.comment }}</p>
         </div>
 
         <!-- Offers Section -->
@@ -717,19 +763,19 @@ onMounted(() => {
                       {{ offerStatusLabels[offer.status] }}
                     </span>
                   </div>
-                  <div v-if="offer.carrier_org_name || offer.carrier_member_name" class="mb-2 flex flex-wrap items-center gap-x-2">
+                  <div v-if="offer.carrier_org_name || offer.carrier_member_name" class="mb-2 flex flex-wrap items-center gap-x-2 min-w-0">
                     <router-link
                       v-if="isOwner && offer.carrier_org_name"
                       :to="`/organizations/${offer.carrier_org_id}`"
-                      class="text-blue-600 hover:text-blue-800 font-medium"
+                      class="text-blue-600 hover:text-blue-800 font-medium truncate max-w-full"
                     >
                       {{ offer.carrier_org_name }}
                     </router-link>
-                    <span v-if="isOwner && offer.carrier_org_name && offer.carrier_member_name" class="text-gray-400">•</span>
+                    <span v-if="isOwner && offer.carrier_org_name && offer.carrier_member_name" class="text-gray-400 shrink-0">•</span>
                     <router-link
                       v-if="offer.carrier_member_name"
                       :to="`/members/${offer.carrier_member_id}`"
-                      class="text-blue-600 hover:text-blue-800"
+                      class="text-blue-600 hover:text-blue-800 truncate max-w-full"
                     >
                       {{ offer.carrier_member_name }}
                     </router-link>
@@ -743,7 +789,7 @@ onMounted(() => {
                       <span class="text-gray-500">Способ оплаты:</span>
                       {{ paymentMethodLabels[offer.payment_method] }}
                     </p>
-                    <p v-if="offer.comment">
+                    <p v-if="offer.comment" class="break-words">
                       <span class="text-gray-500">Комментарий:</span>
                       {{ offer.comment }}
                     </p>

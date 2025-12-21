@@ -20,9 +20,11 @@ var publicPrefixes = []struct {
 	prefix string
 	method string
 }{
-	{"/api/v1/invitations/", http.MethodGet},  // get invitation by token
-	{"/api/v1/invitations/", http.MethodPost}, // accept invitation
-	{"/api/v1/admin/auth/", http.MethodPost},  // admin login/logout
+	{"/api/v1/invitations/", http.MethodGet},   // get invitation by token
+	{"/api/v1/invitations/", http.MethodPost},  // accept invitation
+	{"/api/v1/admin/auth/", http.MethodPost},   // admin login/logout
+	{"/api/v1/organizations/", http.MethodGet}, // public organization profiles, ratings, reviews
+	{"/api/v1/members/", http.MethodGet},       // public member profiles
 	// DEV ENDPOINTS REMOVED - SEC-001: они защищены через DevOnly middleware и проверку IsDevelopment()
 }
 

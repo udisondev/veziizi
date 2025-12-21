@@ -21,26 +21,29 @@ import (
 )
 
 type AuthHandler struct {
-	members         *projections.MembersProjection
-	orgService      *organization.Service
-	session         *session.Manager
-	sessionAnalyzer *sessionApp.SessionAnalyzer
-	geoIP           *geoip.Service
+	members          *projections.MembersProjection
+	ordersProjection *projections.OrdersProjection
+	orgService       *organization.Service
+	session          *session.Manager
+	sessionAnalyzer  *sessionApp.SessionAnalyzer
+	geoIP            *geoip.Service
 }
 
 func NewAuthHandler(
 	members *projections.MembersProjection,
+	ordersProjection *projections.OrdersProjection,
 	orgService *organization.Service,
 	session *session.Manager,
 	sessionAnalyzer *sessionApp.SessionAnalyzer,
 	geoIP *geoip.Service,
 ) *AuthHandler {
 	return &AuthHandler{
-		members:         members,
-		orgService:      orgService,
-		session:         session,
-		sessionAnalyzer: sessionAnalyzer,
-		geoIP:           geoIP,
+		members:          members,
+		ordersProjection: ordersProjection,
+		orgService:       orgService,
+		session:          session,
+		sessionAnalyzer:  sessionAnalyzer,
+		geoIP:            geoIP,
 	}
 }
 
@@ -277,11 +280,22 @@ func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SEC-017: Разрешаем доступ только к членам своей организации
-	// TODO: Добавить проверку связанных заказов для доступа к контрагентам
+	// SEC-017: Разрешаем доступ к членам своей организации или контрагентам по заказам
 	if member.OrganizationID != sessionOrgID {
-		writeError(w, http.StatusForbidden, "access denied")
-		return
+		hasShared, err := h.ordersProjection.HaveSharedOrder(r.Context(), sessionOrgID, member.OrganizationID)
+		if err != nil {
+			slog.Error("failed to check shared orders",
+				slog.String("error", err.Error()),
+				slog.String("session_org_id", sessionOrgID.String()),
+				slog.String("member_org_id", member.OrganizationID.String()),
+			)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if !hasShared {
+			writeError(w, http.StatusForbidden, "access denied")
+			return
+		}
 	}
 
 	var phone *string

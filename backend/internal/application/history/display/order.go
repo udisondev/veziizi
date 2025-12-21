@@ -43,6 +43,10 @@ func (f *OrderFormatter) Format(ctx context.Context, event eventstore.Event, res
 		return f.formatDocumentRemoved(ctx, e, resolver), nil
 	case events.ReviewLeft:
 		return f.formatReviewLeft(ctx, e, resolver), nil
+	case events.CustomerMemberReassigned:
+		return f.formatCustomerMemberReassigned(ctx, e, resolver), nil
+	case events.CarrierMemberReassigned:
+		return f.formatCarrierMemberReassigned(ctx, e, resolver), nil
 	default:
 		return DisplayView{
 			Title:       "Событие заказа",
@@ -79,12 +83,7 @@ func (f *OrderFormatter) formatCancelled(ctx context.Context, e events.OrderCanc
 
 	cancelledByOrg := resolver.ResolveOrganization(ctx, e.CancelledByOrgID)
 	if cancelledByOrg != "" {
-		view.AddField("Отменил (организация)", cancelledByOrg)
-	}
-
-	cancelledBy := resolver.ResolveMember(ctx, e.CancelledByMemberID)
-	if cancelledBy != "" {
-		view.AddField("Отменил (сотрудник)", cancelledBy)
+		view.AddField("Организация", cancelledByOrg)
 	}
 
 	if e.Reason != "" {
@@ -94,30 +93,16 @@ func (f *OrderFormatter) formatCancelled(ctx context.Context, e events.OrderCanc
 	return view
 }
 
-func (f *OrderFormatter) formatCustomerCompleted(ctx context.Context, e events.CustomerCompleted, resolver EntityResolver) DisplayView {
-	view := NewDisplayView("Заказчик завершил", "Заказчик подтвердил выполнение заказа").
+func (f *OrderFormatter) formatCustomerCompleted(_ context.Context, _ events.CustomerCompleted, _ EntityResolver) DisplayView {
+	return NewDisplayView("Заказчик завершил", "Заказчик подтвердил выполнение заказа").
 		WithIcon("check").
 		WithSeverity("success")
-
-	completedBy := resolver.ResolveMember(ctx, e.MemberID)
-	if completedBy != "" {
-		view.AddField("Подтвердил", completedBy)
-	}
-
-	return view
 }
 
-func (f *OrderFormatter) formatCarrierCompleted(ctx context.Context, e events.CarrierCompleted, resolver EntityResolver) DisplayView {
-	view := NewDisplayView("Перевозчик завершил", "Перевозчик подтвердил выполнение заказа").
+func (f *OrderFormatter) formatCarrierCompleted(_ context.Context, _ events.CarrierCompleted, _ EntityResolver) DisplayView {
+	return NewDisplayView("Перевозчик завершил", "Перевозчик подтвердил выполнение заказа").
 		WithIcon("check").
 		WithSeverity("success")
-
-	completedBy := resolver.ResolveMember(ctx, e.MemberID)
-	if completedBy != "" {
-		view.AddField("Подтвердил", completedBy)
-	}
-
-	return view
 }
 
 func (f *OrderFormatter) formatCompleted() DisplayView {
@@ -136,11 +121,6 @@ func (f *OrderFormatter) formatMessageSent(ctx context.Context, e events.Message
 		view.AddField("Организация", senderOrg)
 	}
 
-	sender := resolver.ResolveMember(ctx, e.SenderMemberID)
-	if sender != "" {
-		view.AddField("Отправитель", sender)
-	}
-
 	// Показываем полный текст сообщения
 	if e.Content != "" {
 		view.AddField("Сообщение", e.Content)
@@ -149,7 +129,7 @@ func (f *OrderFormatter) formatMessageSent(ctx context.Context, e events.Message
 	return view
 }
 
-func (f *OrderFormatter) formatDocumentAttached(ctx context.Context, e events.DocumentAttached, resolver EntityResolver) DisplayView {
+func (f *OrderFormatter) formatDocumentAttached(_ context.Context, e events.DocumentAttached, _ EntityResolver) DisplayView {
 	view := NewDisplayView("Документ прикреплён", "К заказу прикреплён новый документ").
 		WithIcon("file-plus").
 		WithSeverity("info")
@@ -157,25 +137,13 @@ func (f *OrderFormatter) formatDocumentAttached(ctx context.Context, e events.Do
 	view.AddField("Имя файла", e.Name)
 	view.AddField("Размер", formatFileSize(e.Size))
 
-	uploadedBy := resolver.ResolveMember(ctx, e.UploadedBy)
-	if uploadedBy != "" {
-		view.AddField("Загрузил", uploadedBy)
-	}
-
 	return view
 }
 
-func (f *OrderFormatter) formatDocumentRemoved(ctx context.Context, e events.DocumentRemoved, resolver EntityResolver) DisplayView {
-	view := NewDisplayView("Документ удалён", "Документ удалён из заказа").
+func (f *OrderFormatter) formatDocumentRemoved(_ context.Context, _ events.DocumentRemoved, _ EntityResolver) DisplayView {
+	return NewDisplayView("Документ удалён", "Документ удалён из заказа").
 		WithIcon("file-minus").
 		WithSeverity("warning")
-
-	removedBy := resolver.ResolveMember(ctx, e.RemovedBy)
-	if removedBy != "" {
-		view.AddField("Удалил", removedBy)
-	}
-
-	return view
 }
 
 func (f *OrderFormatter) formatReviewLeft(ctx context.Context, e events.ReviewLeft, resolver EntityResolver) DisplayView {
@@ -223,4 +191,48 @@ func formatRating(rating int) string {
 		return fmt.Sprintf("%d", rating)
 	}
 	return strings.Repeat("★", rating) + strings.Repeat("☆", 5-rating)
+}
+
+func (f *OrderFormatter) formatCustomerMemberReassigned(ctx context.Context, e events.CustomerMemberReassigned, resolver EntityResolver) DisplayView {
+	view := NewDisplayView("Ответственный заказчика изменён", "Назначен новый ответственный со стороны заказчика").
+		WithIcon("user-switch").
+		WithSeverity("info")
+
+	oldMember := resolver.ResolveMember(ctx, e.OldMemberID)
+	newMember := resolver.ResolveMember(ctx, e.NewMemberID)
+
+	if oldMember != "" && newMember != "" {
+		view.AddDiff("Ответственный", oldMember, newMember)
+	} else {
+		if oldMember != "" {
+			view.AddField("Был", oldMember)
+		}
+		if newMember != "" {
+			view.AddField("Стал", newMember)
+		}
+	}
+
+	return view
+}
+
+func (f *OrderFormatter) formatCarrierMemberReassigned(ctx context.Context, e events.CarrierMemberReassigned, resolver EntityResolver) DisplayView {
+	view := NewDisplayView("Ответственный перевозчика изменён", "Назначен новый ответственный со стороны перевозчика").
+		WithIcon("user-switch").
+		WithSeverity("info")
+
+	oldMember := resolver.ResolveMember(ctx, e.OldMemberID)
+	newMember := resolver.ResolveMember(ctx, e.NewMemberID)
+
+	if oldMember != "" && newMember != "" {
+		view.AddDiff("Ответственный", oldMember, newMember)
+	} else {
+		if oldMember != "" {
+			view.AddField("Был", oldMember)
+		}
+		if newMember != "" {
+			view.AddField("Стал", newMember)
+		}
+	}
+
+	return view
 }

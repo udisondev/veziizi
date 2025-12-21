@@ -3,9 +3,11 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ordersApi } from '@/api/orders'
 import { historyApi } from '@/api/history'
+import { membersApi } from '@/api/members'
+import type { MemberListItem } from '@/types/member'
 import { useAuthStore } from '@/stores/auth'
 import type { Order, OrderMessage, OrderDocument, LeaveReviewRequest } from '@/types/order'
-import { orderStatusLabels, orderStatusColors, isOrderFinished, isOrderCancelled } from '@/types/order'
+import { orderStatusLabels, orderStatusColors, isOrderFinished, isOrderCancelled, isOrderActive } from '@/types/order'
 import EventHistory from '@/components/EventHistory.vue'
 
 const route = useRoute()
@@ -41,6 +43,11 @@ const reviewForm = ref<LeaveReviewRequest>({
   rating: 5,
   comment: '',
 })
+
+// Reassign modal
+const showReassignModal = ref(false)
+const selectedNewMember = ref('')
+const availableMembers = ref<{ id: string; name: string }[]>([])
 
 // Computed
 const isCustomer = computed(() => {
@@ -99,8 +106,16 @@ const canLeaveReview = computed(() => {
   return !myReview
 })
 
+const canReassign = computed(() => {
+  if (!order.value || !isParticipant.value) return false
+  // Only owner/administrator can reassign
+  if (auth.role !== 'owner' && auth.role !== 'administrator') return false
+  // Only in active statuses (before completion/cancellation)
+  return isOrderActive(order.value.status)
+})
+
 const hasAnyAction = computed(() => {
-  return canComplete.value || canCancel.value || canLeaveReview.value
+  return canComplete.value || canCancel.value || canLeaveReview.value || canReassign.value
 })
 
 const canViewHistory = computed(() => {
@@ -339,6 +354,36 @@ function handleCompleteClick() {
   closeMenu()
   handleComplete()
 }
+
+async function openReassignModal() {
+  closeMenu()
+  if (!auth.organizationId) return
+
+  try {
+    const members = await membersApi.listByOrganization(auth.organizationId)
+    availableMembers.value = members
+      .filter((m: MemberListItem) => m.status === 'active')
+      .map((m: MemberListItem) => ({ id: m.id, name: m.name }))
+    showReassignModal.value = true
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Ошибка загрузки сотрудников'
+  }
+}
+
+async function handleReassign() {
+  if (!order.value || !selectedNewMember.value) return
+  actionLoading.value = true
+  try {
+    await ordersApi.reassign(order.value.id, selectedNewMember.value)
+    showReassignModal.value = false
+    selectedNewMember.value = ''
+    await loadData()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Ошибка переназначения'
+  } finally {
+    actionLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -389,6 +434,13 @@ function handleCompleteClick() {
               >
                 Оставить отзыв
               </button>
+              <button
+                v-if="canReassign"
+                @click="openReassignModal"
+                class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Переназначить
+              </button>
             </div>
           </div>
         </div>
@@ -422,7 +474,7 @@ function handleCompleteClick() {
           <div class="flex flex-col gap-3 sm:gap-4">
             <div>
               <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Заказ #{{ orderNumber }}</h1>
-              <p class="text-gray-600 text-sm mt-1">
+              <p class="text-gray-600 text-sm mt-1 break-words">
                 {{ counterpartyRole }}:
                 <span class="font-medium">{{ counterpartyName }}</span>
               </p>
@@ -501,8 +553,15 @@ function handleCompleteClick() {
                 <div class="border border-gray-200 rounded-lg p-4">
                   <h3 class="text-sm font-medium text-gray-500 mb-2">Заказчик</h3>
                   <router-link
+                    :to="{ name: 'organization-profile', params: { id: order.customer_org_id } }"
+                    class="text-blue-600 hover:text-blue-800 font-medium block"
+                  >
+                    {{ order.customer_org_name }}
+                  </router-link>
+                  <div class="text-xs text-gray-500 mt-1">Контакт:</div>
+                  <router-link
                     :to="`/members/${order.customer_member_id}`"
-                    class="text-blue-600 hover:text-blue-800 font-medium"
+                    class="text-blue-600 hover:text-blue-800 text-sm"
                   >
                     {{ order.customer_member_name }}
                   </router-link>
@@ -510,8 +569,15 @@ function handleCompleteClick() {
                 <div class="border border-gray-200 rounded-lg p-4">
                   <h3 class="text-sm font-medium text-gray-500 mb-2">Перевозчик</h3>
                   <router-link
+                    :to="{ name: 'organization-profile', params: { id: order.carrier_org_id } }"
+                    class="text-blue-600 hover:text-blue-800 font-medium block"
+                  >
+                    {{ order.carrier_org_name }}
+                  </router-link>
+                  <div class="text-xs text-gray-500 mt-1">Контакт:</div>
+                  <router-link
                     :to="`/members/${order.carrier_member_id}`"
-                    class="text-blue-600 hover:text-blue-800 font-medium"
+                    class="text-blue-600 hover:text-blue-800 text-sm"
                   >
                     {{ order.carrier_member_name }}
                   </router-link>
@@ -565,7 +631,7 @@ function handleCompleteClick() {
                   <div class="text-xs text-gray-500 mb-1">
                     {{ getMessageSenderLabel(msg) }} &middot; {{ formatDateTime(msg.created_at) }}
                   </div>
-                  <div class="whitespace-pre-wrap">{{ msg.content }}</div>
+                  <div class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
                 </div>
               </div>
 
@@ -674,7 +740,7 @@ function handleCompleteClick() {
                       {{ review.reviewer_org_id === order.customer_org_id ? 'Заказчик' : 'Перевозчик' }}
                     </span>
                   </div>
-                  <p v-if="review.comment" class="text-gray-700">{{ review.comment }}</p>
+                  <p v-if="review.comment" class="text-gray-700 break-words">{{ review.comment }}</p>
                   <p v-else class="text-gray-400 italic">Без комментария</p>
                   <p class="text-xs text-gray-500 mt-2">{{ formatDateTime(review.created_at) }}</p>
                 </div>
@@ -770,6 +836,42 @@ function handleCompleteClick() {
             class="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
           >
             {{ actionLoading ? 'Отправка...' : 'Отправить' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reassign Modal -->
+    <div v-if="showReassignModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[1000]">
+      <div class="bg-white rounded-lg p-6 max-w-md w-full">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Переназначить ответственного</h3>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Новый ответственный</label>
+          <select
+            v-model="selectedNewMember"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Выберите сотрудника</option>
+            <option v-for="member in availableMembers" :key="member.id" :value="member.id">
+              {{ member.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            @click="showReassignModal = false"
+            class="flex-1 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+          >
+            Отмена
+          </button>
+          <button
+            @click="handleReassign"
+            :disabled="!selectedNewMember || actionLoading"
+            class="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+          >
+            {{ actionLoading ? 'Сохранение...' : 'Сохранить' }}
           </button>
         </div>
       </div>

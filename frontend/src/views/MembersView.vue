@@ -519,13 +519,13 @@ watch(currentTab, (tab) => {
             ]"
             @click="isSelectionMode ? selectMember(member) : goToMember(member)"
           >
-            <div class="flex items-start justify-between mb-2">
-              <div>
-                <div class="font-medium text-gray-900">
+            <div class="flex items-start justify-between mb-2 gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="font-medium text-gray-900 truncate">
                   {{ member.name }}
                   <span v-if="member.id === auth.memberId" class="text-xs text-gray-400">(вы)</span>
                 </div>
-                <div class="text-sm text-gray-500">{{ member.email }}</div>
+                <div class="text-sm text-gray-500 truncate">{{ member.email }}</div>
                 <div v-if="member.phone" class="text-sm text-gray-500">{{ member.phone }}</div>
               </div>
               <div class="flex flex-col items-end gap-1">
@@ -617,7 +617,7 @@ watch(currentTab, (tab) => {
       </template>
 
       <!-- Invitations Tab Content -->
-      <template v-else>
+      <template v-else-if="currentTab === 'invitations'">
         <!-- Loading -->
         <div v-if="isLoadingInvitations" class="text-center py-12">
           <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -646,10 +646,10 @@ watch(currentTab, (tab) => {
               :key="item.id"
               class="bg-white rounded-lg shadow p-4"
             >
-              <div class="flex items-start justify-between mb-2">
-                <div>
-                  <div class="font-medium text-gray-900">{{ item.email }}</div>
-                  <div v-if="item.name" class="text-sm text-gray-500">{{ item.name }}</div>
+              <div class="flex items-start justify-between mb-2 gap-2">
+                <div class="min-w-0 flex-1">
+                  <div class="font-medium text-gray-900 truncate">{{ item.email }}</div>
+                  <div v-if="item.name" class="text-sm text-gray-500 truncate">{{ item.name }}</div>
                   <div v-if="item.phone" class="text-sm text-gray-500">{{ item.phone }}</div>
                 </div>
                 <div class="flex flex-col items-end gap-1">

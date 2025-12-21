@@ -316,7 +316,7 @@ onMounted(() => {
             </div>
 
             <!-- Route -->
-            <div class="text-sm text-gray-900 font-medium mb-1">
+            <div class="text-sm text-gray-900 font-medium mb-1 break-words">
               {{ formatRoute(item) }}
             </div>
 

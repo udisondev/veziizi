@@ -243,7 +243,7 @@ async function confirmUnblock() {
         <div class="bg-white rounded-lg shadow p-6">
           <div class="flex items-start justify-between">
             <div>
-              <h1 class="text-2xl font-bold text-gray-900">{{ member.name }}</h1>
+              <h1 class="text-2xl font-bold text-gray-900 break-words">{{ member.name }}</h1>
               <div class="flex items-center gap-2 mt-2">
                 <span :class="[roleColors[member.role], 'px-2 py-0.5 text-xs font-medium rounded-full']">
                   {{ roleLabels[member.role] }}
@@ -262,7 +262,7 @@ async function confirmUnblock() {
           <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <dt class="text-sm text-gray-500">ФИО</dt>
-              <dd class="text-gray-900 font-medium">{{ member.name }}</dd>
+              <dd class="text-gray-900 font-medium break-words">{{ member.name }}</dd>
             </div>
             <div>
               <dt class="text-sm text-gray-500">Email</dt>
@@ -285,7 +285,7 @@ async function confirmUnblock() {
               <dd>
                 <router-link
                   :to="{ name: 'organization-profile', params: { id: member.organization_id } }"
-                  class="text-blue-600 hover:text-blue-800 hover:underline"
+                  class="text-blue-600 hover:text-blue-800 hover:underline break-words"
                 >
                   {{ member.organization_name }}
                 </router-link>

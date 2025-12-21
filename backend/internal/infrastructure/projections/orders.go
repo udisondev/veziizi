@@ -204,3 +204,21 @@ func (p *OrdersProjection) Count(ctx context.Context, opts ...OrderFilterOption)
 
 	return count, nil
 }
+
+// HaveSharedOrder проверяет есть ли общий заказ между двумя организациями
+func (p *OrdersProjection) HaveSharedOrder(ctx context.Context, orgID1, orgID2 uuid.UUID) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM orders_lookup
+			WHERE (customer_org_id = $1 AND carrier_org_id = $2)
+			   OR (customer_org_id = $2 AND carrier_org_id = $1)
+		)
+	`
+
+	var exists bool
+	if err := p.db.QueryRow(ctx, query, orgID1, orgID2).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check shared order: %w", err)
+	}
+
+	return exists, nil
+}
