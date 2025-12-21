@@ -8,17 +8,73 @@ import { membersApi } from '@/api/members'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { invitationsApi } from '@/api/invitations'
 import { historyApi } from '@/api/history'
-import type { MemberListItem, MemberRole, MemberStatus } from '@/types/member'
+import type { MemberListItem, MemberRole, MemberRoleFilter, MemberStatus, MemberStatusFilter } from '@/types/member'
 import type { InvitationListItem, InvitationStatus, InvitationRole } from '@/types/invitation'
 import {
   roleLabels,
-  roleColors,
   statusLabels,
-  statusColors,
   roleOptions,
   statusOptions,
 } from '@/types/member'
 import EventHistory from '@/components/EventHistory.vue'
+
+// UI Components
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+
+// Shared Components
+import {
+  PageHeader,
+  StatusBadge,
+  LoadingSpinner,
+  EmptyState,
+  ErrorBanner,
+  ConfirmDialog,
+  TabsDropdown,
+  FilterSheet,
+  type TabItem,
+} from '@/components/shared'
+
+// Icons
+import {
+  Users,
+  Mail,
+  Plus,
+  Copy,
+  Check,
+  Clock,
+  UserPlus,
+  History,
+  AlertCircle,
+} from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,8 +82,7 @@ const auth = useAuthStore()
 const { canManageInvitations, canViewHistory } = usePermissions()
 
 // Tabs
-type TabType = 'members' | 'invitations' | 'history'
-const currentTab = ref<TabType>('members')
+const currentTab = ref('members')
 
 // History loader
 function loadOrganizationHistory(limit: number, offset: number) {
@@ -48,26 +103,27 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 
 // Filters
+const showFilters = ref(false)
 const searchQuery = ref('')
-const roleFilter = ref<MemberRole | ''>('')
-const statusFilter = ref<MemberStatus | ''>('')
-const showFilterModal = ref(false)
+const roleFilter = ref<MemberRoleFilter>('all')
+const statusFilter = ref<MemberStatusFilter>('all')
 
-// Temp filters for modal
+// Temp filters for sheet
 const tempSearch = ref('')
-const tempRole = ref<MemberRole | ''>('')
-const tempStatus = ref<MemberStatus | ''>('')
+const tempRole = ref<MemberRoleFilter>('all')
+const tempStatus = ref<MemberStatusFilter>('all')
 
 // Invitations data
 const invitations = ref<InvitationListItem[]>([])
 const isLoadingInvitations = ref(false)
 
 // Invitations filters
-const invitationsStatusFilter = ref<InvitationStatus | ''>('')
-const tempInvitationsStatus = ref<InvitationStatus | ''>('')
+type InvitationStatusFilter = InvitationStatus | 'all'
+const invitationsStatusFilter = ref<InvitationStatusFilter>('all')
+const tempInvitationsStatus = ref<InvitationStatusFilter>('all')
 
-const invitationStatusOptions: { value: InvitationStatus | '', label: string }[] = [
-  { value: '', label: 'Все статусы' },
+const invitationStatusOptions: { value: InvitationStatusFilter, label: string }[] = [
+  { value: 'all', label: 'Все статусы' },
   { value: 'pending', label: 'Ожидают' },
   { value: 'accepted', label: 'Приняты' },
   { value: 'expired', label: 'Истекли' },
@@ -84,6 +140,7 @@ const showInvitationForm = ref(false)
 const isSubmitting = ref(false)
 const formError = ref<string | null>(null)
 const createdToken = ref<string | null>(null)
+const copied = ref(false)
 const phoneMask = '+7 (###) ###-##-##'
 const phonePlaceholder = '+7 (999) 999-99-99'
 
@@ -100,6 +157,20 @@ const showCancelModal = ref(false)
 const cancellingInvitation = ref<InvitationListItem | null>(null)
 const cancelError = ref<string | null>(null)
 
+// Status maps for StatusBadge
+const memberStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
+  active: { label: 'Активен', variant: 'success' },
+  inactive: { label: 'Неактивен', variant: 'secondary' },
+  blocked: { label: 'Заблокирован', variant: 'destructive' },
+}
+
+const invitationStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
+  pending: { label: 'Ожидает', variant: 'warning' },
+  accepted: { label: 'Принято', variant: 'success' },
+  expired: { label: 'Истекло', variant: 'secondary' },
+  cancelled: { label: 'Отменено', variant: 'destructive' },
+}
+
 // Computed
 const filteredMembers = computed(() => {
   let result = members.value
@@ -114,11 +185,11 @@ const filteredMembers = computed(() => {
     )
   }
 
-  if (roleFilter.value) {
+  if (roleFilter.value !== 'all') {
     result = result.filter((m) => m.role === roleFilter.value)
   }
 
-  if (statusFilter.value) {
+  if (statusFilter.value !== 'all') {
     result = result.filter((m) => m.status === statusFilter.value)
   }
 
@@ -131,11 +202,11 @@ const filteredMembers = computed(() => {
 })
 
 const hasActiveMembersFilters = computed(
-  () => searchQuery.value.trim() !== '' || roleFilter.value !== '' || statusFilter.value !== ''
+  () => searchQuery.value.trim() !== '' || roleFilter.value !== 'all' || statusFilter.value !== 'all'
 )
 
 const hasActiveInvitationsFilters = computed(
-  () => invitationsStatusFilter.value !== ''
+  () => invitationsStatusFilter.value !== 'all'
 )
 
 const hasActiveFilters = computed(() => {
@@ -143,6 +214,30 @@ const hasActiveFilters = computed(() => {
     return hasActiveMembersFilters.value
   }
   return hasActiveInvitationsFilters.value
+})
+
+const activeFiltersCount = computed(() => {
+  if (currentTab.value === 'members') {
+    let count = 0
+    if (searchQuery.value.trim()) count++
+    if (roleFilter.value !== 'all') count++
+    if (statusFilter.value !== 'all') count++
+    return count
+  }
+  return invitationsStatusFilter.value !== 'all' ? 1 : 0
+})
+
+const tabItems = computed((): TabItem[] => {
+  const items: TabItem[] = [
+    { value: 'members', label: 'Сотрудники', icon: Users },
+  ]
+  if (canManageInvitations.value) {
+    items.push({ value: 'invitations', label: 'Приглашения', icon: UserPlus })
+  }
+  if (canViewHistory.value) {
+    items.push({ value: 'history', label: 'История', icon: History, separator: true })
+  }
+  return items
 })
 
 // Load data
@@ -169,7 +264,7 @@ async function loadInvitations() {
   error.value = null
 
   try {
-    const status = invitationsStatusFilter.value || undefined
+    const status = invitationsStatusFilter.value !== 'all' ? invitationsStatusFilter.value as InvitationStatus : undefined
     const response = await invitationsApi.list(auth.organizationId, status)
     invitations.value = response.items ?? []
   } catch (e) {
@@ -211,6 +306,7 @@ function closeInvitationForm() {
   showInvitationForm.value = false
   createdToken.value = null
   formError.value = null
+  copied.value = false
 }
 
 function openCancelModal(item: InvitationListItem) {
@@ -246,27 +342,7 @@ async function confirmCancel() {
   }
 }
 
-// Invitation helpers
-function getInvitationStatusLabel(status: InvitationStatus): string {
-  switch (status) {
-    case 'pending': return 'Ожидает'
-    case 'accepted': return 'Принято'
-    case 'expired': return 'Истекло'
-    case 'cancelled': return 'Отменено'
-    default: return status
-  }
-}
-
-function getInvitationStatusColor(status: InvitationStatus): string {
-  switch (status) {
-    case 'pending': return 'bg-yellow-100 text-yellow-800'
-    case 'accepted': return 'bg-green-100 text-green-800'
-    case 'expired': return 'bg-gray-100 text-gray-800'
-    case 'cancelled': return 'bg-red-100 text-red-800'
-    default: return 'bg-gray-100 text-gray-800'
-  }
-}
-
+// Helpers
 function getInvitationRoleLabel(role: string): string {
   switch (role) {
     case 'employee': return 'Сотрудник'
@@ -285,16 +361,26 @@ function formatDateTime(dateStr: string): string {
   })
 }
 
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 function getInvitationUrl(token: string): string {
   return `${window.location.origin}/invitations/${token}`
 }
 
-function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text)
+async function copyToClipboard(text: string) {
+  await navigator.clipboard.writeText(text)
+  copied.value = true
+  setTimeout(() => { copied.value = false }, 2000)
 }
 
-// Filter modal
-function openFilterModal() {
+// Filter functions
+function openFilters() {
   if (currentTab.value === 'members') {
     tempSearch.value = searchQuery.value
     tempRole.value = roleFilter.value
@@ -302,7 +388,7 @@ function openFilterModal() {
   } else {
     tempInvitationsStatus.value = invitationsStatusFilter.value
   }
-  showFilterModal.value = true
+  showFilters.value = true
 }
 
 function applyFilters() {
@@ -314,41 +400,28 @@ function applyFilters() {
     invitationsStatusFilter.value = tempInvitationsStatus.value
     loadInvitations()
   }
-  showFilterModal.value = false
+  showFilters.value = false
 }
 
-function clearFilters() {
+function resetFilters() {
   if (currentTab.value === 'members') {
     tempSearch.value = ''
-    tempRole.value = ''
-    tempStatus.value = ''
+    tempRole.value = 'all'
+    tempStatus.value = 'all'
   } else {
-    tempInvitationsStatus.value = ''
+    tempInvitationsStatus.value = 'all'
   }
 }
 
 function resetAllFilters() {
   if (currentTab.value === 'members') {
     searchQuery.value = ''
-    roleFilter.value = ''
-    statusFilter.value = ''
+    roleFilter.value = 'all'
+    statusFilter.value = 'all'
   } else {
-    invitationsStatusFilter.value = ''
+    invitationsStatusFilter.value = 'all'
     loadInvitations()
   }
-}
-
-function closeFilterModal() {
-  showFilterModal.value = false
-}
-
-// Helpers
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 // Navigation to member detail
@@ -383,6 +456,12 @@ function cancelSelection() {
   }
 }
 
+function getRoleBadgeVariant(role: MemberRole): 'default' | 'secondary' | 'outline' {
+  if (role === 'owner') return 'default'
+  if (role === 'administrator') return 'secondary'
+  return 'outline'
+}
+
 onMounted(() => {
   loadMembers()
   if (canManageInvitations.value) {
@@ -398,616 +477,550 @@ watch(currentTab, (tab) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-100 p-4 sm:p-6">
-    <div class="max-w-6xl mx-auto">
-      <!-- Header -->
-      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-        <div>
-          <h1 class="text-xl sm:text-2xl font-bold">
-            {{ isSelectionMode ? 'Выберите ответственного' : 'Штат' }}
-          </h1>
-          <p v-if="isSelectionMode" class="text-sm text-gray-500 mt-1">
-            Нажмите на сотрудника для назначения
-          </p>
-        </div>
-        <div class="flex gap-2">
-          <button
-            v-if="isSelectionMode"
-            @click="cancelSelection"
-            class="px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-          >
-            Отмена
-          </button>
-          <button
-            v-if="canManageInvitations && !isSelectionMode"
-            @click="showInvitationForm = true"
-            class="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
-          >
-            + Пригласить
-          </button>
-          <button
-            @click="openFilterModal"
-            class="px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
-          >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-              />
-            </svg>
-            Фильтры
-            <span
-              v-if="hasActiveFilters"
-              class="w-2 h-2 bg-blue-600 rounded-full"
-            ></span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Tab switcher -->
-      <div
-        v-if="(canManageInvitations || canViewHistory) && !isSelectionMode"
-        class="mb-6"
-      >
-        <select
-          v-model="currentTab"
-          class="w-full sm:w-auto px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+  <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <PageHeader
+      :title="isSelectionMode ? 'Выберите ответственного' : 'Штат'"
+      class="mb-6"
+    >
+      <template #description v-if="isSelectionMode">
+        Нажмите на сотрудника для назначения
+      </template>
+      <template #actions>
+        <Button
+          v-if="isSelectionMode"
+          variant="outline"
+          @click="cancelSelection"
         >
-          <option value="members">Сотрудники</option>
-          <option v-if="canManageInvitations" value="invitations">Приглашения</option>
-          <option v-if="canViewHistory" value="history">История</option>
-        </select>
-      </div>
+          Отмена
+        </Button>
+        <Button
+          v-if="canManageInvitations && !isSelectionMode"
+          @click="showInvitationForm = true"
+        >
+          <Plus class="mr-2 h-4 w-4" />
+          Пригласить
+        </Button>
 
-      <!-- Active filters indicator -->
-      <div v-if="hasActiveFilters" class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6 flex items-center justify-between">
-        <div class="text-sm text-blue-700">
+        <!-- Filters Sheet -->
+        <FilterSheet
+          v-model:open="showFilters"
+          :active-filters-count="activeFiltersCount"
+          :description="currentTab === 'members' ? 'Фильтрация сотрудников' : 'Фильтрация приглашений'"
+          @open="openFilters"
+          @apply="applyFilters"
+          @reset="resetFilters"
+        >
+          <!-- Members filters -->
+          <template v-if="currentTab === 'members'">
+            <div class="space-y-2">
+              <Label>Поиск</Label>
+              <Input
+                v-model="tempSearch"
+                placeholder="ФИО, email или телефон"
+              />
+            </div>
+
+            <div class="space-y-2">
+              <Label>Роль</Label>
+              <Select v-model="tempRole">
+                <SelectTrigger>
+                  <SelectValue placeholder="Все роли" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="opt in roleOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-2">
+              <Label>Статус</Label>
+              <Select v-model="tempStatus">
+                <SelectTrigger>
+                  <SelectValue placeholder="Все статусы" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="opt in statusOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </template>
+
+          <!-- Invitations filters -->
+          <template v-else>
+            <div class="space-y-2">
+              <Label>Статус</Label>
+              <Select v-model="tempInvitationsStatus">
+                <SelectTrigger>
+                  <SelectValue placeholder="Все статусы" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="opt in invitationStatusOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </template>
+        </FilterSheet>
+      </template>
+    </PageHeader>
+
+    <!-- Active filters indicator -->
+    <Card v-if="hasActiveFilters" class="mb-6 border-primary/20 bg-primary/5">
+      <CardContent class="flex items-center justify-between py-3">
+        <div class="text-sm text-primary flex flex-wrap gap-x-2 gap-y-1">
           <template v-if="currentTab === 'members'">
             <span v-if="searchQuery">Поиск: "{{ searchQuery }}"</span>
-            <span v-if="searchQuery && (roleFilter || statusFilter)">, </span>
-            <span v-if="roleFilter">Роль: {{ roleLabels[roleFilter] }}</span>
-            <span v-if="roleFilter && statusFilter">, </span>
-            <span v-if="statusFilter">Статус: {{ statusLabels[statusFilter] }}</span>
+            <span v-if="searchQuery && (roleFilter !== 'all' || statusFilter !== 'all')">, </span>
+            <span v-if="roleFilter !== 'all'">Роль: {{ roleLabels[roleFilter as MemberRole] }}</span>
+            <span v-if="roleFilter !== 'all' && statusFilter !== 'all'">, </span>
+            <span v-if="statusFilter !== 'all'">Статус: {{ statusLabels[statusFilter as MemberStatus] }}</span>
           </template>
           <template v-else>
             <span>Статус: {{ invitationStatusOptions.find(o => o.value === invitationsStatusFilter)?.label }}</span>
           </template>
         </div>
-        <button
-          @click="resetAllFilters"
-          class="text-blue-600 hover:text-blue-800 text-sm underline"
-        >
+        <Button variant="ghost" size="sm" @click="resetAllFilters">
           Сбросить
-        </button>
-      </div>
+        </Button>
+      </CardContent>
+    </Card>
 
-      <!-- Members Tab Content -->
-      <template v-if="currentTab === 'members'">
-        <!-- Loading -->
-        <div v-if="isLoading" class="text-center py-12">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p class="mt-2 text-gray-600">Загрузка...</p>
-        </div>
+    <!-- Tabs -->
+    <Tabs v-if="(canManageInvitations || canViewHistory) && !isSelectionMode" v-model="currentTab" class="space-y-6">
+      <!-- Tab selector dropdown -->
+      <TabsDropdown v-model="currentTab" :items="tabItems" />
 
-        <!-- Error -->
-        <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-          {{ error }}
-          <button @click="loadMembers" class="ml-2 underline">Повторить</button>
-        </div>
+      <!-- Members Tab -->
+      <TabsContent value="members">
+        <LoadingSpinner v-if="isLoading" text="Загрузка сотрудников..." />
 
-        <!-- Empty state -->
-        <div v-else-if="filteredMembers.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
-          <p class="text-gray-500">
-            {{ hasActiveFilters ? 'Нет сотрудников по заданным фильтрам' : 'Сотрудников пока нет' }}
-          </p>
-        </div>
+        <ErrorBanner
+          v-else-if="error"
+          :message="error"
+          @retry="loadMembers"
+        />
 
-        <!-- Members List -->
+        <EmptyState
+          v-else-if="filteredMembers.length === 0"
+          :icon="Users"
+          :title="hasActiveFilters ? 'Нет сотрудников по фильтрам' : 'Сотрудников пока нет'"
+          :description="hasActiveFilters ? 'Попробуйте изменить параметры фильтрации' : 'Пригласите первого сотрудника'"
+        />
+
         <template v-else>
-        <!-- Mobile Cards (visible below sm) -->
-        <div class="sm:hidden space-y-3">
-          <div
-            v-for="member in filteredMembers"
-            :key="member.id"
-            :class="[
-              'bg-white rounded-lg shadow p-4 cursor-pointer',
-              isSelectionMode && member.status === 'active' ? 'active:bg-blue-50' : '',
-              isSelectionMode && member.status !== 'active' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50',
-              selectLoading ? 'pointer-events-none' : ''
-            ]"
-            @click="isSelectionMode ? selectMember(member) : goToMember(member)"
-          >
-            <div class="flex items-start justify-between mb-2 gap-2">
-              <div class="min-w-0 flex-1">
-                <div class="font-medium text-gray-900 truncate">
-                  {{ member.name }}
-                  <span v-if="member.id === auth.memberId" class="text-xs text-gray-400">(вы)</span>
+          <!-- Mobile Cards -->
+          <div class="sm:hidden space-y-3">
+            <Card
+              v-for="member in filteredMembers"
+              :key="member.id"
+              :class="cn(
+                'cursor-pointer transition-shadow',
+                isSelectionMode && member.status === 'active' && 'hover:shadow-md',
+                isSelectionMode && member.status !== 'active' && 'opacity-50 cursor-not-allowed',
+                !isSelectionMode && 'hover:shadow-md',
+                selectLoading && 'pointer-events-none'
+              )"
+              @click="isSelectionMode ? selectMember(member) : goToMember(member)"
+            >
+              <CardContent class="p-4">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="font-medium text-foreground truncate">
+                      {{ member.name }}
+                      <span v-if="member.id === auth.memberId" class="text-xs text-muted-foreground">(вы)</span>
+                    </div>
+                    <div class="text-sm text-muted-foreground truncate">{{ member.email }}</div>
+                    <div v-if="member.phone" class="text-sm text-muted-foreground">{{ member.phone }}</div>
+                  </div>
+                  <div class="flex flex-col items-end gap-1">
+                    <Badge :variant="getRoleBadgeVariant(member.role)">
+                      {{ roleLabels[member.role] }}
+                    </Badge>
+                    <StatusBadge :status="member.status" :status-map="memberStatusMap" />
+                  </div>
                 </div>
-                <div class="text-sm text-gray-500 truncate">{{ member.email }}</div>
-                <div v-if="member.phone" class="text-sm text-gray-500">{{ member.phone }}</div>
-              </div>
-              <div class="flex flex-col items-end gap-1">
-                <span :class="[roleColors[member.role], 'px-2 py-0.5 text-xs font-medium rounded-full']">
-                  {{ roleLabels[member.role] }}
-                </span>
-                <span :class="[statusColors[member.status], 'px-2 py-0.5 text-xs font-medium rounded-full']">
-                  {{ statusLabels[member.status] }}
-                </span>
-              </div>
-            </div>
-            <div class="text-xs text-gray-400">
-              Добавлен {{ formatDate(member.created_at) }}
-            </div>
+                <div class="mt-2 text-xs text-muted-foreground">
+                  Добавлен {{ formatDate(member.created_at) }}
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </div>
 
-        <!-- Desktop Table (visible on sm and above) -->
-        <div class="hidden sm:block bg-white rounded-lg shadow overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Дата
-                  </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ФИО
-                  </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Телефон
-                  </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Роль
-                  </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Статус
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                <tr
+          <!-- Desktop Table -->
+          <Card class="hidden sm:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Дата</TableHead>
+                  <TableHead>ФИО</TableHead>
+                  <TableHead>Телефон</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Роль</TableHead>
+                  <TableHead>Статус</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
                   v-for="member in filteredMembers"
                   :key="member.id"
-                  :class="[
-                    'transition-colors cursor-pointer',
-                    isSelectionMode && member.status === 'active' ? 'hover:bg-blue-50' : 'hover:bg-gray-50',
-                    isSelectionMode && member.status !== 'active' ? 'opacity-50 cursor-not-allowed' : '',
-                    selectLoading ? 'pointer-events-none' : ''
-                  ]"
+                  :class="cn(
+                    'cursor-pointer',
+                    isSelectionMode && member.status === 'active' && 'hover:bg-primary/5',
+                    isSelectionMode && member.status !== 'active' && 'opacity-50 cursor-not-allowed',
+                    selectLoading && 'pointer-events-none'
+                  )"
                   @click="isSelectionMode ? selectMember(member) : goToMember(member)"
                 >
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <TableCell class="text-muted-foreground">
                     {{ formatDate(member.created_at) }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900">
-                      {{ member.name }}
-                    </div>
-                    <div v-if="member.id === auth.memberId" class="text-xs text-gray-400">
+                  </TableCell>
+                  <TableCell>
+                    <div class="font-medium">{{ member.name }}</div>
+                    <div v-if="member.id === auth.memberId" class="text-xs text-muted-foreground">
                       (это вы)
                     </div>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  </TableCell>
+                  <TableCell class="text-muted-foreground">
                     {{ member.phone || '—' }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  </TableCell>
+                  <TableCell class="text-muted-foreground">
                     {{ member.email }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span :class="[roleColors[member.role], 'px-2 py-1 text-xs font-medium rounded-full']">
+                  </TableCell>
+                  <TableCell>
+                    <Badge :variant="getRoleBadgeVariant(member.role)">
                       {{ roleLabels[member.role] }}
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span :class="[statusColors[member.status], 'px-2 py-1 text-xs font-medium rounded-full']">
-                      {{ statusLabels[member.status] }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge :status="member.status" :status-map="memberStatusMap" />
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </Card>
         </template>
-      </template>
+      </TabsContent>
 
-      <!-- Invitations Tab Content -->
-      <template v-else-if="currentTab === 'invitations'">
-        <!-- Loading -->
-        <div v-if="isLoadingInvitations" class="text-center py-12">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p class="mt-2 text-gray-600">Загрузка...</p>
-        </div>
+      <!-- Invitations Tab -->
+      <TabsContent value="invitations">
+        <LoadingSpinner v-if="isLoadingInvitations" text="Загрузка приглашений..." />
 
-        <!-- Error -->
-        <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-          {{ error }}
-          <button @click="loadInvitations" class="ml-2 underline">Повторить</button>
-        </div>
+        <ErrorBanner
+          v-else-if="error"
+          :message="error"
+          @retry="loadInvitations"
+        />
 
-        <!-- Empty state -->
-        <div v-else-if="invitations.length === 0" class="bg-white rounded-lg shadow p-12 text-center">
-          <p class="text-gray-500">
-            {{ hasActiveFilters ? 'Нет приглашений по заданным фильтрам' : 'Приглашений пока нет' }}
-          </p>
-        </div>
+        <EmptyState
+          v-else-if="invitations.length === 0"
+          :icon="Mail"
+          :title="hasActiveFilters ? 'Нет приглашений по фильтрам' : 'Приглашений пока нет'"
+          :description="hasActiveFilters ? 'Попробуйте изменить параметры фильтрации' : 'Создайте приглашение для нового сотрудника'"
+        >
+          <template #action>
+            <Button @click="showInvitationForm = true">
+              <Plus class="mr-2 h-4 w-4" />
+              Создать приглашение
+            </Button>
+          </template>
+        </EmptyState>
 
-        <!-- Invitations List -->
         <template v-else>
-          <!-- Mobile Cards (visible below sm) -->
+          <!-- Mobile Cards -->
           <div class="sm:hidden space-y-3">
-            <div
-              v-for="item in invitations"
-              :key="item.id"
-              class="bg-white rounded-lg shadow p-4"
-            >
-              <div class="flex items-start justify-between mb-2 gap-2">
-                <div class="min-w-0 flex-1">
-                  <div class="font-medium text-gray-900 truncate">{{ item.email }}</div>
-                  <div v-if="item.name" class="text-sm text-gray-500 truncate">{{ item.name }}</div>
-                  <div v-if="item.phone" class="text-sm text-gray-500">{{ item.phone }}</div>
-                </div>
-                <div class="flex flex-col items-end gap-1">
-                  <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
-                    {{ getInvitationRoleLabel(item.role) }}
-                  </span>
-                  <span :class="[getInvitationStatusColor(item.status), 'px-2 py-0.5 text-xs font-medium rounded-full']">
-                    {{ getInvitationStatusLabel(item.status) }}
-                  </span>
-                </div>
-              </div>
-              <div class="flex items-center justify-between">
-                <div class="text-xs text-gray-400">
-                  Истекает: {{ formatDateTime(item.expires_at) }}
-                </div>
-                <button
-                  v-if="item.status === 'pending'"
-                  @click="openCancelModal(item)"
-                  class="text-xs text-red-600 hover:text-red-800"
-                >
-                  Отменить
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Desktop Table (visible on sm and above) -->
-          <div class="hidden sm:block bg-white rounded-lg shadow overflow-hidden">
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                  <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Роль
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ФИО
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Телефон
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Статус
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Истекает
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Действия
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                  <tr v-for="item in invitations" :key="item.id" class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {{ item.email }}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+            <Card v-for="item in invitations" :key="item.id">
+              <CardContent class="p-4">
+                <div class="flex items-start justify-between gap-2 mb-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="font-medium text-foreground truncate">{{ item.email }}</div>
+                    <div v-if="item.name" class="text-sm text-muted-foreground truncate">{{ item.name }}</div>
+                    <div v-if="item.phone" class="text-sm text-muted-foreground">{{ item.phone }}</div>
+                  </div>
+                  <div class="flex flex-col items-end gap-1">
+                    <Badge variant="outline">
                       {{ getInvitationRoleLabel(item.role) }}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {{ item.name || '—' }}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {{ item.phone || '—' }}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                      <span
-                        :class="[getInvitationStatusColor(item.status), 'px-2 py-1 text-xs font-medium rounded-full']"
-                      >
-                        {{ getInvitationStatusLabel(item.status) }}
-                      </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {{ formatDateTime(item.expires_at) }}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                      <button
-                        v-if="item.status === 'pending'"
-                        @click="openCancelModal(item)"
-                        class="text-red-600 hover:text-red-800"
-                      >
-                        Отменить
-                      </button>
-                      <span v-else class="text-gray-400">—</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                    </Badge>
+                    <StatusBadge :status="item.status" :status-map="invitationStatusMap" />
+                  </div>
+                </div>
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock class="h-3 w-3" />
+                    {{ formatDateTime(item.expires_at) }}
+                  </div>
+                  <Button
+                    v-if="item.status === 'pending'"
+                    variant="ghost"
+                    size="sm"
+                    class="text-destructive hover:text-destructive"
+                    @click="openCancelModal(item)"
+                  >
+                    Отменить
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+
+          <!-- Desktop Table -->
+          <Card class="hidden sm:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Роль</TableHead>
+                  <TableHead>ФИО</TableHead>
+                  <TableHead>Телефон</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead>Истекает</TableHead>
+                  <TableHead>Действия</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow v-for="item in invitations" :key="item.id">
+                  <TableCell class="font-medium">{{ item.email }}</TableCell>
+                  <TableCell>{{ getInvitationRoleLabel(item.role) }}</TableCell>
+                  <TableCell class="text-muted-foreground">{{ item.name || '—' }}</TableCell>
+                  <TableCell class="text-muted-foreground">{{ item.phone || '—' }}</TableCell>
+                  <TableCell>
+                    <StatusBadge :status="item.status" :status-map="invitationStatusMap" />
+                  </TableCell>
+                  <TableCell class="text-muted-foreground">
+                    {{ formatDateTime(item.expires_at) }}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      v-if="item.status === 'pending'"
+                      variant="ghost"
+                      size="sm"
+                      class="text-destructive hover:text-destructive"
+                      @click="openCancelModal(item)"
+                    >
+                      Отменить
+                    </Button>
+                    <span v-else class="text-muted-foreground">—</span>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </Card>
         </template>
-      </template>
+      </TabsContent>
 
-      <!-- History Tab Content -->
-      <template v-if="currentTab === 'history'">
-        <div class="bg-white rounded-lg shadow p-6">
-          <EventHistory :load-fn="loadOrganizationHistory" />
-        </div>
-      </template>
+      <!-- History Tab -->
+      <TabsContent value="history">
+        <Card>
+          <CardContent class="p-6">
+            <EventHistory :load-fn="loadOrganizationHistory" />
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
 
-      <!-- Filter Modal -->
-      <div v-if="showFilterModal" class="fixed inset-0 bg-black/25 flex items-center justify-center p-4 z-50" @click="closeFilterModal">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
-          <h2 class="text-xl font-bold mb-4">Фильтры</h2>
+    <!-- Members list when no tabs (selection mode or no permissions) -->
+    <template v-if="(!canManageInvitations && !canViewHistory) || isSelectionMode">
+      <LoadingSpinner v-if="isLoading" text="Загрузка сотрудников..." />
 
-          <div class="space-y-4">
-            <!-- Members filters -->
-            <template v-if="currentTab === 'members'">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                  Поиск
-                </label>
-                <input
-                  v-model="tempSearch"
-                  type="text"
-                  class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="ФИО, email или телефон"
-                />
+      <ErrorBanner
+        v-else-if="error"
+        :message="error"
+        @retry="loadMembers"
+      />
+
+      <EmptyState
+        v-else-if="filteredMembers.length === 0"
+        :icon="Users"
+        :title="hasActiveFilters ? 'Нет сотрудников по фильтрам' : 'Сотрудников пока нет'"
+        :description="hasActiveFilters ? 'Попробуйте изменить параметры фильтрации' : ''"
+      />
+
+      <div v-else class="space-y-3">
+        <Card
+          v-for="member in filteredMembers"
+          :key="member.id"
+          :class="cn(
+            'cursor-pointer transition-shadow',
+            isSelectionMode && member.status === 'active' && 'hover:shadow-md',
+            isSelectionMode && member.status !== 'active' && 'opacity-50 cursor-not-allowed',
+            !isSelectionMode && 'hover:shadow-md',
+            selectLoading && 'pointer-events-none'
+          )"
+          @click="isSelectionMode ? selectMember(member) : goToMember(member)"
+        >
+          <CardContent class="p-4">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="font-medium text-foreground truncate">
+                  {{ member.name }}
+                  <span v-if="member.id === auth.memberId" class="text-xs text-muted-foreground">(вы)</span>
+                </div>
+                <div class="text-sm text-muted-foreground truncate">{{ member.email }}</div>
               </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                  Роль
-                </label>
-                <select
-                  v-model="tempRole"
-                  class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </option>
-                </select>
+              <div class="flex flex-col items-end gap-1">
+                <Badge :variant="getRoleBadgeVariant(member.role)">
+                  {{ roleLabels[member.role] }}
+                </Badge>
+                <StatusBadge :status="member.status" :status-map="memberStatusMap" />
               </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                  Статус
-                </label>
-                <select
-                  v-model="tempStatus"
-                  class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </option>
-                </select>
-              </div>
-            </template>
-
-            <!-- Invitations filters -->
-            <template v-else>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                  Статус
-                </label>
-                <select
-                  v-model="tempInvitationsStatus"
-                  class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option v-for="opt in invitationStatusOptions" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </option>
-                </select>
-              </div>
-            </template>
-          </div>
-
-          <div class="flex flex-col gap-2 mt-6">
-            <button
-              @click="applyFilters"
-              class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Применить
-            </button>
-            <div class="flex gap-2">
-              <button
-                @click="clearFilters"
-                class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-              >
-                Очистить
-              </button>
-              <button
-                @click="closeFilterModal"
-                class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-              >
-                Отмена
-              </button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
+    </template>
 
-      <!-- Create Invitation Modal -->
-      <div v-if="showInvitationForm" class="fixed inset-0 bg-black/25 flex items-center justify-center p-4 z-50" @click="closeInvitationForm">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
-          <h2 class="text-xl font-bold mb-4">Новое приглашение</h2>
+    <!-- Create Invitation Dialog -->
+    <Dialog v-model:open="showInvitationForm">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Новое приглашение</DialogTitle>
+          <DialogDescription>
+            Отправьте приглашение новому сотруднику
+          </DialogDescription>
+        </DialogHeader>
 
-          <!-- Success state with token -->
-          <div v-if="createdToken" class="space-y-4">
-            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-              <p class="text-green-700 font-medium mb-2">Приглашение создано!</p>
-              <p class="text-sm text-green-600 mb-2">Ссылка для приглашения:</p>
-              <div class="flex items-center gap-2">
-                <input
-                  type="text"
-                  :value="getInvitationUrl(createdToken)"
-                  readonly
-                  class="flex-1 px-3 py-2 text-sm border rounded bg-gray-50"
-                />
-                <button
-                  @click="copyToClipboard(getInvitationUrl(createdToken))"
-                  class="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                >
-                  Копировать
-                </button>
-              </div>
+        <!-- Success state with token -->
+        <div v-if="createdToken" class="space-y-4">
+          <div class="rounded-lg border border-success/50 bg-success/10 p-4">
+            <p class="text-success font-medium mb-2">Приглашение создано!</p>
+            <p class="text-sm text-muted-foreground mb-2">Ссылка для приглашения:</p>
+            <div class="flex items-center gap-2">
+              <Input
+                :model-value="getInvitationUrl(createdToken)"
+                readonly
+                class="flex-1 text-sm"
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                @click="copyToClipboard(getInvitationUrl(createdToken))"
+              >
+                <Check v-if="copied" class="h-4 w-4 text-success" />
+                <Copy v-else class="h-4 w-4" />
+              </Button>
             </div>
-            <button
-              @click="closeInvitationForm"
-              class="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-            >
-              Закрыть
-            </button>
+          </div>
+          <Button variant="outline" class="w-full" @click="closeInvitationForm">
+            Закрыть
+          </Button>
+        </div>
+
+        <!-- Form -->
+        <form v-else @submit.prevent="createInvitation" class="space-y-4">
+          <div
+            v-if="formError"
+            class="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            <AlertCircle class="h-4 w-4 shrink-0" />
+            {{ formError }}
           </div>
 
-          <!-- Form -->
-          <form v-else @submit.prevent="createInvitation" class="space-y-4">
-            <div v-if="formError" class="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-              {{ formError }}
-            </div>
+          <div class="space-y-2">
+            <Label for="inv-email">
+              Email <span class="text-destructive">*</span>
+            </Label>
+            <Input
+              id="inv-email"
+              v-model="invitationForm.email"
+              type="email"
+              required
+              placeholder="user@example.com"
+            />
+          </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">
-                Email <span class="text-red-500">*</span>
-              </label>
-              <input
-                v-model="invitationForm.email"
-                type="email"
-                required
-                class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="user@example.com"
-              />
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">
-                Роль <span class="text-red-500">*</span>
-              </label>
-              <select
-                v-model="invitationForm.role"
-                class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option v-for="opt in invitationRoleOptions" :key="opt.value" :value="opt.value">
+          <div class="space-y-2">
+            <Label for="inv-role">
+              Роль <span class="text-destructive">*</span>
+            </Label>
+            <Select v-model="invitationForm.role">
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="opt in invitationRoleOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
                   {{ opt.label }}
-                </option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">
-                ФИО
-                <span class="text-gray-400 font-normal">(опционально)</span>
-              </label>
-              <input
-                v-model="invitationForm.name"
-                type="text"
-                class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Иванов Иван Иванович"
-              />
-              <p class="mt-1 text-xs text-gray-500">
-                Если заполнить, приглашённый не сможет изменить
-              </p>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">
-                Телефон
-                <span class="text-gray-400 font-normal">(опционально)</span>
-              </label>
-              <input
-                v-model="invitationForm.phone"
-                v-maska
-                :data-maska="phoneMask"
-                type="tel"
-                inputmode="tel"
-                class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                :placeholder="phonePlaceholder"
-              />
-              <p class="mt-1 text-xs text-gray-500">
-                Если заполнить, приглашённый не сможет изменить
-              </p>
-            </div>
-
-            <div class="flex gap-3 pt-2">
-              <button
-                type="button"
-                @click="closeInvitationForm"
-                class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-              >
-                Отмена
-              </button>
-              <button
-                type="submit"
-                :disabled="isSubmitting"
-                class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                {{ isSubmitting ? 'Создание...' : 'Создать' }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- Cancel Invitation Modal -->
-      <div
-        v-if="showCancelModal"
-        class="fixed inset-0 bg-black/25 flex items-center justify-center z-50 p-4"
-        @click.self="closeCancelModal"
-      >
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-          <h3 class="text-lg font-medium text-gray-900 mb-2">
-            Отменить приглашение?
-          </h3>
-          <p class="text-sm text-gray-500 mb-4">
-            Вы уверены, что хотите отменить приглашение для <strong>{{ cancellingInvitation?.email }}</strong>?
-            Пользователь не сможет принять это приглашение.
-          </p>
-
-          <div v-if="cancelError" class="bg-red-50 border border-red-200 rounded p-3 mb-4 text-sm text-red-700">
-            {{ cancelError }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <div class="flex justify-end gap-3">
-            <button
-              @click="closeCancelModal"
-              :disabled="cancellingId !== null"
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md disabled:opacity-50"
-            >
+          <div class="space-y-2">
+            <Label for="inv-name">
+              ФИО
+              <span class="text-muted-foreground font-normal">(опционально)</span>
+            </Label>
+            <Input
+              id="inv-name"
+              v-model="invitationForm.name"
+              placeholder="Иванов Иван Иванович"
+            />
+            <p class="text-xs text-muted-foreground">
+              Если заполнить, приглашённый не сможет изменить
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <Label for="inv-phone">
+              Телефон
+              <span class="text-muted-foreground font-normal">(опционально)</span>
+            </Label>
+            <Input
+              id="inv-phone"
+              v-model="invitationForm.phone"
+              v-maska
+              :data-maska="phoneMask"
+              type="tel"
+              inputmode="tel"
+              :placeholder="phonePlaceholder"
+            />
+            <p class="text-xs text-muted-foreground">
+              Если заполнить, приглашённый не сможет изменить
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" @click="closeInvitationForm">
               Отмена
-            </button>
-            <button
-              @click="confirmCancel"
-              :disabled="cancellingId !== null"
-              class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50"
-            >
-              <span v-if="cancellingId" class="flex items-center gap-2">
-                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                Отмена...
-              </span>
-              <span v-else>Отменить приглашение</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+            </Button>
+            <Button type="submit" :disabled="isSubmitting">
+              {{ isSubmitting ? 'Создание...' : 'Создать' }}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Cancel Invitation Dialog -->
+    <ConfirmDialog
+      :open="showCancelModal"
+      title="Отменить приглашение?"
+      :description="`Вы уверены, что хотите отменить приглашение для ${cancellingInvitation?.email}? Пользователь не сможет принять это приглашение.`"
+      confirm-text="Отменить приглашение"
+      confirm-variant="destructive"
+      :loading="cancellingId !== null"
+      @confirm="confirmCancel"
+      @cancel="closeCancelModal"
+    />
   </div>
 </template>

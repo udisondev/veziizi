@@ -175,9 +175,10 @@ func (s *Service) AttachDocument(ctx context.Context, input AttachDocumentInput)
 }
 
 type RemoveDocumentInput struct {
-	OrderID      uuid.UUID
-	DocumentID   uuid.UUID
-	RemoverOrgID uuid.UUID
+	OrderID         uuid.UUID
+	DocumentID      uuid.UUID
+	RemoverOrgID    uuid.UUID
+	RemoverMemberID uuid.UUID
 }
 
 func (s *Service) RemoveDocument(ctx context.Context, input RemoveDocumentInput) error {
@@ -193,7 +194,7 @@ func (s *Service) RemoveDocument(ctx context.Context, input RemoveDocumentInput)
 	}
 	fileID := doc.FileID()
 
-	if err := o.RemoveDocument(input.RemoverOrgID, input.DocumentID); err != nil {
+	if err := o.RemoveDocument(input.RemoverOrgID, input.RemoverMemberID, input.DocumentID); err != nil {
 		return err
 	}
 
@@ -266,10 +267,11 @@ func (s *Service) Cancel(ctx context.Context, input CancelInput) error {
 }
 
 type LeaveReviewInput struct {
-	OrderID       uuid.UUID
-	ReviewerOrgID uuid.UUID
-	Rating        int
-	Comment       string
+	OrderID          uuid.UUID
+	ReviewerOrgID    uuid.UUID
+	ReviewerMemberID uuid.UUID
+	Rating           int
+	Comment          string
 }
 
 func (s *Service) LeaveReview(ctx context.Context, input LeaveReviewInput) error {
@@ -278,7 +280,7 @@ func (s *Service) LeaveReview(ctx context.Context, input LeaveReviewInput) error
 		return err
 	}
 
-	if err := o.LeaveReview(input.ReviewerOrgID, input.Rating, input.Comment); err != nil {
+	if err := o.LeaveReview(input.ReviewerOrgID, input.ReviewerMemberID, input.Rating, input.Comment); err != nil {
 		return err
 	}
 

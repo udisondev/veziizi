@@ -17,6 +17,20 @@ type RoutePoint struct {
 	Comment      *string      `json:"comment,omitempty"`
 }
 
+// Validate validates route point - if contact is provided, both name and phone are required
+func (p RoutePoint) Validate() error {
+	hasName := p.ContactName != nil && *p.ContactName != ""
+	hasPhone := p.ContactPhone != nil && *p.ContactPhone != ""
+
+	if hasName && !hasPhone {
+		return fmt.Errorf("contact phone is required when contact name is provided")
+	}
+	if hasPhone && !hasName {
+		return fmt.Errorf("contact name is required when contact phone is provided")
+	}
+	return nil
+}
+
 // Route represents the full route with loading and unloading points
 type Route struct {
 	Points []RoutePoint `json:"points"`
@@ -29,12 +43,15 @@ func NewRoute(points []RoutePoint) (Route, error) {
 
 	hasLoading := false
 	hasUnloading := false
-	for _, p := range points {
+	for i, p := range points {
 		if p.IsLoading {
 			hasLoading = true
 		}
 		if p.IsUnloading {
 			hasUnloading = true
+		}
+		if err := p.Validate(); err != nil {
+			return Route{}, fmt.Errorf("point %d: %w", i+1, err)
 		}
 	}
 

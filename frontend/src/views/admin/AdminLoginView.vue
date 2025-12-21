@@ -3,6 +3,15 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAdminStore } from '@/stores/admin'
 
+// UI Components
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
+// Icons
+import { ShieldCheck, AlertCircle } from 'lucide-vue-next'
+
 const router = useRouter()
 const admin = useAdminStore()
 
@@ -27,57 +36,64 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-900 py-12 px-4">
-    <div class="max-w-md w-full space-y-8">
-      <div>
-        <h2 class="mt-6 text-center text-3xl font-extrabold text-white">
-          Панель администратора
-        </h2>
-        <p class="mt-2 text-center text-sm text-gray-400">
+  <div class="min-h-screen flex items-center justify-center bg-slate-900 py-12 px-4">
+    <Card class="w-full max-w-md bg-slate-800 border-slate-700">
+      <CardHeader class="text-center">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-500/10 mb-4">
+          <ShieldCheck class="h-6 w-6 text-indigo-400" />
+        </div>
+        <CardTitle class="text-2xl text-white">Панель администратора</CardTitle>
+        <CardDescription class="text-slate-400">
           Вход для модераторов платформы
-        </p>
-      </div>
+        </CardDescription>
+      </CardHeader>
 
-      <form class="mt-8 space-y-6" @submit.prevent="handleSubmit">
-        <div v-if="error" class="bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded">
+      <CardContent>
+        <!-- Error -->
+        <div
+          v-if="error"
+          class="mb-6 flex items-center gap-2 rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400"
+        >
+          <AlertCircle class="h-4 w-4 shrink-0" />
           {{ error }}
         </div>
 
-        <div class="rounded-md shadow-sm space-y-4">
-          <div>
-            <label for="email" class="sr-only">Email</label>
-            <input
+        <form @submit.prevent="handleSubmit" class="space-y-4">
+          <div class="space-y-2">
+            <Label for="email" class="text-slate-200">Email</Label>
+            <Input
               id="email"
               v-model="email"
               type="email"
               required
-              class="appearance-none relative block w-full px-3 py-2 border border-gray-700 placeholder-gray-500 text-white bg-gray-800 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Email"
+              placeholder="admin@example.com"
+              autocomplete="email"
+              class="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:ring-indigo-500"
             />
           </div>
-          <div>
-            <label for="password" class="sr-only">Пароль</label>
-            <input
+
+          <div class="space-y-2">
+            <Label for="password" class="text-slate-200">Пароль</Label>
+            <Input
               id="password"
               v-model="password"
               type="password"
               required
-              class="appearance-none relative block w-full px-3 py-2 border border-gray-700 placeholder-gray-500 text-white bg-gray-800 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Пароль"
+              placeholder="Введите пароль"
+              autocomplete="current-password"
+              class="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:ring-indigo-500"
             />
           </div>
-        </div>
 
-        <div>
-          <button
+          <Button
             type="submit"
+            class="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
             :disabled="isLoading"
-            class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
           >
             {{ isLoading ? 'Вход...' : 'Войти' }}
-          </button>
-        </div>
-      </form>
-    </div>
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   </div>
 </template>

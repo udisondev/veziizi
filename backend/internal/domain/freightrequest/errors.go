@@ -14,6 +14,7 @@ var (
 	ErrOfferAlreadyExists         = errors.New("offer from this carrier already exists")
 	ErrCannotOfferOwnRequest      = errors.New("cannot make offer on own freight request")
 	ErrNotFreightRequestOwner     = errors.New("not freight request owner")
+	ErrNotResponsibleMember       = errors.New("not responsible member for this freight request")
 	ErrNotOfferOwner              = errors.New("not offer owner")
 	ErrHasSelectedOffer           = errors.New("freight request already has selected offer")
 	ErrFreightVersionMismatch     = errors.New("freight version mismatch")

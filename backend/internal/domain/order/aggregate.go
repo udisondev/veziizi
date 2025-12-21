@@ -145,13 +145,20 @@ func (o *Order) HasReviewFrom(orgID uuid.UUID) bool {
 }
 
 // CanAccess проверяет может ли пользователь видеть заказ
-// Owner/Admin видят все заказы своей организации
-// Обычные сотрудники видят только свои заказы (где они ответственные)
-func (o *Order) CanAccess(orgID, memberID uuid.UUID, role string) bool {
-	if (role == "owner" || role == "administrator") && o.IsParticipant(orgID) {
-		return true
+// Все сотрудники организации-участника могут видеть заказ
+func (o *Order) CanAccess(orgID uuid.UUID) bool {
+	return o.IsParticipant(orgID)
+}
+
+// IsResponsibleMember проверяет что memberID — ответственный со стороны своей организации
+func (o *Order) IsResponsibleMember(orgID, memberID uuid.UUID) bool {
+	if o.customerOrgID == orgID {
+		return o.customerMemberID == memberID
 	}
-	return o.customerMemberID == memberID || o.carrierMemberID == memberID
+	if o.carrierOrgID == orgID {
+		return o.carrierMemberID == memberID
+	}
+	return false
 }
 
 // Commands
@@ -159,6 +166,9 @@ func (o *Order) CanAccess(orgID, memberID uuid.UUID, role string) bool {
 func (o *Order) SendMessage(senderOrgID, senderMemberID uuid.UUID, content string) error {
 	if !o.IsParticipant(senderOrgID) {
 		return ErrNotOrderParticipant
+	}
+	if !o.IsResponsibleMember(senderOrgID, senderMemberID) {
+		return ErrNotResponsibleMember
 	}
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -188,6 +198,9 @@ func (o *Order) AttachDocument(
 	if !o.IsParticipant(uploaderOrgID) {
 		return ErrNotOrderParticipant
 	}
+	if !o.IsResponsibleMember(uploaderOrgID, uploaderMemberID) {
+		return ErrNotResponsibleMember
+	}
 	if o.status.IsFinished() {
 		if o.status.IsCancelled() {
 			return ErrOrderCancelled
@@ -208,16 +221,17 @@ func (o *Order) AttachDocument(
 	return nil
 }
 
-func (o *Order) RemoveDocument(removerOrgID uuid.UUID, documentID uuid.UUID) error {
+func (o *Order) RemoveDocument(removerOrgID, removerMemberID uuid.UUID, documentID uuid.UUID) error {
 	if !o.IsParticipant(removerOrgID) {
 		return ErrNotOrderParticipant
+	}
+	if !o.IsResponsibleMember(removerOrgID, removerMemberID) {
+		return ErrNotResponsibleMember
 	}
 	doc, ok := o.documents[documentID]
 	if !ok {
 		return ErrDocumentNotFound
 	}
-	// Check if remover is the uploader or from same org
-	// For simplicity, allow any participant to remove any document
 	_ = doc
 
 	o.Apply(events.DocumentRemoved{
@@ -232,6 +246,9 @@ func (o *Order) RemoveDocument(removerOrgID uuid.UUID, documentID uuid.UUID) err
 func (o *Order) Complete(orgID, memberID uuid.UUID) error {
 	if !o.IsParticipant(orgID) {
 		return ErrNotOrderParticipant
+	}
+	if !o.IsResponsibleMember(orgID, memberID) {
+		return ErrNotResponsibleMember
 	}
 	if o.status.IsCancelled() {
 		return ErrOrderCancelled
@@ -274,6 +291,9 @@ func (o *Order) Cancel(orgID, memberID uuid.UUID, reason string) error {
 	if !o.IsParticipant(orgID) {
 		return ErrNotOrderParticipant
 	}
+	if !o.IsResponsibleMember(orgID, memberID) {
+		return ErrNotResponsibleMember
+	}
 	if o.status != values.OrderStatusActive {
 		if o.status.IsCancelled() {
 			return ErrOrderCancelled
@@ -291,9 +311,12 @@ func (o *Order) Cancel(orgID, memberID uuid.UUID, reason string) error {
 	return nil
 }
 
-func (o *Order) LeaveReview(reviewerOrgID uuid.UUID, rating int, comment string) error {
+func (o *Order) LeaveReview(reviewerOrgID, reviewerMemberID uuid.UUID, rating int, comment string) error {
 	if !o.IsParticipant(reviewerOrgID) {
 		return ErrNotOrderParticipant
+	}
+	if !o.IsResponsibleMember(reviewerOrgID, reviewerMemberID) {
+		return ErrNotResponsibleMember
 	}
 	if o.status.IsCancelled() {
 		return ErrCannotLeaveReview

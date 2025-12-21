@@ -132,9 +132,7 @@ function handleNext() {
         v-else-if="form.currentStep.value === 5"
         :request-data="form.requestData.value"
         :comment="form.comment.value"
-        :expires-at="form.expiresAt.value"
         @update:comment="form.comment.value = $event"
-        @update:expires-at="form.expiresAt.value = $event"
       />
     </div>
 

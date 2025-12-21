@@ -176,6 +176,18 @@ func (h *FreightRequestHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate cargo
+	if err := req.Cargo.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Validate vehicle requirements
+	if err := req.VehicleRequirements.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	id, err := h.service.Create(r.Context(), freightrequest.CreateInput{
 		CustomerOrgID:       orgID,
 		CustomerMemberID:    memberID,
@@ -737,6 +749,11 @@ func (h *FreightRequestHandler) ConfirmOffer(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -746,6 +763,7 @@ func (h *FreightRequestHandler) ConfirmOffer(w http.ResponseWriter, r *http.Requ
 	if err := h.service.ConfirmOffer(r.Context(), freightrequest.ConfirmOfferInput{
 		FreightRequestID: frID,
 		OfferID:          offerID,
+		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
 	}); err != nil {
 		h.handleDomainError(w, err)
@@ -772,6 +790,11 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -784,6 +807,7 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 	if err := h.service.DeclineOffer(r.Context(), freightrequest.DeclineOfferInput{
 		FreightRequestID: frID,
 		OfferID:          offerID,
+		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
 		Reason:           req.Reason,
 	}); err != nil {
@@ -818,6 +842,8 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 		writeError(w, http.StatusBadRequest, "cannot make offer on own request")
 	case errors.Is(err, frDomain.ErrNotFreightRequestOwner):
 		writeError(w, http.StatusForbidden, "not freight request owner")
+	case errors.Is(err, frDomain.ErrNotResponsibleMember):
+		writeError(w, http.StatusForbidden, "you are not the responsible member for this freight request")
 	case errors.Is(err, frDomain.ErrNotOfferOwner):
 		writeError(w, http.StatusForbidden, "not offer owner")
 	case errors.Is(err, frDomain.ErrHasSelectedOffer):

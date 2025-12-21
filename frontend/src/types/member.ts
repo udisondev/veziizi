@@ -33,15 +33,19 @@ export const statusColors: Record<MemberStatus, string> = {
   blocked: 'bg-red-100 text-red-800',
 }
 
-export const roleOptions: { value: MemberRole | '', label: string }[] = [
-  { value: '', label: 'Все роли' },
+// Filter types (includes 'all' for "show all")
+export type MemberRoleFilter = MemberRole | 'all'
+export type MemberStatusFilter = MemberStatus | 'all'
+
+export const roleOptions: { value: MemberRoleFilter, label: string }[] = [
+  { value: 'all', label: 'Все роли' },
   { value: 'owner', label: 'Владелец' },
   { value: 'administrator', label: 'Администратор' },
   { value: 'employee', label: 'Сотрудник' },
 ]
 
-export const statusOptions: { value: MemberStatus | '', label: string }[] = [
-  { value: '', label: 'Все статусы' },
+export const statusOptions: { value: MemberStatusFilter, label: string }[] = [
+  { value: 'all', label: 'Все статусы' },
   { value: 'active', label: 'Активен' },
   { value: 'blocked', label: 'Заблокирован' },
 ]

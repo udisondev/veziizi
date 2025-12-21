@@ -16,7 +16,10 @@ func main() {
 		ConsumerGroup: "order_creator",
 		LogFile:       "order-creator-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewOrderCreatorHandler(f.OrderService()).Handle
+			return handlers.NewOrderCreatorHandler(
+				f.OrderService(),
+				f.FreightRequestsProjection(),
+			).Handle
 		},
 	})
 }

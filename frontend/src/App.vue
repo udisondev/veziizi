@@ -4,6 +4,7 @@ import { RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppHeader from '@/components/ui/AppHeader.vue'
 import DevUserSwitcher from '@/components/dev/DevUserSwitcher.vue'
+import { Toaster } from '@/components/ui/toast'
 import { devApi } from '@/api/dev'
 
 const route = useRoute()
@@ -33,9 +34,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-background">
     <AppHeader v-if="showHeader" />
     <RouterView :key="route.path" />
     <DevUserSwitcher v-if="isDevMode" />
+    <Toaster />
   </div>
 </template>

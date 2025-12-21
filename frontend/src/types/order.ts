@@ -118,9 +118,12 @@ export const orderStatusColors: Record<OrderStatus, string> = {
   cancelled_by_carrier: 'bg-red-100 text-red-800',
 }
 
+// Status filter type (includes 'all' for "show all")
+export type OrderStatusFilter = OrderStatus | 'all'
+
 // Options for status filter select
-export const orderStatusOptions: { value: OrderStatus | ''; label: string }[] = [
-  { value: '', label: 'Все статусы' },
+export const orderStatusOptions: { value: OrderStatusFilter; label: string }[] = [
+  { value: 'all', label: 'Все статусы' },
   { value: 'active', label: 'Активные' },
   { value: 'customer_completed', label: 'Ожидают перевозчика' },
   { value: 'carrier_completed', label: 'Ожидают заказчика' },

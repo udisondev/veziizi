@@ -42,6 +42,7 @@ type FreightRequestListItem struct {
 	CustomerOrgINN     *string    `json:"customer_org_inn,omitempty"`
 	CustomerOrgCountry *string    `json:"customer_org_country,omitempty"`
 	CustomerMemberID   *uuid.UUID `json:"customer_member_id,omitempty"`
+	OrderID            *uuid.UUID `json:"order_id,omitempty"`
 }
 
 type FilterOption func(squirrel.SelectBuilder) squirrel.SelectBuilder
@@ -109,6 +110,7 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
+			"order_id",
 		).
 		From("freight_requests_lookup").
 		Where(squirrel.Eq{"id": id}).
@@ -136,6 +138,7 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 		&item.CustomerOrgINN,
 		&item.CustomerOrgCountry,
 		&item.CustomerMemberID,
+		&item.OrderID,
 	); err != nil {
 		return nil, fmt.Errorf("get freight request: %w", err)
 	}
@@ -150,6 +153,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			"origin_address", "destination_address", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
+			"order_id",
 		).
 		From("freight_requests_lookup").
 		OrderBy("created_at DESC")
@@ -190,6 +194,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			&item.CustomerOrgINN,
 			&item.CustomerOrgCountry,
 			&item.CustomerMemberID,
+			&item.OrderID,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
@@ -331,6 +336,23 @@ type OfferWithFreightData struct {
 	CargoWeight        *float64  `json:"cargo_weight,omitempty"`
 	PriceAmount        *int64    `json:"price_amount,omitempty"`
 	PriceCurrency      *string   `json:"price_currency,omitempty"`
+}
+
+func (p *FreightRequestsProjection) UpdateOrderID(ctx context.Context, freightRequestID, orderID uuid.UUID) error {
+	query, args, err := p.psql.
+		Update("freight_requests_lookup").
+		Set("order_id", orderID).
+		Where(squirrel.Eq{"id": freightRequestID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update order_id query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update freight request order_id: %w", err)
+	}
+
+	return nil
 }
 
 func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Context, opts ...OfferFilterOption) ([]OfferWithFreightData, error) {

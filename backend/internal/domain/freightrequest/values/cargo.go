@@ -1,5 +1,7 @@
 package values
 
+import "fmt"
+
 // Dimensions represents cargo dimensions in meters
 type Dimensions struct {
 	Length float64 `json:"length"`
@@ -19,5 +21,13 @@ type CargoInfo struct {
 	Dimensions  *Dimensions `json:"dimensions,omitempty"`
 	Type        CargoType   `json:"type"`
 	ADRClass    ADRClass    `json:"adr_class,omitempty"`
-	Quantity    int         `json:"quantity,omitempty"`
+	Quantity    int         `json:"quantity"`
+}
+
+// Validate validates cargo info
+func (c CargoInfo) Validate() error {
+	if c.Quantity <= 0 {
+		return fmt.Errorf("quantity must be greater than 0")
+	}
+	return nil
 }

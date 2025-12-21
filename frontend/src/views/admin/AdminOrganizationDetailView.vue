@@ -4,6 +4,35 @@ import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import type { OrganizationDetail } from '@/types/admin'
 
+// UI Components
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+
+// Shared Components
+import { BackLink, ErrorBanner } from '@/components/shared'
+
+// Icons
+import { Check, X, Building2, Users, Mail, Phone, MapPin, Globe, FileText, Calendar } from 'lucide-vue-next'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -27,11 +56,11 @@ const statusNames: Record<string, string> = {
   rejected: 'Отклонена',
 }
 
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500',
-  active: 'bg-green-500',
-  suspended: 'bg-orange-500',
-  rejected: 'bg-red-500',
+const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'destructive' | 'secondary'> = {
+  pending: 'warning',
+  active: 'success',
+  suspended: 'destructive',
+  rejected: 'destructive',
 }
 
 const roleNames: Record<string, string> = {
@@ -96,146 +125,196 @@ async function handleReject() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900">
+  <div class="min-h-screen bg-slate-900">
     <!-- Header -->
-    <header class="bg-gray-800 shadow">
-      <div class="max-w-7xl mx-auto px-4 py-4">
-        <router-link to="/admin" class="text-indigo-400 hover:text-indigo-300 text-sm">
-          &larr; Назад к списку
-        </router-link>
+    <header class="bg-slate-800 border-b border-slate-700">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <BackLink to="/admin/organizations" label="Назад к списку" class="text-indigo-400 hover:text-indigo-300" />
       </div>
     </header>
 
     <!-- Content -->
-    <main class="max-w-4xl mx-auto px-4 py-8">
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Loading -->
-      <div v-if="isLoading" class="text-center py-12">
-        <div class="text-gray-400">Загрузка...</div>
+      <div v-if="isLoading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
       </div>
 
       <!-- Error -->
-      <div v-else-if="error" class="bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded">
-        {{ error }}
-      </div>
+      <ErrorBanner v-else-if="error" :message="error" @retry="loadOrganization" />
 
       <!-- Organization Details -->
       <div v-else-if="organization" class="space-y-6">
         <!-- Header -->
-        <div class="flex justify-between items-start">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
           <div>
             <h1 class="text-2xl font-bold text-white break-words">{{ organization.name }}</h1>
-            <p class="text-gray-400 break-words">{{ organization.legal_name }}</p>
+            <p class="text-slate-400 break-words">{{ organization.legal_name }}</p>
           </div>
-          <span :class="[statusColors[organization.status], 'px-3 py-1 rounded-full text-sm text-white']">
+          <Badge :variant="statusVariants[organization.status]">
             {{ statusNames[organization.status] }}
-          </span>
+          </Badge>
         </div>
 
         <!-- Info Card -->
-        <div class="bg-gray-800 rounded-lg p-6 space-y-4">
-          <h2 class="text-lg font-medium text-white mb-4">Информация об организации</h2>
-          <dl class="grid grid-cols-2 gap-4">
-            <div>
-              <dt class="text-sm text-gray-400">ИНН</dt>
-              <dd class="text-white">{{ organization.inn }}</dd>
+        <Card class="bg-slate-800 border-slate-700">
+          <CardHeader>
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10">
+                <Building2 class="h-5 w-5 text-indigo-400" />
+              </div>
+              <CardTitle class="text-white">Информация об организации</CardTitle>
             </div>
-            <div>
-              <dt class="text-sm text-gray-400">Страна</dt>
-              <dd class="text-white">{{ countryNames[organization.country] }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-400">Телефон</dt>
-              <dd class="text-white">{{ organization.phone }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-400">Email</dt>
-              <dd class="text-white">{{ organization.email }}</dd>
-            </div>
-            <div class="col-span-2">
-              <dt class="text-sm text-gray-400">Адрес</dt>
-              <dd class="text-white break-words">{{ organization.address }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-400">Дата регистрации</dt>
-              <dd class="text-white">{{ formatDate(organization.created_at) }}</dd>
-            </div>
-          </dl>
-        </div>
+          </CardHeader>
+          <CardContent>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="flex items-start gap-3">
+                <FileText class="h-4 w-4 text-slate-500 mt-0.5" />
+                <div>
+                  <dt class="text-sm text-slate-400">ИНН</dt>
+                  <dd class="text-white font-mono">{{ organization.inn }}</dd>
+                </div>
+              </div>
+              <div class="flex items-start gap-3">
+                <Globe class="h-4 w-4 text-slate-500 mt-0.5" />
+                <div>
+                  <dt class="text-sm text-slate-400">Страна</dt>
+                  <dd class="text-white">{{ countryNames[organization.country] }}</dd>
+                </div>
+              </div>
+              <div class="flex items-start gap-3">
+                <Phone class="h-4 w-4 text-slate-500 mt-0.5" />
+                <div>
+                  <dt class="text-sm text-slate-400">Телефон</dt>
+                  <dd class="text-white">{{ organization.phone }}</dd>
+                </div>
+              </div>
+              <div class="flex items-start gap-3">
+                <Mail class="h-4 w-4 text-slate-500 mt-0.5" />
+                <div>
+                  <dt class="text-sm text-slate-400">Email</dt>
+                  <dd class="text-white">{{ organization.email }}</dd>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 sm:col-span-2">
+                <MapPin class="h-4 w-4 text-slate-500 mt-0.5 shrink-0" />
+                <div>
+                  <dt class="text-sm text-slate-400">Адрес</dt>
+                  <dd class="text-white break-words">{{ organization.address }}</dd>
+                </div>
+              </div>
+              <div class="flex items-start gap-3">
+                <Calendar class="h-4 w-4 text-slate-500 mt-0.5" />
+                <div>
+                  <dt class="text-sm text-slate-400">Дата регистрации</dt>
+                  <dd class="text-white">{{ formatDate(organization.created_at) }}</dd>
+                </div>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
 
         <!-- Members -->
-        <div class="bg-gray-800 rounded-lg p-6">
-          <h2 class="text-lg font-medium text-white mb-4">Сотрудники</h2>
-          <div class="overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-700">
-              <thead>
-                <tr>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">Имя</th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">Email</th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">Телефон</th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase">Роль</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-700">
-                <tr v-for="member in organization.members" :key="member.id">
-                  <td class="px-4 py-3 text-sm text-white">{{ member.name }}</td>
-                  <td class="px-4 py-3 text-sm text-gray-300">{{ member.email }}</td>
-                  <td class="px-4 py-3 text-sm text-gray-300">{{ member.phone }}</td>
-                  <td class="px-4 py-3 text-sm text-gray-300">{{ roleNames[member.role] }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <Card class="bg-slate-800 border-slate-700">
+          <CardHeader>
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-700">
+                <Users class="h-5 w-5 text-slate-400" />
+              </div>
+              <CardTitle class="text-white">Сотрудники</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent class="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow class="border-slate-700 hover:bg-transparent">
+                  <TableHead class="text-slate-300">Имя</TableHead>
+                  <TableHead class="text-slate-300">Email</TableHead>
+                  <TableHead class="text-slate-300">Телефон</TableHead>
+                  <TableHead class="text-slate-300">Роль</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="member in organization.members"
+                  :key="member.id"
+                  class="border-slate-700"
+                >
+                  <TableCell class="text-white font-medium">{{ member.name }}</TableCell>
+                  <TableCell class="text-slate-300">{{ member.email }}</TableCell>
+                  <TableCell class="text-slate-300">{{ member.phone }}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" class="bg-slate-700 text-slate-300">
+                      {{ roleNames[member.role] }}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         <!-- Actions -->
         <div v-if="organization.status === 'pending'" class="flex gap-4">
-          <button
+          <Button
+            class="flex-1 bg-green-600 hover:bg-green-500 text-white"
+            :disabled="actionLoading"
             @click="handleApprove"
-            :disabled="actionLoading"
-            class="flex-1 py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg disabled:opacity-50"
           >
+            <Check class="h-4 w-4 mr-2" />
             {{ actionLoading ? 'Обработка...' : 'Одобрить' }}
-          </button>
-          <button
-            @click="showRejectModal = true"
+          </Button>
+          <Button
+            variant="destructive"
+            class="flex-1"
             :disabled="actionLoading"
-            class="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50"
+            @click="showRejectModal = true"
           >
+            <X class="h-4 w-4 mr-2" />
             Отклонить
-          </button>
+          </Button>
         </div>
       </div>
     </main>
 
     <!-- Reject Modal -->
-    <div v-if="showRejectModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full">
-        <h3 class="text-lg font-medium text-white mb-4">Отклонить организацию</h3>
-        <div class="mb-4">
-          <label class="block text-sm text-gray-400 mb-2">Причина отклонения</label>
-          <textarea
+    <Dialog v-model:open="showRejectModal">
+      <DialogContent class="bg-slate-800 border-slate-700 text-white sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-white">Отклонить организацию</DialogTitle>
+          <DialogDescription class="text-slate-400">
+            Укажите причину отклонения заявки
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-2">
+          <Label class="text-slate-200">Причина отклонения</Label>
+          <Textarea
             v-model="rejectReason"
             rows="3"
-            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            class="bg-slate-700 border-slate-600 text-white resize-none"
             placeholder="Укажите причину..."
-          ></textarea>
+          />
         </div>
-        <div class="flex gap-3">
-          <button
+
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            class="text-slate-400 hover:text-white"
+            :disabled="actionLoading"
             @click="showRejectModal = false"
-            class="flex-1 py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
           >
             Отмена
-          </button>
-          <button
-            @click="handleReject"
+          </Button>
+          <Button
+            variant="destructive"
             :disabled="!rejectReason.trim() || actionLoading"
-            class="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50"
+            @click="handleReject"
           >
             {{ actionLoading ? 'Отклонение...' : 'Отклонить' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

@@ -9,16 +9,22 @@ import (
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
 	frEvents "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 type OrderCreatorHandler struct {
-	orderService *orderApp.Service
+	orderService   *orderApp.Service
+	frProjection   *projections.FreightRequestsProjection
 }
 
-func NewOrderCreatorHandler(orderService *orderApp.Service) *OrderCreatorHandler {
+func NewOrderCreatorHandler(
+	orderService *orderApp.Service,
+	frProjection *projections.FreightRequestsProjection,
+) *OrderCreatorHandler {
 	return &OrderCreatorHandler{
-		orderService: orderService,
+		orderService:   orderService,
+		frProjection:   frProjection,
 	}
 }
 
@@ -57,6 +63,15 @@ func (h *OrderCreatorHandler) onOfferConfirmed(ctx context.Context, e frEvents.O
 			slog.String("offer_id", e.OfferID.String()),
 			slog.String("error", err.Error()))
 		return fmt.Errorf("create order from confirmed offer: %w", err)
+	}
+
+	// Update freight_requests_lookup with order_id
+	if err := h.frProjection.UpdateOrderID(ctx, e.AggregateID(), orderID); err != nil {
+		slog.Error("failed to update freight request order_id",
+			slog.String("freight_request_id", e.AggregateID().String()),
+			slog.String("order_id", orderID.String()),
+			slog.String("error", err.Error()))
+		return fmt.Errorf("update freight request order_id: %w", err)
 	}
 
 	slog.Info("order created from confirmed offer",

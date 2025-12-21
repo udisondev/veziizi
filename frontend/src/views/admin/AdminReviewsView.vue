@@ -1,11 +1,42 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAdminStore } from '@/stores/admin'
 import { adminApi } from '@/api/admin'
 import type { PendingReview } from '@/types/admin'
 
+// UI Components
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+
+// Shared Components
+import { ErrorBanner } from '@/components/shared'
+
+// Icons
+import {
+  Building2,
+  RefreshCcw,
+  LogOut,
+  Star,
+  AlertTriangle,
+  Check,
+  X,
+} from 'lucide-vue-next'
+
 const router = useRouter()
+const route = useRoute()
 const admin = useAdminStore()
 
 const reviews = ref<PendingReview[]>([])
@@ -22,10 +53,16 @@ const approveNote = ref('')
 const rejectReason = ref('')
 const isSubmitting = ref(false)
 
-const severityColors: Record<string, string> = {
-  low: 'bg-yellow-900/50 text-yellow-200 border-yellow-500',
-  medium: 'bg-orange-900/50 text-orange-200 border-orange-500',
-  high: 'bg-red-900/50 text-red-200 border-red-500',
+const navItems = [
+  { to: '/admin/organizations', label: 'Организации', icon: Building2 },
+  { to: '/admin/reviews', label: 'Отзывы', icon: Star },
+  { to: '/admin/fraudsters', label: 'Накрутчики', icon: AlertTriangle },
+]
+
+const severityVariants: Record<string, 'default' | 'warning' | 'destructive'> = {
+  low: 'warning',
+  medium: 'warning',
+  high: 'destructive',
 }
 
 const signalTypeLabels: Record<string, string> = {
@@ -126,227 +163,276 @@ async function handleLogout() {
   await admin.logout()
   router.push('/admin/login')
 }
+
+function isActive(path: string): boolean {
+  return route.path === path || route.path.startsWith(path + '/')
+}
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900">
+  <div class="min-h-screen bg-slate-900">
     <!-- Header -->
-    <header class="bg-gray-800 shadow">
-      <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-        <div class="flex items-center gap-6">
-          <h1 class="text-xl font-bold text-white">Панель администратора</h1>
-          <nav class="flex gap-4">
-            <router-link to="/admin/organizations" class="text-gray-400 hover:text-white text-sm">
-              Организации
-            </router-link>
-            <router-link to="/admin/reviews" class="text-white text-sm font-medium">
-              Отзывы
-            </router-link>
-            <router-link to="/admin/fraudsters" class="text-gray-400 hover:text-white text-sm">
-              Накрутчики
-            </router-link>
-          </nav>
-        </div>
-        <div class="flex items-center gap-4">
-          <span class="text-gray-400 text-sm">{{ admin.email }}</span>
-          <button
-            @click="handleLogout"
-            class="text-gray-400 hover:text-white text-sm"
-          >
-            Выйти
-          </button>
+    <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-14">
+          <div class="flex items-center gap-6">
+            <h1 class="text-lg font-semibold text-white">Admin Panel</h1>
+            <nav class="hidden md:flex items-center gap-1">
+              <router-link
+                v-for="item in navItems"
+                :key="item.to"
+                :to="item.to"
+                :class="[
+                  'px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors',
+                  isActive(item.to)
+                    ? 'bg-indigo-500/20 text-indigo-400'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                ]"
+              >
+                <component :is="item.icon" class="h-4 w-4" />
+                {{ item.label }}
+              </router-link>
+            </nav>
+          </div>
+          <div class="flex items-center gap-4">
+            <span class="text-sm text-slate-400 hidden sm:block">{{ admin.email }}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="text-slate-400 hover:text-white hover:bg-slate-700"
+              @click="handleLogout"
+            >
+              <LogOut class="h-4 w-4 mr-2" />
+              Выйти
+            </Button>
+          </div>
         </div>
       </div>
     </header>
 
     <!-- Content -->
-    <main class="max-w-7xl mx-auto px-4 py-8">
-      <div class="flex justify-between items-center mb-6">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Page Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h2 class="text-2xl font-bold text-white">Отзывы на модерации</h2>
-          <p class="text-gray-400 text-sm mt-1">Всего: {{ total }}</p>
+          <p class="text-sm text-slate-400 mt-1">Всего: {{ total }}</p>
         </div>
-        <button
-          @click="loadReviews"
+        <Button
+          variant="outline"
+          class="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
           :disabled="isLoading"
-          class="px-4 py-2 text-sm bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50"
+          @click="loadReviews"
         >
+          <RefreshCcw class="h-4 w-4 mr-2" :class="{ 'animate-spin': isLoading }" />
           Обновить
-        </button>
+        </Button>
       </div>
 
       <!-- Error -->
-      <div v-if="error" class="bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded mb-6">
-        {{ error }}
-      </div>
+      <ErrorBanner
+        v-if="error"
+        :message="error"
+        @retry="loadReviews"
+        class="mb-6"
+      />
 
       <!-- Loading -->
-      <div v-if="isLoading" class="text-center py-12">
-        <div class="text-gray-400">Загрузка...</div>
+      <div v-if="isLoading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
       </div>
 
       <!-- Empty -->
-      <div v-else-if="reviews.length === 0" class="text-center py-12">
-        <div class="text-gray-400 text-lg">Нет отзывов на модерации</div>
-        <p class="text-gray-500 mt-2">Все отзывы обработаны</p>
-      </div>
+      <Card v-else-if="reviews.length === 0" class="bg-slate-800 border-slate-700">
+        <CardContent class="py-12 text-center">
+          <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-700 mb-4">
+            <Star class="h-8 w-8 text-slate-400" />
+          </div>
+          <h3 class="text-lg font-medium text-white mb-2">Нет отзывов на модерации</h3>
+          <p class="text-slate-400">Все отзывы обработаны</p>
+        </CardContent>
+      </Card>
 
       <!-- List -->
       <div v-else class="space-y-4">
-        <div
+        <Card
           v-for="review in reviews"
           :key="review.id"
-          class="bg-gray-800 rounded-lg p-6"
+          class="bg-slate-800 border-slate-700"
         >
-          <div class="flex justify-between items-start mb-4">
-            <div>
-              <div class="flex items-center gap-3 mb-2">
-                <div class="flex text-yellow-400">
-                  <span v-for="i in 5" :key="i" class="text-lg">
-                    {{ i <= review.rating ? '★' : '☆' }}
-                  </span>
+          <CardContent class="p-6">
+            <div class="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 mb-4">
+              <div>
+                <!-- Rating -->
+                <div class="flex items-center gap-3 mb-2">
+                  <div class="flex text-yellow-400">
+                    <Star
+                      v-for="i in 5"
+                      :key="i"
+                      class="h-5 w-5"
+                      :class="i <= review.rating ? 'fill-current' : 'fill-none'"
+                    />
+                  </div>
+                  <span class="text-white font-medium">{{ review.rating }}/5</span>
+                  <Badge variant="secondary" class="bg-slate-700 text-slate-300">
+                    Fraud: {{ (review.fraud_score * 100).toFixed(0) }}%
+                  </Badge>
                 </div>
-                <span class="text-white font-medium">{{ review.rating }}/5</span>
-                <span class="text-gray-500">|</span>
-                <span class="text-gray-400 text-sm">
-                  Fraud Score: {{ (review.fraud_score * 100).toFixed(0) }}%
-                </span>
-              </div>
-              <p v-if="review.comment" class="text-gray-300 mb-2 break-words">{{ review.comment }}</p>
-              <div class="text-sm text-gray-500">
-                <span>Сумма заказа: {{ formatCurrency(review.order_amount, review.order_currency) }}</span>
-                <span class="mx-2">|</span>
-                <span>Вес: {{ review.raw_weight.toFixed(2) }}</span>
-                <span class="mx-2">|</span>
-                <span>{{ formatDate(review.created_at) }}</span>
-              </div>
-            </div>
-            <div class="flex gap-2">
-              <button
-                @click="openApproveModal(review)"
-                class="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-500"
-              >
-                Одобрить
-              </button>
-              <button
-                @click="openRejectModal(review)"
-                class="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-500"
-              >
-                Отклонить
-              </button>
-            </div>
-          </div>
 
-          <!-- Fraud Signals -->
-          <div v-if="review.fraud_signals.length > 0" class="mt-4">
-            <div class="text-sm font-medium text-gray-400 mb-2">Обнаруженные сигналы:</div>
-            <div class="flex flex-wrap gap-2">
-              <div
-                v-for="(signal, idx) in review.fraud_signals"
-                :key="idx"
-                :class="['px-3 py-1.5 rounded border text-sm', severityColors[signal.severity]]"
-              >
-                <div class="font-medium">
+                <!-- Comment -->
+                <p v-if="review.comment" class="text-slate-300 mb-3 break-words">
+                  {{ review.comment }}
+                </p>
+
+                <!-- Meta -->
+                <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
+                  <span>Сумма: {{ formatCurrency(review.order_amount, review.order_currency) }}</span>
+                  <span>Вес: {{ review.raw_weight.toFixed(2) }}</span>
+                  <span>{{ formatDate(review.created_at) }}</span>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  class="bg-green-600 hover:bg-green-500 text-white"
+                  @click="openApproveModal(review)"
+                >
+                  <Check class="h-4 w-4 mr-1" />
+                  Одобрить
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  @click="openRejectModal(review)"
+                >
+                  <X class="h-4 w-4 mr-1" />
+                  Отклонить
+                </Button>
+              </div>
+            </div>
+
+            <!-- Fraud Signals -->
+            <div v-if="review.fraud_signals.length > 0" class="mt-4 pt-4 border-t border-slate-700">
+              <p class="text-sm text-slate-400 mb-2">Обнаруженные сигналы:</p>
+              <div class="flex flex-wrap gap-2">
+                <Badge
+                  v-for="(signal, idx) in review.fraud_signals"
+                  :key="idx"
+                  :variant="severityVariants[signal.severity]"
+                >
                   {{ signalTypeLabels[signal.type] || signal.type }}
-                </div>
-                <div class="text-xs opacity-80 break-words">{{ signal.description }}</div>
+                </Badge>
               </div>
             </div>
-          </div>
 
-          <!-- IDs -->
-          <div class="mt-4 pt-4 border-t border-gray-700 text-xs text-gray-600">
-            <span>Review: {{ review.id.slice(0, 8) }}...</span>
-            <span class="mx-2">|</span>
-            <span>Order: {{ review.order_id.slice(0, 8) }}...</span>
-            <span class="mx-2">|</span>
-            <span>Reviewer: {{ review.reviewer_org_id.slice(0, 8) }}...</span>
-            <span class="mx-2">|</span>
-            <span>Reviewed: {{ review.reviewed_org_id.slice(0, 8) }}...</span>
-          </div>
-        </div>
+            <!-- IDs -->
+            <div class="mt-4 pt-4 border-t border-slate-700 text-xs text-slate-600 font-mono">
+              Review: {{ review.id.slice(0, 8) }}...
+              <span class="mx-2">|</span>
+              Order: {{ review.order_id.slice(0, 8) }}...
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </main>
 
     <!-- Approve Modal -->
-    <div v-if="showApproveModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-bold text-white mb-4">Одобрить отзыв</h3>
+    <Dialog v-model:open="showApproveModal">
+      <DialogContent class="bg-slate-800 border-slate-700 text-white sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-white">Одобрить отзыв</DialogTitle>
+          <DialogDescription class="text-slate-400">
+            Установите итоговый вес отзыва
+          </DialogDescription>
+        </DialogHeader>
 
-        <div class="mb-4">
-          <label class="block text-sm text-gray-400 mb-1">Итоговый вес</label>
-          <input
-            v-model.number="approveWeight"
-            type="number"
-            min="0"
-            max="1"
-            step="0.1"
-            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
-          />
-          <p class="text-xs text-gray-500 mt-1">От 0 до 1. Исходный вес: {{ selectedReview?.raw_weight.toFixed(2) }}</p>
+        <div class="space-y-4">
+          <div class="space-y-2">
+            <Label class="text-slate-200">Итоговый вес</Label>
+            <Input
+              v-model.number="approveWeight"
+              type="number"
+              min="0"
+              max="1"
+              step="0.1"
+              class="bg-slate-700 border-slate-600 text-white"
+            />
+            <p class="text-xs text-slate-500">
+              От 0 до 1. Исходный вес: {{ selectedReview?.raw_weight.toFixed(2) }}
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <Label class="text-slate-200">Примечание (необязательно)</Label>
+            <Textarea
+              v-model="approveNote"
+              rows="2"
+              class="bg-slate-700 border-slate-600 text-white resize-none"
+              placeholder="Причина изменения веса..."
+            />
+          </div>
         </div>
 
-        <div class="mb-6">
-          <label class="block text-sm text-gray-400 mb-1">Примечание (необязательно)</label>
-          <textarea
-            v-model="approveNote"
-            rows="2"
-            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white resize-none"
-            placeholder="Причина изменения веса..."
-          ></textarea>
-        </div>
-
-        <div class="flex justify-end gap-3">
-          <button
-            @click="closeModals"
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            class="text-slate-400 hover:text-white"
             :disabled="isSubmitting"
-            class="px-4 py-2 text-gray-400 hover:text-white"
+            @click="closeModals"
           >
             Отмена
-          </button>
-          <button
-            @click="submitApprove"
+          </Button>
+          <Button
+            class="bg-green-600 hover:bg-green-500 text-white"
             :disabled="isSubmitting"
-            class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 disabled:opacity-50"
+            @click="submitApprove"
           >
             {{ isSubmitting ? 'Сохранение...' : 'Одобрить' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Reject Modal -->
-    <div v-if="showRejectModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-bold text-white mb-4">Отклонить отзыв</h3>
+    <Dialog v-model:open="showRejectModal">
+      <DialogContent class="bg-slate-800 border-slate-700 text-white sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-white">Отклонить отзыв</DialogTitle>
+          <DialogDescription class="text-slate-400">
+            Укажите причину отклонения
+          </DialogDescription>
+        </DialogHeader>
 
-        <div class="mb-6">
-          <label class="block text-sm text-gray-400 mb-1">Причина отклонения</label>
-          <textarea
+        <div class="space-y-2">
+          <Label class="text-slate-200">Причина отклонения</Label>
+          <Textarea
             v-model="rejectReason"
             rows="3"
-            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white resize-none"
+            class="bg-slate-700 border-slate-600 text-white resize-none"
             placeholder="Укажите причину..."
-          ></textarea>
+          />
         </div>
 
-        <div class="flex justify-end gap-3">
-          <button
-            @click="closeModals"
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            class="text-slate-400 hover:text-white"
             :disabled="isSubmitting"
-            class="px-4 py-2 text-gray-400 hover:text-white"
+            @click="closeModals"
           >
             Отмена
-          </button>
-          <button
-            @click="submitReject"
+          </Button>
+          <Button
+            variant="destructive"
             :disabled="isSubmitting || !rejectReason.trim()"
-            class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 disabled:opacity-50"
+            @click="submitReject"
           >
             {{ isSubmitting ? 'Сохранение...' : 'Отклонить' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

@@ -54,6 +54,10 @@ make generate         # Run go generate (enums via go-enum)
 make create-admin          # Create platform admin (interactive)
 make create-admin-dev      # Create dev admin (admin@veziizi.local / admin123)
 make create-test-org       # Create test org (owner@test.local / test123)
+
+# Additional Tools
+go run ./backend/cmd/tools/seed-orgs              # Seed test organizations
+go run ./backend/cmd/tools/backfill-freight-requests  # Backfill freight requests projection
 ```
 
 ## Environment
@@ -125,16 +129,6 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 | fraudster-handler | organization.events | fraudster_handler | Deactivate reviews when org marked as fraudster |
 | order-fraud-analyzer | order.events | order_fraud_analyzer | Detect order fraud: cancel patterns, ghost deliveries, circular orders |
 
-**Event Imports per Worker:**
-- `members`, `invitations`, `pending-organizations`, `organizations`, `fraudster-handler`: `organization/events`
-- `freight-requests`: `freightrequest/events`
-- `orders`, `order-fraud-analyzer`: `order/events`
-- `order-creator`: `freightrequest/events`, `order/events` (слушает freightrequest, создаёт order)
-- `review-receiver`: `order/events` (слушает order, создаёт review)
-- `review-analyzer`: `review/events` (анализирует review на фрод)
-- `reviews-projection`: `review/events` (обновляет lookup таблицы)
-- `review-activator`: `review/events` (scheduled, активирует отзывы)
-
 **Lookup Tables (Projections)**:
 - Store only ID + filter columns (status, org_id, etc.), no JSONB
 - Full data loaded from event store via service.Get() when needed
@@ -203,64 +197,6 @@ import (
 )
 ```
 Без этого `eventstore.EventEnvelope.UnmarshalEvent()` вернёт ошибку "unknown event type".
-
-### Project Structure
-
-```
-backend/
-├── cmd/
-│   ├── api/              # HTTP API server
-│   ├── tools/            # CLI utilities (create-admin, create-test-org)
-│   └── workers/          # Async event handlers
-│       ├── members/
-│       ├── invitations/
-│       ├── pending-organizations/
-│       ├── organizations/
-│       ├── freight-requests/
-│       ├── orders/
-│       ├── order-creator/
-│       ├── review-receiver/
-│       ├── review-analyzer/
-│       ├── reviews-projection/
-│       ├── review-activator/
-│       ├── fraudster-handler/
-│       └── order-fraud-analyzer/
-├── internal/
-│   ├── application/      # Application services (use cases)
-│   │   ├── organization/
-│   │   ├── admin/
-│   │   ├── freightrequest/
-│   │   ├── order/
-│   │   ├── review/
-│   │   └── session/       # SessionAnalyzer for fraud detection
-│   ├── domain/           # Aggregates, entities, events, value objects
-│   │   ├── organization/
-│   │   ├── freightrequest/
-│   │   ├── order/
-│   │   └── review/
-│   ├── infrastructure/
-│   │   ├── handlers/     # Watermill event handlers (write side)
-│   │   ├── messaging/    # Watermill publisher
-│   │   ├── persistence/  # Event store, repositories, file storage (DB/S3)
-│   │   └── projections/  # Read models (lookup tables)
-│   ├── interfaces/http/  # HTTP handlers, session, server, middleware (rate_limiter)
-│   └── pkg/              # Shared packages (aggregate, config, dbtx, factory, worker, geoip, httputil)
-└── migrations/           # Goose SQL migrations
-
-frontend/
-├── src/
-│   ├── api/              # API client (fetch wrapper)
-│   ├── components/       # Vue components
-│   │   ├── freight-request/  # Wizard steps, shared components
-│   │   └── ui/           # Reusable UI (AppHeader, PermissionGuard)
-│   ├── composables/      # Vue composables (usePermissions, useAddressSearch, useFingerprint)
-│   ├── router/           # Vue Router + guards (auth, orgActive, role, carrier, admin)
-│   ├── stores/           # Pinia stores (auth, admin)
-│   ├── types/            # TypeScript interfaces
-│   └── views/            # Page components
-│       └── admin/        # Admin panel views (Organizations, Reviews, Fraudsters)
-└── package.json
-```
 
 ## Frontend
 

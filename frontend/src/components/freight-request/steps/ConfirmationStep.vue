@@ -16,12 +16,10 @@ import LeafletMap from '../shared/LeafletMap.vue'
 interface Props {
   requestData: CreateFreightRequestRequest
   comment: string
-  expiresAt: string
 }
 
 interface Emits {
   (e: 'update:comment', value: string): void
-  (e: 'update:expiresAt', value: string): void
 }
 
 const props = defineProps<Props>()
@@ -96,25 +94,8 @@ const hasPrice = computed(() =>
   props.requestData.payment.price && props.requestData.payment.price.amount > 0
 )
 
-// Default expires_at: 7 days from now
-const defaultExpiresAt = computed(() => {
-  const date = new Date()
-  date.setDate(date.getDate() + 7)
-  return date.toISOString().slice(0, 16)
-})
-
 function handleCommentInput(event: Event) {
   emit('update:comment', (event.target as HTMLTextAreaElement).value)
-}
-
-function handleExpiresAtChange(event: Event) {
-  const value = (event.target as HTMLInputElement).value
-  emit('update:expiresAt', value ? new Date(value).toISOString() : '')
-}
-
-function formatExpiresAtForInput(isoDate: string): string {
-  if (!isoDate) return defaultExpiresAt.value
-  return new Date(isoDate).toISOString().slice(0, 16)
 }
 </script>
 
@@ -321,22 +302,6 @@ function formatExpiresAtForInput(isoDate: string): string {
         class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
         @input="handleCommentInput"
       />
-    </div>
-
-    <!-- Expires at -->
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Срок действия заявки
-      </label>
-      <input
-        type="datetime-local"
-        :value="formatExpiresAtForInput(expiresAt)"
-        class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-        @change="handleExpiresAtChange"
-      />
-      <p class="mt-1 text-sm text-gray-500">
-        После этой даты заявка автоматически станет неактивной
-      </p>
     </div>
   </div>
 </template>

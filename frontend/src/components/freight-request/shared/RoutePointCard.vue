@@ -61,6 +61,8 @@ const isLastPoint = computed(() => props.index === props.totalPoints - 1)
 
 const addressError = computed(() => props.errors?.[`point_${props.index}_address`])
 const dateFromError = computed(() => props.errors?.[`point_${props.index}_date_from`])
+const contactNameError = computed(() => props.errors?.[`point_${props.index}_contact_name`])
+const contactPhoneError = computed(() => props.errors?.[`point_${props.index}_contact_phone`])
 
 // Цвет левой границы зависит от типов
 const borderColor = computed(() => {
@@ -396,18 +398,24 @@ watch(() => [props.index, props.totalPoints], () => {
               type="text"
               :value="point.contact_name || ''"
               placeholder="Имя"
-              :class="inputClass"
+              :class="contactNameError ? inputErrorClass : inputClass"
               @input="handleContactNameChange"
             />
+            <p v-if="contactNameError" class="mt-1 text-sm text-red-600">
+              {{ contactNameError }}
+            </p>
           </div>
           <div>
             <input
               type="tel"
               :value="formattedPhone"
               placeholder="+7 (___) ___-__-__"
-              :class="inputClass"
+              :class="contactPhoneError ? inputErrorClass : inputClass"
               @input="handlePhoneInput"
             />
+            <p v-if="contactPhoneError" class="mt-1 text-sm text-red-600">
+              {{ contactPhoneError }}
+            </p>
           </div>
         </div>
       </div>

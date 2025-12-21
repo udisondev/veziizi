@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ordersApi } from '@/api/orders'
 import { historyApi } from '@/api/history'
@@ -7,8 +7,61 @@ import { membersApi } from '@/api/members'
 import type { MemberListItem } from '@/types/member'
 import { useAuthStore } from '@/stores/auth'
 import type { Order, OrderMessage, OrderDocument, LeaveReviewRequest } from '@/types/order'
-import { orderStatusLabels, orderStatusColors, isOrderFinished, isOrderCancelled, isOrderActive } from '@/types/order'
+import { isOrderFinished, isOrderCancelled, isOrderActive } from '@/types/order'
 import EventHistory from '@/components/EventHistory.vue'
+
+// UI Components
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+
+// Shared Components
+import { BackLink, StatusBadge, LoadingSpinner, ErrorBanner, TabsDropdown, type TabItem } from '@/components/shared'
+
+// Icons
+import {
+  MoreVertical,
+  Info,
+  MessageSquare,
+  FileText,
+  Star,
+  Clock,
+  Send,
+  Upload,
+  Download,
+  Trash2,
+  Check,
+  XCircle,
+  UserCog,
+  Building2,
+  X,
+} from 'lucide-vue-next'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -19,12 +72,8 @@ const isLoading = ref(true)
 const error = ref('')
 const actionLoading = ref(false)
 
-// Menu
-const isMenuOpen = ref(false)
-
 // Tabs
-type TabType = 'info' | 'messages' | 'documents' | 'reviews' | 'history'
-const activeTab = ref<TabType>('info')
+const activeTab = ref('info')
 
 // Messages
 const messageInput = ref('')
@@ -49,6 +98,15 @@ const showReassignModal = ref(false)
 const selectedNewMember = ref('')
 const availableMembers = ref<{ id: string; name: string }[]>([])
 
+// Status map for StatusBadge
+const orderStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
+  active: { label: 'Активен', variant: 'info' },
+  customer_completed: { label: 'Завершён заказчиком', variant: 'warning' },
+  carrier_completed: { label: 'Завершён перевозчиком', variant: 'warning' },
+  completed: { label: 'Завершён', variant: 'success' },
+  cancelled: { label: 'Отменён', variant: 'destructive' },
+}
+
 // Computed
 const isCustomer = computed(() => {
   if (!order.value) return false
@@ -64,11 +122,9 @@ const isParticipant = computed(() => isCustomer.value || isCarrier.value)
 
 const canComplete = computed(() => {
   if (!order.value || !isParticipant.value) return false
-  // Customer can complete if active or carrier_completed
   if (isCustomer.value && ['active', 'carrier_completed'].includes(order.value.status)) {
     return true
   }
-  // Carrier can complete if active or customer_completed
   if (isCarrier.value && ['active', 'customer_completed'].includes(order.value.status)) {
     return true
   }
@@ -94,23 +150,19 @@ const canLeaveReview = computed(() => {
   if (!order.value || !isParticipant.value) return false
   if (isOrderCancelled(order.value.status)) return false
 
-  // Allow review after own side completed
   const hasCompletedOwnSide =
     (isCustomer.value && ['customer_completed', 'completed'].includes(order.value.status)) ||
     (isCarrier.value && ['carrier_completed', 'completed'].includes(order.value.status))
 
   if (!hasCompletedOwnSide) return false
 
-  // Check if already left review
   const myReview = order.value.reviews.find(r => r.reviewer_org_id === auth.organizationId)
   return !myReview
 })
 
 const canReassign = computed(() => {
   if (!order.value || !isParticipant.value) return false
-  // Only owner/administrator can reassign
   if (auth.role !== 'owner' && auth.role !== 'administrator') return false
-  // Only in active statuses (before completion/cancellation)
   return isOrderActive(order.value.status)
 })
 
@@ -120,6 +172,19 @@ const hasAnyAction = computed(() => {
 
 const canViewHistory = computed(() => {
   return auth.role === 'owner' || auth.role === 'administrator'
+})
+
+const tabItems = computed((): TabItem[] => {
+  const items: TabItem[] = [
+    { value: 'info', label: 'Информация', icon: Info },
+    { value: 'messages', label: 'Сообщения', icon: MessageSquare, badge: order.value?.messages.length || undefined },
+    { value: 'documents', label: 'Документы', icon: FileText, badge: order.value?.documents.length || undefined },
+    { value: 'reviews', label: 'Отзывы', icon: Star, badge: order.value?.reviews.length || undefined },
+  ]
+  if (canViewHistory.value) {
+    items.push({ value: 'history', label: 'История', icon: Clock, separator: true })
+  }
+  return items
 })
 
 const orderNumber = computed(() => {
@@ -141,31 +206,6 @@ const sortedMessages = computed(() => {
   return [...order.value.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   )
-})
-
-// Menu handlers
-function toggleMenu() {
-  isMenuOpen.value = !isMenuOpen.value
-}
-
-function closeMenu() {
-  isMenuOpen.value = false
-}
-
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as Element
-  if (!target.closest('.menu-container')) {
-    closeMenu()
-  }
-}
-
-onMounted(() => {
-  loadData()
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
 })
 
 // Methods
@@ -340,23 +380,7 @@ async function handleLeaveReview() {
   }
 }
 
-function openCancelModal() {
-  closeMenu()
-  showCancelModal.value = true
-}
-
-function openReviewModal() {
-  closeMenu()
-  showReviewModal.value = true
-}
-
-function handleCompleteClick() {
-  closeMenu()
-  handleComplete()
-}
-
 async function openReassignModal() {
-  closeMenu()
   if (!auth.organizationId) return
 
   try {
@@ -384,427 +408,413 @@ async function handleReassign() {
     actionLoading.value = false
   }
 }
+
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-background">
     <!-- Header -->
-    <header class="bg-white shadow">
+    <header class="bg-card border-b">
       <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-        <router-link to="/orders" class="text-blue-600 hover:text-blue-800 text-sm">
-          &larr; К списку заказов
-        </router-link>
+        <BackLink to="/orders" label="К списку заказов" />
 
-        <!-- Three-dot menu -->
-        <div v-if="hasAnyAction && order" class="relative menu-container">
-          <button
-            @click.stop="toggleMenu"
-            class="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-          >
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-            </svg>
-          </button>
-
-          <!-- Dropdown menu -->
-          <div
-            v-if="isMenuOpen"
-            class="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50"
-          >
-            <div class="py-1">
-              <button
-                v-if="canComplete"
-                @click="handleCompleteClick"
-                :disabled="actionLoading"
-                class="w-full text-left px-4 py-2 text-sm text-green-700 hover:bg-green-50 disabled:opacity-50"
-              >
-                Завершить
-              </button>
-              <button
-                v-if="canCancel"
-                @click="openCancelModal"
-                class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-              >
-                Отменить
-              </button>
-              <button
-                v-if="canLeaveReview"
-                @click="openReviewModal"
-                class="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
-              >
-                Оставить отзыв
-              </button>
-              <button
-                v-if="canReassign"
-                @click="openReassignModal"
-                class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Переназначить
-              </button>
-            </div>
-          </div>
-        </div>
+        <!-- Actions dropdown -->
+        <DropdownMenu v-if="hasAnyAction && order">
+          <DropdownMenuTrigger as-child>
+            <Button variant="ghost" size="icon">
+              <MoreVertical class="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              v-if="canComplete"
+              :disabled="actionLoading"
+              class="text-success focus:text-success"
+              @click="handleComplete"
+            >
+              <Check class="mr-2 h-4 w-4" />
+              Завершить
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              v-if="canCancel"
+              class="text-destructive focus:text-destructive"
+              @click="showCancelModal = true"
+            >
+              <XCircle class="mr-2 h-4 w-4" />
+              Отменить
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              v-if="canLeaveReview"
+              @click="showReviewModal = true"
+            >
+              <Star class="mr-2 h-4 w-4" />
+              Оставить отзыв
+            </DropdownMenuItem>
+            <DropdownMenuSeparator v-if="canReassign && (canComplete || canCancel || canLeaveReview)" />
+            <DropdownMenuItem
+              v-if="canReassign"
+              @click="openReassignModal"
+            >
+              <UserCog class="mr-2 h-4 w-4" />
+              Переназначить
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
 
     <!-- Content -->
     <main class="max-w-5xl mx-auto px-4 py-6">
       <!-- Loading -->
-      <div v-if="isLoading" class="text-center py-12">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <div class="text-gray-500 mt-2">Загрузка...</div>
-      </div>
+      <LoadingSpinner v-if="isLoading" text="Загрузка заказа..." />
 
       <!-- Error -->
-      <div v-else-if="error && !order" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-        {{ error }}
-        <button @click="loadData" class="ml-4 text-red-600 underline">Повторить</button>
-      </div>
+      <ErrorBanner
+        v-else-if="error && !order"
+        :message="error"
+        @retry="loadData"
+      />
 
       <!-- Content -->
       <div v-else-if="order" class="space-y-6">
         <!-- Error banner -->
-        <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex justify-between items-center">
-          <span>{{ error }}</span>
-          <button @click="error = ''" class="text-red-600 text-xl leading-none">&times;</button>
-        </div>
+        <Card v-if="error" class="border-destructive/50 bg-destructive/5">
+          <CardContent class="flex items-center justify-between py-3">
+            <span class="text-sm text-destructive">{{ error }}</span>
+            <Button variant="ghost" size="sm" @click="error = ''">
+              <X class="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
 
         <!-- Order Header Card -->
-        <div class="bg-white rounded-lg shadow p-4 sm:p-6">
-          <div class="flex flex-col gap-3 sm:gap-4">
-            <div>
-              <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Заказ #{{ orderNumber }}</h1>
-              <p class="text-gray-600 text-sm mt-1 break-words">
-                {{ counterpartyRole }}:
-                <span class="font-medium">{{ counterpartyName }}</span>
-              </p>
-              <p class="text-gray-500 text-sm mt-1">
-                Создан {{ formatDateTime(order.created_at) }}
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-              <span :class="[orderStatusColors[order.status], 'px-3 py-1 rounded-full text-sm font-medium']">
-                {{ orderStatusLabels[order.status] }}
-              </span>
-              <router-link
-                :to="`/freight-requests/${order.freight_request_id}`"
-                class="text-blue-600 hover:text-blue-800 text-sm"
-              >
-                Перейти к заявке
-              </router-link>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tabs -->
-        <div class="bg-white rounded-lg shadow">
-          <div class="border-b border-gray-200">
-            <nav class="flex -mb-px">
-              <button
-                v-for="tab in [
-                  { key: 'info', label: 'Информация' },
-                  { key: 'messages', label: 'Сообщения', count: order.messages.length },
-                  { key: 'documents', label: 'Документы', count: order.documents.length },
-                  { key: 'reviews', label: 'Отзывы', count: order.reviews.length },
-                  ...(canViewHistory ? [{ key: 'history', label: 'История' }] : []),
-                ]"
-                :key="tab.key"
-                @click="activeTab = tab.key as TabType"
-                :class="[
-                  'flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-2 sm:px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors',
-                  activeTab === tab.key
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                ]"
-              >
-                <!-- Info icon -->
-                <svg v-if="tab.key === 'info'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <!-- Messages icon -->
-                <svg v-else-if="tab.key === 'messages'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                <!-- Documents icon -->
-                <svg v-else-if="tab.key === 'documents'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <!-- Reviews icon -->
-                <svg v-else-if="tab.key === 'reviews'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                </svg>
-                <!-- History icon -->
-                <svg v-else-if="tab.key === 'history'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span class="hidden sm:inline">{{ tab.label }}</span>
-                <span v-if="tab.count !== undefined && tab.count > 0" class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
-                  {{ tab.count }}
-                </span>
-              </button>
-            </nav>
-          </div>
-
-          <div class="p-4 sm:p-6">
-            <!-- Info Tab -->
-            <div v-if="activeTab === 'info'" class="space-y-6">
-              <!-- Participants -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div class="border border-gray-200 rounded-lg p-4">
-                  <h3 class="text-sm font-medium text-gray-500 mb-2">Заказчик</h3>
-                  <router-link
-                    :to="{ name: 'organization-profile', params: { id: order.customer_org_id } }"
-                    class="text-blue-600 hover:text-blue-800 font-medium block"
-                  >
-                    {{ order.customer_org_name }}
-                  </router-link>
-                  <div class="text-xs text-gray-500 mt-1">Контакт:</div>
-                  <router-link
-                    :to="`/members/${order.customer_member_id}`"
-                    class="text-blue-600 hover:text-blue-800 text-sm"
-                  >
-                    {{ order.customer_member_name }}
-                  </router-link>
-                </div>
-                <div class="border border-gray-200 rounded-lg p-4">
-                  <h3 class="text-sm font-medium text-gray-500 mb-2">Перевозчик</h3>
-                  <router-link
-                    :to="{ name: 'organization-profile', params: { id: order.carrier_org_id } }"
-                    class="text-blue-600 hover:text-blue-800 font-medium block"
-                  >
-                    {{ order.carrier_org_name }}
-                  </router-link>
-                  <div class="text-xs text-gray-500 mt-1">Контакт:</div>
-                  <router-link
-                    :to="`/members/${order.carrier_member_id}`"
-                    class="text-blue-600 hover:text-blue-800 text-sm"
-                  >
-                    {{ order.carrier_member_name }}
-                  </router-link>
-                </div>
+        <Card>
+          <CardContent class="p-4 sm:p-6">
+            <div class="flex flex-col gap-4">
+              <div>
+                <h1 class="text-xl sm:text-2xl font-bold text-foreground">
+                  Заказ #{{ orderNumber }}
+                </h1>
+                <p class="text-muted-foreground text-sm mt-1 break-words">
+                  {{ counterpartyRole }}:
+                  <span class="font-medium text-foreground">{{ counterpartyName }}</span>
+                </p>
+                <p class="text-muted-foreground text-sm mt-1">
+                  Создан {{ formatDateTime(order.created_at) }}
+                </p>
               </div>
-
-              <!-- Order details -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div v-if="order.completed_at">
-                  <dt class="text-sm text-gray-500">Завершён</dt>
-                  <dd class="text-gray-900">{{ formatDateTime(order.completed_at) }}</dd>
-                </div>
-                <div v-if="order.cancelled_at">
-                  <dt class="text-sm text-gray-500">Отменён</dt>
-                  <dd class="text-gray-900">{{ formatDateTime(order.cancelled_at) }}</dd>
-                </div>
-              </div>
-
-              <p class="text-gray-500 text-sm">
-                Полная информация о маршруте и грузе доступна в
+              <div class="flex flex-wrap items-center gap-2">
+                <StatusBadge :status="order.status" :status-map="orderStatusMap" />
                 <router-link
                   :to="`/freight-requests/${order.freight_request_id}`"
-                  class="text-blue-600 hover:text-blue-800"
                 >
-                  заявке
-                </router-link>.
-              </p>
-            </div>
-
-            <!-- Messages Tab -->
-            <div v-else-if="activeTab === 'messages'">
-              <!-- Messages List -->
-              <div
-                ref="messagesContainer"
-                class="h-64 sm:h-80 overflow-y-auto border border-gray-200 rounded-lg p-3 sm:p-4 mb-4 space-y-3"
-              >
-                <div v-if="sortedMessages.length === 0" class="text-center text-gray-500 py-8">
-                  Сообщений пока нет
-                </div>
-
-                <div
-                  v-for="msg in sortedMessages"
-                  :key="msg.id"
-                  :class="[
-                    'max-w-[80%] p-3 rounded-lg',
-                    isMyMessage(msg)
-                      ? 'ml-auto bg-blue-100 text-blue-900'
-                      : 'bg-gray-100 text-gray-900'
-                  ]"
-                >
-                  <div class="text-xs text-gray-500 mb-1">
-                    {{ getMessageSenderLabel(msg) }} &middot; {{ formatDateTime(msg.created_at) }}
-                  </div>
-                  <div class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
-                </div>
-              </div>
-
-              <!-- Message Input -->
-              <div v-if="canSendMessage" class="flex flex-col gap-2 sm:flex-row">
-                <input
-                  v-model="messageInput"
-                  @keyup.enter="handleSendMessage"
-                  type="text"
-                  placeholder="Введите сообщение..."
-                  class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  :disabled="actionLoading"
-                />
-                <button
-                  @click="handleSendMessage"
-                  :disabled="!messageInput.trim() || actionLoading"
-                  class="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-                >
-                  Отправить
-                </button>
-              </div>
-              <div v-else-if="isOrderCancelled(order.status)" class="text-sm text-gray-500">
-                Отправка сообщений недоступна для отменённого заказа
+                  <Badge variant="outline" class="cursor-pointer">
+                    <FileText class="mr-1 h-3 w-3" />
+                    Перейти к заявке
+                  </Badge>
+                </router-link>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <!-- Documents Tab -->
-            <div v-else-if="activeTab === 'documents'">
-              <!-- Upload button -->
-              <div v-if="canUploadDocument" class="mb-4">
-                <input
-                  ref="fileInput"
-                  type="file"
-                  @change="handleFileUpload"
-                  class="hidden"
-                />
-                <button
-                  @click="triggerFileUpload"
-                  :disabled="uploadingFile"
-                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-                >
-                  {{ uploadingFile ? 'Загрузка...' : 'Загрузить документ' }}
-                </button>
-              </div>
-
-              <!-- Documents List -->
-              <div v-if="order.documents.length === 0" class="text-center text-gray-500 py-8">
-                Документов пока нет
-              </div>
-
-              <div v-else class="space-y-3">
-                <div
-                  v-for="doc in order.documents"
-                  :key="doc.id"
-                  class="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
-                >
-                  <div class="flex-1 min-w-0">
-                    <p class="font-medium text-gray-900 truncate">{{ doc.name }}</p>
-                    <p class="text-sm text-gray-500">
-                      {{ formatFileSize(doc.size) }} &middot; {{ formatDateTime(doc.created_at) }}
-                    </p>
-                  </div>
-                  <div class="flex gap-2 ml-4">
-                    <button
-                      @click="handleDownloadDocument(doc)"
-                      class="text-sm text-blue-600 hover:text-blue-800"
-                    >
-                      Скачать
-                    </button>
-                    <button
-                      v-if="isParticipant && !isOrderFinished(order.status)"
-                      @click="handleRemoveDocument(doc)"
-                      :disabled="actionLoading"
-                      class="text-sm text-red-600 hover:text-red-800 disabled:opacity-50"
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                </div>
-              </div>
+        <!-- Tabs -->
+        <Card>
+          <Tabs v-model="activeTab" class="w-full">
+            <!-- Tab selector dropdown -->
+            <div class="border-b p-3">
+              <TabsDropdown v-model="activeTab" :items="tabItems" />
             </div>
 
-            <!-- Reviews Tab -->
-            <div v-else-if="activeTab === 'reviews'">
-              <div v-if="order.reviews.length === 0" class="text-center text-gray-500 py-8">
-                Отзывов пока нет
-              </div>
-
-              <div v-else class="space-y-4">
-                <div
-                  v-for="review in order.reviews"
-                  :key="review.id"
-                  class="border border-gray-200 rounded-lg p-4"
-                >
-                  <div class="flex items-center gap-2 mb-2">
-                    <div class="flex">
-                      <span
-                        v-for="star in 5"
-                        :key="star"
-                        :class="star <= review.rating ? 'text-yellow-400' : 'text-gray-300'"
+            <div class="p-4 sm:p-6">
+              <!-- Info Tab -->
+              <TabsContent value="info" class="mt-0 space-y-6">
+                <!-- Participants -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader class="pb-2">
+                      <CardTitle class="text-sm text-muted-foreground">Заказчик</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <router-link
+                        :to="{ name: 'organization-profile', params: { id: order.customer_org_id } }"
+                        class="text-primary hover:underline font-medium flex items-center gap-1"
                       >
-                        ★
-                      </span>
-                    </div>
-                    <span class="text-sm text-gray-500">
-                      {{ review.reviewer_org_id === order.customer_org_id ? 'Заказчик' : 'Перевозчик' }}
-                    </span>
-                  </div>
-                  <p v-if="review.comment" class="text-gray-700 break-words">{{ review.comment }}</p>
-                  <p v-else class="text-gray-400 italic">Без комментария</p>
-                  <p class="text-xs text-gray-500 mt-2">{{ formatDateTime(review.created_at) }}</p>
+                        <Building2 class="h-4 w-4" />
+                        {{ order.customer_org_name }}
+                      </router-link>
+                      <div class="text-xs text-muted-foreground mt-2">Контакт:</div>
+                      <router-link
+                        :to="`/members/${order.customer_member_id}`"
+                        class="text-primary hover:underline text-sm"
+                      >
+                        {{ order.customer_member_name }}
+                      </router-link>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader class="pb-2">
+                      <CardTitle class="text-sm text-muted-foreground">Перевозчик</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <router-link
+                        :to="{ name: 'organization-profile', params: { id: order.carrier_org_id } }"
+                        class="text-primary hover:underline font-medium flex items-center gap-1"
+                      >
+                        <Building2 class="h-4 w-4" />
+                        {{ order.carrier_org_name }}
+                      </router-link>
+                      <div class="text-xs text-muted-foreground mt-2">Контакт:</div>
+                      <router-link
+                        :to="`/members/${order.carrier_member_id}`"
+                        class="text-primary hover:underline text-sm"
+                      >
+                        {{ order.carrier_member_name }}
+                      </router-link>
+                    </CardContent>
+                  </Card>
                 </div>
-              </div>
-            </div>
 
-            <!-- History Tab -->
-            <div v-else-if="activeTab === 'history' && canViewHistory">
-              <EventHistory :load-fn="loadOrderHistory" />
+                <!-- Order details -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div v-if="order.completed_at">
+                    <dt class="text-sm text-muted-foreground">Завершён</dt>
+                    <dd class="text-foreground">{{ formatDateTime(order.completed_at) }}</dd>
+                  </div>
+                  <div v-if="order.cancelled_at">
+                    <dt class="text-sm text-muted-foreground">Отменён</dt>
+                    <dd class="text-foreground">{{ formatDateTime(order.cancelled_at) }}</dd>
+                  </div>
+                </div>
+
+                <p class="text-muted-foreground text-sm">
+                  Полная информация о маршруте и грузе доступна в
+                  <router-link
+                    :to="`/freight-requests/${order.freight_request_id}`"
+                    class="text-primary hover:underline"
+                  >
+                    заявке
+                  </router-link>.
+                </p>
+              </TabsContent>
+
+              <!-- Messages Tab -->
+              <TabsContent value="messages" class="mt-0">
+                <!-- Messages List -->
+                <div
+                  ref="messagesContainer"
+                  class="h-64 sm:h-80 overflow-y-auto border rounded-lg p-3 sm:p-4 mb-4 space-y-3"
+                >
+                  <div v-if="sortedMessages.length === 0" class="text-center text-muted-foreground py-8">
+                    Сообщений пока нет
+                  </div>
+
+                  <div
+                    v-for="msg in sortedMessages"
+                    :key="msg.id"
+                    :class="[
+                      'max-w-[80%] p-3 rounded-lg',
+                      isMyMessage(msg)
+                        ? 'ml-auto bg-primary/10 text-foreground'
+                        : 'bg-muted text-foreground'
+                    ]"
+                  >
+                    <div class="text-xs text-muted-foreground mb-1">
+                      {{ getMessageSenderLabel(msg) }} &middot; {{ formatDateTime(msg.created_at) }}
+                    </div>
+                    <div class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
+                  </div>
+                </div>
+
+                <!-- Message Input -->
+                <div v-if="canSendMessage" class="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    v-model="messageInput"
+                    @keyup.enter="handleSendMessage"
+                    placeholder="Введите сообщение..."
+                    :disabled="actionLoading"
+                    class="flex-1"
+                  />
+                  <Button
+                    :disabled="!messageInput.trim() || actionLoading"
+                    @click="handleSendMessage"
+                  >
+                    <Send class="mr-2 h-4 w-4" />
+                    Отправить
+                  </Button>
+                </div>
+                <div v-else-if="isOrderCancelled(order.status)" class="text-sm text-muted-foreground">
+                  Отправка сообщений недоступна для отменённого заказа
+                </div>
+              </TabsContent>
+
+              <!-- Documents Tab -->
+              <TabsContent value="documents" class="mt-0">
+                <!-- Upload button -->
+                <div v-if="canUploadDocument" class="mb-4">
+                  <input
+                    ref="fileInput"
+                    type="file"
+                    @change="handleFileUpload"
+                    class="hidden"
+                  />
+                  <Button
+                    :disabled="uploadingFile"
+                    @click="triggerFileUpload"
+                  >
+                    <Upload class="mr-2 h-4 w-4" />
+                    {{ uploadingFile ? 'Загрузка...' : 'Загрузить документ' }}
+                  </Button>
+                </div>
+
+                <!-- Documents List -->
+                <div v-if="order.documents.length === 0" class="text-center text-muted-foreground py-8">
+                  Документов пока нет
+                </div>
+
+                <div v-else class="space-y-3">
+                  <Card
+                    v-for="doc in order.documents"
+                    :key="doc.id"
+                  >
+                    <CardContent class="flex items-center justify-between p-4">
+                      <div class="flex-1 min-w-0">
+                        <p class="font-medium text-foreground truncate">{{ doc.name }}</p>
+                        <p class="text-sm text-muted-foreground">
+                          {{ formatFileSize(doc.size) }} &middot; {{ formatDateTime(doc.created_at) }}
+                        </p>
+                      </div>
+                      <div class="flex gap-2 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          @click="handleDownloadDocument(doc)"
+                        >
+                          <Download class="h-4 w-4" />
+                        </Button>
+                        <Button
+                          v-if="isParticipant && !isOrderFinished(order.status)"
+                          variant="ghost"
+                          size="sm"
+                          class="text-destructive hover:text-destructive"
+                          :disabled="actionLoading"
+                          @click="handleRemoveDocument(doc)"
+                        >
+                          <Trash2 class="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <!-- Reviews Tab -->
+              <TabsContent value="reviews" class="mt-0">
+                <div v-if="order.reviews.length === 0" class="text-center text-muted-foreground py-8">
+                  Отзывов пока нет
+                </div>
+
+                <div v-else class="space-y-4">
+                  <Card
+                    v-for="review in order.reviews"
+                    :key="review.id"
+                  >
+                    <CardContent class="p-4">
+                      <div class="flex items-center gap-2 mb-2">
+                        <div class="flex">
+                          <Star
+                            v-for="star in 5"
+                            :key="star"
+                            :class="[
+                              'h-5 w-5',
+                              star <= review.rating ? 'text-warning fill-warning' : 'text-muted-foreground'
+                            ]"
+                          />
+                        </div>
+                        <Badge variant="secondary">
+                          {{ review.reviewer_org_id === order.customer_org_id ? 'Заказчик' : 'Перевозчик' }}
+                        </Badge>
+                      </div>
+                      <p v-if="review.comment" class="text-foreground break-words">{{ review.comment }}</p>
+                      <p v-else class="text-muted-foreground italic">Без комментария</p>
+                      <p class="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                        <Clock class="h-3 w-3" />
+                        {{ formatDateTime(review.created_at) }}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <!-- History Tab -->
+              <TabsContent v-if="canViewHistory" value="history" class="mt-0">
+                <EventHistory :load-fn="loadOrderHistory" />
+              </TabsContent>
             </div>
-          </div>
-        </div>
+          </Tabs>
+        </Card>
       </div>
     </main>
 
-    <!-- Cancel Modal -->
-    <div v-if="showCancelModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[1000]">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Отменить заказ</h3>
+    <!-- Cancel Dialog -->
+    <Dialog v-model:open="showCancelModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Отменить заказ</DialogTitle>
+          <DialogDescription>
+            Это действие нельзя отменить
+          </DialogDescription>
+        </DialogHeader>
 
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Причина отмены</label>
-          <textarea
+        <div class="space-y-2">
+          <Label>Причина отмены</Label>
+          <Textarea
             v-model="cancelReason"
             rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Укажите причину (опционально)..."
-          ></textarea>
+          />
         </div>
 
-        <div class="flex gap-3">
-          <button
-            @click="showCancelModal = false"
-            class="flex-1 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
-          >
+        <DialogFooter>
+          <Button variant="outline" @click="showCancelModal = false">
             Назад
-          </button>
-          <button
-            @click="handleCancel"
+          </Button>
+          <Button
+            variant="destructive"
             :disabled="actionLoading"
-            class="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50"
+            @click="handleCancel"
           >
             {{ actionLoading ? 'Отмена...' : 'Отменить заказ' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-    <!-- Review Modal -->
-    <div v-if="showReviewModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[1000]">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Оставить отзыв</h3>
+    <!-- Review Dialog -->
+    <Dialog v-model:open="showReviewModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Оставить отзыв</DialogTitle>
+          <DialogDescription>
+            Оцените работу контрагента
+          </DialogDescription>
+        </DialogHeader>
 
         <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Оценка *</label>
+          <div class="space-y-2">
+            <Label>Оценка *</Label>
             <div class="flex gap-2">
               <button
                 v-for="star in 5"
                 :key="star"
+                type="button"
                 @click="reviewForm.rating = star"
                 :class="[
                   'text-3xl transition-colors',
-                  star <= reviewForm.rating ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-200'
+                  star <= reviewForm.rating ? 'text-warning' : 'text-muted-foreground hover:text-warning/50'
                 ]"
               >
                 ★
@@ -812,69 +822,70 @@ async function handleReassign() {
             </div>
           </div>
 
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>
-            <textarea
+          <div class="space-y-2">
+            <Label>Комментарий</Label>
+            <Textarea
               v-model="reviewForm.comment"
               rows="3"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Ваш отзыв (опционально)..."
-            ></textarea>
+            />
           </div>
         </div>
 
-        <div class="flex gap-3 mt-6">
-          <button
-            @click="showReviewModal = false"
-            class="flex-1 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
-          >
+        <DialogFooter>
+          <Button variant="outline" @click="showReviewModal = false">
             Отмена
-          </button>
-          <button
-            @click="handleLeaveReview"
+          </Button>
+          <Button
             :disabled="!reviewForm.rating || actionLoading"
-            class="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+            @click="handleLeaveReview"
           >
             {{ actionLoading ? 'Отправка...' : 'Отправить' }}
-          </button>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Reassign Dialog -->
+    <Dialog v-model:open="showReassignModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Переназначить ответственного</DialogTitle>
+          <DialogDescription>
+            Выберите нового ответственного сотрудника
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-2">
+          <Label>Новый ответственный</Label>
+          <Select v-model="selectedNewMember">
+            <SelectTrigger>
+              <SelectValue placeholder="Выберите сотрудника" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="member in availableMembers"
+                :key="member.id"
+                :value="member.id"
+              >
+                {{ member.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </div>
-    </div>
 
-    <!-- Reassign Modal -->
-    <div v-if="showReassignModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[1000]">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Переназначить ответственного</h3>
-
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Новый ответственный</label>
-          <select
-            v-model="selectedNewMember"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Выберите сотрудника</option>
-            <option v-for="member in availableMembers" :key="member.id" :value="member.id">
-              {{ member.name }}
-            </option>
-          </select>
-        </div>
-
-        <div class="flex gap-3">
-          <button
-            @click="showReassignModal = false"
-            class="flex-1 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
-          >
+        <DialogFooter>
+          <Button variant="outline" @click="showReassignModal = false">
             Отмена
-          </button>
-          <button
-            @click="handleReassign"
+          </Button>
+          <Button
             :disabled="!selectedNewMember || actionLoading"
-            class="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+            @click="handleReassign"
           >
             {{ actionLoading ? 'Сохранение...' : 'Сохранить' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

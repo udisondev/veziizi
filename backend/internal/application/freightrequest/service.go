@@ -290,20 +290,7 @@ func (s *Service) SelectOffer(ctx context.Context, input SelectOfferInput) error
 		return err
 	}
 
-	// Получаем роль актора для проверки в доменной логике
-	canManage := false
-	if fr.CustomerOrgID() == input.ActorOrgID {
-		org, err := s.getOrganization(ctx, input.ActorOrgID)
-		if err != nil {
-			return fmt.Errorf("get organization: %w", err)
-		}
-
-		if member, ok := org.GetMember(input.ActorID); ok {
-			canManage = member.Role().CanManageFreightRequests()
-		}
-	}
-
-	if err := fr.SelectOffer(input.OfferID, input.ActorID, input.ActorOrgID, canManage); err != nil {
+	if err := fr.SelectOffer(input.OfferID, input.ActorID, input.ActorOrgID); err != nil {
 		return err
 	}
 
@@ -324,20 +311,7 @@ func (s *Service) RejectOffer(ctx context.Context, input RejectOfferInput) error
 		return err
 	}
 
-	// Получаем роль актора для проверки в доменной логике
-	canManage := false
-	if fr.CustomerOrgID() == input.ActorOrgID {
-		org, err := s.getOrganization(ctx, input.ActorOrgID)
-		if err != nil {
-			return fmt.Errorf("get organization: %w", err)
-		}
-
-		if member, ok := org.GetMember(input.ActorID); ok {
-			canManage = member.Role().CanManageFreightRequests()
-		}
-	}
-
-	if err := fr.RejectOffer(input.OfferID, input.ActorID, input.ActorOrgID, canManage, input.Reason); err != nil {
+	if err := fr.RejectOffer(input.OfferID, input.ActorID, input.ActorOrgID, input.Reason); err != nil {
 		return err
 	}
 
@@ -347,6 +321,7 @@ func (s *Service) RejectOffer(ctx context.Context, input RejectOfferInput) error
 type ConfirmOfferInput struct {
 	FreightRequestID uuid.UUID
 	OfferID          uuid.UUID
+	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
 }
 
@@ -356,7 +331,7 @@ func (s *Service) ConfirmOffer(ctx context.Context, input ConfirmOfferInput) err
 		return err
 	}
 
-	if err := fr.ConfirmOffer(input.OfferID, input.ActorOrgID); err != nil {
+	if err := fr.ConfirmOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID); err != nil {
 		return err
 	}
 
@@ -366,6 +341,7 @@ func (s *Service) ConfirmOffer(ctx context.Context, input ConfirmOfferInput) err
 type DeclineOfferInput struct {
 	FreightRequestID uuid.UUID
 	OfferID          uuid.UUID
+	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
 	Reason           string
 }
@@ -376,7 +352,7 @@ func (s *Service) DeclineOffer(ctx context.Context, input DeclineOfferInput) err
 		return err
 	}
 
-	if err := fr.DeclineOffer(input.OfferID, input.ActorOrgID, input.Reason); err != nil {
+	if err := fr.DeclineOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID, input.Reason); err != nil {
 		return err
 	}
 

@@ -263,15 +263,15 @@ func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorOrgID uuid.UUID, 
 	return nil
 }
 
-func (f *FreightRequest) SelectOffer(offerID uuid.UUID, actorID uuid.UUID, actorOrgID uuid.UUID, canManageFreightRequests bool) error {
+func (f *FreightRequest) SelectOffer(offerID uuid.UUID, actorID uuid.UUID, actorOrgID uuid.UUID) error {
 	// Проверка: актор должен быть из организации-заказчика
 	if f.customerOrgID != actorOrgID {
 		return ErrNotFreightRequestOwner
 	}
 
-	// Проверка прав: создатель заявки ИЛИ owner/administrator организации
-	if f.customerMemberID != actorID && !canManageFreightRequests {
-		return ErrNotFreightRequestOwner
+	// Проверка: только ответственный член может выбирать офферы
+	if f.customerMemberID != actorID {
+		return ErrNotResponsibleMember
 	}
 
 	if !f.IsPublished() {
@@ -298,15 +298,15 @@ func (f *FreightRequest) SelectOffer(offerID uuid.UUID, actorID uuid.UUID, actor
 	return nil
 }
 
-func (f *FreightRequest) RejectOffer(offerID uuid.UUID, actorID uuid.UUID, actorOrgID uuid.UUID, canManageFreightRequests bool, reason string) error {
+func (f *FreightRequest) RejectOffer(offerID uuid.UUID, actorID uuid.UUID, actorOrgID uuid.UUID, reason string) error {
 	// Проверка: актор должен быть из организации-заказчика
 	if f.customerOrgID != actorOrgID {
 		return ErrNotFreightRequestOwner
 	}
 
-	// Проверка прав: создатель заявки ИЛИ owner/administrator организации
-	if f.customerMemberID != actorID && !canManageFreightRequests {
-		return ErrNotFreightRequestOwner
+	// Проверка: только ответственный член может отклонять офферы
+	if f.customerMemberID != actorID {
+		return ErrNotResponsibleMember
 	}
 
 	offer, ok := f.offers[offerID]
@@ -327,13 +327,17 @@ func (f *FreightRequest) RejectOffer(offerID uuid.UUID, actorID uuid.UUID, actor
 	return nil
 }
 
-func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorOrgID uuid.UUID) error {
+func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
 	}
 	if offer.CarrierOrgID() != actorOrgID {
 		return ErrNotOfferOwner
+	}
+	// Проверка: только ответственный член (создатель оффера) может подтверждать
+	if offer.CarrierMemberID() != actorMemberID {
+		return ErrNotResponsibleMember
 	}
 	if !offer.IsSelected() {
 		return ErrOfferNotSelected
@@ -348,13 +352,17 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorOrgID uuid.UUID) e
 	return nil
 }
 
-func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorOrgID uuid.UUID, reason string) error {
+func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, reason string) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
 	}
 	if offer.CarrierOrgID() != actorOrgID {
 		return ErrNotOfferOwner
+	}
+	// Проверка: только ответственный член (создатель оффера) может отклонять
+	if offer.CarrierMemberID() != actorMemberID {
+		return ErrNotResponsibleMember
 	}
 	if !offer.IsSelected() {
 		return ErrOfferNotSelected

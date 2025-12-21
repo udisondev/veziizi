@@ -8,6 +8,7 @@ var (
 	ErrOrderCompleted              = errors.New("order is completed")
 	ErrOrderNotActive              = errors.New("order is not active")
 	ErrNotOrderParticipant         = errors.New("not an order participant")
+	ErrNotResponsibleMember        = errors.New("not responsible member for this order")
 	ErrAlreadyCompleted            = errors.New("already marked as completed")
 	ErrCannotCancelAfterComplete   = errors.New("cannot cancel after completion started")
 	ErrCannotLeaveReview           = errors.New("can only leave review after order is finished")

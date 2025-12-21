@@ -61,28 +61,16 @@ func (h *OrderHandler) RegisterRoutes(r *mux.Router) {
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Получить данные сессии для проверки доступа
-	memberID, ok := h.session.GetMemberID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	role, _ := h.session.GetRole(r)
 
 	var opts []projections.OrderFilterOption
 
-	// Принудительная фильтрация по доступу
-	if role == "owner" || role == "administrator" {
-		// Admin/owner видят все заказы своей организации
-		opts = append(opts, projections.OrderWithOrgID(orgID))
-	} else {
-		// Обычные сотрудники видят только свои заказы
-		opts = append(opts, projections.OrderWithMemberID(memberID))
-	}
+	// Все сотрудники организации видят все заказы своей организации
+	opts = append(opts, projections.OrderWithOrgID(orgID))
 
 	// Дополнительные фильтры (применяются поверх фильтра доступа)
 	if customerOrgID := r.URL.Query().Get("customer_org_id"); customerOrgID != "" {
@@ -201,17 +189,11 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Получить данные сессии для проверки доступа
-	memberID, ok := h.session.GetMemberID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	role, _ := h.session.GetRole(r)
 
 	o, err := h.service.Get(r.Context(), id)
 	if err != nil {
@@ -220,8 +202,8 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверить доступ
-	if !o.CanAccess(orgID, memberID, role) {
+	// Проверить доступ - все сотрудники организации-участника могут видеть заказ
+	if !o.CanAccess(orgID) {
 		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
@@ -456,25 +438,19 @@ func (h *OrderHandler) DownloadDocument(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// SEC-002: Проверка авторизации перед загрузкой документа
-	memberID, ok := h.session.GetMemberID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	role, _ := h.session.GetRole(r)
 
-	// Загрузить заказ и проверить доступ
+	// Загрузить заказ и проверить доступ - все сотрудники организации-участника могут скачивать
 	order, err := h.service.Get(r.Context(), orderID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "order not found")
 		return
 	}
-	if !order.CanAccess(orgID, memberID, role) {
+	if !order.CanAccess(orgID) {
 		writeError(w, http.StatusForbidden, "access denied")
 		return
 	}
@@ -506,6 +482,11 @@ func (h *OrderHandler) RemoveDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -513,9 +494,10 @@ func (h *OrderHandler) RemoveDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.RemoveDocument(r.Context(), orderApp.RemoveDocumentInput{
-		OrderID:      orderID,
-		DocumentID:   docID,
-		RemoverOrgID: orgID,
+		OrderID:         orderID,
+		DocumentID:      docID,
+		RemoverOrgID:    orgID,
+		RemoverMemberID: memberID,
 	}); err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -607,6 +589,11 @@ func (h *OrderHandler) LeaveReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -620,10 +607,11 @@ func (h *OrderHandler) LeaveReview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.LeaveReview(r.Context(), orderApp.LeaveReviewInput{
-		OrderID:       orderID,
-		ReviewerOrgID: orgID,
-		Rating:        req.Rating,
-		Comment:       req.Comment,
+		OrderID:          orderID,
+		ReviewerOrgID:    orgID,
+		ReviewerMemberID: memberID,
+		Rating:           req.Rating,
+		Comment:          req.Comment,
 	}); err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -710,6 +698,8 @@ func (h *OrderHandler) handleDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "order is not active")
 	case errors.Is(err, order.ErrNotOrderParticipant):
 		writeError(w, http.StatusForbidden, "not an order participant")
+	case errors.Is(err, order.ErrNotResponsibleMember):
+		writeError(w, http.StatusForbidden, "you are not the responsible member for this order")
 	case errors.Is(err, order.ErrAlreadyCompleted):
 		writeError(w, http.StatusConflict, "already marked as completed")
 	case errors.Is(err, order.ErrCannotCancelAfterComplete):

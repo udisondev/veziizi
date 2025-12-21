@@ -101,7 +101,6 @@ export function useFreightRequestForm() {
 
   // Step 5: Additional
   const comment = ref('')
-  const expiresAt = ref<string>('')
 
   // Errors
   const errors = reactive<Record<string, string | null>>({})
@@ -180,11 +179,27 @@ export function useFreightRequestForm() {
     for (const [i, point] of routePoints.value.entries()) {
       errors[`point_${i}_address`] = validators.required(point.address)
       errors[`point_${i}_date_from`] = validators.required(point.date_from)
+
+      // Если хотя бы одно поле контакта заполнено, оба обязательны
+      const hasContactName = !!point.contact_name?.trim()
+      const hasContactPhone = !!point.contact_phone?.trim()
+      if (hasContactName !== hasContactPhone) {
+        if (!hasContactName) {
+          errors[`point_${i}_contact_name`] = 'Укажите имя контакта'
+        }
+        if (!hasContactPhone) {
+          errors[`point_${i}_contact_phone`] = 'Укажите телефон контакта'
+        }
+      }
     }
 
     const hasRouteError = errors.route !== null
     const hasPointErrors = routePoints.value.some(
-      (_, i) => errors[`point_${i}_address`] || errors[`point_${i}_date_from`]
+      (_, i) =>
+        errors[`point_${i}_address`] ||
+        errors[`point_${i}_date_from`] ||
+        errors[`point_${i}_contact_name`] ||
+        errors[`point_${i}_contact_phone`]
     )
 
     return !hasRouteError && !hasPointErrors
@@ -196,8 +211,9 @@ export function useFreightRequestForm() {
     errors.description = validators.required(cargo.description)
     errors.weight = validators.positiveNumber(cargo.weight)
     errors.cargo_type = validators.required(cargo.type)
+    errors.quantity = validators.positiveNumber(cargo.quantity)
 
-    return !errors.description && !errors.weight && !errors.cargo_type
+    return !errors.description && !errors.weight && !errors.cargo_type && !errors.quantity
   }
 
   function validateStep3(): boolean {
@@ -205,7 +221,24 @@ export function useFreightRequestForm() {
 
     errors.body_types = validators.required(vehicle.body_types)
 
-    return !errors.body_types
+    // Если температура включена, проверяем min и max
+    if (vehicle.temperature !== undefined) {
+      if (vehicle.temperature.min === undefined || vehicle.temperature.min === null) {
+        errors.temperature_min = 'Укажите минимальную температуру'
+      }
+      if (vehicle.temperature.max === undefined || vehicle.temperature.max === null) {
+        errors.temperature_max = 'Укажите максимальную температуру'
+      }
+      if (
+        vehicle.temperature.min !== undefined &&
+        vehicle.temperature.max !== undefined &&
+        vehicle.temperature.min > vehicle.temperature.max
+      ) {
+        errors.temperature = 'Минимум не может быть больше максимума'
+      }
+    }
+
+    return !errors.body_types && !errors.temperature_min && !errors.temperature_max && !errors.temperature
   }
 
   function validateStep4(): boolean {
@@ -332,7 +365,6 @@ export function useFreightRequestForm() {
     }
 
     if (comment.value) request.comment = comment.value
-    if (expiresAt.value) request.expires_at = expiresAt.value
 
     return request
   })
@@ -351,6 +383,25 @@ export function useFreightRequestForm() {
           errors[field] = validators.required(point.address)
         } else if (pointField === 'date_from') {
           errors[field] = validators.required(point.date_from)
+        } else if (pointField === 'contact_name' || pointField === 'contact_phone') {
+          // Валидация контактов — оба поля обязательны если одно заполнено
+          const hasContactName = !!point.contact_name?.trim()
+          const hasContactPhone = !!point.contact_phone?.trim()
+          if (hasContactName !== hasContactPhone) {
+            if (!hasContactName) {
+              errors[`point_${index}_contact_name`] = 'Укажите имя контакта'
+            } else {
+              errors[`point_${index}_contact_name`] = null
+            }
+            if (!hasContactPhone) {
+              errors[`point_${index}_contact_phone`] = 'Укажите телефон контакта'
+            } else {
+              errors[`point_${index}_contact_phone`] = null
+            }
+          } else {
+            errors[`point_${index}_contact_name`] = null
+            errors[`point_${index}_contact_phone`] = null
+          }
         }
       }
       return
@@ -363,6 +414,8 @@ export function useFreightRequestForm() {
       errors.weight = validators.positiveNumber(cargo.weight)
     } else if (field === 'cargo_type') {
       errors.cargo_type = validators.required(cargo.type)
+    } else if (field === 'quantity') {
+      errors.quantity = validators.positiveNumber(cargo.quantity)
     }
 
     // Vehicle
@@ -419,7 +472,6 @@ export function useFreightRequestForm() {
       no_price: false,
     })
     comment.value = ''
-    expiresAt.value = ''
     clearErrors()
   }
 
@@ -472,7 +524,6 @@ export function useFreightRequestForm() {
 
     // Additional
     comment.value = fr.comment || ''
-    expiresAt.value = fr.expires_at?.split('T')[0] ?? ''
 
     clearErrors()
   }
@@ -486,7 +537,6 @@ export function useFreightRequestForm() {
     vehicle,
     payment,
     comment,
-    expiresAt,
     errors,
 
     // Route management

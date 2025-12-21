@@ -1,11 +1,40 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAdminStore } from '@/stores/admin'
 import { adminApi } from '@/api/admin'
 import type { Fraudster } from '@/types/admin'
 
+// UI Components
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+
+// Shared Components
+import { ErrorBanner } from '@/components/shared'
+
+// Icons
+import {
+  Building2,
+  RefreshCcw,
+  LogOut,
+  Star,
+  AlertTriangle,
+  ShieldOff,
+} from 'lucide-vue-next'
+
 const router = useRouter()
+const route = useRoute()
 const admin = useAdminStore()
 
 const fraudsters = ref<Fraudster[]>([])
@@ -18,6 +47,12 @@ const showUnmarkModal = ref(false)
 const selectedFraudster = ref<Fraudster | null>(null)
 const unmarkReason = ref('')
 const isSubmitting = ref(false)
+
+const navItems = [
+  { to: '/admin/organizations', label: 'Организации', icon: Building2 },
+  { to: '/admin/reviews', label: 'Отзывы', icon: Star },
+  { to: '/admin/fraudsters', label: 'Накрутчики', icon: AlertTriangle },
+]
 
 onMounted(async () => {
   await loadFraudsters()
@@ -78,165 +113,194 @@ async function handleLogout() {
   await admin.logout()
   router.push('/admin/login')
 }
+
+function isActive(path: string): boolean {
+  return route.path === path || route.path.startsWith(path + '/')
+}
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900">
+  <div class="min-h-screen bg-slate-900">
     <!-- Header -->
-    <header class="bg-gray-800 shadow">
-      <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-        <div class="flex items-center gap-6">
-          <h1 class="text-xl font-bold text-white">Панель администратора</h1>
-          <nav class="flex gap-4">
-            <router-link to="/admin/organizations" class="text-gray-400 hover:text-white text-sm">
-              Организации
-            </router-link>
-            <router-link to="/admin/reviews" class="text-gray-400 hover:text-white text-sm">
-              Отзывы
-            </router-link>
-            <router-link to="/admin/fraudsters" class="text-white text-sm font-medium">
-              Накрутчики
-            </router-link>
-          </nav>
-        </div>
-        <div class="flex items-center gap-4">
-          <span class="text-gray-400 text-sm">{{ admin.email }}</span>
-          <button
-            @click="handleLogout"
-            class="text-gray-400 hover:text-white text-sm"
-          >
-            Выйти
-          </button>
+    <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-14">
+          <div class="flex items-center gap-6">
+            <h1 class="text-lg font-semibold text-white">Admin Panel</h1>
+            <nav class="hidden md:flex items-center gap-1">
+              <router-link
+                v-for="item in navItems"
+                :key="item.to"
+                :to="item.to"
+                :class="[
+                  'px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors',
+                  isActive(item.to)
+                    ? 'bg-indigo-500/20 text-indigo-400'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                ]"
+              >
+                <component :is="item.icon" class="h-4 w-4" />
+                {{ item.label }}
+              </router-link>
+            </nav>
+          </div>
+          <div class="flex items-center gap-4">
+            <span class="text-sm text-slate-400 hidden sm:block">{{ admin.email }}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="text-slate-400 hover:text-white hover:bg-slate-700"
+              @click="handleLogout"
+            >
+              <LogOut class="h-4 w-4 mr-2" />
+              Выйти
+            </Button>
+          </div>
         </div>
       </div>
     </header>
 
     <!-- Content -->
-    <main class="max-w-7xl mx-auto px-4 py-8">
-      <div class="flex justify-between items-center mb-6">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Page Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h2 class="text-2xl font-bold text-white">Накрутчики</h2>
-          <p class="text-gray-400 text-sm mt-1">Всего: {{ total }}</p>
+          <p class="text-sm text-slate-400 mt-1">Всего: {{ total }}</p>
         </div>
-        <button
-          @click="loadFraudsters"
+        <Button
+          variant="outline"
+          class="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
           :disabled="isLoading"
-          class="px-4 py-2 text-sm bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50"
+          @click="loadFraudsters"
         >
+          <RefreshCcw class="h-4 w-4 mr-2" :class="{ 'animate-spin': isLoading }" />
           Обновить
-        </button>
+        </Button>
       </div>
 
       <!-- Error -->
-      <div v-if="error" class="bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded mb-6">
-        {{ error }}
-      </div>
+      <ErrorBanner
+        v-if="error"
+        :message="error"
+        @retry="loadFraudsters"
+        class="mb-6"
+      />
 
       <!-- Loading -->
-      <div v-if="isLoading" class="text-center py-12">
-        <div class="text-gray-400">Загрузка...</div>
+      <div v-if="isLoading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
       </div>
 
       <!-- Empty -->
-      <div v-else-if="fraudsters.length === 0" class="text-center py-12">
-        <div class="text-gray-400 text-lg">Нет отмеченных накрутчиков</div>
-        <p class="text-gray-500 mt-2">Организации с подозрительной активностью пока не обнаружены</p>
-      </div>
+      <Card v-else-if="fraudsters.length === 0" class="bg-slate-800 border-slate-700">
+        <CardContent class="py-12 text-center">
+          <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-700 mb-4">
+            <AlertTriangle class="h-8 w-8 text-slate-400" />
+          </div>
+          <h3 class="text-lg font-medium text-white mb-2">Нет отмеченных накрутчиков</h3>
+          <p class="text-slate-400">Организации с подозрительной активностью пока не обнаружены</p>
+        </CardContent>
+      </Card>
 
       <!-- List -->
       <div v-else class="space-y-4">
-        <div
+        <Card
           v-for="fraudster in fraudsters"
           :key="fraudster.org_id"
-          class="bg-gray-800 rounded-lg p-6"
+          class="bg-slate-800 border-slate-700"
         >
-          <div class="flex justify-between items-start mb-4">
-            <div>
-              <div class="flex items-center gap-3 mb-2">
-                <span class="text-lg font-medium text-white">{{ fraudster.org_name }}</span>
-                <span
-                  :class="[
-                    'px-2 py-0.5 rounded text-xs font-medium',
-                    fraudster.is_confirmed
-                      ? 'bg-red-900/50 text-red-200 border border-red-500'
-                      : 'bg-yellow-900/50 text-yellow-200 border border-yellow-500'
-                  ]"
-                >
-                  {{ fraudster.is_confirmed ? 'Подтверждённый' : 'Подозреваемый' }}
-                </span>
-              </div>
-              <p v-if="fraudster.reason" class="text-gray-300 mb-2">
-                <span class="text-gray-500">Причина:</span> {{ fraudster.reason }}
-              </p>
-              <div class="text-sm text-gray-500 space-y-1">
-                <div>
+          <CardContent class="p-6">
+            <div class="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 mb-4">
+              <div>
+                <!-- Name + Status -->
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-lg font-medium text-white">{{ fraudster.org_name }}</span>
+                  <Badge
+                    :variant="fraudster.is_confirmed ? 'destructive' : 'warning'"
+                  >
+                    {{ fraudster.is_confirmed ? 'Подтверждённый' : 'Подозреваемый' }}
+                  </Badge>
+                </div>
+
+                <!-- Reason -->
+                <p v-if="fraudster.reason" class="text-slate-300 mb-3">
+                  <span class="text-slate-500">Причина:</span> {{ fraudster.reason }}
+                </p>
+
+                <!-- Stats -->
+                <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
                   <span>Оставлено отзывов: {{ fraudster.total_reviews_left }}</span>
-                  <span class="mx-2">|</span>
                   <span>Деактивировано: {{ fraudster.deactivated_reviews }}</span>
-                  <span class="mx-2">|</span>
                   <span>Репутация: {{ (fraudster.reputation_score * 100).toFixed(0) }}%</span>
                 </div>
-                <div>
-                  <span>Отмечен: {{ formatDate(fraudster.marked_at) }}</span>
+
+                <!-- Date -->
+                <div class="text-sm text-slate-500 mt-2">
+                  Отмечен: {{ formatDate(fraudster.marked_at) }}
                 </div>
               </div>
-            </div>
-            <div class="flex gap-2">
-              <button
-                @click="openUnmarkModal(fraudster)"
-                class="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-500"
-              >
-                Снять метку
-              </button>
-            </div>
-          </div>
 
-          <!-- ID -->
-          <div class="mt-4 pt-4 border-t border-gray-700 text-xs text-gray-600">
-            <span>ID: {{ fraudster.org_id }}</span>
-          </div>
-        </div>
+              <!-- Actions -->
+              <div class="shrink-0">
+                <Button
+                  size="sm"
+                  class="bg-green-600 hover:bg-green-500 text-white"
+                  @click="openUnmarkModal(fraudster)"
+                >
+                  <ShieldOff class="h-4 w-4 mr-1" />
+                  Снять метку
+                </Button>
+              </div>
+            </div>
+
+            <!-- ID -->
+            <div class="mt-4 pt-4 border-t border-slate-700 text-xs text-slate-600 font-mono">
+              ID: {{ fraudster.org_id }}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </main>
 
     <!-- Unmark Modal -->
-    <div v-if="showUnmarkModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-bold text-white mb-4">Снять метку накрутчика</h3>
+    <Dialog v-model:open="showUnmarkModal">
+      <DialogContent class="bg-slate-800 border-slate-700 text-white sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-white">Снять метку накрутчика</DialogTitle>
+          <DialogDescription class="text-slate-400">
+            Организация: {{ selectedFraudster?.org_name }}
+          </DialogDescription>
+        </DialogHeader>
 
-        <div class="mb-2">
-          <p class="text-gray-300">
-            Организация: <span class="font-medium text-white">{{ selectedFraudster?.org_name }}</span>
-          </p>
-        </div>
-
-        <div class="mb-6">
-          <label class="block text-sm text-gray-400 mb-1">Причина снятия метки</label>
-          <textarea
+        <div class="space-y-2">
+          <Label class="text-slate-200">Причина снятия метки</Label>
+          <Textarea
             v-model="unmarkReason"
             rows="3"
-            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white resize-none"
+            class="bg-slate-700 border-slate-600 text-white resize-none"
             placeholder="Укажите причину..."
-          ></textarea>
+          />
         </div>
 
-        <div class="flex justify-end gap-3">
-          <button
-            @click="closeModal"
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            class="text-slate-400 hover:text-white"
             :disabled="isSubmitting"
-            class="px-4 py-2 text-gray-400 hover:text-white"
+            @click="closeModal"
           >
             Отмена
-          </button>
-          <button
-            @click="submitUnmark"
+          </Button>
+          <Button
+            class="bg-green-600 hover:bg-green-500 text-white"
             :disabled="isSubmitting || !unmarkReason.trim()"
-            class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 disabled:opacity-50"
+            @click="submitUnmark"
           >
             {{ isSubmitting ? 'Сохранение...' : 'Снять метку' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

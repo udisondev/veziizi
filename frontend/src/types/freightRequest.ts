@@ -186,15 +186,19 @@ export const ownershipOptions: { value: OwnershipFilter; label: string }[] = [
   { value: 'my', label: 'Мои' },
 ]
 
-export const countryOptions: { value: Country | ''; label: string }[] = [
-  { value: '', label: 'Все страны' },
+// Filter types (includes 'all' for "show all")
+export type CountryFilter = Country | 'all'
+export type FreightRequestStatusFilter = FreightRequestStatus | 'all'
+
+export const countryOptions: { value: CountryFilter; label: string }[] = [
+  { value: 'all', label: 'Все страны' },
   { value: 'RU', label: 'Россия' },
   { value: 'KZ', label: 'Казахстан' },
   { value: 'BY', label: 'Беларусь' },
 ]
 
-export const statusOptions: { value: FreightRequestStatus | ''; label: string }[] = [
-  { value: '', label: 'Все статусы' },
+export const statusOptions: { value: FreightRequestStatusFilter; label: string }[] = [
+  { value: 'all', label: 'Все статусы' },
   { value: 'published', label: 'Опубликованы' },
   { value: 'selected', label: 'Выбран перевозчик' },
   { value: 'confirmed', label: 'Подтверждены' },
@@ -381,12 +385,14 @@ export const offerStatusColors: Record<OfferStatus, string> = {
   declined: 'bg-orange-100 text-orange-800',
 }
 
-export const offerStatusOptions = [
-  { value: '' as const, label: 'Все статусы' },
-  { value: 'pending' as const, label: 'Ожидает' },
-  { value: 'selected' as const, label: 'Выбран' },
-  { value: 'confirmed' as const, label: 'Подтверждён' },
-  { value: 'rejected' as const, label: 'Отклонён' },
-  { value: 'withdrawn' as const, label: 'Отозван' },
-  { value: 'declined' as const, label: 'Отказ' },
+export type OfferStatusFilter = OfferStatus | 'all'
+
+export const offerStatusOptions: { value: OfferStatusFilter, label: string }[] = [
+  { value: 'all', label: 'Все статусы' },
+  { value: 'pending', label: 'Ожидает' },
+  { value: 'selected', label: 'Выбран' },
+  { value: 'confirmed', label: 'Подтверждён' },
+  { value: 'rejected', label: 'Отклонён' },
+  { value: 'withdrawn', label: 'Отозван' },
+  { value: 'declined', label: 'Отказ' },
 ]
