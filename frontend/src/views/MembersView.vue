@@ -449,38 +449,16 @@ watch(currentTab, (tab) => {
       <!-- Tab switcher -->
       <div
         v-if="(canManageInvitations || canViewHistory) && !isSelectionMode"
-        class="bg-white rounded-lg p-3 mb-6 flex gap-6"
+        class="mb-6"
       >
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="tab"
-            value="members"
-            v-model="currentTab"
-            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-          />
-          <span class="text-sm font-medium text-gray-700">Сотрудники</span>
-        </label>
-        <label v-if="canManageInvitations" class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="tab"
-            value="invitations"
-            v-model="currentTab"
-            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-          />
-          <span class="text-sm font-medium text-gray-700">Приглашения</span>
-        </label>
-        <label v-if="canViewHistory" class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="tab"
-            value="history"
-            v-model="currentTab"
-            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-          />
-          <span class="text-sm font-medium text-gray-700">История</span>
-        </label>
+        <select
+          v-model="currentTab"
+          class="w-full sm:w-auto px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+        >
+          <option value="members">Сотрудники</option>
+          <option v-if="canManageInvitations" value="invitations">Приглашения</option>
+          <option v-if="canViewHistory" value="history">История</option>
+        </select>
       </div>
 
       <!-- Active filters indicator -->

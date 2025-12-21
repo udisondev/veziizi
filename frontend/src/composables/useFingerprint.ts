@@ -19,12 +19,12 @@ export async function getFingerprint(): Promise<string> {
     return fpPromise
   }
 
-  fpPromise = (async () => {
+  fpPromise = (async (): Promise<string> => {
     try {
       const fp = await FingerprintJS.load()
       const result = await fp.get()
       cachedFingerprint = result.visitorId
-      return cachedFingerprint
+      return result.visitorId
     } catch (error) {
       console.error('Failed to get fingerprint:', error)
       return ''

@@ -6,6 +6,7 @@ import (
 	adminApp "codeberg.org/udison/veziizi/backend/internal/application/admin"
 	frApp "codeberg.org/udison/veziizi/backend/internal/application/freightrequest"
 	historyApp "codeberg.org/udison/veziizi/backend/internal/application/history"
+	"codeberg.org/udison/veziizi/backend/internal/application/history/display"
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
 	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
@@ -77,12 +78,19 @@ type Factory struct {
 	sessionFraudProjection *projections.SessionFraudProjection
 	sessionFraudOnce       sync.Once
 
+	organizationsProjection *projections.OrganizationsProjection
+	organizationsOnce       sync.Once
+
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
 	analyzerOnce   sync.Once
 
 	sessionAnalyzer *sessionApp.SessionAnalyzer
 	sessionOnce     sync.Once
+
+	// Display registry (lazy)
+	displayRegistry *display.Registry
+	displayOnce     sync.Once
 
 	// Sequence generator (lazy)
 	seqGen     *sequence.Generator
@@ -154,7 +162,11 @@ func (f *Factory) OrderService() *orderApp.Service {
 
 func (f *Factory) HistoryService() *historyApp.Service {
 	f.historyOnce.Do(func() {
-		f.historyService = historyApp.NewService(f.eventStore, f.MembersProjection())
+		f.historyService = historyApp.NewService(
+			f.eventStore,
+			f.MembersProjection(),
+			f.DisplayRegistry(),
+		)
 	})
 	return f.historyService
 }
@@ -238,6 +250,13 @@ func (f *Factory) SessionFraudProjection() *projections.SessionFraudProjection {
 	return f.sessionFraudProjection
 }
 
+func (f *Factory) OrganizationsProjection() *projections.OrganizationsProjection {
+	f.organizationsOnce.Do(func() {
+		f.organizationsProjection = projections.NewOrganizationsProjection(f.db)
+	})
+	return f.organizationsProjection
+}
+
 // Analyzers
 
 func (f *Factory) ReviewAnalyzer() *reviewApp.Analyzer {
@@ -255,6 +274,16 @@ func (f *Factory) SessionAnalyzer() *sessionApp.SessionAnalyzer {
 		f.sessionAnalyzer = sessionApp.NewSessionAnalyzer(f.SessionFraudProjection())
 	})
 	return f.sessionAnalyzer
+}
+
+func (f *Factory) DisplayRegistry() *display.Registry {
+	f.displayOnce.Do(func() {
+		f.displayRegistry = display.NewRegistry(
+			f.MembersProjection(),
+			f.OrganizationsProjection(),
+		)
+	})
+	return f.displayRegistry
 }
 
 func (f *Factory) SequenceGenerator() *sequence.Generator {

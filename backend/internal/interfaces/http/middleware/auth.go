@@ -62,6 +62,12 @@ func RequireAuth(sessionManager *session.Manager) func(http.Handler) http.Handle
 				return
 			}
 
+			// Skip auth for dev paths (protected by DevOnly middleware in main.go)
+			if strings.HasPrefix(r.URL.Path, "/api/v1/dev/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			if _, ok := sessionManager.GetMemberID(r); !ok {
 				writeError(w, http.StatusUnauthorized, "unauthorized")
 				return

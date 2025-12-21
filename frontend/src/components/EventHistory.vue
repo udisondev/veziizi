@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import type { EventHistoryItem, EventHistoryPage } from '@/api/history'
-import { eventTypeLabels, formatEventDetails, isAutomaticEvent } from '@/types/eventHistory'
+import type { DisplayableHistoryItem, DisplayableHistoryPage } from '@/api/history'
+import { isAutomaticEvent } from '@/types/eventHistory'
 
 const props = defineProps<{
-  loadFn: (limit: number, offset: number) => Promise<EventHistoryPage>
+  loadFn: (limit: number, offset: number) => Promise<DisplayableHistoryPage>
 }>()
 
-const items = ref<EventHistoryItem[]>([])
+const items = ref<DisplayableHistoryItem[]>([])
 const total = ref(0)
 const isLoading = ref(false)
 const error = ref('')
@@ -42,16 +42,21 @@ function formatDateTime(dateStr: string): string {
   })
 }
 
-function getEventLabel(eventType: string): string {
-  return eventTypeLabels[eventType] || eventType
-}
-
-function getEventDetails(event: EventHistoryItem): string {
-  return formatEventDetails(event.event_type, event.data)
-}
-
 function isAutomatic(eventType: string): boolean {
   return isAutomaticEvent(eventType)
+}
+
+function getSeverityClass(severity?: string): string {
+  switch (severity) {
+    case 'success':
+      return 'border-l-green-500'
+    case 'warning':
+      return 'border-l-yellow-500'
+    case 'error':
+      return 'border-l-red-500'
+    default:
+      return 'border-l-blue-500'
+  }
 }
 
 onMounted(loadData)
@@ -83,13 +88,14 @@ watch(page, loadData)
         <div
           v-for="event in items"
           :key="event.id"
-          class="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+          class="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors border-l-4"
+          :class="getSeverityClass(event.display.severity)"
         >
-          <!-- Header: Event type and date -->
+          <!-- Header: Title and date -->
           <div class="flex items-start justify-between mb-2">
             <div class="flex items-center gap-2">
               <span class="font-medium text-gray-900">
-                {{ getEventLabel(event.event_type) }}
+                {{ event.display.title }}
               </span>
               <span
                 v-if="isAutomatic(event.event_type)"
@@ -103,23 +109,50 @@ watch(page, loadData)
             </span>
           </div>
 
+          <!-- Description -->
+          <p class="text-sm text-gray-600 mb-3">
+            {{ event.display.description }}
+          </p>
+
           <!-- Actor info -->
-          <div v-if="event.actor" class="text-sm text-gray-600 mb-2">
+          <div v-if="event.actor" class="text-sm text-gray-600 mb-3">
             <span class="text-gray-500">Инициатор:</span>
             <span class="ml-1 font-medium">{{ event.actor.name }}</span>
             <span v-if="event.actor.email" class="text-gray-400 ml-1">({{ event.actor.email }})</span>
           </div>
 
-          <!-- Event details -->
+          <!-- Fields -->
           <div
-            v-if="getEventDetails(event)"
-            class="text-sm text-gray-600 bg-gray-50 rounded px-3 py-2"
+            v-if="event.display.fields && event.display.fields.length > 0"
+            class="bg-gray-50 rounded-lg p-3 mb-3"
           >
-            {{ getEventDetails(event) }}
+            <div class="grid grid-cols-2 gap-2">
+              <template v-for="field in event.display.fields" :key="field.label">
+                <div class="text-sm text-gray-500">{{ field.label }}</div>
+                <div class="text-sm text-gray-900 font-medium">{{ field.value }}</div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Diffs -->
+          <div
+            v-if="event.display.diffs && event.display.diffs.length > 0"
+            class="space-y-2"
+          >
+            <div
+              v-for="diff in event.display.diffs"
+              :key="diff.label"
+              class="flex items-center gap-2 text-sm"
+            >
+              <span class="text-gray-500">{{ diff.label }}:</span>
+              <span class="text-red-600 line-through">{{ diff.old_value }}</span>
+              <span class="text-gray-400">&rarr;</span>
+              <span class="text-green-600 font-medium">{{ diff.new_value }}</span>
+            </div>
           </div>
 
           <!-- Version badge -->
-          <div class="mt-2 text-xs text-gray-400">
+          <div class="mt-3 text-xs text-gray-400">
             Версия: {{ event.version }}
           </div>
         </div>

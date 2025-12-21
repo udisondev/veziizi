@@ -185,7 +185,7 @@ function formatFileSize(bytes: number): string {
 
 function loadOrderHistory(limit: number, offset: number) {
   const id = route.params.id as string
-  return historyApi.getOrderHistory(id, limit, offset)
+  return historyApi.getOrderHistory(id, { limit, offset })
 }
 
 function isMyMessage(msg: OrderMessage): boolean {

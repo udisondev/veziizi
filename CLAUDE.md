@@ -43,6 +43,7 @@ make build-workers    # Build all workers
 make test             # Run tests
 make test-cover       # Run tests with coverage
 make lint             # Run golangci-lint
+make tidy             # Tidy go modules
 go build ./...        # Quick compilation check
 go test ./backend/internal/application/organization/...  # Run tests for specific package
 
@@ -147,6 +148,21 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 - **Never ignore errors** — at minimum log them with `slog.Error()`
 - Logging: use `slog` directly (configured in main), never pass logger as dependency. Logs go to `current.log`
 - **Always use latest library versions** — search GitHub/GitLab tags for Go libraries to find current versions
+
+### Security
+
+**Dev User Switcher** (только development):
+- Защищён `APP_ENV=development` (роуты не регистрируются в production)
+- Middleware `DevOnly` блокирует доступ если `APP_ENV=production`
+- Фронтенд проверяет `import.meta.env.DEV` (false при `npm run build`)
+
+**HTTP Middleware** (применяется в порядке):
+1. `SecurityHeaders` — заголовки безопасности (CSP, X-Frame-Options, etc.)
+2. `CORS` — настройка CORS
+3. `BodyLimit` — лимит размера тела запроса
+4. `RequireAuth` — проверка сессии (пропускает public paths)
+5. `RateLimiter` — ограничение запросов + фрод-анализ сессий
+6. `CSRFProtection` — проверка X-Requested-With header
 
 ### Adding New Components
 

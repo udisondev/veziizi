@@ -71,7 +71,7 @@ func (h *HistoryHandler) GetOrganizationHistory(w http.ResponseWriter, r *http.R
 	limit, offset := h.parsePagination(r)
 
 	// Get history
-	page, err := h.historyService.GetHistory(r.Context(), orgID, "organization", limit, offset)
+	page, err := h.historyService.GetDisplayableHistory(r.Context(), orgID, "organization", limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ошибка получения истории")
 		return
@@ -114,7 +114,7 @@ func (h *HistoryHandler) GetFreightRequestHistory(w http.ResponseWriter, r *http
 	limit, offset := h.parsePagination(r)
 
 	// Get history
-	page, err := h.historyService.GetHistory(r.Context(), frID, "freight_request", limit, offset)
+	page, err := h.historyService.GetDisplayableHistory(r.Context(), frID, "freight_request", limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ошибка получения истории")
 		return
@@ -162,7 +162,7 @@ func (h *HistoryHandler) GetOrderHistory(w http.ResponseWriter, r *http.Request)
 	limit, offset := h.parsePagination(r)
 
 	// Get history
-	page, err := h.historyService.GetHistory(r.Context(), orderID, "order", limit, offset)
+	page, err := h.historyService.GetDisplayableHistory(r.Context(), orderID, "order", limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "ошибка получения истории")
 		return

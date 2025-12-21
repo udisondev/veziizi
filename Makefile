@@ -54,6 +54,7 @@ build: ## Build all binaries
 	go build -o bin/worker-members ./backend/cmd/workers/members
 	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
 	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
+	go build -o bin/worker-organizations ./backend/cmd/workers/organizations
 	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
 	go build -o bin/worker-orders ./backend/cmd/workers/orders
 	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
@@ -71,6 +72,7 @@ build-workers: ## Build all workers
 	go build -o bin/worker-members ./backend/cmd/workers/members
 	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
 	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
+	go build -o bin/worker-organizations ./backend/cmd/workers/organizations
 	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
 	go build -o bin/worker-orders ./backend/cmd/workers/orders
 	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
@@ -92,6 +94,7 @@ run-workers: ## Run all workers
 	go run ./backend/cmd/workers/members &
 	go run ./backend/cmd/workers/invitations &
 	go run ./backend/cmd/workers/pending-organizations &
+	go run ./backend/cmd/workers/organizations &
 	go run ./backend/cmd/workers/freight-requests &
 	go run ./backend/cmd/workers/orders &
 	go run ./backend/cmd/workers/order-creator &

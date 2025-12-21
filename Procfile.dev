@@ -2,6 +2,7 @@ api: air
 worker-members: go run ./backend/cmd/workers/members
 worker-invitations: go run ./backend/cmd/workers/invitations
 worker-pending-orgs: go run ./backend/cmd/workers/pending-organizations
+worker-organizations: go run ./backend/cmd/workers/organizations
 worker-freight: go run ./backend/cmd/workers/freight-requests
 worker-orders: go run ./backend/cmd/workers/orders
 worker-order-creator: go run ./backend/cmd/workers/order-creator

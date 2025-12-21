@@ -6,17 +6,38 @@ export interface Actor {
   email: string
 }
 
-export interface EventHistoryItem {
+export interface DisplayField {
+  label: string
+  value: string
+  type?: 'text' | 'money' | 'date' | 'status'
+}
+
+export interface DiffValue {
+  label: string
+  old_value: string
+  new_value: string
+}
+
+export interface DisplayView {
+  title: string
+  description: string
+  fields?: DisplayField[]
+  diffs?: DiffValue[]
+  icon?: string
+  severity?: 'info' | 'success' | 'warning' | 'error'
+}
+
+export interface DisplayableHistoryItem {
   id: string
   event_type: string
   version: number
   occurred_at: string
   actor?: Actor
-  data: Record<string, unknown>
+  display: DisplayView
 }
 
-export interface EventHistoryPage {
-  items: EventHistoryItem[]
+export interface DisplayableHistoryPage {
+  items: DisplayableHistoryItem[]
   total: number
 }
 
@@ -35,15 +56,15 @@ function buildQuery(params?: HistoryParams): string {
 }
 
 export const historyApi = {
-  async getOrganizationHistory(orgId: string, params?: HistoryParams): Promise<EventHistoryPage> {
-    return api.get<EventHistoryPage>(`/organizations/${orgId}/history${buildQuery(params)}`)
+  async getOrganizationHistory(orgId: string, params?: HistoryParams): Promise<DisplayableHistoryPage> {
+    return api.get<DisplayableHistoryPage>(`/organizations/${orgId}/history${buildQuery(params)}`)
   },
 
-  async getFreightRequestHistory(frId: string, params?: HistoryParams): Promise<EventHistoryPage> {
-    return api.get<EventHistoryPage>(`/freight-requests/${frId}/history${buildQuery(params)}`)
+  async getFreightRequestHistory(frId: string, params?: HistoryParams): Promise<DisplayableHistoryPage> {
+    return api.get<DisplayableHistoryPage>(`/freight-requests/${frId}/history${buildQuery(params)}`)
   },
 
-  async getOrderHistory(orderId: string, params?: HistoryParams): Promise<EventHistoryPage> {
-    return api.get<EventHistoryPage>(`/orders/${orderId}/history${buildQuery(params)}`)
+  async getOrderHistory(orderId: string, params?: HistoryParams): Promise<DisplayableHistoryPage> {
+    return api.get<DisplayableHistoryPage>(`/orders/${orderId}/history${buildQuery(params)}`)
   },
 }

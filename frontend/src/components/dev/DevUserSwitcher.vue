@@ -94,14 +94,16 @@ const currentUserId = computed(() => auth.memberId)
 const groupedUsers = computed(() => {
   const groups: Record<string, { orgName: string; orgStatus: string; users: DevUser[] }> = {}
   for (const user of users.value) {
-    if (!groups[user.organization_id]) {
-      groups[user.organization_id] = {
+    let group = groups[user.organization_id]
+    if (!group) {
+      group = {
         orgName: user.organization_name,
         orgStatus: user.organization_status,
         users: [],
       }
+      groups[user.organization_id] = group
     }
-    groups[user.organization_id].users.push(user)
+    group.users.push(user)
   }
   return Object.values(groups)
 })
