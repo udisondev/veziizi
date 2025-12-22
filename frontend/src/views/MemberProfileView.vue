@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { membersApi, type MemberProfile } from '@/api/members'
 import {
@@ -10,16 +10,27 @@ import {
   statusColors,
 } from '@/types/member'
 
+// UI Components
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+
+// Shared Components
+import { DetailPageHeader } from '@/components/shared'
+
+// Icons
+import { MoreVertical } from 'lucide-vue-next'
+
 const route = useRoute()
-const router = useRouter()
 const auth = useAuthStore()
 
 const member = ref<MemberProfile | null>(null)
 const isLoading = ref(true)
 const error = ref('')
-
-// Menu state
-const showMenu = ref(false)
 
 // Block modal
 const showBlockModal = ref(false)
@@ -80,31 +91,10 @@ function formatDate(dateStr: string): string {
   })
 }
 
-// Menu toggle
-function toggleMenu() {
-  showMenu.value = !showMenu.value
-}
-
-function closeMenu() {
-  showMenu.value = false
-}
-
-// Close menu on outside click
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  if (!target.closest('.menu-container')) {
-    closeMenu()
-  }
-}
-
 onMounted(() => {
   loadData()
-  document.addEventListener('click', handleClickOutside)
 })
 
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
 
 watch(() => route.params.id, () => {
   loadData()
@@ -112,7 +102,6 @@ watch(() => route.params.id, () => {
 
 // Block actions
 function openBlockModal() {
-  closeMenu()
   blockReason.value = ''
   blockError.value = ''
   showBlockModal.value = true
@@ -145,7 +134,6 @@ async function confirmBlock() {
 
 // Unblock actions
 function openUnblockModal() {
-  closeMenu()
   unblockError.value = ''
   showUnblockModal.value = true
 }
@@ -174,54 +162,35 @@ async function confirmUnblock() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-background">
     <!-- Header -->
-    <header class="bg-white shadow">
-      <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-        <button
-          @click="router.back()"
-          class="text-blue-600 hover:text-blue-800 text-sm"
-        >
-          &larr; Назад
-        </button>
-
-        <!-- Actions menu (three dots) -->
-        <div v-if="member && hasAnyAction" class="relative menu-container">
-          <button
-            @click.stop="toggleMenu"
-            class="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Действия"
-          >
-            <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="5" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="12" cy="19" r="2" />
-            </svg>
-          </button>
-
-          <!-- Dropdown menu -->
-          <div
-            v-if="showMenu"
-            class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10"
-          >
-            <button
+    <DetailPageHeader back-to="/" back-label="Назад" use-history>
+      <template #actions>
+        <DropdownMenu v-if="member && hasAnyAction">
+          <DropdownMenuTrigger as-child>
+            <Button variant="ghost" size="icon">
+              <MoreVertical class="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
               v-if="canBlock"
+              class="text-destructive focus:text-destructive"
               @click="openBlockModal"
-              class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
             >
               Заблокировать
-            </button>
-            <button
+            </DropdownMenuItem>
+            <DropdownMenuItem
               v-if="canUnblock"
+              class="text-success focus:text-success"
               @click="openUnblockModal"
-              class="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 transition-colors"
             >
               Разблокировать
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </template>
+    </DetailPageHeader>
 
     <!-- Content -->
     <main class="max-w-4xl mx-auto px-4 py-6">

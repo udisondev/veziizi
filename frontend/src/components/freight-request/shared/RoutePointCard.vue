@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { RoutePoint, Coordinates } from '@/types/freightRequest'
-import AddressAutocomplete from './AddressAutocomplete.vue'
+import CountryCitySelect from './CountryCitySelect.vue'
 
 interface Props {
   point: RoutePoint
@@ -59,7 +59,7 @@ watch(
 const isFirstPoint = computed(() => props.index === 0)
 const isLastPoint = computed(() => props.index === props.totalPoints - 1)
 
-const addressError = computed(() => props.errors?.[`point_${props.index}_address`])
+const locationError = computed(() => props.errors?.[`point_${props.index}_location`] || props.errors?.[`point_${props.index}_address`])
 const dateFromError = computed(() => props.errors?.[`point_${props.index}_date_from`])
 const contactNameError = computed(() => props.errors?.[`point_${props.index}_contact_name`])
 const contactPhoneError = computed(() => props.errors?.[`point_${props.index}_contact_phone`])
@@ -90,12 +90,21 @@ function toggleUnloading() {
   emit('update', { is_unloading: !props.point.is_unloading })
 }
 
-function handleAddressUpdate(value: string) {
-  emit('update', { address: value })
+function handleCountryIdUpdate(value: number | undefined) {
+  emit('update', { country_id: value })
+}
+
+function handleCityIdUpdate(value: number | undefined) {
+  emit('update', { city_id: value })
 }
 
 function handleCoordinatesUpdate(coordinates: Coordinates | undefined) {
   emit('update', { coordinates })
+}
+
+function handleDisplayAddressUpdate(value: string) {
+  // Update legacy address field for backward compatibility
+  emit('update', { address: value })
 }
 
 function handleDateFromChange(event: Event) {
@@ -242,41 +251,19 @@ watch(() => [props.index, props.totalPoints], () => {
 
         <span class="text-sm text-gray-500 font-medium">Точка #{{ index + 1 }}</span>
 
-        <!-- Pill checkboxes -->
-        <div class="flex gap-2">
-          <!-- Погрузка: показываем только если НЕ последняя точка -->
-          <button
-            v-if="!isLastPoint"
-            type="button"
-            :disabled="isFirstPoint"
-            :class="[
-              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
-              point.is_loading
-                ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                : 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200',
-              isFirstPoint ? 'cursor-not-allowed opacity-75' : 'cursor-pointer',
-            ]"
-            @click="toggleLoading"
-          >
-            Погрузка
-          </button>
-          <!-- Разгрузка: показываем только если НЕ первая точка -->
-          <button
-            v-if="!isFirstPoint"
-            type="button"
-            :disabled="isLastPoint"
-            :class="[
-              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
-              point.is_unloading
-                ? 'bg-green-100 text-green-700 border border-green-300'
-                : 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200',
-              isLastPoint ? 'cursor-not-allowed opacity-75' : 'cursor-pointer',
-            ]"
-            @click="toggleUnloading"
-          >
-            Разгрузка
-          </button>
-        </div>
+        <!-- Badge для первой/последней точки (не редактируемый) -->
+        <span
+          v-if="isFirstPoint"
+          class="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-300"
+        >
+          Погрузка
+        </span>
+        <span
+          v-if="isLastPoint"
+          class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-300"
+        >
+          Разгрузка
+        </span>
       </div>
 
       <!-- Remove button -->
@@ -297,21 +284,39 @@ watch(() => [props.index, props.totalPoints], () => {
       </button>
     </div>
 
-    <div class="space-y-3">
-      <!-- Address (обязательное) -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Адрес <span class="text-red-500">*</span>
-        </label>
-        <AddressAutocomplete
-          :model-value="point.address"
-          :coordinates="point.coordinates"
-          :error="addressError"
-          placeholder="Введите адрес"
-          @update:model-value="handleAddressUpdate"
-          @update:coordinates="handleCoordinatesUpdate"
+    <!-- Чекбоксы для промежуточных точек -->
+    <div v-if="!isFirstPoint && !isLastPoint" class="flex gap-4 mb-3">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          :checked="point.is_loading"
+          class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          @change="toggleLoading"
         />
-      </div>
+        <span class="text-sm text-gray-700">Погрузка</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          :checked="point.is_unloading"
+          class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+          @change="toggleUnloading"
+        />
+        <span class="text-sm text-gray-700">Разгрузка</span>
+      </label>
+    </div>
+
+    <div class="space-y-3">
+      <!-- Location (Country + City) -->
+      <CountryCitySelect
+        :country-id="point.country_id"
+        :city-id="point.city_id"
+        :error="locationError"
+        @update:country-id="handleCountryIdUpdate"
+        @update:city-id="handleCityIdUpdate"
+        @update:coordinates="handleCoordinatesUpdate"
+        @update:display-address="handleDisplayAddressUpdate"
+      />
 
       <!-- Date (обязательное) -->
       <div>

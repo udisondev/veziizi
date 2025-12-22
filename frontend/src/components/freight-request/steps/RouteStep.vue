@@ -50,7 +50,7 @@ const hasValidCoordinates = computed(() =>
     <!-- Route points list -->
     <draggable
       v-model="localPoints"
-      item-key="index"
+      item-key="_uid"
       handle=".drag-handle"
       ghost-class="opacity-50"
       animation="200"

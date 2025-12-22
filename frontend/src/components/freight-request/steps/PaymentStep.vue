@@ -8,6 +8,13 @@ import {
   paymentTermsOptions,
   currencyLabels,
 } from '@/types/freightRequest'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface Props {
   payment: Payment
@@ -48,22 +55,20 @@ function handleAmountInput(event: Event) {
   updateField('price', { amount: amountInCents, currency: currentCurrency })
 }
 
-function handleCurrencyChange(event: Event) {
-  const currency = (event.target as HTMLSelectElement).value as Currency
+function handleCurrencyChange(currency: Currency) {
   const currentAmount = props.payment.price?.amount || 0
   updateField('price', { amount: currentAmount, currency })
 }
 
-function handleVatTypeChange(event: Event) {
-  updateField('vat_type', (event.target as HTMLSelectElement).value as VatType)
+function handleVatTypeChange(vatType: VatType) {
+  updateField('vat_type', vatType)
 }
 
-function handleMethodChange(event: Event) {
-  updateField('method', (event.target as HTMLSelectElement).value as PaymentMethod)
+function handleMethodChange(method: PaymentMethod) {
+  updateField('method', method)
 }
 
-function handleTermsChange(event: Event) {
-  const terms = (event.target as HTMLSelectElement).value as PaymentTerms
+function handleTermsChange(terms: PaymentTerms) {
   updateField('terms', terms)
   // Очищаем дни отсрочки если не deferred
   if (terms !== 'deferred') {
@@ -117,61 +122,66 @@ const inputClass = (field: string) => [
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Стоимость перевозки <span class="text-red-500">*</span>
       </label>
-      <div class="flex gap-3">
-        <div class="flex-1 relative">
-          <input
-            type="number"
-            :value="displayAmount"
-            placeholder="Укажите сумму"
-            min="0"
-            step="100"
-            :class="inputClass('price')"
-            @input="handleAmountInput"
-            @blur="emit('validateField', 'price')"
-          />
-          <span v-if="hasPrice" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-            {{ currencyLabels[payment.price?.currency || 'RUB'] }}
-          </span>
-        </div>
-        <select
-          :value="payment.price?.currency || 'RUB'"
-          class="appearance-none px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-32"
-          @change="handleCurrencyChange"
-        >
-          <option v-for="option in currencyOptions" :key="option.value" :value="option.value">
-            {{ option.value }}
-          </option>
-        </select>
+      <div class="relative">
+        <input
+          type="number"
+          :value="displayAmount"
+          placeholder="Укажите сумму"
+          min="0"
+          step="100"
+          :class="inputClass('price')"
+          @input="handleAmountInput"
+          @blur="emit('validateField', 'price')"
+        />
+        <span v-if="hasPrice" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+          {{ currencyLabels[payment.price?.currency || 'RUB'] }}
+        </span>
       </div>
       <p v-if="errors.price" class="mt-1 text-sm text-red-600">
         {{ errors.price }}
       </p>
     </div>
 
+    <!-- Currency -->
+    <div v-if="!payment.no_price">
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Валюта
+      </label>
+      <Select
+        :model-value="payment.price?.currency || 'RUB'"
+        @update:model-value="handleCurrencyChange($event as Currency)"
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Выберите валюту" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="option in currencyOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+
     <!-- Все остальные поля оплаты показываем только если цена указывается -->
     <template v-if="!payment.no_price">
       <!-- VAT type -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">
+        <label class="block text-sm font-medium text-gray-700 mb-1">
           НДС
         </label>
-        <div class="flex gap-4">
-          <label
-            v-for="option in vatTypeOptions"
-            :key="option.value"
-            class="flex items-center gap-2 cursor-pointer"
-          >
-            <input
-              type="radio"
-              name="vat_type"
-              :value="option.value"
-              :checked="payment.vat_type === option.value"
-              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-              @change="handleVatTypeChange"
-            />
-            <span class="text-sm text-gray-700">{{ option.label }}</span>
-          </label>
-        </div>
+        <Select
+          :model-value="payment.vat_type"
+          @update:model-value="handleVatTypeChange($event as VatType)"
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Выберите тип НДС" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="option in vatTypeOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <!-- Payment method -->
@@ -179,15 +189,19 @@ const inputClass = (field: string) => [
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Способ оплаты
         </label>
-        <select
-          :value="payment.method"
-          class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          @change="handleMethodChange"
+        <Select
+          :model-value="payment.method"
+          @update:model-value="handleMethodChange($event as PaymentMethod)"
         >
-          <option v-for="option in paymentMethodOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
+          <SelectTrigger>
+            <SelectValue placeholder="Выберите способ оплаты" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="option in paymentMethodOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <!-- Payment terms -->
@@ -195,15 +209,19 @@ const inputClass = (field: string) => [
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Условия оплаты
         </label>
-        <select
-          :value="payment.terms"
-          class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          @change="handleTermsChange"
+        <Select
+          :model-value="payment.terms"
+          @update:model-value="handleTermsChange($event as PaymentTerms)"
         >
-          <option v-for="option in paymentTermsOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
+          <SelectTrigger>
+            <SelectValue placeholder="Выберите условия оплаты" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="option in paymentTermsOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <!-- Deferred days -->

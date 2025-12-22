@@ -33,15 +33,20 @@ var (
 	publicRateLimiter = &ipRateLimiter{
 		requests: make(map[string]*ipRequestInfo),
 	}
+	// Rate limiter для geo endpoints (более высокий лимит)
+	geoRateLimiter = &ipRateLimiter{
+		requests: make(map[string]*ipRequestInfo),
+	}
 	// Конфигурация rate limiting
-	maxRequestsPerWindow = 10              // Максимум запросов за окно
-	windowDuration       = 1 * time.Minute // Окно в 1 минуту
-	blockDuration        = 15 * time.Minute // Блокировка на 15 минут
+	maxRequestsPerWindow    = 10               // Максимум запросов за окно (public)
+	maxGeoRequestsPerWindow = 200              // Максимум запросов за окно (geo)
+	windowDuration          = 1 * time.Minute  // Окно в 1 минуту
+	blockDuration           = 15 * time.Minute // Блокировка на 15 минут
 )
 
-// checkIPRateLimit проверяет rate limit по IP для public endpoints
+// checkIPRateLimitWithMax проверяет rate limit по IP с настраиваемым лимитом
 // Возвращает true если запрос разрешён, false если заблокирован
-func (l *ipRateLimiter) checkIPRateLimit(ip, endpoint string) (bool, string) {
+func (l *ipRateLimiter) checkIPRateLimitWithMax(ip, endpoint string, maxRequests int) (bool, string) {
 	key := fmt.Sprintf("%s:%s", ip, endpoint)
 	now := time.Now()
 
@@ -81,18 +86,24 @@ func (l *ipRateLimiter) checkIPRateLimit(ip, endpoint string) (bool, string) {
 	info.count++
 
 	// Проверить лимит
-	if info.count > maxRequestsPerWindow {
+	if info.count > maxRequests {
 		info.blocked = true
 		info.blockUntil = now.Add(blockDuration)
 		slog.Warn("SEC-003: IP rate limited",
 			slog.String("ip", ip),
 			slog.String("endpoint", endpoint),
 			slog.Int("count", info.count),
+			slog.Int("max", maxRequests),
 		)
 		return false, fmt.Sprintf("too many requests, try again in %s", blockDuration)
 	}
 
 	return true, ""
+}
+
+// checkIPRateLimit проверяет rate limit по IP для public endpoints (лимит по умолчанию)
+func (l *ipRateLimiter) checkIPRateLimit(ip, endpoint string) (bool, string) {
+	return l.checkIPRateLimitWithMax(ip, endpoint, maxRequestsPerWindow)
 }
 
 // cleanupOldEntries периодически очищает старые записи (вызывать в фоне)
@@ -120,6 +131,7 @@ func init() {
 		defer ticker.Stop()
 		for range ticker.C {
 			publicRateLimiter.cleanupOldEntries()
+			geoRateLimiter.cleanupOldEntries()
 		}
 	}()
 }
@@ -133,6 +145,18 @@ func RateLimiter(
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Geo endpoints: higher rate limit (200/min) for autocomplete
+			if strings.HasPrefix(r.URL.Path, "/api/v1/geo/") {
+				clientIP := httputil.GetClientIP(r)
+				allowed, reason := geoRateLimiter.checkIPRateLimitWithMax(clientIP, "geo", maxGeoRequestsPerWindow)
+				if !allowed {
+					writeError(w, http.StatusTooManyRequests, reason)
+					return
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// SEC-003: IP-based rate limiting для public paths (login, register, invitations)
 			if isPublicPath(r.URL.Path, r.Method) {
 				clientIP := httputil.GetClientIP(r)

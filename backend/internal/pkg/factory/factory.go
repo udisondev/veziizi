@@ -81,6 +81,9 @@ type Factory struct {
 	organizationsProjection *projections.OrganizationsProjection
 	organizationsOnce       sync.Once
 
+	geoProjection *projections.GeoProjection
+	geoOnce       sync.Once
+
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
 	analyzerOnce   sync.Once
@@ -255,6 +258,13 @@ func (f *Factory) OrganizationsProjection() *projections.OrganizationsProjection
 		f.organizationsProjection = projections.NewOrganizationsProjection(f.db)
 	})
 	return f.organizationsProjection
+}
+
+func (f *Factory) GeoProjection() *projections.GeoProjection {
+	f.geoOnce.Do(func() {
+		f.geoProjection = projections.NewGeoProjection(f.db)
+	})
+	return f.geoProjection
 }
 
 // Analyzers

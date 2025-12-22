@@ -327,7 +327,7 @@ func (f *FreightRequest) RejectOffer(offerID uuid.UUID, actorID uuid.UUID, actor
 	return nil
 }
 
-func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID) error {
+func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole string) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
@@ -335,8 +335,10 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	if offer.CarrierOrgID() != actorOrgID {
 		return ErrNotOfferOwner
 	}
-	// Проверка: только ответственный член (создатель оффера) может подтверждать
-	if offer.CarrierMemberID() != actorMemberID {
+	// Проверка: владелец, администратор организации или создатель предложения
+	isOwnerOrAdmin := actorRole == "owner" || actorRole == "administrator"
+	isCreator := offer.CarrierMemberID() == actorMemberID
+	if !isOwnerOrAdmin && !isCreator {
 		return ErrNotResponsibleMember
 	}
 	if !offer.IsSelected() {
@@ -352,7 +354,7 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	return nil
 }
 
-func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, reason string) error {
+func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole string, reason string) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
@@ -360,8 +362,10 @@ func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	if offer.CarrierOrgID() != actorOrgID {
 		return ErrNotOfferOwner
 	}
-	// Проверка: только ответственный член (создатель оффера) может отклонять
-	if offer.CarrierMemberID() != actorMemberID {
+	// Проверка: владелец, администратор организации или создатель предложения
+	isOwnerOrAdmin := actorRole == "owner" || actorRole == "administrator"
+	isCreator := offer.CarrierMemberID() == actorMemberID
+	if !isOwnerOrAdmin && !isCreator {
 		return ErrNotResponsibleMember
 	}
 	if !offer.IsSelected() {

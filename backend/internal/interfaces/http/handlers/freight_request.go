@@ -50,6 +50,7 @@ type FreightRequestResponse struct {
 	ID                  uuid.UUID                  `json:"id"`
 	RequestNumber       int64                      `json:"request_number"`
 	CustomerOrgID       uuid.UUID                  `json:"customer_org_id"`
+	CustomerOrgName     string                     `json:"customer_org_name"`
 	CustomerMemberID    uuid.UUID                  `json:"customer_member_id"`
 	Route               values.Route               `json:"route"`
 	Cargo               values.CargoInfo           `json:"cargo"`
@@ -208,35 +209,16 @@ func (h *FreightRequestHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
-	// SEC-009: Получаем orgID пользователя для фильтрации
-	sessionOrgID, ok := h.session.GetOrganizationID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
 	var opts []projections.FilterOption
-	status := r.URL.Query().Get("status")
-	isMarketRequest := r.URL.Query().Get("mode") == "market" || status == "published"
 
+	// Опциональный фильтр по customer_org_id
 	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
 		orgID, err := uuid.Parse(orgIDStr)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid customer_org_id")
 			return
 		}
-		// SEC-009: Разрешаем чужие организации только для просмотра опубликованных заявок (маркет)
-		if orgID != sessionOrgID && !isMarketRequest {
-			writeError(w, http.StatusForbidden, "access denied to other organization's freight requests")
-			return
-		}
 		opts = append(opts, projections.WithCustomerOrgID(orgID))
-	} else if isMarketRequest {
-		// SEC-009: Режим маркета - показываем опубликованные заявки от всех организаций
-		// Фильтр по customer_org_id не добавляется
-	} else {
-		// SEC-009: По умолчанию показываем только заявки своей организации
-		opts = append(opts, projections.WithCustomerOrgID(sessionOrgID))
 	}
 
 	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
@@ -248,11 +230,9 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithCustomerMemberID(memberID))
 	}
 
-	// SEC-009: В режиме маркета принудительно фильтруем по статусу "published"
-	if status != "" {
+	// Опциональный фильтр по статусу
+	if status := r.URL.Query().Get("status"); status != "" {
 		opts = append(opts, projections.WithStatus(status))
-	} else if isMarketRequest {
-		opts = append(opts, projections.WithStatus("published"))
 	}
 
 	if orgName := r.URL.Query().Get("org_name"); orgName != "" {
@@ -304,6 +284,14 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := h.toFreightRequestResponse(fr)
+
+	// Загружаем название организации-заказчика
+	orgNames, err := h.orgService.GetNames(r.Context(), []uuid.UUID{fr.CustomerOrgID()})
+	if err != nil {
+		slog.Error("failed to get organization name", slog.String("error", err.Error()))
+	} else {
+		resp.CustomerOrgName = orgNames[fr.CustomerOrgID()]
+	}
 
 	// Fallback: load request_number from lookup for old events without it
 	if resp.RequestNumber == 0 {
@@ -759,12 +747,14 @@ func (h *FreightRequestHandler) ConfirmOffer(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	role, _ := h.session.GetRole(r)
 
 	if err := h.service.ConfirmOffer(r.Context(), freightrequest.ConfirmOfferInput{
 		FreightRequestID: frID,
 		OfferID:          offerID,
 		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
+		ActorRole:        role,
 	}); err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -800,6 +790,7 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	role, _ := h.session.GetRole(r)
 
 	var req DeclineOfferRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
@@ -809,6 +800,7 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 		OfferID:          offerID,
 		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
+		ActorRole:        role,
 		Reason:           req.Reason,
 	}); err != nil {
 		h.handleDomainError(w, err)

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { organizationsApi } from '@/api/organizations'
 import type { OrganizationDetail, OrganizationRating, OrganizationReview } from '@/types/admin'
 
+// Shared Components
+import { DetailPageHeader } from '@/components/shared'
+
 const route = useRoute()
-const router = useRouter()
 
 const organization = ref<OrganizationDetail | null>(null)
 const rating = ref<OrganizationRating | null>(null)
@@ -105,18 +107,9 @@ watch(() => route.params.id, () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-background">
     <!-- Header -->
-    <header class="bg-white shadow">
-      <div class="max-w-4xl mx-auto px-4 py-4">
-        <button
-          @click="router.back()"
-          class="text-blue-600 hover:text-blue-800 text-sm"
-        >
-          &larr; Назад
-        </button>
-      </div>
-    </header>
+    <DetailPageHeader back-to="/" back-label="Назад" use-history />
 
     <!-- Content -->
     <main class="max-w-4xl mx-auto px-4 py-6">

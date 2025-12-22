@@ -122,6 +122,9 @@ func main() {
 	historyHandler := handlers.NewHistoryHandler(f.HistoryService(), f.FreightRequestService(), f.OrderService(), sessionManager)
 	historyHandler.RegisterRoutes(server.Router())
 
+	geoHandler := handlers.NewGeoHandler(f.GeoProjection())
+	geoHandler.RegisterRoutes(server.Router())
+
 	// Dev handler (only in development mode)
 	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
 	if cfg.IsDevelopment() {

@@ -39,8 +39,14 @@ const validators = {
   },
 }
 
+let uidCounter = 0
+function generateUid(): string {
+  return `point_${Date.now()}_${++uidCounter}`
+}
+
 function createEmptyRoutePoint(isFirst: boolean, isLast: boolean): RoutePoint {
   return {
+    _uid: generateUid(),
     is_loading: isFirst,
     is_unloading: isLast,
     address: '',
@@ -478,8 +484,10 @@ export function useFreightRequestForm() {
   // Load from existing freight request (for edit mode)
   function loadFromRequest(fr: FreightRequest) {
     // Route points - преобразуем даты из ISO в YYYY-MM-DD для input type="date"
+    // Добавляем _uid для корректного отслеживания компонентов при drag-and-drop
     routePoints.value = fr.route.points.map((p): RoutePoint => ({
       ...p,
+      _uid: generateUid(),
       date_from: p.date_from?.split('T')[0] || '',
       date_to: p.date_to?.split('T')[0],
     }))

@@ -39,7 +39,7 @@ import {
 } from '@/components/shared'
 
 // Icons
-import { Plus, ArrowRight, Clock, Building2, Package } from 'lucide-vue-next'
+import { Plus, Clock, Building2, Package } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -173,6 +173,11 @@ function formatPrice(amount?: number, currency?: string): string {
 function formatWeight(weight?: number): string {
   if (!weight) return '—'
   return `${weight.toLocaleString('ru-RU')} т`
+}
+
+function getTransitPointsCount(item: FreightRequestListItem): number {
+  if (!item.route?.points || item.route.points.length <= 2) return 0
+  return item.route.points.length - 2
 }
 
 function formatDate(dateStr: string): string {
@@ -378,14 +383,33 @@ onMounted(() => {
                 </span>
               </div>
 
-              <div class="text-lg font-medium text-foreground truncate">
-                {{ item.origin_address || 'Не указан' }}
-              </div>
-              <div class="flex items-center text-muted-foreground text-sm my-1">
-                <ArrowRight class="h-4 w-4" />
-              </div>
-              <div class="text-lg font-medium text-foreground truncate">
-                {{ item.destination_address || 'Не указан' }}
+              <!-- Route with vertical dashed line -->
+              <div class="flex items-stretch gap-3">
+                <!-- Vertical line with dots -->
+                <div class="flex flex-col items-center py-1">
+                  <div class="w-2 h-2 rounded-full bg-primary shrink-0" />
+                  <div class="w-px flex-1 border-l border-dashed border-muted-foreground/40 min-h-2" />
+                  <div
+                    v-if="getTransitPointsCount(item) > 0"
+                    class="text-xs text-muted-foreground bg-background px-1 shrink-0"
+                  >
+                    +{{ getTransitPointsCount(item) }}
+                  </div>
+                  <div
+                    v-if="getTransitPointsCount(item) > 0"
+                    class="w-px flex-1 border-l border-dashed border-muted-foreground/40 min-h-2"
+                  />
+                  <div class="w-2 h-2 rounded-full bg-primary shrink-0" />
+                </div>
+                <!-- Addresses -->
+                <div class="flex flex-col justify-between flex-1 min-w-0 gap-1">
+                  <div class="text-lg font-medium text-foreground truncate">
+                    {{ item.origin_address || 'Не указан' }}
+                  </div>
+                  <div class="text-lg font-medium text-foreground truncate">
+                    {{ item.destination_address || 'Не указан' }}
+                  </div>
+                </div>
               </div>
 
               <!-- Organization info -->

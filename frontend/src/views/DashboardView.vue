@@ -20,7 +20,7 @@ const { canManageMembers, canCreateFreightRequest } = usePermissions()
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <!-- Freight Requests -->
         <router-link
-          to="/freight-requests"
+          to="/"
           class="bg-white overflow-hidden shadow rounded-lg p-6 hover:shadow-md transition-shadow"
         >
           <h3 class="text-lg font-medium text-gray-900">Заявки</h3>

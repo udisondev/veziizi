@@ -2,6 +2,7 @@ package projections
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -25,24 +26,25 @@ func NewFreightRequestsProjection(db dbtx.TxManager) *FreightRequestsProjection 
 // FreightRequestListItem represents data for listing
 // Includes display fields for UI, full data from event store when needed
 type FreightRequestListItem struct {
-	ID                 uuid.UUID  `json:"id"`
-	RequestNumber      int64      `json:"request_number"`
-	CustomerOrgID      uuid.UUID  `json:"customer_org_id"`
-	Status             string     `json:"status"`
-	ExpiresAt          time.Time  `json:"expires_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	OriginAddress      *string    `json:"origin_address,omitempty"`
-	DestinationAddress *string    `json:"destination_address,omitempty"`
-	CargoType          *string    `json:"cargo_type,omitempty"`
-	CargoWeight        *float64   `json:"cargo_weight,omitempty"`
-	PriceAmount        *int64     `json:"price_amount,omitempty"`
-	PriceCurrency      *string    `json:"price_currency,omitempty"`
-	BodyTypes          []string   `json:"body_types,omitempty"`
-	CustomerOrgName    *string    `json:"customer_org_name,omitempty"`
-	CustomerOrgINN     *string    `json:"customer_org_inn,omitempty"`
-	CustomerOrgCountry *string    `json:"customer_org_country,omitempty"`
-	CustomerMemberID   *uuid.UUID `json:"customer_member_id,omitempty"`
-	OrderID            *uuid.UUID `json:"order_id,omitempty"`
+	ID                 uuid.UUID       `json:"id"`
+	RequestNumber      int64           `json:"request_number"`
+	CustomerOrgID      uuid.UUID       `json:"customer_org_id"`
+	Status             string          `json:"status"`
+	ExpiresAt          time.Time       `json:"expires_at"`
+	CreatedAt          time.Time       `json:"created_at"`
+	OriginAddress      *string         `json:"origin_address,omitempty"`
+	DestinationAddress *string         `json:"destination_address,omitempty"`
+	Route              json.RawMessage `json:"route,omitempty"`
+	CargoType          *string         `json:"cargo_type,omitempty"`
+	CargoWeight        *float64        `json:"cargo_weight,omitempty"`
+	PriceAmount        *int64          `json:"price_amount,omitempty"`
+	PriceCurrency      *string         `json:"price_currency,omitempty"`
+	BodyTypes          []string        `json:"body_types,omitempty"`
+	CustomerOrgName    *string         `json:"customer_org_name,omitempty"`
+	CustomerOrgINN     *string         `json:"customer_org_inn,omitempty"`
+	CustomerOrgCountry *string         `json:"customer_org_country,omitempty"`
+	CustomerMemberID   *uuid.UUID      `json:"customer_member_id,omitempty"`
+	OrderID            *uuid.UUID      `json:"order_id,omitempty"`
 }
 
 type FilterOption func(squirrel.SelectBuilder) squirrel.SelectBuilder
@@ -107,7 +109,7 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 	query, args, err := p.psql.
 		Select(
 			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "cargo_type", "cargo_weight",
+			"origin_address", "destination_address", "route", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 			"order_id",
@@ -129,6 +131,7 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 		&item.CreatedAt,
 		&item.OriginAddress,
 		&item.DestinationAddress,
+		&item.Route,
 		&item.CargoType,
 		&item.CargoWeight,
 		&item.PriceAmount,
@@ -150,7 +153,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 	builder := p.psql.
 		Select(
 			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "cargo_type", "cargo_weight",
+			"origin_address", "destination_address", "route", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 			"order_id",
@@ -185,6 +188,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			&item.CreatedAt,
 			&item.OriginAddress,
 			&item.DestinationAddress,
+			&item.Route,
 			&item.CargoType,
 			&item.CargoWeight,
 			&item.PriceAmount,

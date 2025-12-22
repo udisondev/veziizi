@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { usePermissions } from '@/composables/usePermissions'
 import FreightRequestWizard from '@/components/freight-request/FreightRequestWizard.vue'
 import type { FreightRequest } from '@/types/freightRequest'
+
+// Shared Components
+import { DetailPageHeader } from '@/components/shared'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,6 +16,10 @@ const permissions = usePermissions()
 const freightRequest = ref<FreightRequest | null>(null)
 const isLoading = ref(true)
 const error = ref('')
+
+const backTo = computed(() =>
+  freightRequest.value ? `/freight-requests/${freightRequest.value.id}` : '/'
+)
 
 onMounted(async () => {
   await loadFreightRequest()
@@ -48,19 +55,9 @@ async function loadFreightRequest() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-background">
     <!-- Header -->
-    <header class="bg-white shadow">
-      <div class="max-w-3xl mx-auto px-4 py-4">
-        <router-link
-          :to="freightRequest ? `/freight-requests/${freightRequest.id}` : '/'"
-          class="text-blue-600 hover:text-blue-800 text-sm"
-        >
-          &larr; Назад к заявке
-        </router-link>
-        <h1 class="text-xl font-bold text-gray-900 mt-2">Редактирование заявки</h1>
-      </div>
-    </header>
+    <DetailPageHeader :back-to="backTo" back-label="Назад к заявке" />
 
     <!-- Content -->
     <main class="max-w-3xl mx-auto px-4 py-6">

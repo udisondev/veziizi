@@ -83,6 +83,12 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 	originAddr, destAddr := extractRouteAddresses(e.Route)
 	bodyTypes := extractBodyTypes(e.VehicleRequirements.BodyTypes)
 
+	// Serialize route to JSON
+	routeJSON, err := json.Marshal(e.Route)
+	if err != nil {
+		return fmt.Errorf("marshal route: %w", err)
+	}
+
 	var priceAmount *int64
 	var priceCurrency *string
 	if e.Payment.Price != nil {
@@ -112,13 +118,13 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 		Insert("freight_requests_lookup").
 		Columns(
 			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "cargo_type", "cargo_weight",
+			"origin_address", "destination_address", "route", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 		).
 		Values(
 			e.AggregateID(), e.RequestNumber, e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
-			originAddr, destAddr, e.Cargo.Type.String(), e.Cargo.Weight,
+			originAddr, destAddr, routeJSON, e.Cargo.Type.String(), e.Cargo.Weight,
 			priceAmount, priceCurrency, bodyTypes,
 			orgName, orgINN, orgCountry, e.CustomerMemberID,
 		).
@@ -159,7 +165,11 @@ func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.Freight
 
 	if e.Route != nil {
 		originAddr, destAddr := extractRouteAddresses(*e.Route)
-		builder = builder.Set("origin_address", originAddr).Set("destination_address", destAddr)
+		routeJSON, err := json.Marshal(e.Route)
+		if err != nil {
+			return fmt.Errorf("marshal route: %w", err)
+		}
+		builder = builder.Set("origin_address", originAddr).Set("destination_address", destAddr).Set("route", routeJSON)
 		hasUpdates = true
 	}
 

@@ -1,6 +1,6 @@
 .PHONY: help up down logs db-shell migrate migrate-down migrate-status migrate-create \
         build build-api build-workers run-api run-telegram run-workers test lint fmt env-init generate \
-        back-dev create-admin create-admin-dev dev-all dev-setup create-test-org
+        back-dev create-admin create-admin-dev dev-all dev-setup create-test-org seed-geo
 
 # Load .env file if exists
 ifneq (,$(wildcard ./.env))
@@ -152,10 +152,12 @@ dev-all: check-env dev-setup up ## Start everything with hot-reload (API + worke
 	@until docker exec veziizi-postgres pg_isready -U $(POSTGRES_USER) >/dev/null 2>&1; do sleep 1; done
 	@echo "PostgreSQL ready, running migrations..."
 	@$(MAKE) migrate
+	@echo "Seeding geo data (countries and cities)..."
+	@$(MAKE) seed-geo
 	@echo "Starting all services..."
 	goreman -f Procfile.dev start
 
-dev: check-env up migrate run-api ## Start DB + API only (without workers/frontend)
+dev: check-env up migrate seed-geo run-api ## Start DB + API only (without workers/frontend)
 
 # Development with hot-reload
 back-dev: check-env ## Run backend with air (hot-reload)
@@ -184,3 +186,6 @@ create-test-org: check-env ## Create test org with owner (owner@test.local / tes
 		--name="Test Owner" \
 		--org="Test Organization" \
 		--approve=true
+
+seed-geo: check-env ## Seed geo data (countries and cities)
+	go run ./backend/cmd/tools/seed-geo

@@ -19,9 +19,12 @@ const emit = defineEmits<Emits>()
 // Галочка для температурного режима
 const showTemperature = ref(!!props.vehicle.temperature)
 
-// Следим за галочкой и очищаем температуру если сняли
+// Следим за галочкой: инициализируем температуру при включении, очищаем при выключении
 watch(showTemperature, (show) => {
-  if (!show && props.vehicle.temperature) {
+  if (show && !props.vehicle.temperature) {
+    // Инициализируем пустой объект температуры для валидации
+    updateField('temperature', { min: undefined as unknown as number, max: undefined as unknown as number })
+  } else if (!show && props.vehicle.temperature) {
     updateField('temperature', undefined)
   }
 })
@@ -140,37 +143,36 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       </p>
     </div>
 
-    <!-- Capacity and Volume -->
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Грузоподъёмность, кг
-        </label>
-        <input
-          type="number"
-          :value="vehicle.capacity || ''"
-          placeholder="20000"
-          min="0"
-          step="100"
-          class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          @input="handleCapacityInput"
-        />
-      </div>
+    <!-- Capacity -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Грузоподъёмность, кг
+      </label>
+      <input
+        type="number"
+        :value="vehicle.capacity || ''"
+        placeholder="20000"
+        min="0"
+        step="100"
+        class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+        @input="handleCapacityInput"
+      />
+    </div>
 
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Объём кузова, м³
-        </label>
-        <input
-          type="number"
-          :value="vehicle.volume || ''"
-          placeholder="82"
-          min="0"
-          step="1"
-          class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          @input="handleVolumeInput"
-        />
-      </div>
+    <!-- Volume -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Объём кузова, м³
+      </label>
+      <input
+        type="number"
+        :value="vehicle.volume || ''"
+        placeholder="82"
+        min="0"
+        step="1"
+        class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+        @input="handleVolumeInput"
+      />
     </div>
 
     <!-- Dimensions -->

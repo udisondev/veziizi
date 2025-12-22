@@ -323,6 +323,7 @@ type ConfirmOfferInput struct {
 	OfferID          uuid.UUID
 	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
+	ActorRole        string
 }
 
 func (s *Service) ConfirmOffer(ctx context.Context, input ConfirmOfferInput) error {
@@ -331,7 +332,7 @@ func (s *Service) ConfirmOffer(ctx context.Context, input ConfirmOfferInput) err
 		return err
 	}
 
-	if err := fr.ConfirmOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID); err != nil {
+	if err := fr.ConfirmOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID, input.ActorRole); err != nil {
 		return err
 	}
 
@@ -343,6 +344,7 @@ type DeclineOfferInput struct {
 	OfferID          uuid.UUID
 	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
+	ActorRole        string
 	Reason           string
 }
 
@@ -352,7 +354,7 @@ func (s *Service) DeclineOffer(ctx context.Context, input DeclineOfferInput) err
 		return err
 	}
 
-	if err := fr.DeclineOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID, input.Reason); err != nil {
+	if err := fr.DeclineOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID, input.ActorRole, input.Reason); err != nil {
 		return err
 	}
 

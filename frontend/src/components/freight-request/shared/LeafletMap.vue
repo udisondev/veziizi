@@ -20,6 +20,7 @@ interface Props {
   points: RoutePoint[]
   height?: string
   interactive?: boolean
+  navigable?: boolean
 }
 
 interface Emits {
@@ -29,6 +30,7 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   height: '300px',
   interactive: false,
+  navigable: true,
 })
 
 const emit = defineEmits<Emits>()
@@ -170,11 +172,11 @@ function initMap() {
   map = L.map(mapContainer.value, {
     center: defaultCenter,
     zoom: 5,
-    scrollWheelZoom: props.interactive,
-    dragging: props.interactive,
-    touchZoom: props.interactive,
-    doubleClickZoom: props.interactive,
-    boxZoom: props.interactive,
+    scrollWheelZoom: props.navigable,
+    dragging: props.navigable,
+    touchZoom: props.navigable,
+    doubleClickZoom: props.navigable,
+    boxZoom: props.navigable,
   })
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

@@ -82,20 +82,16 @@ export function usePermissions() {
     if (!isOrgActive.value || !isFreightRequestOwner(customerOrgId)) {
       return false
     }
-    // Владелец или администратор организации, либо создатель заявки
-    const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
-    const isCreator = customerMemberId === auth.memberId
-    return isOwnerOrAdmin || isCreator
+    // Только ответственный за заявку может выбирать предложения
+    return customerMemberId === auth.memberId
   }
 
   const canRejectOffer = (customerOrgId: string, customerMemberId?: string): boolean => {
     if (!isOrgActive.value || !isFreightRequestOwner(customerOrgId)) {
       return false
     }
-    // Владелец или администратор организации, либо создатель заявки
-    const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
-    const isCreator = customerMemberId === auth.memberId
-    return isOwnerOrAdmin || isCreator
+    // Только ответственный за заявку может отклонять предложения
+    return customerMemberId === auth.memberId
   }
 
   // Переназначить ответственного может только владелец или администратор
@@ -123,8 +119,14 @@ export function usePermissions() {
     return isCreator || isOwnerOrAdmin
   }
 
-  const canConfirmOffer = (carrierOrgId: string): boolean => {
-    return isOrgActive.value && isOfferOwner(carrierOrgId)
+  const canConfirmOffer = (carrierOrgId: string, carrierMemberId?: string): boolean => {
+    if (!isOrgActive.value || !isOfferOwner(carrierOrgId)) {
+      return false
+    }
+    // Владелец, администратор организации или создатель предложения
+    const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
+    const isCreator = carrierMemberId === auth.memberId
+    return isOwnerOrAdmin || isCreator
   }
 
   // Order action permissions

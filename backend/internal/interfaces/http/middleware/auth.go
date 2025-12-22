@@ -25,6 +25,7 @@ var publicPrefixes = []struct {
 	{"/api/v1/admin/auth/", http.MethodPost},   // admin login/logout
 	{"/api/v1/organizations/", http.MethodGet}, // public organization profiles, ratings, reviews
 	{"/api/v1/members/", http.MethodGet},       // public member profiles
+	{"/api/v1/geo/", http.MethodGet},           // public geo data (countries, cities)
 	// DEV ENDPOINTS REMOVED - SEC-001: они защищены через DevOnly middleware и проверку IsDevelopment()
 }
 

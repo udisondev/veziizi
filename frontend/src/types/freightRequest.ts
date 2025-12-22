@@ -55,10 +55,20 @@ export interface Coordinates {
 }
 
 export interface RoutePoint {
+  // Internal ID for Vue reactivity (not sent to backend)
+  _uid?: string
+
   is_loading: boolean
   is_unloading: boolean
+
+  // Structured location (new)
+  country_id?: number
+  city_id?: number
+
+  // Legacy address field (for backward compatibility)
   address: string
   coordinates?: Coordinates
+
   date_from: string // ISO date
   date_to?: string
   time_from?: string // HH:mm
@@ -136,6 +146,7 @@ export interface FreightRequest {
   id: string
   request_number: number
   customer_org_id: string
+  customer_org_name: string
   customer_member_id: string
   route: Route
   cargo: CargoInfo
@@ -158,6 +169,7 @@ export interface FreightRequestListItem {
   created_at: string
   origin_address?: string
   destination_address?: string
+  route?: Route
   cargo_type?: CargoType
   cargo_weight?: number
   price_amount?: number

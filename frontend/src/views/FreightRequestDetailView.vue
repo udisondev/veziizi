@@ -64,7 +64,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Shared Components
-import { BackLink, StatusBadge, LoadingSpinner, ErrorBanner, TabsDropdown, type TabItem } from '@/components/shared'
+import { DetailPageHeader, StatusBadge, LoadingSpinner, ErrorBanner, TabsDropdown, type TabItem } from '@/components/shared'
 
 // Icons
 import {
@@ -78,7 +78,6 @@ import {
   Truck,
   CreditCard,
   MessageSquare,
-  Send,
   Check,
   X,
   Clock,
@@ -115,10 +114,18 @@ const canViewHistory = computed(() => {
   return auth.role === 'owner' || auth.role === 'administrator'
 })
 
-const tabItems = computed((): TabItem[] => [
-  { value: 'details', label: 'Детали заявки', icon: FileText },
-  { value: 'history', label: 'История', icon: Clock },
-])
+const tabItems = computed((): TabItem[] => {
+  const items: TabItem[] = [
+    { value: 'details', label: 'Детали заявки', icon: FileText },
+  ]
+  if (visibleOffers.value.length > 0 || isOwner.value) {
+    items.push({ value: 'offers', label: 'Предложения', icon: Users, badge: offers.value.length || undefined })
+  }
+  if (canViewHistory.value) {
+    items.push({ value: 'history', label: 'История', icon: Clock, separator: true })
+  }
+  return items
+})
 
 // Modals
 const showMakeOfferModal = ref(false)
@@ -216,26 +223,9 @@ const canViewOrderLink = computed(() => {
 
   const fr = freightRequest.value
   const order = linkedOrder.value
-  const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
 
-  if (isOwnerOrAdmin && fr.customer_org_id === auth.organizationId) {
-    return true
-  }
-
-  if (isOwnerOrAdmin && order.carrier_org_id === auth.organizationId) {
-    return true
-  }
-
-  if (fr.customer_member_id === auth.memberId) {
-    return true
-  }
-
-  const confirmedOffer = offers.value.find(o => o.status === 'confirmed')
-  if (confirmedOffer && confirmedOffer.carrier_member_id === auth.memberId) {
-    return true
-  }
-
-  return false
+  // Любой член организации-заказчика или организации-перевозчика может видеть ссылку
+  return fr.customer_org_id === auth.organizationId || order.carrier_org_id === auth.organizationId
 })
 
 const myOffers = computed(() => {
@@ -475,11 +465,46 @@ onMounted(() => {
 <template>
   <div class="min-h-screen bg-background">
     <!-- Header -->
-    <header class="bg-card border-b">
-      <div class="max-w-5xl mx-auto px-4 py-4">
-        <BackLink to="/" label="К списку заявок" />
-      </div>
-    </header>
+    <DetailPageHeader back-to="/" back-label="К списку заявок">
+      <template #actions>
+        <div class="flex items-center gap-2">
+          <!-- Make Offer Button for carriers -->
+          <Button
+            v-if="canMakeOffer && !myActiveOffer"
+            size="sm"
+            @click="showMakeOfferModal = true"
+          >
+            Сделать предложение
+          </Button>
+
+          <DropdownMenu v-if="freightRequest && (canEdit || canCancel)">
+            <DropdownMenuTrigger as-child>
+              <Button variant="ghost" size="icon">
+                <MoreVertical class="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                v-if="canEdit"
+                @click="router.push(`/freight-requests/${freightRequest.id}/edit`)"
+              >
+                <Pencil class="mr-2 h-4 w-4" />
+                Редактировать
+              </DropdownMenuItem>
+              <DropdownMenuSeparator v-if="canEdit && canCancel" />
+              <DropdownMenuItem
+                v-if="canCancel"
+                class="text-destructive focus:text-destructive"
+                @click="showCancelModal = true"
+              >
+                <XCircle class="mr-2 h-4 w-4" />
+                Отменить заявку
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </template>
+    </DetailPageHeader>
 
     <!-- Content -->
     <main class="max-w-5xl mx-auto px-4 py-6">
@@ -508,7 +533,7 @@ onMounted(() => {
         <!-- Tabs -->
         <Tabs v-model="currentTab" class="w-full">
           <!-- Tab selector dropdown -->
-          <div v-if="canViewHistory" class="mb-6">
+          <div v-if="tabItems.length > 1" class="mb-6">
             <TabsDropdown v-model="currentTab" :items="tabItems" />
           </div>
 
@@ -519,75 +544,62 @@ onMounted(() => {
               <CardContent class="p-4 sm:p-6">
                 <div class="flex flex-col gap-4">
                   <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                    <div>
-                      <h1 class="text-xl sm:text-2xl font-bold text-foreground">
-                        Заявка #{{ requestNumber }}
-                      </h1>
-                      <p v-if="creatorProfile" class="text-muted-foreground text-sm mt-1">
-                        Ответственный:
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-3">
+                        <h1 class="text-xl sm:text-2xl font-bold text-foreground">
+                          Заявка #{{ requestNumber }}
+                        </h1>
+                        <StatusBadge :status="freightRequest.status" :status-map="freightStatusMap" />
+                      </div>
+                      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-2">
+                        <!-- Заказчик -->
                         <router-link
-                          :to="`/members/${freightRequest.customer_member_id}`"
-                          class="text-primary hover:underline"
+                          :to="`/organizations/${freightRequest.customer_org_id}`"
+                          class="inline-flex items-center gap-1 text-primary hover:underline max-w-[200px] sm:max-w-[280px]"
+                          :title="freightRequest.customer_org_name || 'Организация'"
                         >
-                          {{ creatorProfile.name }}
+                          <Building2 class="h-4 w-4 shrink-0" />
+                          <span class="truncate">{{ freightRequest.customer_org_name || 'Организация' }}</span>
                         </router-link>
-                        <Button
-                          v-if="canReassign"
-                          variant="ghost"
-                          size="sm"
-                          class="ml-1 h-auto py-0 px-1 text-xs"
-                          @click="goToReassign"
-                        >
-                          <Pencil class="h-3 w-3" />
-                        </Button>
-                      </p>
-                      <p class="text-muted-foreground text-sm mt-1">
-                        Создана {{ formatDateTime(freightRequest.created_at) }}
-                      </p>
-                    </div>
 
-                    <!-- Actions -->
-                    <div class="flex flex-wrap items-center gap-2">
-                      <StatusBadge :status="freightRequest.status" :status-map="freightStatusMap" />
-
-                      <!-- Order link -->
-                      <router-link
-                        v-if="canViewOrderLink && linkedOrder"
-                        :to="`/orders/${linkedOrder.id}`"
-                      >
-                        <Badge variant="info" class="cursor-pointer">
-                          <FileText class="mr-1 h-3 w-3" />
-                          Заказ #{{ linkedOrder.order_number }}
-                        </Badge>
-                      </router-link>
-
-                      <!-- Actions dropdown -->
-                      <DropdownMenu v-if="canEdit || canCancel">
-                        <DropdownMenuTrigger as-child>
-                          <Button variant="outline" size="icon">
-                            <MoreVertical class="h-4 w-4" />
+                        <!-- Ответственный -->
+                        <div v-if="creatorProfile" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
+                          <Users class="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <router-link
+                            :to="`/members/${freightRequest.customer_member_id}`"
+                            class="text-primary hover:underline truncate"
+                            :title="creatorProfile.name"
+                          >
+                            {{ creatorProfile.name }}
+                          </router-link>
+                          <Button
+                            v-if="canReassign"
+                            variant="ghost"
+                            size="sm"
+                            class="h-auto p-0.5 shrink-0"
+                            @click="goToReassign"
+                          >
+                            <Pencil class="h-3 w-3" />
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            v-if="canEdit"
-                            @click="router.push(`/freight-requests/${freightRequest.id}/edit`)"
-                          >
-                            <Pencil class="mr-2 h-4 w-4" />
-                            Редактировать
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator v-if="canEdit && canCancel" />
-                          <DropdownMenuItem
-                            v-if="canCancel"
-                            class="text-destructive focus:text-destructive"
-                            @click="showCancelModal = true"
-                          >
-                            <XCircle class="mr-2 h-4 w-4" />
-                            Отменить заявку
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                        </div>
+
+                        <!-- Дата создания -->
+                        <span class="inline-flex items-center gap-1">
+                          <Clock class="h-4 w-4 shrink-0" />
+                          {{ formatDateTime(freightRequest.created_at) }}
+                        </span>
+                      </div>
                     </div>
+
+                    <!-- Order link -->
+                    <router-link
+                      v-if="canViewOrderLink && linkedOrder"
+                      :to="`/orders/${linkedOrder.id}`"
+                      class="text-primary hover:underline text-sm flex items-center gap-1"
+                    >
+                      <FileText class="h-3 w-3" />
+                      Перейти к заказу
+                    </router-link>
                   </div>
                 </div>
               </CardContent>
@@ -609,47 +621,41 @@ onMounted(() => {
                 />
 
                 <!-- Route Points -->
-                <div class="space-y-3">
+                <div class="divide-y">
                   <div
                     v-for="(point, index) in freightRequest.route.points"
                     :key="index"
-                    class="border rounded-lg p-4"
+                    class="py-4 first:pt-0 last:pb-0"
                   >
                     <div class="flex items-start gap-3">
                       <div
                         :class="[
                           'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0',
-                          point.is_loading && point.is_unloading ? '' :
+                          point.is_loading && point.is_unloading ? 'bg-gradient-to-r from-primary from-50% to-success to-50%' :
                           point.is_loading ? 'bg-primary' :
                           point.is_unloading ? 'bg-success' : 'bg-muted-foreground'
                         ]"
-                        :style="point.is_loading && point.is_unloading ? 'background: linear-gradient(to right, hsl(var(--primary)) 50%, hsl(var(--success)) 50%)' : ''"
                       >
                         {{ index + 1 }}
                       </div>
                       <div class="flex-1 min-w-0">
-                        <Badge variant="outline" class="mb-2">
-                          {{ getPointTypeLabel(point) }}
-                        </Badge>
-                        <p class="font-medium text-foreground break-words">{{ point.address }}</p>
-                        <div class="mt-2 text-sm text-muted-foreground space-y-1">
-                          <p>
-                            <span class="text-muted-foreground/70">Дата:</span>
-                            {{ formatDate(point.date_from) }}
-                            <template v-if="point.date_to"> — {{ formatDate(point.date_to) }}</template>
-                          </p>
-                          <p v-if="point.time_from">
-                            <span class="text-muted-foreground/70">Время:</span>
-                            {{ point.time_from }}
-                            <template v-if="point.time_to"> — {{ point.time_to }}</template>
-                          </p>
-                          <p v-if="point.contact_name">
-                            <span class="text-muted-foreground/70">Контакт:</span>
-                            {{ point.contact_name }}
-                            <template v-if="point.contact_phone">, {{ point.contact_phone }}</template>
-                          </p>
-                          <p v-if="point.comment" class="italic break-words">{{ point.comment }}</p>
+                        <div class="flex items-center gap-2 mb-1">
+                          <Badge variant="outline">
+                            {{ getPointTypeLabel(point) }}
+                          </Badge>
                         </div>
+                        <p class="font-medium text-foreground break-words">{{ point.address }}</p>
+                        <p class="text-sm text-muted-foreground mt-1">
+                          {{ formatDate(point.date_from) }}<template v-if="point.date_to"> — {{ formatDate(point.date_to) }}</template>
+                          <template v-if="point.time_from">
+                            <span class="mx-1">·</span>
+                            {{ point.time_from }}<template v-if="point.time_to"> — {{ point.time_to }}</template>
+                          </template>
+                        </p>
+                        <p v-if="point.contact_name" class="text-sm text-muted-foreground">
+                          {{ point.contact_name }}<template v-if="point.contact_phone">, {{ point.contact_phone }}</template>
+                        </p>
+                        <p v-if="point.comment" class="text-sm text-muted-foreground italic mt-1 break-words">{{ point.comment }}</p>
                       </div>
                     </div>
                   </div>
@@ -826,142 +832,126 @@ onMounted(() => {
                 <p class="text-foreground break-words">{{ freightRequest.comment }}</p>
               </CardContent>
             </Card>
+          </TabsContent>
 
-            <!-- Offers Section -->
-            <Card v-if="visibleOffers.length > 0 || isOwner">
-              <CardHeader>
-                <CardTitle class="flex items-center gap-2">
-                  <Users class="h-5 w-5" />
-                  Предложения
-                  <Badge v-if="isOwner" variant="secondary">{{ offers.length }}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div v-if="visibleOffers.length === 0" class="text-center py-8 text-muted-foreground">
-                  Пока нет предложений
-                </div>
+          <!-- Offers Tab -->
+          <TabsContent value="offers" class="space-y-6">
+            <div v-if="visibleOffers.length === 0" class="text-center py-8 text-muted-foreground">
+              Пока нет предложений
+            </div>
 
-                <div v-else class="space-y-4">
-                  <div
-                    v-for="offer in visibleOffers"
-                    :key="offer.id"
-                    :class="[
-                      'border rounded-lg p-4',
-                      offer.status === 'selected' ? 'border-info/50 bg-info/5' :
-                      offer.status === 'confirmed' ? 'border-success/50 bg-success/5' :
-                      'border-border'
-                    ]"
-                  >
-                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                      <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-3 mb-2">
-                          <span class="text-xl font-semibold text-foreground">
-                            {{ formatPrice(offer.price.amount, offer.price.currency) }}
-                          </span>
-                          <StatusBadge :status="offer.status" :status-map="offerStatusMap" />
-                        </div>
-                        <div v-if="offer.carrier_org_name || offer.carrier_member_name" class="mb-2 flex flex-wrap items-center gap-x-2">
-                          <router-link
-                            v-if="isOwner && offer.carrier_org_name"
-                            :to="`/organizations/${offer.carrier_org_id}`"
-                            class="text-primary hover:underline font-medium truncate"
-                          >
-                            <Building2 class="inline h-4 w-4 mr-1" />
-                            {{ offer.carrier_org_name }}
-                          </router-link>
-                          <span v-if="isOwner && offer.carrier_org_name && offer.carrier_member_name" class="text-muted-foreground">•</span>
-                          <router-link
-                            v-if="offer.carrier_member_name"
-                            :to="`/members/${offer.carrier_member_id}`"
-                            class="text-primary hover:underline truncate"
-                          >
-                            {{ offer.carrier_member_name }}
-                          </router-link>
-                        </div>
-                        <div class="text-sm text-muted-foreground space-y-1">
-                          <p>
-                            <span class="text-muted-foreground/70">НДС:</span>
-                            {{ vatTypeLabels[offer.vat_type] }}
-                          </p>
-                          <p>
-                            <span class="text-muted-foreground/70">Способ оплаты:</span>
-                            {{ paymentMethodLabels[offer.payment_method] }}
-                          </p>
-                          <p v-if="offer.comment" class="break-words">
-                            <span class="text-muted-foreground/70">Комментарий:</span>
-                            {{ offer.comment }}
-                          </p>
-                          <p class="text-xs flex items-center gap-1">
-                            <Clock class="h-3 w-3" />
-                            {{ formatDateTime(offer.created_at) }}
-                          </p>
-                        </div>
-                      </div>
-
-                      <!-- Owner/Admin actions -->
-                      <div v-if="canManageOffers && offer.status === 'pending' && freightRequest.status === 'published'" class="flex gap-2 shrink-0">
-                        <Button
-                          size="sm"
-                          :disabled="actionLoading"
-                          @click="handleSelectOffer(offer.id)"
-                        >
-                          <Check class="mr-1 h-4 w-4" />
-                          Выбрать
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          :disabled="actionLoading"
-                          @click="openRejectModal(offer.id)"
-                        >
-                          Отклонить
-                        </Button>
-                      </div>
-
-                      <!-- Carrier actions (own offer) -->
-                      <div v-if="!isOwner && offer.carrier_org_id === auth.organizationId" class="flex gap-2 shrink-0">
-                        <template v-if="offer.status === 'pending' && permissions.canWithdrawOffer(offer.carrier_org_id, offer.carrier_member_id)">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            :disabled="actionLoading"
-                            @click="openWithdrawModal(offer.id)"
-                          >
-                            Отозвать
-                          </Button>
-                        </template>
-                        <template v-if="offer.status === 'selected'">
-                          <Button
-                            size="sm"
-                            :disabled="actionLoading"
-                            @click="handleConfirmOffer(offer.id)"
-                          >
-                            <Check class="mr-1 h-4 w-4" />
-                            Подтвердить
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            :disabled="actionLoading"
-                            @click="handleDeclineOffer(offer.id)"
-                          >
-                            Отказаться
-                          </Button>
-                        </template>
-                      </div>
+            <div v-else class="space-y-4">
+              <div
+                v-for="offer in visibleOffers"
+                :key="offer.id"
+                :class="[
+                  'border rounded-lg p-4',
+                  offer.status === 'selected' ? 'border-info/50 bg-info/5' :
+                  offer.status === 'confirmed' ? 'border-success/50 bg-success/5' :
+                  'border-border'
+                ]"
+              >
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-3 mb-2">
+                      <span class="text-xl font-semibold text-foreground">
+                        {{ formatPrice(offer.price.amount, offer.price.currency) }}
+                      </span>
+                      <StatusBadge :status="offer.status" :status-map="offerStatusMap" />
+                    </div>
+                    <div v-if="offer.carrier_org_name || offer.carrier_member_name" class="mb-2 flex flex-wrap items-center gap-x-2">
+                      <router-link
+                        v-if="isOwner && offer.carrier_org_name"
+                        :to="`/organizations/${offer.carrier_org_id}`"
+                        class="text-primary hover:underline font-medium truncate"
+                      >
+                        <Building2 class="inline h-4 w-4 mr-1" />
+                        {{ offer.carrier_org_name }}
+                      </router-link>
+                      <span v-if="isOwner && offer.carrier_org_name && offer.carrier_member_name" class="text-muted-foreground">•</span>
+                      <router-link
+                        v-if="offer.carrier_member_name"
+                        :to="`/members/${offer.carrier_member_id}`"
+                        class="text-primary hover:underline truncate"
+                      >
+                        {{ offer.carrier_member_name }}
+                      </router-link>
+                    </div>
+                    <div class="text-sm text-muted-foreground space-y-1">
+                      <p>
+                        <span class="text-muted-foreground/70">НДС:</span>
+                        {{ vatTypeLabels[offer.vat_type] }}
+                      </p>
+                      <p>
+                        <span class="text-muted-foreground/70">Способ оплаты:</span>
+                        {{ paymentMethodLabels[offer.payment_method] }}
+                      </p>
+                      <p v-if="offer.comment" class="break-words">
+                        <span class="text-muted-foreground/70">Комментарий:</span>
+                        {{ offer.comment }}
+                      </p>
+                      <p class="text-xs flex items-center gap-1">
+                        <Clock class="h-3 w-3" />
+                        {{ formatDateTime(offer.created_at) }}
+                      </p>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
 
-            <!-- Make Offer Button -->
-            <div v-if="canMakeOffer && !myActiveOffer" class="flex justify-center">
-              <Button size="lg" @click="showMakeOfferModal = true">
-                <Send class="mr-2 h-5 w-5" />
-                Сделать предложение
-              </Button>
+                  <!-- Owner/Admin actions -->
+                  <div v-if="canManageOffers && offer.status === 'pending' && freightRequest.status === 'published'" class="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      :disabled="actionLoading"
+                      @click="handleSelectOffer(offer.id)"
+                    >
+                      <Check class="mr-1 h-4 w-4" />
+                      Выбрать
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      :disabled="actionLoading"
+                      @click="openRejectModal(offer.id)"
+                    >
+                      Отклонить
+                    </Button>
+                  </div>
+
+                  <!-- Carrier actions (own offer) -->
+                  <div v-if="!isOwner && offer.carrier_org_id === auth.organizationId" class="flex gap-2 shrink-0">
+                    <template v-if="offer.status === 'pending' && permissions.canWithdrawOffer(offer.carrier_org_id, offer.carrier_member_id)">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="actionLoading"
+                        @click="openWithdrawModal(offer.id)"
+                      >
+                        Отозвать
+                      </Button>
+                    </template>
+                    <template v-if="offer.status === 'selected' && permissions.canConfirmOffer(offer.carrier_org_id, offer.carrier_member_id)">
+                      <Button
+                        size="sm"
+                        :disabled="actionLoading"
+                        @click="handleConfirmOffer(offer.id)"
+                      >
+                        <Check class="mr-1 h-4 w-4" />
+                        Подтвердить
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="actionLoading"
+                        @click="handleDeclineOffer(offer.id)"
+                      >
+                        Отказаться
+                      </Button>
+                    </template>
+                  </div>
+                </div>
+              </div>
             </div>
+
           </TabsContent>
 
           <!-- History Tab -->

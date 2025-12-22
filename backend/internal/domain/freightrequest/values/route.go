@@ -4,17 +4,29 @@ import "fmt"
 
 // RoutePoint represents a point in the route (can be loading, unloading, or both)
 type RoutePoint struct {
-	IsLoading    bool         `json:"is_loading"`
-	IsUnloading  bool         `json:"is_unloading"`
-	Address      string       `json:"address"`
-	Coordinates  *Coordinates `json:"coordinates,omitempty"`
-	DateFrom     string       `json:"date_from"`           // YYYY-MM-DD format
-	DateTo       *string      `json:"date_to,omitempty"`   // YYYY-MM-DD format
-	TimeFrom     *string      `json:"time_from,omitempty"` // HH:mm format
-	TimeTo       *string      `json:"time_to,omitempty"`   // HH:mm format
-	ContactName  *string      `json:"contact_name,omitempty"`
-	ContactPhone *string      `json:"contact_phone,omitempty"`
-	Comment      *string      `json:"comment,omitempty"`
+	IsLoading   bool `json:"is_loading"`
+	IsUnloading bool `json:"is_unloading"`
+
+	// Structured location (new)
+	CountryID *int `json:"country_id,omitempty"` // ID from geo_countries
+	CityID    *int `json:"city_id,omitempty"`    // ID from geo_cities
+
+	// Legacy address field (kept for backward compatibility with old events)
+	Address     string       `json:"address"`
+	Coordinates *Coordinates `json:"coordinates,omitempty"`
+
+	DateFrom     string  `json:"date_from"`           // YYYY-MM-DD format
+	DateTo       *string `json:"date_to,omitempty"`   // YYYY-MM-DD format
+	TimeFrom     *string `json:"time_from,omitempty"` // HH:mm format
+	TimeTo       *string `json:"time_to,omitempty"`   // HH:mm format
+	ContactName  *string `json:"contact_name,omitempty"`
+	ContactPhone *string `json:"contact_phone,omitempty"`
+	Comment      *string `json:"comment,omitempty"`
+}
+
+// HasStructuredLocation returns true if the point has structured location (country_id + city_id)
+func (p RoutePoint) HasStructuredLocation() bool {
+	return p.CountryID != nil && p.CityID != nil
 }
 
 // Validate validates route point - if contact is provided, both name and phone are required

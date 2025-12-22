@@ -7,7 +7,7 @@ import FreightRequestWizard from '@/components/freight-request/FreightRequestWiz
     <div class="max-w-4xl mx-auto">
       <div class="mb-6">
         <router-link
-          to="/freight-requests"
+          to="/"
           class="text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">

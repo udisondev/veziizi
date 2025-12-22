@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Shared Components
-import { BackLink, StatusBadge, LoadingSpinner, ErrorBanner, TabsDropdown, type TabItem } from '@/components/shared'
+import { DetailPageHeader, StatusBadge, LoadingSpinner, ErrorBanner, TabsDropdown, type TabItem } from '@/components/shared'
 
 // Icons
 import {
@@ -120,6 +120,12 @@ const isCarrier = computed(() => {
 
 const isParticipant = computed(() => isCustomer.value || isCarrier.value)
 
+// Проверяет, является ли текущий пользователь ответственным за заказ со своей стороны
+const isResponsible = computed(() => {
+  if (!order.value || !auth.memberId) return false
+  return order.value.customer_member_id === auth.memberId || order.value.carrier_member_id === auth.memberId
+})
+
 const canComplete = computed(() => {
   if (!order.value || !isParticipant.value) return false
   if (isCustomer.value && ['active', 'carrier_completed'].includes(order.value.status)) {
@@ -137,17 +143,17 @@ const canCancel = computed(() => {
 })
 
 const canSendMessage = computed(() => {
-  if (!order.value || !isParticipant.value) return false
+  if (!order.value || !isResponsible.value) return false
   return !isOrderCancelled(order.value.status)
 })
 
 const canUploadDocument = computed(() => {
-  if (!order.value || !isParticipant.value) return false
+  if (!order.value || !isResponsible.value) return false
   return !isOrderFinished(order.value.status)
 })
 
 const canLeaveReview = computed(() => {
-  if (!order.value || !isParticipant.value) return false
+  if (!order.value || !isResponsible.value) return false
   if (isOrderCancelled(order.value.status)) return false
 
   const hasCompletedOwnSide =
@@ -190,15 +196,6 @@ const tabItems = computed((): TabItem[] => {
 const orderNumber = computed(() => {
   if (!order.value) return 0
   return order.value.order_number
-})
-
-const counterpartyName = computed(() => {
-  if (!order.value) return ''
-  return isCustomer.value ? order.value.carrier_org_name : order.value.customer_org_name
-})
-
-const counterpartyRole = computed(() => {
-  return isCustomer.value ? 'Перевозчик' : 'Заказчик'
 })
 
 const sortedMessages = computed(() => {
@@ -417,15 +414,12 @@ onMounted(() => {
 <template>
   <div class="min-h-screen bg-background">
     <!-- Header -->
-    <header class="bg-card border-b">
-      <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-        <BackLink to="/orders" label="К списку заказов" />
-
-        <!-- Actions dropdown -->
+    <DetailPageHeader back-to="/orders" back-label="К списку заказов">
+      <template #actions>
         <DropdownMenu v-if="hasAnyAction && order">
           <DropdownMenuTrigger as-child>
             <Button variant="ghost" size="icon">
-              <MoreVertical class="h-5 w-5" />
+              <MoreVertical class="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -463,8 +457,8 @@ onMounted(() => {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </header>
+      </template>
+    </DetailPageHeader>
 
     <!-- Content -->
     <main class="max-w-5xl mx-auto px-4 py-6">
@@ -495,28 +489,23 @@ onMounted(() => {
           <CardContent class="p-4 sm:p-6">
             <div class="flex flex-col gap-4">
               <div>
-                <h1 class="text-xl sm:text-2xl font-bold text-foreground">
-                  Заказ #{{ orderNumber }}
-                </h1>
-                <p class="text-muted-foreground text-sm mt-1 break-words">
-                  {{ counterpartyRole }}:
-                  <span class="font-medium text-foreground">{{ counterpartyName }}</span>
-                </p>
+                <div class="flex items-center gap-3">
+                  <h1 class="text-xl sm:text-2xl font-bold text-foreground">
+                    Заказ #{{ orderNumber }}
+                  </h1>
+                  <StatusBadge :status="order.status" :status-map="orderStatusMap" />
+                </div>
                 <p class="text-muted-foreground text-sm mt-1">
                   Создан {{ formatDateTime(order.created_at) }}
                 </p>
               </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <StatusBadge :status="order.status" :status-map="orderStatusMap" />
-                <router-link
-                  :to="`/freight-requests/${order.freight_request_id}`"
-                >
-                  <Badge variant="outline" class="cursor-pointer">
-                    <FileText class="mr-1 h-3 w-3" />
-                    Перейти к заявке
-                  </Badge>
-                </router-link>
-              </div>
+              <router-link
+                :to="`/freight-requests/${order.freight_request_id}`"
+                class="text-primary hover:underline text-sm flex items-center gap-1"
+              >
+                <FileText class="h-3 w-3" />
+                Перейти к заявке
+              </router-link>
             </div>
           </CardContent>
         </Card>
@@ -533,49 +522,41 @@ onMounted(() => {
               <!-- Info Tab -->
               <TabsContent value="info" class="mt-0 space-y-6">
                 <!-- Participants -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader class="pb-2">
-                      <CardTitle class="text-sm text-muted-foreground">Заказчик</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <router-link
-                        :to="{ name: 'organization-profile', params: { id: order.customer_org_id } }"
-                        class="text-primary hover:underline font-medium flex items-center gap-1"
-                      >
-                        <Building2 class="h-4 w-4" />
-                        {{ order.customer_org_name }}
-                      </router-link>
-                      <div class="text-xs text-muted-foreground mt-2">Контакт:</div>
-                      <router-link
-                        :to="`/members/${order.customer_member_id}`"
-                        class="text-primary hover:underline text-sm"
-                      >
-                        {{ order.customer_member_name }}
-                      </router-link>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader class="pb-2">
-                      <CardTitle class="text-sm text-muted-foreground">Перевозчик</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <router-link
-                        :to="{ name: 'organization-profile', params: { id: order.carrier_org_id } }"
-                        class="text-primary hover:underline font-medium flex items-center gap-1"
-                      >
-                        <Building2 class="h-4 w-4" />
-                        {{ order.carrier_org_name }}
-                      </router-link>
-                      <div class="text-xs text-muted-foreground mt-2">Контакт:</div>
-                      <router-link
-                        :to="`/members/${order.carrier_member_id}`"
-                        class="text-primary hover:underline text-sm"
-                      >
-                        {{ order.carrier_member_name }}
-                      </router-link>
-                    </CardContent>
-                  </Card>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:divide-x">
+                  <div>
+                    <div class="text-sm text-muted-foreground mb-1">Заказчик</div>
+                    <router-link
+                      :to="{ name: 'organization-profile', params: { id: order.customer_org_id } }"
+                      class="text-primary hover:underline font-medium flex items-center gap-1"
+                    >
+                      <Building2 class="h-4 w-4" />
+                      {{ order.customer_org_name }}
+                    </router-link>
+                    <div class="text-xs text-muted-foreground mt-2">Контакт:</div>
+                    <router-link
+                      :to="`/members/${order.customer_member_id}`"
+                      class="text-primary hover:underline text-sm"
+                    >
+                      {{ order.customer_member_name }}
+                    </router-link>
+                  </div>
+                  <div class="sm:pl-6 border-t sm:border-t-0 pt-4 sm:pt-0">
+                    <div class="text-sm text-muted-foreground mb-1">Перевозчик</div>
+                    <router-link
+                      :to="{ name: 'organization-profile', params: { id: order.carrier_org_id } }"
+                      class="text-primary hover:underline font-medium flex items-center gap-1"
+                    >
+                      <Building2 class="h-4 w-4" />
+                      {{ order.carrier_org_name }}
+                    </router-link>
+                    <div class="text-xs text-muted-foreground mt-2">Контакт:</div>
+                    <router-link
+                      :to="`/members/${order.carrier_member_id}`"
+                      class="text-primary hover:underline text-sm"
+                    >
+                      {{ order.carrier_member_name }}
+                    </router-link>
+                  </div>
                 </div>
 
                 <!-- Order details -->
@@ -590,15 +571,6 @@ onMounted(() => {
                   </div>
                 </div>
 
-                <p class="text-muted-foreground text-sm">
-                  Полная информация о маршруте и грузе доступна в
-                  <router-link
-                    :to="`/freight-requests/${order.freight_request_id}`"
-                    class="text-primary hover:underline"
-                  >
-                    заявке
-                  </router-link>.
-                </p>
               </TabsContent>
 
               <!-- Messages Tab -->
@@ -696,7 +668,7 @@ onMounted(() => {
                           <Download class="h-4 w-4" />
                         </Button>
                         <Button
-                          v-if="isParticipant && !isOrderFinished(order.status)"
+                          v-if="isResponsible && !isOrderFinished(order.status)"
                           variant="ghost"
                           size="sm"
                           class="text-destructive hover:text-destructive"
@@ -856,7 +828,7 @@ onMounted(() => {
           </DialogDescription>
         </DialogHeader>
 
-        <div class="space-y-2">
+        <div class="space-y-3">
           <Label>Новый ответственный</Label>
           <Select v-model="selectedNewMember">
             <SelectTrigger>
