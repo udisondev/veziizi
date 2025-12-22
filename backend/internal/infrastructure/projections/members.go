@@ -396,3 +396,29 @@ func (p *MembersProjection) CheckRegistrationVelocity(ctx context.Context, ip, f
 
 	return result, nil
 }
+
+// GetAllActiveMemberIDs возвращает ID всех активных членов, исключая указанный
+func (p *MembersProjection) GetAllActiveMemberIDs(ctx context.Context, excludeMemberID *uuid.UUID) ([]uuid.UUID, error) {
+	builder := p.psql.
+		Select("m.id").
+		From("members_lookup m").
+		Join("organizations_lookup o ON o.id = m.organization_id").
+		Where(squirrel.Eq{"m.status": "active"}).
+		Where(squirrel.Eq{"o.status": "active"})
+
+	if excludeMemberID != nil {
+		builder = builder.Where(squirrel.NotEq{"m.id": *excludeMemberID})
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	var ids []uuid.UUID
+	if err := pgxscan.Select(ctx, p.db, &ids, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get active member IDs: %w", err)
+	}
+
+	return ids, nil
+}

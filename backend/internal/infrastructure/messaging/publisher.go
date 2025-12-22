@@ -99,3 +99,8 @@ func (p *EventPublisher) Publish(ctx context.Context, topic string, events ...ev
 func (p *EventPublisher) Close() error {
 	return p.defaultPublisher.Close()
 }
+
+// RawPublisher возвращает underlying watermill publisher для отправки raw messages
+func (p *EventPublisher) RawPublisher() message.Publisher {
+	return p.defaultPublisher
+}

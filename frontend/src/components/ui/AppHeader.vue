@@ -6,6 +6,7 @@ import { usePermissions } from '@/composables/usePermissions'
 
 // UI Components
 import { Button } from '@/components/ui/button'
+import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -148,13 +149,16 @@ const userInitial = computed(() => {
           </router-link>
         </div>
 
-        <!-- Right: Organization + User menu -->
-        <div class="flex items-center gap-3">
+        <!-- Right: Organization + Notifications + User menu -->
+        <div class="flex items-center gap-2">
           <!-- Organization name (desktop) -->
-          <div class="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
+          <div class="hidden sm:flex items-center gap-2 text-sm text-muted-foreground mr-1">
             <Building2 class="h-4 w-4" />
             <span class="max-w-40 truncate">{{ auth.organization?.name }}</span>
           </div>
+
+          <!-- Notifications -->
+          <NotificationBell />
 
           <!-- User dropdown -->
           <DropdownMenu>

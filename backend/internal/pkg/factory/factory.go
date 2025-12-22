@@ -7,6 +7,7 @@ import (
 	frApp "codeberg.org/udison/veziizi/backend/internal/application/freightrequest"
 	historyApp "codeberg.org/udison/veziizi/backend/internal/application/history"
 	"codeberg.org/udison/veziizi/backend/internal/application/history/display"
+	notifApp "codeberg.org/udison/veziizi/backend/internal/application/notification"
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
 	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
@@ -47,6 +48,9 @@ type Factory struct {
 	reviewService *reviewApp.Service
 	reviewOnce    sync.Once
 
+	notificationService *notifApp.Service
+	notificationOnce    sync.Once
+
 	// Projections (lazy)
 	membersProjection     *projections.MembersProjection
 	membersOnce           sync.Once
@@ -83,6 +87,18 @@ type Factory struct {
 
 	geoProjection *projections.GeoProjection
 	geoOnce       sync.Once
+
+	notificationPreferencesProjection *projections.NotificationPreferencesProjection
+	notificationPreferencesOnce       sync.Once
+
+	inappNotificationsProjection *projections.InAppNotificationsProjection
+	inappNotificationsOnce       sync.Once
+
+	deliveryLogProjection *projections.NotificationDeliveryLogProjection
+	deliveryLogOnce       sync.Once
+
+	telegramLinkProjection *projections.TelegramLinkProjection
+	telegramLinkOnce       sync.Once
 
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
@@ -181,6 +197,17 @@ func (f *Factory) ReviewService() *reviewApp.Service {
 	return f.reviewService
 }
 
+func (f *Factory) NotificationService() *notifApp.Service {
+	f.notificationOnce.Do(func() {
+		f.notificationService = notifApp.NewService(
+			f.NotificationPreferencesProjection(),
+			f.InAppNotificationsProjection(),
+			f.TelegramLinkProjection(),
+		)
+	})
+	return f.notificationService
+}
+
 // Projections
 
 func (f *Factory) MembersProjection() *projections.MembersProjection {
@@ -265,6 +292,34 @@ func (f *Factory) GeoProjection() *projections.GeoProjection {
 		f.geoProjection = projections.NewGeoProjection(f.db)
 	})
 	return f.geoProjection
+}
+
+func (f *Factory) NotificationPreferencesProjection() *projections.NotificationPreferencesProjection {
+	f.notificationPreferencesOnce.Do(func() {
+		f.notificationPreferencesProjection = projections.NewNotificationPreferencesProjection(f.db)
+	})
+	return f.notificationPreferencesProjection
+}
+
+func (f *Factory) InAppNotificationsProjection() *projections.InAppNotificationsProjection {
+	f.inappNotificationsOnce.Do(func() {
+		f.inappNotificationsProjection = projections.NewInAppNotificationsProjection(f.db)
+	})
+	return f.inappNotificationsProjection
+}
+
+func (f *Factory) DeliveryLogProjection() *projections.NotificationDeliveryLogProjection {
+	f.deliveryLogOnce.Do(func() {
+		f.deliveryLogProjection = projections.NewNotificationDeliveryLogProjection(f.db)
+	})
+	return f.deliveryLogProjection
+}
+
+func (f *Factory) TelegramLinkProjection() *projections.TelegramLinkProjection {
+	f.telegramLinkOnce.Do(func() {
+		f.telegramLinkProjection = projections.NewTelegramLinkProjection(f.db)
+	})
+	return f.telegramLinkProjection
 }
 
 // Analyzers

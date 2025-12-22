@@ -79,6 +79,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 - **FreightRequest** — заявка на перевозку с Offers внутри. Два версионирования: `version` (aggregate) и `freightVersion` (только при изменении данных заявки)
 - **Order** — заказ (после подтверждения оффера). Содержит Messages, Documents, Reviews. Создаётся автоматически через order-creator worker при OfferConfirmed
 - **Review** — отдельный агрегат для защиты рейтингов от накрутки. Создаётся из Order.ReviewLeft через review-receiver worker. Проходит анализ на фрод и модерацию
+- **Notification** — уведомления с настройками предпочтений (in-app, telegram). notification-dispatcher роутит доменные события на каналы, telegram-sender отправляет в Telegram
 
 ### Key Patterns
 
@@ -90,8 +91,8 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 
 **Factory** (`backend/internal/pkg/factory/`):
 - Lazy-initialized, thread-safe dependency container (sync.Once)
-- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`, `ReviewService()`, `HistoryService()`
-- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `OrganizationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`
+- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`, `ReviewService()`, `HistoryService()`, `NotificationService()`
+- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `OrganizationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`, `GeoProjection()`, `NotificationPreferencesProjection()`, `InAppNotificationsProjection()`, `DeliveryLogProjection()`
 - Creates analyzers: `ReviewAnalyzer()`, `SessionAnalyzer()`
 - Used by both API and workers
 
@@ -128,6 +129,8 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 | review-activator | scheduled (1 min) | - | Activate approved reviews after activation_date |
 | fraudster-handler | organization.events | fraudster_handler | Deactivate reviews when org marked as fraudster |
 | order-fraud-analyzer | order.events | order_fraud_analyzer | Detect order fraud: cancel patterns, ghost deliveries, circular orders |
+| notification-dispatcher | *.events | notification_dispatcher | Route domain events to notification channels |
+| telegram-sender | notification.send | telegram_sender | Send notifications via Telegram |
 
 **Lookup Tables (Projections)**:
 - Store only ID + filter columns (status, org_id, etc.), no JSONB
@@ -194,6 +197,7 @@ import (
     _ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
+    _ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
 )
 ```
 Без этого `eventstore.EventEnvelope.UnmarshalEvent()` вернёт ошибку "unknown event type".

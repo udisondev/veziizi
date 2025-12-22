@@ -39,12 +39,14 @@ type SessionConfig struct {
 }
 
 type TelegramConfig struct {
-	BotToken string `env:"TELEGRAM_BOT_TOKEN"`
+	BotToken    string `env:"TELEGRAM_BOT_TOKEN"`
+	BotUsername string `env:"TELEGRAM_BOT_USERNAME"` // Имя бота для Telegram Login Widget
 }
 
 type AppConfig struct {
 	Env      string `env:"APP_ENV" envDefault:"development" validate:"required,oneof=development production"`
 	LogLevel string `env:"LOG_LEVEL" envDefault:"debug" validate:"required,oneof=debug info warn error"`
+	BaseURL  string `env:"APP_BASE_URL" envDefault:"http://localhost:5173"` // URL для ссылок в уведомлениях
 }
 
 type GeoIPConfig struct {

@@ -1,0 +1,242 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { notificationsApi } from '@/api/notifications'
+import type {
+  Notification,
+  NotificationPreferences,
+  NotificationFilters,
+  NotificationCategory,
+} from '@/types/notification'
+
+export const useNotificationsStore = defineStore('notifications', () => {
+  // ===============================
+  // State
+  // ===============================
+  const notifications = ref<Notification[]>([])
+  const unreadCount = ref(0)
+  const preferences = ref<NotificationPreferences | null>(null)
+  const isLoading = ref(false)
+  const isLoadingPreferences = ref(false)
+  const error = ref<string | null>(null)
+
+  // Polling
+  const pollingInterval = ref<number | null>(null)
+  const POLLING_INTERVAL_MS = 30000 // 30 секунд
+
+  // ===============================
+  // Computed
+  // ===============================
+  const hasUnread = computed(() => unreadCount.value > 0)
+
+  const isTelegramConnected = computed(
+    () => preferences.value?.telegram.connected ?? false
+  )
+
+  const recentNotifications = computed(() =>
+    notifications.value.slice(0, 5)
+  )
+
+  // ===============================
+  // Actions: Notifications
+  // ===============================
+  async function fetchNotifications(filters?: NotificationFilters): Promise<void> {
+    isLoading.value = true
+    error.value = null
+    try {
+      notifications.value = await notificationsApi.list({
+        ...filters,
+        limit: filters?.limit ?? 50,
+      })
+    } catch (e) {
+      error.value = 'Не удалось загрузить уведомления'
+      console.error('Failed to fetch notifications:', e)
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function fetchRecentNotifications(): Promise<void> {
+    try {
+      const recent = await notificationsApi.list({ limit: 5 })
+      // Merge с существующими, сохраняя уникальность
+      const existingIds = new Set(notifications.value.map(n => n.id))
+      const newNotifications = recent.filter(n => !existingIds.has(n.id))
+      if (newNotifications.length > 0) {
+        notifications.value = [...newNotifications, ...notifications.value]
+      }
+    } catch (e) {
+      console.error('Failed to fetch recent notifications:', e)
+    }
+  }
+
+  async function fetchUnreadCount(): Promise<void> {
+    try {
+      unreadCount.value = await notificationsApi.getUnreadCount()
+    } catch (e) {
+      console.error('Failed to fetch unread count:', e)
+    }
+  }
+
+  async function markAsRead(id: string): Promise<void> {
+    try {
+      await notificationsApi.markAsRead([id])
+      // Обновляем локально
+      const notification = notifications.value.find(n => n.id === id)
+      if (notification && !notification.is_read) {
+        notification.is_read = true
+        notification.read_at = new Date().toISOString()
+        unreadCount.value = Math.max(0, unreadCount.value - 1)
+      }
+    } catch (e) {
+      console.error('Failed to mark notification as read:', e)
+    }
+  }
+
+  async function markAllAsRead(): Promise<void> {
+    try {
+      await notificationsApi.markAllAsRead()
+      notifications.value.forEach(n => {
+        if (!n.is_read) {
+          n.is_read = true
+          n.read_at = new Date().toISOString()
+        }
+      })
+      unreadCount.value = 0
+    } catch (e) {
+      console.error('Failed to mark all as read:', e)
+    }
+  }
+
+  // ===============================
+  // Actions: Preferences
+  // ===============================
+  async function fetchPreferences(): Promise<void> {
+    isLoadingPreferences.value = true
+    try {
+      preferences.value = await notificationsApi.getPreferences()
+    } catch (e) {
+      console.error('Failed to fetch notification preferences:', e)
+    } finally {
+      isLoadingPreferences.value = false
+    }
+  }
+
+  async function updateCategorySetting(
+    category: NotificationCategory,
+    channel: 'in_app' | 'telegram',
+    enabled: boolean
+  ): Promise<void> {
+    if (!preferences.value) return
+
+    const currentSettings = preferences.value.enabled_categories[category]
+    const newSettings = {
+      ...currentSettings,
+      [channel]: enabled,
+    }
+
+    try {
+      await notificationsApi.updatePreferences({
+        [category]: newSettings,
+      })
+      // Обновляем локально
+      preferences.value.enabled_categories[category] = newSettings
+    } catch (e) {
+      console.error('Failed to update category setting:', e)
+      throw e
+    }
+  }
+
+  // ===============================
+  // Actions: Telegram
+  // ===============================
+  async function disconnectTelegram(): Promise<void> {
+    try {
+      await notificationsApi.disconnectTelegram()
+      if (preferences.value) {
+        preferences.value.telegram = {
+          connected: false,
+        }
+      }
+    } catch (e) {
+      console.error('Failed to disconnect telegram:', e)
+      throw e
+    }
+  }
+
+  // ===============================
+  // Polling
+  // ===============================
+  function startPolling(): void {
+    if (pollingInterval.value) return
+
+    // Сразу загружаем
+    fetchUnreadCount()
+    fetchRecentNotifications()
+
+    pollingInterval.value = window.setInterval(() => {
+      fetchUnreadCount()
+      fetchRecentNotifications()
+    }, POLLING_INTERVAL_MS)
+  }
+
+  function stopPolling(): void {
+    if (pollingInterval.value) {
+      window.clearInterval(pollingInterval.value)
+      pollingInterval.value = null
+    }
+  }
+
+  // ===============================
+  // Lifecycle
+  // ===============================
+  async function initialize(): Promise<void> {
+    await Promise.all([
+      fetchUnreadCount(),
+      fetchRecentNotifications(),
+    ])
+    startPolling()
+  }
+
+  function cleanup(): void {
+    stopPolling()
+    notifications.value = []
+    unreadCount.value = 0
+    preferences.value = null
+    error.value = null
+  }
+
+  return {
+    // State
+    notifications,
+    unreadCount,
+    preferences,
+    isLoading,
+    isLoadingPreferences,
+    error,
+
+    // Computed
+    hasUnread,
+    isTelegramConnected,
+    recentNotifications,
+
+    // Actions: Notifications
+    fetchNotifications,
+    fetchRecentNotifications,
+    fetchUnreadCount,
+    markAsRead,
+    markAllAsRead,
+
+    // Actions: Preferences
+    fetchPreferences,
+    updateCategorySetting,
+
+    // Actions: Telegram
+    disconnectTelegram,
+
+    // Lifecycle
+    initialize,
+    cleanup,
+    startPolling,
+    stopPolling,
+  }
+})

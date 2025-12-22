@@ -1,5 +1,5 @@
 .PHONY: help up down logs db-shell migrate migrate-down migrate-status migrate-create \
-        build build-api build-workers run-api run-telegram run-workers test lint fmt env-init generate \
+        build build-api build-workers run-api run-telegram-bot run-workers test lint fmt env-init generate \
         back-dev create-admin create-admin-dev dev-all dev-setup create-test-org seed-geo
 
 # Load .env file if exists
@@ -49,7 +49,7 @@ migrate-create: ## Create new migration (use: make migrate-create name=create_us
 # Build
 build: ## Build all binaries
 	go build -o bin/api ./backend/cmd/api
-	go build -o bin/telegram-notifier ./backend/cmd/telegram-notifier
+	go build -o bin/telegram-bot ./backend/cmd/telegram-bot
 	go build -o bin/migrator ./backend/cmd/migrator
 	go build -o bin/worker-members ./backend/cmd/workers/members
 	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
@@ -64,6 +64,8 @@ build: ## Build all binaries
 	go build -o bin/worker-review-activator ./backend/cmd/workers/review-activator
 	go build -o bin/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler
 	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
+	go build -o bin/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher
+	go build -o bin/worker-telegram-sender ./backend/cmd/workers/telegram-sender
 
 build-api: ## Build API server
 	go build -o bin/api ./backend/cmd/api
@@ -82,13 +84,15 @@ build-workers: ## Build all workers
 	go build -o bin/worker-review-activator ./backend/cmd/workers/review-activator
 	go build -o bin/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler
 	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
+	go build -o bin/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher
+	go build -o bin/worker-telegram-sender ./backend/cmd/workers/telegram-sender
 
 # Run
 run-api: ## Run API server
 	go run ./backend/cmd/api
 
-run-telegram: ## Run Telegram notifier
-	go run ./backend/cmd/telegram-notifier
+run-telegram-bot: ## Run Telegram bot for link code handling
+	go run ./backend/cmd/telegram-bot
 
 run-workers: ## Run all workers
 	go run ./backend/cmd/workers/members &
@@ -104,6 +108,8 @@ run-workers: ## Run all workers
 	go run ./backend/cmd/workers/review-activator &
 	go run ./backend/cmd/workers/fraudster-handler &
 	go run ./backend/cmd/workers/order-fraud-analyzer &
+	go run ./backend/cmd/workers/notification-dispatcher &
+	go run ./backend/cmd/workers/telegram-sender &
 
 # Development
 test: ## Run tests

@@ -139,6 +139,20 @@ const router = createRouter({
       meta: { title: 'Профиль' },
     },
 
+    // Notifications
+    {
+      path: '/notifications',
+      name: 'notifications',
+      component: () => import('@/views/NotificationsView.vue'),
+      meta: { title: 'Уведомления' },
+    },
+    {
+      path: '/notifications/settings',
+      name: 'notification-settings',
+      component: () => import('@/views/NotificationSettingsView.vue'),
+      meta: { title: 'Настройки уведомлений' },
+    },
+
     // Admin routes
     {
       path: '/admin/login',

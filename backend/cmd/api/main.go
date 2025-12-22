@@ -8,8 +8,9 @@ import (
 	"syscall"
 
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events" // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"          // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"   // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"  // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"         // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"  // register events
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/geoip"
 	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
@@ -124,6 +125,13 @@ func main() {
 
 	geoHandler := handlers.NewGeoHandler(f.GeoProjection())
 	geoHandler.RegisterRoutes(server.Router())
+
+	// Notification handler
+	notificationHandler := handlers.NewNotificationHandler(f.NotificationService(), sessionManager, cfg)
+	notificationHandler.RegisterRoutes(server.Router())
+	if cfg.Telegram.BotUsername != "" {
+		slog.Info("telegram notifications enabled", slog.String("bot", cfg.Telegram.BotUsername))
+	}
 
 	// Dev handler (only in development mode)
 	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware

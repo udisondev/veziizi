@@ -13,7 +13,7 @@ import EventHistory from '@/components/EventHistory.vue'
 // UI Components
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -487,8 +487,8 @@ onMounted(() => {
         <!-- Order Header Card -->
         <Card>
           <CardContent class="p-4 sm:p-6">
-            <div class="flex flex-col gap-4">
-              <div>
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div class="min-w-0">
                 <div class="flex items-center gap-3">
                   <h1 class="text-xl sm:text-2xl font-bold text-foreground">
                     Заказ #{{ orderNumber }}
@@ -501,7 +501,7 @@ onMounted(() => {
               </div>
               <router-link
                 :to="`/freight-requests/${order.freight_request_id}`"
-                class="text-primary hover:underline text-sm flex items-center gap-1"
+                class="text-primary hover:underline text-sm flex items-center gap-1 shrink-0"
               >
                 <FileText class="h-3 w-3" />
                 Перейти к заявке

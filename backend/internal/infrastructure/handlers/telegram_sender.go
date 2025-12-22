@@ -1,0 +1,94 @@
+package handlers
+
+import (
+	"encoding/json"
+	"fmt"
+	"log/slog"
+
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/notifications"
+	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/ThreeDotsLabs/watermill/message"
+)
+
+// TelegramSenderHandler отправляет уведомления в Telegram
+type TelegramSenderHandler struct {
+	client    *notifications.TelegramClient
+	appConfig *config.Config
+	deliveryLog *projections.NotificationDeliveryLogProjection
+}
+
+// NewTelegramSenderHandler создает новый handler
+func NewTelegramSenderHandler(
+	client *notifications.TelegramClient,
+	appConfig *config.Config,
+	deliveryLog *projections.NotificationDeliveryLogProjection,
+) *TelegramSenderHandler {
+	return &TelegramSenderHandler{
+		client:      client,
+		appConfig:   appConfig,
+		deliveryLog: deliveryLog,
+	}
+}
+
+// Handle обрабатывает сообщение из очереди
+func (h *TelegramSenderHandler) Handle(msg *message.Message) error {
+	var notification TelegramNotification
+	if err := json.Unmarshal(msg.Payload, &notification); err != nil {
+		slog.Error("failed to unmarshal telegram notification",
+			slog.String("error", err.Error()))
+		return fmt.Errorf("unmarshal notification: %w", err)
+	}
+
+	// Формируем ссылку с доменом приложения
+	link := ""
+	if notification.Link != "" {
+		// Используем APP_BASE_URL из конфига если есть
+		baseURL := h.appConfig.App.BaseURL
+		if baseURL == "" {
+			baseURL = "https://veziizi.ru" // fallback
+		}
+		link = baseURL + notification.Link
+	}
+
+	// Форматируем сообщение
+	text := notifications.FormatNotification(notification.Title, notification.Body, link)
+
+	// Отправляем
+	if err := h.client.SendMessage(notification.ChatID, text); err != nil {
+		slog.Error("failed to send telegram message",
+			slog.Int64("chat_id", notification.ChatID),
+			slog.String("member_id", notification.MemberID.String()),
+			slog.String("error", err.Error()))
+
+		// Логируем ошибку доставки (не блокируем обработку)
+		if h.deliveryLog != nil {
+			_ = h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
+				MemberID:         notification.MemberID,
+				NotificationType: "telegram",
+				Channel:          "telegram",
+				Status:           "failed",
+				ErrorMessage:     err.Error(),
+			})
+		}
+
+		// Возвращаем ошибку для retry
+		return fmt.Errorf("send message: %w", err)
+	}
+
+	slog.Info("telegram message sent",
+		slog.Int64("chat_id", notification.ChatID),
+		slog.String("member_id", notification.MemberID.String()))
+
+	// Логируем успешную доставку
+	if h.deliveryLog != nil {
+		_ = h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
+			MemberID:         notification.MemberID,
+			NotificationType: "telegram",
+			Channel:          "telegram",
+			Status:           "sent",
+		})
+	}
+
+	return nil
+}

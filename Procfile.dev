@@ -12,4 +12,7 @@ worker-reviews-projection: go run ./backend/cmd/workers/reviews-projection
 worker-review-activator: go run ./backend/cmd/workers/review-activator
 worker-fraudster-handler: go run ./backend/cmd/workers/fraudster-handler
 worker-order-fraud-analyzer: go run ./backend/cmd/workers/order-fraud-analyzer
+worker-notification-dispatcher: go run ./backend/cmd/workers/notification-dispatcher
+worker-telegram-sender: go run ./backend/cmd/workers/telegram-sender
+telegram-bot: go run ./backend/cmd/telegram-bot
 frontend: cd frontend && npm run dev
