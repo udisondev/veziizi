@@ -368,7 +368,10 @@ func (h *FreightRequestHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req CancelFreightRequestRequest
-	_ = json.NewDecoder(r.Body).Decode(&req) // optional body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 
 	if err := h.service.Cancel(r.Context(), freightrequest.CancelInput{
 		ID:      id,
@@ -624,7 +627,10 @@ func (h *FreightRequestHandler) WithdrawOffer(w http.ResponseWriter, r *http.Req
 	}
 
 	var req WithdrawOfferRequest
-	_ = json.NewDecoder(r.Body).Decode(&req) // optional
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 
 	if err := h.service.WithdrawOffer(r.Context(), freightrequest.WithdrawOfferInput{
 		FreightRequestID: frID,
@@ -708,7 +714,10 @@ func (h *FreightRequestHandler) RejectOffer(w http.ResponseWriter, r *http.Reque
 	}
 
 	var req RejectOfferRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 
 	if err := h.service.RejectOffer(r.Context(), freightrequest.RejectOfferInput{
 		FreightRequestID: frID,
@@ -793,7 +802,10 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 	role, _ := h.session.GetRole(r)
 
 	var req DeclineOfferRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 
 	if err := h.service.DeclineOffer(r.Context(), freightrequest.DeclineOfferInput{
 		FreightRequestID: frID,

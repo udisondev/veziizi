@@ -166,9 +166,10 @@ func (s *Service) AttachDocument(ctx context.Context, input AttachDocumentInput)
 		int64(len(input.Data)),
 		fileID,
 	); err != nil {
-		// Try to delete the file if we fail to attach
-		_ = s.fileStorage.Delete(ctx, fileID)
-		return err
+		if deleteErr := s.fileStorage.Delete(ctx, fileID); deleteErr != nil {
+			return fmt.Errorf("attach document: %w, cleanup failed: %v", err, deleteErr)
+		}
+		return fmt.Errorf("attach document: %w", err)
 	}
 
 	return s.saveAndPublish(ctx, o)
@@ -202,8 +203,9 @@ func (s *Service) RemoveDocument(ctx context.Context, input RemoveDocumentInput)
 		return err
 	}
 
-	// Delete file after successful event save (best effort)
-	_ = s.fileStorage.Delete(ctx, fileID)
+	if err := s.fileStorage.Delete(ctx, fileID); err != nil {
+		return fmt.Errorf("delete file after document removal: %w", err)
+	}
 
 	return nil
 }

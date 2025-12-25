@@ -15,16 +15,11 @@ import (
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -59,47 +54,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, cfg.Database.URL)
-	if err != nil {
-		slog.Error("failed to connect to database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	defer pool.Close()
+	// Create factory IoC container - all dependencies are lazily initialized
+	f := factory.New(cfg)
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Error("failed to close factory", slog.String("error", err.Error()))
+		}
+	}()
 
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("failed to ping database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
+	// Get pool for subscriber (triggers lazy initialization)
+	pool := f.MustPool()
 	slog.Info(fmt.Sprintf("%s worker connected to database", workerName))
 
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 
-	// Create base dependencies
-	txManager := dbtx.NewTxExecutor(pool)
-	es := eventstore.NewPostgresStore(txManager)
-	fs := filestorage.NewPostgresStorage(txManager)
-
-	publisher, err := messaging.NewEventPublisher(pool, wmLogger)
-	if err != nil {
-		slog.Error("failed to create event publisher", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	defer func() {
-		if err := publisher.Close(); err != nil {
-			slog.Error("failed to close publisher", slog.String("error", err.Error()))
-		}
-	}()
-
-	// Create factory
-	f := factory.New(txManager, es, publisher, fs)
-
 	// Create handler
 	handler := handlers.NewNotificationDispatcherHandler(
+		f.NotificationRulesRegistry(),
 		f.NotificationService(),
-		f.FreightRequestsProjection(),
-		f.OrdersProjection(),
-		f.MembersProjection(),
-		publisher.RawPublisher(),
+		f.MustPublisher().RawPublisher(),
 	)
 
 	// Create subscriber

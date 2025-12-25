@@ -5,6 +5,7 @@ import type {
   NotificationFilters,
   EnabledCategories,
   TelegramLinkCodeResponse,
+  FreightRequestSubscription,
 } from '@/types/notification'
 
 export const notificationsApi = {
@@ -76,5 +77,19 @@ export const notificationsApi = {
   // Отключить Telegram
   async disconnectTelegram(): Promise<void> {
     await api.delete('/notifications/telegram')
+  },
+
+  // ===============================
+  // Подписки на заявки
+  // ===============================
+
+  // Получить настройки подписки
+  async getSubscription(): Promise<FreightRequestSubscription> {
+    return api.get('/notifications/subscriptions')
+  },
+
+  // Обновить настройки подписки
+  async updateSubscription(data: Partial<FreightRequestSubscription>): Promise<void> {
+    await api.patch('/notifications/subscriptions', data)
   },
 }

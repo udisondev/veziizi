@@ -9,16 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Config struct {
@@ -34,7 +29,7 @@ type Config struct {
 func Run(cfg Config) {
 	appCfg, err := config.Load()
 	if err != nil {
-		slog.Error("failed to load cconfig", slog.String("error", err.Error()))
+		slog.Error("failed to load config", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
@@ -52,39 +47,19 @@ func Run(cfg Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, appCfg.Database.URL)
-	if err != nil {
-		slog.Error("failed to connect to database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("failed to ping database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	slog.Info(fmt.Sprintf("%s worker connected to database", cfg.Name))
-
-	wmLogger := watermill.NewSlogLogger(slog.Default())
-
-	// Create base dependencies
-	txManager := dbtx.NewTxExecutor(pool)
-	es := eventstore.NewPostgresStore(txManager)
-	fs := filestorage.NewPostgresStorage(txManager)
-
-	publisher, err := messaging.NewEventPublisher(pool, wmLogger)
-	if err != nil {
-		slog.Error("failed to create event publisher", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
+	// Create factory - all dependencies are lazily initialized
+	f := factory.New(appCfg)
 	defer func() {
-		if err := publisher.Close(); err != nil {
-			slog.Error("failed to close publisher", slog.String("error", err.Error()))
+		if err := f.Close(); err != nil {
+			slog.Error("failed to close factory", slog.String("error", err.Error()))
 		}
 	}()
 
-	// Create factory
-	f := factory.New(txManager, es, publisher, fs)
+	// Get pool for subscriber (triggers lazy initialization)
+	pool := f.MustPool()
+	slog.Info(fmt.Sprintf("%s worker connected to database", cfg.Name))
+
+	wmLogger := watermill.NewSlogLogger(slog.Default())
 
 	subscriber, err := sql.NewSubscriber(
 		sql.BeginnerFromPgx(pool),
@@ -164,39 +139,17 @@ func RunScheduled(cfg ScheduledConfig) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, appCfg.Database.URL)
-	if err != nil {
-		slog.Error("failed to connect to database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("failed to ping database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	slog.Info(fmt.Sprintf("%s scheduled worker connected to database", cfg.Name))
-
-	wmLogger := watermill.NewSlogLogger(slog.Default())
-
-	// Create base dependencies
-	txManager := dbtx.NewTxExecutor(pool)
-	es := eventstore.NewPostgresStore(txManager)
-	fs := filestorage.NewPostgresStorage(txManager)
-
-	publisher, err := messaging.NewEventPublisher(pool, wmLogger)
-	if err != nil {
-		slog.Error("failed to create event publisher", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
+	// Create factory - all dependencies are lazily initialized
+	f := factory.New(appCfg)
 	defer func() {
-		if err := publisher.Close(); err != nil {
-			slog.Error("failed to close publisher", slog.String("error", err.Error()))
+		if err := f.Close(); err != nil {
+			slog.Error("failed to close factory", slog.String("error", err.Error()))
 		}
 	}()
 
-	// Create factory
-	f := factory.New(txManager, es, publisher, fs)
+	// Trigger pool initialization and log connection
+	_ = f.MustPool()
+	slog.Info(fmt.Sprintf("%s scheduled worker connected to database", cfg.Name))
 
 	// Get handler
 	handler := cfg.Handler(f)

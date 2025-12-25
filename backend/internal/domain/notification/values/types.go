@@ -133,3 +133,12 @@ func (c EnabledCategories) IsEnabled(category NotificationCategory, channel Noti
 		return false
 	}
 }
+
+// EnableTelegramForAll включает telegram для всех категорий
+func (c EnabledCategories) EnableTelegramForAll() {
+	for _, cat := range AllCategories() {
+		settings := c[cat]
+		settings.Telegram = true
+		c[cat] = settings
+	}
+}

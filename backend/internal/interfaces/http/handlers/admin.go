@@ -143,12 +143,10 @@ type PendingOrganizationResponse struct {
 }
 
 func (h *AdminHandler) ListPending(w http.ResponseWriter, r *http.Request) {
-	adminID, ok := h.session.GetAdminID(r)
-	if !ok {
+	if _, ok := h.session.GetAdminID(r); !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	_ = adminID
 
 	orgs, err := h.service.ListPendingOrganizations(r.Context())
 	if err != nil {
@@ -174,12 +172,10 @@ func (h *AdminHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AdminHandler) GetOrganization(w http.ResponseWriter, r *http.Request) {
-	adminID, ok := h.session.GetAdminID(r)
-	if !ok {
+	if _, ok := h.session.GetAdminID(r); !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	_ = adminID
 
 	vars := mux.Vars(r)
 	id, err := uuid.Parse(vars["id"])

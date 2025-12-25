@@ -561,7 +561,10 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req CancelOrderRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 
 	if err := h.service.Cancel(r.Context(), orderApp.CancelInput{
 		OrderID:  orderID,

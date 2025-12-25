@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Communicate in Russian (Русский язык).
 
+## Tech Stack
+
+- **Backend:** Go 1.23+, PostgreSQL 16, watermill-sql, gorilla, squirrel, pgxscan, goose
+- **Frontend:** Vue 3, Vite, Tailwind 4, Pinia, Vue Router, Leaflet, maska
+- **Architecture:** DDD, Event Sourcing, Event-Driven, 12-factor app
+
 ## Module Path
 
 `codeberg.org/udison/veziizi` — все импорты начинаются с этого пути.
@@ -26,7 +32,7 @@ make dev              # Start PostgreSQL, run migrations, start API server (all-
 make dev-all          # Full stack with hot-reload: API + all workers (uses goreman)
 make run-api          # Run API server only
 make run-workers      # Run all workers in background
-make run-telegram     # Run Telegram notifier
+make run-telegram-bot # Run Telegram bot for link codes
 make back-dev         # Run API with air (hot-reload)
 make up / make down   # Start/stop Docker services
 
@@ -55,7 +61,8 @@ make create-admin          # Create platform admin (interactive)
 make create-admin-dev      # Create dev admin (admin@veziizi.local / admin123)
 make create-test-org       # Create test org (owner@test.local / test123)
 
-# Additional Tools
+# Geo & Seed Data
+make seed-geo         # Seed countries and cities (runs automatically with dev/dev-all)
 go run ./backend/cmd/tools/seed-orgs              # Seed test organizations
 go run ./backend/cmd/tools/backfill-freight-requests  # Backfill freight requests projection
 ```
@@ -79,7 +86,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 - **FreightRequest** — заявка на перевозку с Offers внутри. Два версионирования: `version` (aggregate) и `freightVersion` (только при изменении данных заявки)
 - **Order** — заказ (после подтверждения оффера). Содержит Messages, Documents, Reviews. Создаётся автоматически через order-creator worker при OfferConfirmed
 - **Review** — отдельный агрегат для защиты рейтингов от накрутки. Создаётся из Order.ReviewLeft через review-receiver worker. Проходит анализ на фрод и модерацию
-- **Notification** — уведомления с настройками предпочтений (in-app, telegram). notification-dispatcher роутит доменные события на каналы, telegram-sender отправляет в Telegram
+- **Notification** — уведомления с настройками предпочтений (in-app, telegram). notification-dispatcher роутит доменные события на каналы, telegram-sender отправляет в Telegram. Не имеет aggregate.go, только events/ и values/
 
 ### Key Patterns
 
@@ -225,4 +232,5 @@ npm run build         # Production build
 
 ## Project Status
 
-See `ROADMAP.md` for current phase and task status.
+Current: Phase 6 (Rating Fraud Protection) — Completed. Phase 8 (Frontend) — In Progress.
+See `ROADMAP.md` for details.

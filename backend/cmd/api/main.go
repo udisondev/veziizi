@@ -8,23 +8,18 @@ import (
 	"syscall"
 
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events" // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"  // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"         // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"  // register events
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/geoip"
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"   // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"          // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"   // register events
+
 	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/filestorage"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/handlers"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/middleware"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/geoip"
 )
 
 func main() {
@@ -48,37 +43,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, cfg.Database.URL)
-	if err != nil {
-		slog.Error("failed to connect to database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("failed to ping database", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-	slog.Info("connected to database")
-
-	txManager := dbtx.NewTxExecutor(pool)
-	eventStore := eventstore.NewPostgresStore(txManager)
-	fileStorage := filestorage.NewPostgresStorage(txManager)
-
-	wmLogger := watermill.NewSlogLogger(slog.Default())
-	publisher, err := messaging.NewEventPublisher(pool, wmLogger)
-	if err != nil {
-		slog.Error("failed to create event publisher", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
+	// Create factory IoC container - all dependencies are lazily initialized
+	f := factory.New(cfg)
 	defer func() {
-		if err := publisher.Close(); err != nil {
-			slog.Error("failed to close publisher", slog.String("error", err.Error()))
+		if err := f.Close(); err != nil {
+			slog.Error("failed to close factory", slog.String("error", err.Error()))
 		}
 	}()
-
-	// Create factory
-	f := factory.New(txManager, eventStore, publisher, fileStorage)
 
 	// Create GeoIP service (optional, works without database file)
 	geoIPService := geoip.NewService(cfg.GeoIP.DatabasePath)
@@ -92,7 +63,7 @@ func main() {
 	adminSessionManager := session.NewAdminManager(cfg)
 
 	// Repositories (not managed by factory)
-	adminRepository := adminRepo.NewRepository(txManager)
+	adminRepository := adminRepo.NewRepository(f.DB())
 
 	// HTTP server and handlers
 	server := http.NewServer(cfg)
@@ -127,7 +98,12 @@ func main() {
 	geoHandler.RegisterRoutes(server.Router())
 
 	// Notification handler
-	notificationHandler := handlers.NewNotificationHandler(f.NotificationService(), sessionManager, cfg)
+	notificationHandler := handlers.NewNotificationHandler(
+		f.NotificationService(),
+		f.FreightRequestSubscriptionsProjection(),
+		sessionManager,
+		cfg,
+	)
 	notificationHandler.RegisterRoutes(server.Router())
 	if cfg.Telegram.BotUsername != "" {
 		slog.Info("telegram notifications enabled", slog.String("bot", cfg.Telegram.BotUsername))

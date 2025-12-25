@@ -150,14 +150,29 @@ func (p *NotificationPreferencesProjection) UpdateCategories(ctx context.Context
 	return nil
 }
 
-// ConnectTelegram подключает Telegram аккаунт
+// ConnectTelegram подключает Telegram аккаунт и включает telegram для всех категорий
 func (p *NotificationPreferencesProjection) ConnectTelegram(ctx context.Context, memberID uuid.UUID, chatID int64, username string) error {
 	now := time.Now()
 
 	// Сначала убедимся, что запись существует
-	_, err := p.GetOrCreateByMemberID(ctx, memberID)
+	pref, err := p.GetOrCreateByMemberID(ctx, memberID)
 	if err != nil {
 		return fmt.Errorf("failed to ensure preferences exist: %w", err)
+	}
+
+	// Получаем текущие категории и включаем telegram для всех
+	categories, err := pref.ParseEnabledCategories()
+	if err != nil {
+		// Если ошибка парсинга - используем дефолтные
+		categories = values.DefaultEnabledCategories()
+	}
+
+	// Включаем telegram для всех категорий
+	categories.EnableTelegramForAll()
+
+	categoriesJSON, err := json.Marshal(categories)
+	if err != nil {
+		return fmt.Errorf("failed to marshal categories: %w", err)
 	}
 
 	query, args, err := p.psql.
@@ -165,6 +180,7 @@ func (p *NotificationPreferencesProjection) ConnectTelegram(ctx context.Context,
 		Set("telegram_chat_id", chatID).
 		Set("telegram_username", username).
 		Set("telegram_connected_at", now).
+		Set("enabled_categories", categoriesJSON).
 		Set("updated_at", now).
 		Where(squirrel.Eq{"member_id": memberID}).
 		ToSql()

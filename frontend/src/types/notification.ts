@@ -145,3 +145,14 @@ export function getCategoryByType(type: NotificationType): NotificationCategory 
       return 'organization'
   }
 }
+
+// Подписка на заявки
+export interface FreightRequestSubscription {
+  origin_country_ids?: number[]
+  destination_country_ids?: number[]
+  cargo_types?: string[]
+  min_weight?: number
+  max_weight?: number
+  body_types?: string[]
+  unsubscribed: boolean
+}

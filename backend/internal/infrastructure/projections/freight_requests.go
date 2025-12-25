@@ -3,12 +3,14 @@ package projections
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type FreightRequestsProjection struct {
@@ -213,11 +215,12 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 // OfferListItem represents minimal data for listing
 // Full data is loaded from FreightRequest aggregate when needed
 type OfferListItem struct {
-	ID               uuid.UUID `json:"id"`
-	FreightRequestID uuid.UUID `json:"freight_request_id"`
-	CarrierOrgID     uuid.UUID `json:"carrier_org_id"`
-	Status           string    `json:"status"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID               uuid.UUID  `json:"id"`
+	FreightRequestID uuid.UUID  `json:"freight_request_id"`
+	CarrierOrgID     uuid.UUID  `json:"carrier_org_id"`
+	CarrierMemberID  *uuid.UUID `json:"carrier_member_id,omitempty"`
+	Status           string     `json:"status"`
+	CreatedAt        time.Time  `json:"created_at"`
 }
 
 type OfferFilterOption func(squirrel.SelectBuilder) squirrel.SelectBuilder
@@ -267,7 +270,7 @@ func WithOfferStatusAlias(status string) OfferFilterOption {
 
 func (p *FreightRequestsProjection) GetOfferByID(ctx context.Context, id uuid.UUID) (*OfferListItem, error) {
 	query, args, err := p.psql.
-		Select("id", "freight_request_id", "carrier_org_id", "status", "created_at").
+		Select("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").
 		From("offers_lookup").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -280,9 +283,13 @@ func (p *FreightRequestsProjection) GetOfferByID(ctx context.Context, id uuid.UU
 		&item.ID,
 		&item.FreightRequestID,
 		&item.CarrierOrgID,
+		&item.CarrierMemberID,
 		&item.Status,
 		&item.CreatedAt,
 	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("get offer: %w", err)
 	}
 
@@ -291,7 +298,7 @@ func (p *FreightRequestsProjection) GetOfferByID(ctx context.Context, id uuid.UU
 
 func (p *FreightRequestsProjection) ListOffers(ctx context.Context, opts ...OfferFilterOption) ([]OfferListItem, error) {
 	builder := p.psql.
-		Select("id", "freight_request_id", "carrier_org_id", "status", "created_at").
+		Select("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").
 		From("offers_lookup").
 		OrderBy("created_at DESC")
 
@@ -317,6 +324,7 @@ func (p *FreightRequestsProjection) ListOffers(ctx context.Context, opts ...Offe
 			&item.ID,
 			&item.FreightRequestID,
 			&item.CarrierOrgID,
+			&item.CarrierMemberID,
 			&item.Status,
 			&item.CreatedAt,
 		); err != nil {

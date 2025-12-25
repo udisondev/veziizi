@@ -228,11 +228,9 @@ func (o *Order) RemoveDocument(removerOrgID, removerMemberID uuid.UUID, document
 	if !o.IsResponsibleMember(removerOrgID, removerMemberID) {
 		return ErrNotResponsibleMember
 	}
-	doc, ok := o.documents[documentID]
-	if !ok {
+	if _, ok := o.documents[documentID]; !ok {
 		return ErrDocumentNotFound
 	}
-	_ = doc
 
 	o.Apply(events.DocumentRemoved{
 		BaseEvent:  eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),

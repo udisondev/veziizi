@@ -152,6 +152,12 @@ const router = createRouter({
       component: () => import('@/views/NotificationSettingsView.vue'),
       meta: { title: 'Настройки уведомлений' },
     },
+    {
+      path: '/notifications/subscriptions',
+      name: 'freight-request-subscriptions',
+      component: () => import('@/views/FreightRequestSubscriptionView.vue'),
+      meta: { title: 'Подписка на заявки' },
+    },
 
     // Admin routes
     {

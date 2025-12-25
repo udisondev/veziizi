@@ -61,15 +61,19 @@ func (h *TelegramSenderHandler) Handle(msg *message.Message) error {
 			slog.String("member_id", notification.MemberID.String()),
 			slog.String("error", err.Error()))
 
-		// Логируем ошибку доставки (не блокируем обработку)
+		// Логируем ошибку доставки
 		if h.deliveryLog != nil {
-			_ = h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
+			if logErr := h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
 				MemberID:         notification.MemberID,
 				NotificationType: "telegram",
 				Channel:          "telegram",
 				Status:           "failed",
 				ErrorMessage:     err.Error(),
-			})
+			}); logErr != nil {
+				slog.Error("failed to log delivery failure",
+					slog.String("member_id", notification.MemberID.String()),
+					slog.String("error", logErr.Error()))
+			}
 		}
 
 		// Возвращаем ошибку для retry
@@ -82,12 +86,16 @@ func (h *TelegramSenderHandler) Handle(msg *message.Message) error {
 
 	// Логируем успешную доставку
 	if h.deliveryLog != nil {
-		_ = h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
+		if err := h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
 			MemberID:         notification.MemberID,
 			NotificationType: "telegram",
 			Channel:          "telegram",
 			Status:           "sent",
-		})
+		}); err != nil {
+			slog.Error("failed to log successful delivery",
+				slog.String("member_id", notification.MemberID.String()),
+				slog.String("error", err.Error()))
+		}
 	}
 
 	return nil

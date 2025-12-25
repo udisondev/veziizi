@@ -39,7 +39,7 @@ import {
 } from '@/components/shared'
 
 // Icons
-import { Plus, Clock, Building2, Package } from 'lucide-vue-next'
+import { Plus, Clock, Building2, Package, Bell } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -163,6 +163,10 @@ function goToCreate() {
   router.push('/freight-requests/new')
 }
 
+function goToSubscriptions() {
+  router.push('/notifications/subscriptions')
+}
+
 function formatPrice(amount?: number, currency?: string): string {
   if (!amount || !currency) return '—'
   const value = amount / 100
@@ -218,6 +222,11 @@ onMounted(() => {
     <!-- Header -->
     <PageHeader title="Заявки на перевозку" class="mb-6">
       <template #actions>
+        <!-- Subscription Bell -->
+        <Button variant="outline" size="icon" @click="goToSubscriptions" title="Настроить подписку на заявки">
+          <Bell class="h-4 w-4" />
+        </Button>
+
         <!-- Filters Sheet -->
         <FilterSheet
           v-model:open="showFilters"

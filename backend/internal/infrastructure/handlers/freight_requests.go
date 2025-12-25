@@ -238,8 +238,8 @@ func (h *FreightRequestsHandler) onExpired(ctx context.Context, e events.Freight
 func (h *FreightRequestsHandler) onOfferMade(ctx context.Context, e events.OfferMade) error {
 	query, args, err := h.psql.
 		Insert("offers_lookup").
-		Columns("id", "freight_request_id", "carrier_org_id", "status", "created_at").
-		Values(e.OfferID, e.AggregateID(), e.CarrierOrgID, values.OfferStatusPending.String(), e.OccurredAt()).
+		Columns("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").
+		Values(e.OfferID, e.AggregateID(), e.CarrierOrgID, e.CarrierMemberID, values.OfferStatusPending.String(), e.OccurredAt()).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert query: %w", err)
