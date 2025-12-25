@@ -1,0 +1,58 @@
+# Air configuration for hot-reload of ALL backend services
+# https://github.com/air-verse/air
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Build all backend binaries
+  cmd = """
+go build -o ./tmp/api ./backend/cmd/api && \
+go build -o ./tmp/worker-members ./backend/cmd/workers/members && \
+go build -o ./tmp/worker-invitations ./backend/cmd/workers/invitations && \
+go build -o ./tmp/worker-pending-organizations ./backend/cmd/workers/pending-organizations && \
+go build -o ./tmp/worker-organizations ./backend/cmd/workers/organizations && \
+go build -o ./tmp/worker-freight-requests ./backend/cmd/workers/freight-requests && \
+go build -o ./tmp/worker-orders ./backend/cmd/workers/orders && \
+go build -o ./tmp/worker-order-creator ./backend/cmd/workers/order-creator && \
+go build -o ./tmp/worker-review-receiver ./backend/cmd/workers/review-receiver && \
+go build -o ./tmp/worker-review-analyzer ./backend/cmd/workers/review-analyzer && \
+go build -o ./tmp/worker-reviews-projection ./backend/cmd/workers/reviews-projection && \
+go build -o ./tmp/worker-review-activator ./backend/cmd/workers/review-activator && \
+go build -o ./tmp/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler && \
+go build -o ./tmp/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer && \
+go build -o ./tmp/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher && \
+go build -o ./tmp/worker-telegram-sender ./backend/cmd/workers/telegram-sender && \
+go build -o ./tmp/telegram-bot ./backend/cmd/telegram-bot
+"""
+  # Script that runs all processes
+  bin = "./scripts/run-backend.sh"
+  # Watch these file extensions
+  include_ext = ["go"]
+  # Include only backend directory
+  include_dir = ["backend"]
+  # Exclude directories
+  exclude_dir = ["tmp", "vendor", "frontend", "node_modules", ".git"]
+  # Exclude test files
+  exclude_regex = ["_test.go"]
+  # Delay before rebuilding (ms)
+  delay = 1000
+  # Stop running old binary when build errors occur
+  stop_on_error = true
+  # Send interrupt signal before killing process
+  send_interrupt = true
+  # Delay after sending interrupt signal (ms)
+  kill_delay = 1000
+
+[log]
+  time = false
+  main_only = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true

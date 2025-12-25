@@ -51,11 +51,11 @@ func (h *TelegramSenderHandler) Handle(msg *message.Message) error {
 		link = baseURL + notification.Link
 	}
 
-	// Форматируем сообщение
-	text := notifications.FormatNotification(notification.Title, notification.Body, link)
+	// Форматируем сообщение (без ссылки — она в кнопке)
+	text := notifications.FormatNotification(notification.Title, notification.Body)
 
-	// Отправляем
-	if err := h.client.SendMessage(notification.ChatID, text); err != nil {
+	// Отправляем с inline кнопкой
+	if err := h.client.SendMessageWithButton(notification.ChatID, text, "Открыть в приложении", link); err != nil {
 		slog.Error("failed to send telegram message",
 			slog.Int64("chat_id", notification.ChatID),
 			slog.String("member_id", notification.MemberID.String()),
