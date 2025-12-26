@@ -164,7 +164,7 @@ function goToCreate() {
 }
 
 function goToSubscriptions() {
-  router.push('/notifications/subscriptions')
+  router.push('/subscriptions')
 }
 
 function formatPrice(amount?: number, currency?: string): string {

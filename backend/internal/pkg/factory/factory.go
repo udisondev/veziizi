@@ -128,8 +128,9 @@ type Factory struct {
 	telegramLinkProjection *projections.TelegramLinkProjection
 	telegramLinkOnce       sync.Once
 
-	frSubscriptionsProjection *projections.FreightRequestSubscriptionsProjection
-	frSubscriptionsOnce       sync.Once
+	// Проекция подписок на заявки (opt-in модель)
+	freightSubscriptionsProjection *projections.FreightSubscriptionsProjection
+	freightSubscriptionsOnce       sync.Once
 
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
@@ -455,11 +456,12 @@ func (f *Factory) TelegramLinkProjection() *projections.TelegramLinkProjection {
 	return f.telegramLinkProjection
 }
 
-func (f *Factory) FreightRequestSubscriptionsProjection() *projections.FreightRequestSubscriptionsProjection {
-	f.frSubscriptionsOnce.Do(func() {
-		f.frSubscriptionsProjection = projections.NewFreightRequestSubscriptionsProjection(f.DB())
+// FreightSubscriptionsProjection возвращает проекцию подписок на заявки (opt-in модель)
+func (f *Factory) FreightSubscriptionsProjection() *projections.FreightSubscriptionsProjection {
+	f.freightSubscriptionsOnce.Do(func() {
+		f.freightSubscriptionsProjection = projections.NewFreightSubscriptionsProjection(f.DB())
 	})
-	return f.frSubscriptionsProjection
+	return f.freightSubscriptionsProjection
 }
 
 // ============================================
@@ -512,8 +514,8 @@ func (f *Factory) NotificationRulesRegistry() *rules.Registry {
 			Members:         rules.NewMembersAdapter(f.MembersProjection()),
 		}
 
-		// Создаем resolver для подписок
-		subscriptionsResolver := rules.NewSubscriptionsAdapter(f.FreightRequestSubscriptionsProjection())
+		// Создаем matcher для подписок (opt-in модель)
+		subscriptionMatcher := rules.NewFreightSubscriptionsAdapter(f.FreightSubscriptionsProjection())
 
 		// Регистрируем правила FreightRequest
 		f.notificationRulesRegistry.Register(frRules.NewOfferMadeRule(deps))
@@ -522,7 +524,7 @@ func (f *Factory) NotificationRulesRegistry() *rules.Registry {
 		f.notificationRulesRegistry.Register(frRules.NewOfferConfirmedRule(deps))
 		f.notificationRulesRegistry.Register(frRules.NewOfferDeclinedRule(deps))
 		f.notificationRulesRegistry.Register(frRules.NewOfferWithdrawnRule(deps))
-		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCreatedRule(deps, subscriptionsResolver))
+		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCreatedRule(deps, subscriptionMatcher))
 
 		// Регистрируем правила Order
 		f.notificationRulesRegistry.Register(orderRules.NewOrderCreatedRule())

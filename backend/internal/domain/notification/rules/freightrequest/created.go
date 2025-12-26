@@ -38,16 +38,16 @@ var bodyTypeLabels = map[frValues.BodyType]string{
 
 // FreightRequestCreatedRule уведомляет подписчиков о новой заявке
 type FreightRequestCreatedRule struct {
-	deps               rules.Dependencies
-	subscriberResolver rules.SubscribedMembersResolver
+	deps                rules.Dependencies
+	subscriptionMatcher rules.SubscriptionMatcher
 }
 
 // NewFreightRequestCreatedRule создает правило
-// Если subscriberResolver nil - правило пропускает уведомления
-func NewFreightRequestCreatedRule(deps rules.Dependencies, subscriberResolver rules.SubscribedMembersResolver) *FreightRequestCreatedRule {
+// Если subscriptionMatcher nil - правило пропускает уведомления
+func NewFreightRequestCreatedRule(deps rules.Dependencies, subscriptionMatcher rules.SubscriptionMatcher) *FreightRequestCreatedRule {
 	return &FreightRequestCreatedRule{
-		deps:               deps,
-		subscriberResolver: subscriberResolver,
+		deps:                deps,
+		subscriptionMatcher: subscriptionMatcher,
 	}
 }
 
@@ -61,24 +61,28 @@ func (r *FreightRequestCreatedRule) Process(ctx context.Context, event eventstor
 		return nil, fmt.Errorf("unexpected event type: %T", event)
 	}
 
-	// Если resolver не настроен - пропускаем
-	if r.subscriberResolver == nil {
+	// Если matcher не настроен - пропускаем
+	if r.subscriptionMatcher == nil {
 		return nil, nil
 	}
 
-	// Формируем фильтр из данных заявки
-	filter := rules.SubscriptionFilter{}
-	if len(e.Route.Points) >= 2 {
-		filter.OriginCountryID = e.Route.Points[0].CountryID
-		filter.DestinationCountryID = e.Route.Points[len(e.Route.Points)-1].CountryID
+	// Формируем данные заявки для matching
+	matchData := frValues.FreightRequestMatchData{
+		CustomerMemberID: e.CustomerMemberID,
+		Route:            e.Route,
+		Cargo:            e.Cargo,
+		Payment:          e.Payment,
+		VehicleReqs:      e.VehicleRequirements,
 	}
-	filter.CargoType = e.Cargo.Type.String()
-	filter.CargoWeight = e.Cargo.Weight
 
-	// Получаем подписчиков
-	subscribers, err := r.subscriberResolver.GetSubscribedMembers(ctx, filter, e.CustomerMemberID)
+	// Находим подходящие подписки
+	matches, err := r.subscriptionMatcher.FindMatchingSubscriptions(ctx, matchData, e.CustomerMemberID)
 	if err != nil {
-		return nil, fmt.Errorf("get subscribed members: %w", err)
+		return nil, fmt.Errorf("find matching subscriptions: %w", err)
+	}
+
+	if len(matches) == 0 {
+		return nil, nil
 	}
 
 	// Формируем текст маршрута
@@ -89,20 +93,16 @@ func (r *FreightRequestCreatedRule) Process(ctx context.Context, event eventstor
 		routeText = fmt.Sprintf("%s → %s", from, to)
 	}
 
-	// Формируем подробное описание
-	title := fmt.Sprintf("Заявка #%d", e.RequestNumber)
-
-	var bodyParts []string
-
-	// Маршрут
-	if routeText != "" {
-		bodyParts = append(bodyParts, fmt.Sprintf("📍 %s", routeText))
-	}
-
 	// Груз: тип и вес
 	cargoLabel := cargoTypeLabels[e.Cargo.Type]
 	if cargoLabel == "" {
 		cargoLabel = e.Cargo.Type.String()
+	}
+
+	// Формируем body для уведомления
+	var bodyParts []string
+	if routeText != "" {
+		bodyParts = append(bodyParts, fmt.Sprintf("📍 %s", routeText))
 	}
 	bodyParts = append(bodyParts, fmt.Sprintf("📦 %s, %.1f т", cargoLabel, e.Cargo.Weight))
 
@@ -128,11 +128,15 @@ func (r *FreightRequestCreatedRule) Process(ctx context.Context, event eventstor
 	body := strings.Join(bodyParts, "\n")
 	link := fmt.Sprintf("/freight-requests/%s", e.AggregateID())
 
-	requests := make([]rules.NotificationRequest, 0, len(subscribers))
-	for _, sub := range subscribers {
+	// Формируем уведомления для каждой подходящей подписки
+	requests := make([]rules.NotificationRequest, 0, len(matches))
+	for _, match := range matches {
+		// Добавляем название подписки в заголовок
+		title := fmt.Sprintf("Заявка #%d (%s)", e.RequestNumber, match.SubscriptionName)
+
 		requests = append(requests, rules.NotificationRequest{
-			RecipientMemberID: sub.MemberID,
-			RecipientOrgID:    sub.OrganizationID,
+			RecipientMemberID: match.MemberID,
+			RecipientOrgID:    match.OrganizationID,
 			NotificationType:  values.TypeNewFreightRequest,
 			Title:             title,
 			Body:              body,

@@ -25,8 +25,9 @@ go build -o ./tmp/worker-notification-dispatcher ./backend/cmd/workers/notificat
 go build -o ./tmp/worker-telegram-sender ./backend/cmd/workers/telegram-sender && \
 go build -o ./tmp/telegram-bot ./backend/cmd/telegram-bot
 """
-  # Script that runs all processes
-  bin = "./scripts/run-backend.sh"
+  # Run all backend processes via goreman
+  bin = ""
+  full_bin = "goreman -f Procfile.backend start"
   # Watch these file extensions
   include_ext = ["go"]
   # Include only backend directory

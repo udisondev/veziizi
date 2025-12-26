@@ -3,63 +3,28 @@ package rules
 import (
 	"context"
 
+	frValues "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/values"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
 )
 
-// SubscribedMembersResolver находит подписчиков для уведомлений о заявках
-type SubscribedMembersResolver interface {
-	GetSubscribedMembers(ctx context.Context, filter SubscriptionFilter, excludeMemberID uuid.UUID) ([]SubscriberResult, error)
+// SubscriptionMatcher находит подписки, соответствующие заявке (opt-in модель)
+type SubscriptionMatcher interface {
+	FindMatchingSubscriptions(ctx context.Context, data frValues.FreightRequestMatchData, excludeMemberID uuid.UUID) ([]frValues.MatchedSubscription, error)
 }
 
-// SubscriptionFilter фильтры для matching подписок
-type SubscriptionFilter struct {
-	OriginCountryID      *int
-	DestinationCountryID *int
-	CargoType            string
-	CargoWeight          float64
-	BodyTypes            []string
+// FreightSubscriptionsAdapter адаптирует FreightSubscriptionsProjection (opt-in модель)
+type FreightSubscriptionsAdapter struct {
+	projection *projections.FreightSubscriptionsProjection
 }
 
-// SubscriberResult результат поиска подписчика
-type SubscriberResult struct {
-	MemberID       uuid.UUID
-	OrganizationID uuid.UUID
+// NewFreightSubscriptionsAdapter создает адаптер
+func NewFreightSubscriptionsAdapter(projection *projections.FreightSubscriptionsProjection) *FreightSubscriptionsAdapter {
+	return &FreightSubscriptionsAdapter{projection: projection}
 }
 
-// SubscriptionsAdapter адаптирует FreightRequestSubscriptionsProjection
-type SubscriptionsAdapter struct {
-	projection *projections.FreightRequestSubscriptionsProjection
-}
-
-// NewSubscriptionsAdapter создает адаптер
-func NewSubscriptionsAdapter(projection *projections.FreightRequestSubscriptionsProjection) *SubscriptionsAdapter {
-	return &SubscriptionsAdapter{projection: projection}
-}
-
-func (a *SubscriptionsAdapter) GetSubscribedMembers(ctx context.Context, filter SubscriptionFilter, excludeMemberID uuid.UUID) ([]SubscriberResult, error) {
-	// Конвертируем типы для projection
-	projFilter := projections.SubscriptionFilter{
-		OriginCountryID:      filter.OriginCountryID,
-		DestinationCountryID: filter.DestinationCountryID,
-		CargoType:            filter.CargoType,
-		CargoWeight:          filter.CargoWeight,
-		BodyTypes:            filter.BodyTypes,
-	}
-
-	subs, err := a.projection.GetSubscribedMembers(ctx, projFilter, excludeMemberID)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]SubscriberResult, len(subs))
-	for i, sub := range subs {
-		result[i] = SubscriberResult{
-			MemberID:       sub.MemberID,
-			OrganizationID: sub.OrganizationID,
-		}
-	}
-	return result, nil
+func (a *FreightSubscriptionsAdapter) FindMatchingSubscriptions(ctx context.Context, data frValues.FreightRequestMatchData, excludeMemberID uuid.UUID) ([]frValues.MatchedSubscription, error) {
+	return a.projection.FindMatchingSubscriptions(ctx, data, excludeMemberID)
 }
 
 // FreightRequestsAdapter адаптирует FreightRequestsProjection к FreightRequestGetter

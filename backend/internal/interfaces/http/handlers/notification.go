@@ -8,7 +8,6 @@ import (
 
 	notifApp "codeberg.org/udison/veziizi/backend/internal/application/notification"
 	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
 	"github.com/google/uuid"
@@ -16,23 +15,20 @@ import (
 )
 
 type NotificationHandler struct {
-	service       *notifApp.Service
-	subscriptions *projections.FreightRequestSubscriptionsProjection
-	session       *session.Manager
-	botUsername   string
+	service     *notifApp.Service
+	session     *session.Manager
+	botUsername string
 }
 
 func NewNotificationHandler(
 	service *notifApp.Service,
-	subscriptions *projections.FreightRequestSubscriptionsProjection,
 	session *session.Manager,
 	cfg *config.Config,
 ) *NotificationHandler {
 	return &NotificationHandler{
-		service:       service,
-		subscriptions: subscriptions,
-		session:       session,
-		botUsername:   cfg.Telegram.BotUsername,
+		service:     service,
+		session:     session,
+		botUsername: cfg.Telegram.BotUsername,
 	}
 }
 
@@ -46,10 +42,6 @@ func (h *NotificationHandler) RegisterRoutes(r *mux.Router) {
 	// Preferences
 	r.HandleFunc("/api/v1/notifications/preferences", h.GetPreferences).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/notifications/preferences", h.UpdatePreferences).Methods(http.MethodPatch)
-
-	// Subscriptions (подписки на заявки)
-	r.HandleFunc("/api/v1/notifications/subscriptions", h.GetSubscription).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/notifications/subscriptions", h.UpdateSubscription).Methods(http.MethodPatch)
 
 	// Telegram (привязка через бота)
 	r.HandleFunc("/api/v1/notifications/telegram/link-code", h.GenerateLinkCode).Methods(http.MethodPost)
@@ -276,105 +268,6 @@ func (h *NotificationHandler) DisconnectTelegram(w http.ResponseWriter, r *http.
 	}
 
 	slog.Info("telegram disconnected", slog.String("member_id", memberID.String()))
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ===============================
-// Subscriptions (подписки на заявки)
-// ===============================
-
-// SubscriptionResponse представляет настройки подписки для API
-type SubscriptionResponse struct {
-	OriginCountryIDs      []int64  `json:"origin_country_ids,omitempty"`
-	DestinationCountryIDs []int64  `json:"destination_country_ids,omitempty"`
-	CargoTypes            []string `json:"cargo_types,omitempty"`
-	MinWeight             *float64 `json:"min_weight,omitempty"`
-	MaxWeight             *float64 `json:"max_weight,omitempty"`
-	BodyTypes             []string `json:"body_types,omitempty"`
-	Unsubscribed          bool     `json:"unsubscribed"`
-}
-
-func (h *NotificationHandler) GetSubscription(w http.ResponseWriter, r *http.Request) {
-	memberID, ok := h.session.GetMemberID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	sub, err := h.subscriptions.GetByMemberID(r.Context(), memberID)
-	if err != nil {
-		slog.Error("failed to get subscription",
-			slog.String("error", err.Error()),
-			slog.String("member_id", memberID.String()),
-		)
-		writeError(w, http.StatusInternalServerError, "failed to get subscription")
-		return
-	}
-
-	// Если подписки нет - возвращаем дефолтные настройки (подписан на всё)
-	if sub == nil {
-		writeJSON(w, http.StatusOK, SubscriptionResponse{
-			Unsubscribed: false,
-		})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, SubscriptionResponse{
-		OriginCountryIDs:      sub.OriginCountryIDs,
-		DestinationCountryIDs: sub.DestinationCountryIDs,
-		CargoTypes:            sub.CargoTypes,
-		MinWeight:             sub.MinWeight,
-		MaxWeight:             sub.MaxWeight,
-		BodyTypes:             sub.BodyTypes,
-		Unsubscribed:          sub.Unsubscribed,
-	})
-}
-
-type updateSubscriptionRequest struct {
-	OriginCountryIDs      []int64  `json:"origin_country_ids,omitempty"`
-	DestinationCountryIDs []int64  `json:"destination_country_ids,omitempty"`
-	CargoTypes            []string `json:"cargo_types,omitempty"`
-	MinWeight             *float64 `json:"min_weight,omitempty"`
-	MaxWeight             *float64 `json:"max_weight,omitempty"`
-	BodyTypes             []string `json:"body_types,omitempty"`
-	Unsubscribed          bool     `json:"unsubscribed"`
-}
-
-func (h *NotificationHandler) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
-	memberID, ok := h.session.GetMemberID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	var req updateSubscriptionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	sub := &projections.SubscriptionLookup{
-		MemberID:              memberID,
-		OriginCountryIDs:      req.OriginCountryIDs,
-		DestinationCountryIDs: req.DestinationCountryIDs,
-		CargoTypes:            req.CargoTypes,
-		MinWeight:             req.MinWeight,
-		MaxWeight:             req.MaxWeight,
-		BodyTypes:             req.BodyTypes,
-		Unsubscribed:          req.Unsubscribed,
-	}
-
-	if err := h.subscriptions.Upsert(r.Context(), sub); err != nil {
-		slog.Error("failed to update subscription",
-			slog.String("error", err.Error()),
-			slog.String("member_id", memberID.String()),
-		)
-		writeError(w, http.StatusInternalServerError, "failed to update subscription")
-		return
-	}
-
-	slog.Info("subscription updated", slog.String("member_id", memberID.String()))
 
 	w.WriteHeader(http.StatusNoContent)
 }

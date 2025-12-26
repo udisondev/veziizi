@@ -100,7 +100,6 @@ func main() {
 	// Notification handler
 	notificationHandler := handlers.NewNotificationHandler(
 		f.NotificationService(),
-		f.FreightRequestSubscriptionsProjection(),
 		sessionManager,
 		cfg,
 	)
@@ -108,6 +107,14 @@ func main() {
 	if cfg.Telegram.BotUsername != "" {
 		slog.Info("telegram notifications enabled", slog.String("bot", cfg.Telegram.BotUsername))
 	}
+
+	// Subscriptions handler (подписки на заявки)
+	subscriptionsHandler := handlers.NewSubscriptionsHandler(
+		f.FreightSubscriptionsProjection(),
+		f.GeoProjection(),
+		sessionManager,
+	)
+	subscriptionsHandler.RegisterRoutes(server.Router())
 
 	// Dev handler (only in development mode)
 	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
