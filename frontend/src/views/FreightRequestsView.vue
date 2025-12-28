@@ -1,18 +1,30 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { useFreightFiltersStore, type RoutePointFilter } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
+import { useToast } from '@/components/ui/toast/use-toast'
 import { freightRequestsApi } from '@/api/freightRequests'
-import type { FreightRequestListItem, FreightRequestStatus, FreightRequestStatusFilter, OwnershipFilter, Country, CountryFilter } from '@/types/freightRequest'
+import type {
+  FreightRequestListItem,
+  FreightRequestStatus,
+  FreightRequestStatusFilter,
+  OwnershipFilter,
+  CargoType,
+  BodyType,
+} from '@/types/freightRequest'
 import {
   cargoTypeLabels,
   bodyTypeLabels,
   currencyLabels,
+  countryLabels,
   ownershipOptions,
   statusOptions,
-  countryOptions,
-  countryLabels,
+  cargoTypeOptions,
+  bodyTypeOptions,
+  type Country,
 } from '@/types/freightRequest'
 
 // UI Components
@@ -37,32 +49,58 @@ import {
   ErrorBanner,
   FilterSheet,
 } from '@/components/shared'
+import { Separator } from '@/components/ui/separator'
+
+// Filter Components
+import { ChipButtonGroup, RangeInput } from '@/components/filters'
+import QuickSubscribeDialog from '@/components/subscriptions/QuickSubscribeDialog.vue'
+import SubscriptionRouteStep from '@/components/subscriptions/SubscriptionRouteStep.vue'
 
 // Icons
 import { Plus, Clock, Building2, Package, Bell } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
+const filtersStore = useFreightFiltersStore()
+const { toast } = useToast()
 const { canCreateFreightRequest } = usePermissions()
 
 const items = ref<FreightRequestListItem[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const showFilters = ref(false)
+const showSubscribeDialog = ref(false)
 
-// Filters (applied state)
-const ownershipFilter = ref<OwnershipFilter>('all')
-const statusFilter = ref<FreightRequestStatusFilter>('all')
-const orgNameFilter = ref('')
-const orgINNFilter = ref('')
-const orgCountryFilter = ref<CountryFilter>('all')
+// Get reactive refs from store
+const {
+  ownershipFilter,
+  statusFilter,
+  orgNameFilter,
+  orgINNFilter,
+  routePoints,
+  minWeight,
+  maxWeight,
+  minPrice,
+  maxPrice,
+  cargoTypes,
+  bodyTypes,
+  hasSubscriptionFilters,
+  hasActiveFilters,
+  activeFiltersCount,
+} = storeToRefs(filtersStore)
 
 // Temp filters for sheet
 const tempOwnership = ref<OwnershipFilter>('all')
 const tempStatus = ref<FreightRequestStatusFilter>('all')
 const tempOrgName = ref('')
 const tempOrgINN = ref('')
-const tempOrgCountry = ref<CountryFilter>('all')
+const tempRoutePoints = ref<RoutePointFilter[]>([])
+const tempMinWeight = ref<number | undefined>()
+const tempMaxWeight = ref<number | undefined>()
+const tempMinPrice = ref<number | undefined>()
+const tempMaxPrice = ref<number | undefined>()
+const tempCargoTypes = ref<CargoType[]>([])
+const tempBodyTypes = ref<BodyType[]>([])
 
 // Status map for StatusBadge
 const freightStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
@@ -73,58 +111,51 @@ const freightStatusMap: Record<string, { label: string; variant: 'default' | 'su
   expired: { label: 'Истекла', variant: 'secondary' },
 }
 
-// Computed
-const hasActiveFilters = computed(() =>
-  ownershipFilter.value !== 'all' ||
-  statusFilter.value !== 'all' ||
-  orgNameFilter.value !== '' ||
-  orgINNFilter.value !== '' ||
-  orgCountryFilter.value !== 'all'
-)
-
-const activeFiltersCount = computed(() => {
-  let count = 0
-  if (ownershipFilter.value !== 'all') count++
-  if (statusFilter.value !== 'all') count++
-  if (orgNameFilter.value !== '') count++
-  if (orgINNFilter.value !== '') count++
-  if (orgCountryFilter.value !== 'all') count++
-  return count
-})
-
 // Sheet functions
 function openFilters() {
   tempOwnership.value = ownershipFilter.value
   tempStatus.value = statusFilter.value
   tempOrgName.value = orgNameFilter.value
   tempOrgINN.value = orgINNFilter.value
-  tempOrgCountry.value = orgCountryFilter.value
+  tempRoutePoints.value = routePoints.value.map(rp => ({ ...rp }))
+  tempMinWeight.value = minWeight.value
+  tempMaxWeight.value = maxWeight.value
+  tempMinPrice.value = minPrice.value
+  tempMaxPrice.value = maxPrice.value
+  tempCargoTypes.value = [...cargoTypes.value]
+  tempBodyTypes.value = [...bodyTypes.value]
   showFilters.value = true
 }
 
 function applyFilters() {
-  ownershipFilter.value = tempOwnership.value
-  statusFilter.value = tempStatus.value
-  orgNameFilter.value = tempOrgName.value
-  orgINNFilter.value = tempOrgINN.value
-  orgCountryFilter.value = tempOrgCountry.value
+  filtersStore.setFilters({
+    ownership: tempOwnership.value,
+    status: tempStatus.value,
+    orgName: tempOrgName.value,
+    orgINN: tempOrgINN.value,
+    routePoints: tempRoutePoints.value.map(rp => ({ ...rp })),
+    minWeight: tempMinWeight.value,
+    maxWeight: tempMaxWeight.value,
+    minPrice: tempMinPrice.value,
+    maxPrice: tempMaxPrice.value,
+    cargoTypes: [...tempCargoTypes.value],
+    bodyTypes: [...tempBodyTypes.value],
+  })
   showFilters.value = false
 }
 
-function resetFilters() {
+function resetTempFilters() {
   tempOwnership.value = 'all'
   tempStatus.value = 'all'
   tempOrgName.value = ''
   tempOrgINN.value = ''
-  tempOrgCountry.value = 'all'
-}
-
-function resetAllFilters() {
-  ownershipFilter.value = 'all'
-  statusFilter.value = 'all'
-  orgNameFilter.value = ''
-  orgINNFilter.value = ''
-  orgCountryFilter.value = 'all'
+  tempRoutePoints.value = []
+  tempMinWeight.value = undefined
+  tempMaxWeight.value = undefined
+  tempMinPrice.value = undefined
+  tempMaxPrice.value = undefined
+  tempCargoTypes.value = []
+  tempBodyTypes.value = []
 }
 
 // Load data with filters
@@ -135,6 +166,7 @@ async function loadItems() {
   try {
     const params: Parameters<typeof freightRequestsApi.list>[0] = {}
 
+    // Basic filters
     if (ownershipFilter.value === 'my_org' && auth.organizationId) {
       params.customer_org_id = auth.organizationId
     } else if (ownershipFilter.value === 'my' && auth.memberId) {
@@ -144,7 +176,33 @@ async function loadItems() {
     if (statusFilter.value !== 'all') params.status = statusFilter.value as FreightRequestStatus
     if (orgNameFilter.value) params.org_name = orgNameFilter.value
     if (orgINNFilter.value) params.org_inn = orgINNFilter.value
-    if (orgCountryFilter.value !== 'all') params.org_country = orgCountryFilter.value as Country
+
+    // Extended filters
+    if (minWeight.value !== undefined) params.min_weight = minWeight.value
+    if (maxWeight.value !== undefined) params.max_weight = maxWeight.value
+    if (minPrice.value !== undefined) params.min_price = minPrice.value
+    if (maxPrice.value !== undefined) params.max_price = maxPrice.value
+    if (cargoTypes.value.length > 0) params.cargo_types = cargoTypes.value.join(',')
+    if (bodyTypes.value.length > 0) params.body_types = bodyTypes.value.join(',')
+
+    // Route filter - extract city IDs and country IDs from route points
+    if (routePoints.value.length > 0) {
+      // Points with city selected -> filter by city
+      const cityIds = routePoints.value
+        .filter(rp => rp.cityId !== undefined)
+        .map(rp => rp.cityId)
+      if (cityIds.length > 0) {
+        params.route_city_ids = cityIds.join(',')
+      }
+
+      // Points with only country (no city) -> filter by country
+      const countryIds = routePoints.value
+        .filter(rp => rp.countryId !== undefined && rp.cityId === undefined)
+        .map(rp => rp.countryId)
+      if (countryIds.length > 0) {
+        params.route_country_ids = countryIds.join(',')
+      }
+    }
 
     items.value = await freightRequestsApi.list(params)
   } catch (e) {
@@ -163,8 +221,56 @@ function goToCreate() {
   router.push('/freight-requests/new')
 }
 
-function goToSubscriptions() {
-  router.push('/subscriptions')
+function handleBellClick() {
+  if (hasSubscriptionFilters.value) {
+    showSubscribeDialog.value = true
+  } else {
+    toast({
+      title: 'Настройте фильтры',
+      description: 'Откройте панель фильтров и задайте параметры для подписки',
+    })
+  }
+}
+
+// Get current filters for subscription dialog
+const currentSubscriptionFilters = computed(() => ({
+  routePoints: routePoints.value,
+  minWeight: minWeight.value,
+  maxWeight: maxWeight.value,
+  minPrice: minPrice.value,
+  maxPrice: maxPrice.value,
+  cargoTypes: cargoTypes.value,
+  bodyTypes: bodyTypes.value,
+}))
+
+// Route point management functions for temp state
+function addTempRoutePoint() {
+  const newId = `rp-${Date.now()}`
+  const order = tempRoutePoints.value.length
+  tempRoutePoints.value.push({
+    id: newId,
+    countryId: undefined,
+    cityId: undefined,
+    order,
+  })
+}
+
+function removeTempRoutePoint(id: string) {
+  tempRoutePoints.value = tempRoutePoints.value.filter(rp => rp.id !== id)
+  tempRoutePoints.value.forEach((rp, idx) => {
+    rp.order = idx
+  })
+}
+
+function updateTempRoutePoint(id: string, updates: Partial<RoutePointFilter>) {
+  const point = tempRoutePoints.value.find(rp => rp.id === id)
+  if (point) {
+    Object.assign(point, updates)
+  }
+}
+
+function reorderTempRoutePoints(points: RoutePointFilter[]) {
+  tempRoutePoints.value = points
 }
 
 function formatPrice(amount?: number, currency?: string): string {
@@ -208,8 +314,10 @@ function isExpiringSoon(expiresAt: string): boolean {
 
 // Watch filters and reload
 watch(
-  [ownershipFilter, statusFilter, orgNameFilter, orgINNFilter, orgCountryFilter],
-  () => loadItems()
+  [ownershipFilter, statusFilter, orgNameFilter, orgINNFilter, routePoints,
+   minWeight, maxWeight, minPrice, maxPrice, cargoTypes, bodyTypes],
+  () => loadItems(),
+  { deep: true }
 )
 
 onMounted(() => {
@@ -223,7 +331,13 @@ onMounted(() => {
     <PageHeader title="Заявки на перевозку" class="mb-6">
       <template #actions>
         <!-- Subscription Bell -->
-        <Button variant="outline" size="icon" @click="goToSubscriptions" title="Настроить подписку на заявки">
+        <Button
+          variant="outline"
+          size="icon"
+          :class="hasSubscriptionFilters ? 'text-primary border-primary' : ''"
+          @click="handleBellClick"
+          title="Подписаться на заявки по текущим фильтрам"
+        >
           <Bell class="h-4 w-4" />
         </Button>
 
@@ -234,7 +348,7 @@ onMounted(() => {
           description="Настройте параметры поиска заявок"
           @open="openFilters"
           @apply="applyFilters"
-          @reset="resetFilters"
+          @reset="resetTempFilters"
         >
           <!-- Ownership -->
           <div class="space-y-2">
@@ -292,24 +406,52 @@ onMounted(() => {
             />
           </div>
 
-          <!-- Country -->
-          <div class="space-y-2">
-            <Label>Страна</Label>
-            <Select v-model="tempOrgCountry">
-              <SelectTrigger>
-                <SelectValue placeholder="Все страны" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="opt in countryOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <!-- Route Points -->
+          <SubscriptionRouteStep
+            :route-points="tempRoutePoints"
+            @add-point="addTempRoutePoint"
+            @remove-point="removeTempRoutePoint"
+            @update-point="updateTempRoutePoint"
+            @reorder="reorderTempRoutePoints"
+          />
+
+          <Separator />
+
+          <!-- Weight Range -->
+          <RangeInput
+            :min-value="tempMinWeight"
+            :max-value="tempMaxWeight"
+            label="Вес груза, т"
+            :step="0.1"
+            @update:min-value="tempMinWeight = $event"
+            @update:max-value="tempMaxWeight = $event"
+          />
+
+          <!-- Price Range -->
+          <RangeInput
+            :min-value="tempMinPrice"
+            :max-value="tempMaxPrice"
+            label="Ставка, руб."
+            :step="1000"
+            @update:min-value="tempMinPrice = $event"
+            @update:max-value="tempMaxPrice = $event"
+          />
+
+          <!-- Cargo Types -->
+          <ChipButtonGroup
+            v-model="tempCargoTypes"
+            :options="cargoTypeOptions"
+            label="Типы груза"
+            empty-text="Не выбрано — все типы груза"
+          />
+
+          <!-- Body Types -->
+          <ChipButtonGroup
+            v-model="tempBodyTypes"
+            :options="bodyTypeOptions"
+            label="Типы кузова"
+            empty-text="Не выбрано — все типы кузова"
+          />
         </FilterSheet>
 
         <Button v-if="canCreateFreightRequest" @click="goToCreate">
@@ -338,12 +480,12 @@ onMounted(() => {
             <span v-if="ownershipFilter !== 'all' || statusFilter !== 'all' || orgNameFilter">, </span>
             ИНН: "{{ orgINNFilter }}"
           </span>
-          <span v-if="orgCountryFilter !== 'all'">
+          <span v-if="routePoints.length > 0">
             <span v-if="ownershipFilter !== 'all' || statusFilter !== 'all' || orgNameFilter || orgINNFilter">, </span>
-            Страна: {{ countryLabels[orgCountryFilter as Country] }}
+            Точек маршрута: {{ routePoints.length }}
           </span>
         </div>
-        <Button variant="ghost" size="sm" @click="resetAllFilters">
+        <Button variant="ghost" size="sm" @click="filtersStore.resetFilters">
           Сбросить
         </Button>
       </CardContent>
@@ -468,5 +610,12 @@ onMounted(() => {
         </CardContent>
       </Card>
     </div>
+
+    <!-- Quick Subscribe Dialog -->
+    <QuickSubscribeDialog
+      v-model:open="showSubscribeDialog"
+      :filters="currentSubscriptionFilters"
+      @success="showSubscribeDialog = false"
+    />
   </div>
 </template>

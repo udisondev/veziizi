@@ -352,6 +352,9 @@ export function useFreightRequestForm() {
         date_from: point.date_from,
       }
 
+      // Geo IDs for filtering
+      if (point.country_id) cleanedPoint.country_id = point.country_id
+      if (point.city_id) cleanedPoint.city_id = point.city_id
       if (point.coordinates) cleanedPoint.coordinates = point.coordinates
       if (point.date_to) cleanedPoint.date_to = point.date_to
       if (point.time_from) cleanedPoint.time_from = point.time_from

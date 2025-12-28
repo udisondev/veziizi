@@ -7,16 +7,10 @@ import type { FreightSubscription } from '@/types/subscription'
 
 // UI Components
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
 // Shared Components
-import { PageHeader, LoadingSpinner, BackLink, EmptyState } from '@/components/shared'
+import { PageHeader, LoadingSpinner, EmptyState } from '@/components/shared'
 
 // Subscription Components
 import SubscriptionCard from '@/components/subscriptions/SubscriptionCard.vue'
@@ -66,9 +60,7 @@ onMounted(() => {
 
 <template>
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <BackLink to="/" label="К заявкам" class="mb-4" />
-
-    <PageHeader title="Мои подписки на заявки" class="mb-6">
+    <PageHeader title="Рассылка" class="mb-6">
       <template #actions>
         <Button v-if="canCreateMore" @click="openCreateForm">
           <Plus class="h-4 w-4 mr-2" />

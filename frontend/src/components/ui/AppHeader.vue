@@ -31,6 +31,7 @@ import {
   Package,
   ClipboardList,
   HandCoins,
+  Bell,
   Users,
   Settings,
   User,
@@ -50,6 +51,7 @@ const menuItems = computed(() => {
     { to: '/', label: 'Заявки', icon: Package },
     { to: '/orders', label: 'Заказы', icon: ClipboardList },
     { to: '/my-offers', label: 'Предложения', icon: HandCoins },
+    { to: '/subscriptions', label: 'Рассылка', icon: Bell },
     { to: '/members', label: 'Штат', icon: Users },
   ]
 
@@ -128,7 +130,7 @@ const userInitial = computed(() => {
           <!-- Desktop navigation -->
           <nav class="hidden md:flex items-center gap-1">
             <router-link
-              v-for="item in menuItems.slice(0, 4)"
+              v-for="item in menuItems.slice(0, 5)"
               :key="item.to"
               :to="item.to"
               :class="[

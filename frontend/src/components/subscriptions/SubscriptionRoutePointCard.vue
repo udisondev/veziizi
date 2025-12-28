@@ -106,6 +106,10 @@ async function handleCityInput(event: Event) {
   if (!props.point.countryId || value.length < 1) {
     cities.value = []
     isCityDropdownOpen.value = false
+    // Clear city selection when input is empty
+    if (props.point.cityId !== undefined) {
+      emit('update', { cityId: undefined, cityName: undefined })
+    }
     return
   }
 

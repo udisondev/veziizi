@@ -114,6 +114,10 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 		orgCountry = &country
 	}
 
+	// Extract city and country IDs from route for filtering
+	routeCityIDs := extractRouteCityIDs(e.Route)
+	routeCountryIDs := extractRouteCountryIDs(e.Route)
+
 	query, args, err := h.psql.
 		Insert("freight_requests_lookup").
 		Columns(
@@ -121,12 +125,14 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 			"origin_address", "destination_address", "route", "cargo_type", "cargo_weight",
 			"price_amount", "price_currency", "body_types",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
+			"route_city_ids", "route_country_ids",
 		).
 		Values(
 			e.AggregateID(), e.RequestNumber, e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
 			originAddr, destAddr, routeJSON, e.Cargo.Type.String(), e.Cargo.Weight,
 			priceAmount, priceCurrency, bodyTypes,
 			orgName, orgINN, orgCountry, e.CustomerMemberID,
+			routeCityIDs, routeCountryIDs,
 		).
 		ToSql()
 	if err != nil {
@@ -158,6 +164,26 @@ func extractBodyTypes(types []values.BodyType) []string {
 	return result
 }
 
+func extractRouteCityIDs(route values.Route) []int {
+	var ids []int
+	for _, p := range route.Points {
+		if p.CityID != nil {
+			ids = append(ids, *p.CityID)
+		}
+	}
+	return ids
+}
+
+func extractRouteCountryIDs(route values.Route) []int {
+	var ids []int
+	for _, p := range route.Points {
+		if p.CountryID != nil {
+			ids = append(ids, *p.CountryID)
+		}
+	}
+	return ids
+}
+
 func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.FreightRequestUpdated) error {
 	// Update display columns if relevant data changed
 	builder := h.psql.Update("freight_requests_lookup").Where(squirrel.Eq{"id": e.AggregateID()})
@@ -169,7 +195,14 @@ func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.Freight
 		if err != nil {
 			return fmt.Errorf("marshal route: %w", err)
 		}
-		builder = builder.Set("origin_address", originAddr).Set("destination_address", destAddr).Set("route", routeJSON)
+		routeCityIDs := extractRouteCityIDs(*e.Route)
+		routeCountryIDs := extractRouteCountryIDs(*e.Route)
+		builder = builder.
+			Set("origin_address", originAddr).
+			Set("destination_address", destAddr).
+			Set("route", routeJSON).
+			Set("route_city_ids", routeCityIDs).
+			Set("route_country_ids", routeCountryIDs)
 		hasUpdates = true
 	}
 

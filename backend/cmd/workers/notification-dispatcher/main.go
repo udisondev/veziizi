@@ -110,7 +110,7 @@ func main() {
 	// Add handler for each topic
 	for _, topic := range topics {
 		handlerName := fmt.Sprintf("%s_%s_handler", workerName, topic)
-		router.AddNoPublisherHandler(handlerName, topic, subscriber, handler.Handle)
+		router.AddConsumerHandler(handlerName, topic, subscriber, handler.Handle)
 	}
 
 	go func() {

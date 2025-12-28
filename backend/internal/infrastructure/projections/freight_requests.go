@@ -107,6 +107,101 @@ func WithRequestNumber(num int64) FilterOption {
 	}
 }
 
+// Extended filter options for subscription-like filtering
+
+func WithMinWeight(weight float64) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.GtOrEq{"cargo_weight": weight})
+	}
+}
+
+func WithMaxWeight(weight float64) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"cargo_weight": weight})
+	}
+}
+
+func WithMinPrice(price int64) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.GtOrEq{"price_amount": price})
+	}
+}
+
+func WithMaxPrice(price int64) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"price_amount": price})
+	}
+}
+
+func WithCargoType(cargoType string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"cargo_type": cargoType})
+	}
+}
+
+func WithCargoTypes(types []string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(types) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"cargo_type": types})
+	}
+}
+
+func WithBodyTypes(types []string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(types) == 0 {
+			return b
+		}
+		// body_types is an array, use && operator for overlap check
+		return b.Where("body_types && ?::text[]", fmt.Sprintf("{%s}", joinStrings(types)))
+	}
+}
+
+// joinStrings joins strings with comma for PostgreSQL array literal
+func joinStrings(s []string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	result := s[0]
+	for i := 1; i < len(s); i++ {
+		result += "," + s[i]
+	}
+	return result
+}
+
+// joinInts joins integers with comma for PostgreSQL array literal
+func joinInts(nums []int) string {
+	if len(nums) == 0 {
+		return ""
+	}
+	result := fmt.Sprintf("%d", nums[0])
+	for i := 1; i < len(nums); i++ {
+		result += fmt.Sprintf(",%d", nums[i])
+	}
+	return result
+}
+
+func WithRouteCities(cityIDs []int) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(cityIDs) == 0 {
+			return b
+		}
+		// route_city_ids is an array, use @> operator to check that ALL specified cities are in route
+		return b.Where("route_city_ids @> ?::integer[]", fmt.Sprintf("{%s}", joinInts(cityIDs)))
+	}
+}
+
+func WithRouteCountries(countryIDs []int) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(countryIDs) == 0 {
+			return b
+		}
+		// route_country_ids is an array, use @> operator to check that ALL specified countries are in route
+		return b.Where("route_country_ids @> ?::integer[]", fmt.Sprintf("{%s}", joinInts(countryIDs)))
+	}
+}
+
 func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (*FreightRequestListItem, error) {
 	query, args, err := p.psql.
 		Select(

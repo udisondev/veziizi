@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/freightrequest"
@@ -245,6 +247,59 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	if orgCountry := r.URL.Query().Get("org_country"); orgCountry != "" {
 		opts = append(opts, projections.WithOrgCountry(orgCountry))
+	}
+
+	// Extended filters for subscription-like filtering
+	if minWeight := r.URL.Query().Get("min_weight"); minWeight != "" {
+		if w, err := parseFloat(minWeight); err == nil {
+			opts = append(opts, projections.WithMinWeight(w))
+		}
+	}
+
+	if maxWeight := r.URL.Query().Get("max_weight"); maxWeight != "" {
+		if w, err := parseFloat(maxWeight); err == nil {
+			opts = append(opts, projections.WithMaxWeight(w))
+		}
+	}
+
+	if minPrice := r.URL.Query().Get("min_price"); minPrice != "" {
+		if p, err := parseInt64(minPrice); err == nil {
+			opts = append(opts, projections.WithMinPrice(p))
+		}
+	}
+
+	if maxPrice := r.URL.Query().Get("max_price"); maxPrice != "" {
+		if p, err := parseInt64(maxPrice); err == nil {
+			opts = append(opts, projections.WithMaxPrice(p))
+		}
+	}
+
+	if cargoTypes := r.URL.Query().Get("cargo_types"); cargoTypes != "" {
+		types := splitComma(cargoTypes)
+		if len(types) > 0 {
+			opts = append(opts, projections.WithCargoTypes(types))
+		}
+	}
+
+	if bodyTypes := r.URL.Query().Get("body_types"); bodyTypes != "" {
+		types := splitComma(bodyTypes)
+		if len(types) > 0 {
+			opts = append(opts, projections.WithBodyTypes(types))
+		}
+	}
+
+	if routeCityIDs := r.URL.Query().Get("route_city_ids"); routeCityIDs != "" {
+		ids := splitCommaInt(routeCityIDs)
+		if len(ids) > 0 {
+			opts = append(opts, projections.WithRouteCities(ids))
+		}
+	}
+
+	if routeCountryIDs := r.URL.Query().Get("route_country_ids"); routeCountryIDs != "" {
+		ids := splitCommaInt(routeCountryIDs)
+		if len(ids) > 0 {
+			opts = append(opts, projections.WithRouteCountries(ids))
+		}
 	}
 
 	// SEC-016: Валидированная пагинация
@@ -860,5 +915,48 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 		slog.Error("unhandled domain error", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")
 	}
+}
+
+// Helper functions for parsing query parameters
+
+func parseFloat(s string) (float64, error) {
+	return strconv.ParseFloat(s, 64)
+}
+
+func parseInt64(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 64)
+}
+
+func splitComma(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func splitCommaInt(s string) []int {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]int, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(trimmed); err == nil {
+			result = append(result, n)
+		}
+	}
+	return result
 }
 

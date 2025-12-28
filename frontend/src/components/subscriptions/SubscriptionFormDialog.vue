@@ -34,6 +34,9 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 
+// Filter Components
+import { ChipButtonGroup, RangeInput } from '@/components/filters'
+
 // Subscription Components
 import SubscriptionRouteStep from './SubscriptionRouteStep.vue'
 
@@ -138,16 +141,6 @@ function resetForm() {
   vatTypes.value = []
   isActive.value = true
   routePoints.value = []
-}
-
-// Toggle functions for chip buttons
-function toggleItem<T>(arr: T[], item: T) {
-  const index = arr.indexOf(item)
-  if (index === -1) {
-    arr.push(item)
-  } else {
-    arr.splice(index, 1)
-  }
 }
 
 // Route point management
@@ -280,77 +273,29 @@ function handleCancel() {
         <div class="space-y-4">
           <h4 class="font-medium">Числовые параметры</h4>
 
-          <!-- Weight -->
-          <div>
-            <Label class="text-sm">Вес груза, т</Label>
-            <div class="flex items-center gap-3 mt-1">
-              <Input
-                type="number"
-                v-model.number="minWeight"
-                placeholder="от"
-                min="0"
-                step="0.1"
-                class="flex-1"
-              />
-              <span class="text-muted-foreground">—</span>
-              <Input
-                type="number"
-                v-model.number="maxWeight"
-                placeholder="до"
-                min="0"
-                step="0.1"
-                class="flex-1"
-              />
-            </div>
-          </div>
+          <RangeInput
+            v-model:min-value="minWeight"
+            v-model:max-value="maxWeight"
+            label="Вес груза, т"
+            :min="0"
+            step="0.1"
+          />
 
-          <!-- Price -->
-          <div>
-            <Label class="text-sm">Ставка, руб.</Label>
-            <div class="flex items-center gap-3 mt-1">
-              <Input
-                type="number"
-                v-model.number="minPrice"
-                placeholder="от"
-                min="0"
-                step="1000"
-                class="flex-1"
-              />
-              <span class="text-muted-foreground">—</span>
-              <Input
-                type="number"
-                v-model.number="maxPrice"
-                placeholder="до"
-                min="0"
-                step="1000"
-                class="flex-1"
-              />
-            </div>
-          </div>
+          <RangeInput
+            v-model:min-value="minPrice"
+            v-model:max-value="maxPrice"
+            label="Ставка, руб."
+            :min="0"
+            step="1000"
+          />
 
-          <!-- Volume -->
-          <div>
-            <Label class="text-sm">Объём груза, м³</Label>
-            <div class="flex items-center gap-3 mt-1">
-              <Input
-                type="number"
-                v-model.number="minVolume"
-                placeholder="от"
-                min="0"
-                step="1"
-                class="flex-1"
-              />
-              <span class="text-muted-foreground">—</span>
-              <Input
-                type="number"
-                v-model.number="maxVolume"
-                placeholder="до"
-                min="0"
-                step="1"
-                class="flex-1"
-              />
-            </div>
-          </div>
+          <RangeInput
+            v-model:min-value="minVolume"
+            v-model:max-value="maxVolume"
+            label="Объём груза, м³"
+            :min="0"
+            step="1"
+          />
         </div>
 
         <Separator />
@@ -367,124 +312,44 @@ function handleCancel() {
         <Separator />
 
         <!-- Cargo Types -->
-        <div>
-          <Label class="text-sm font-medium mb-2 block">Типы груза</Label>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in cargoTypeOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
-                cargoTypes.includes(option.value)
-                  ? 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-200'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300',
-              ]"
-              @click="toggleItem(cargoTypes, option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-          <p v-if="!cargoTypes.length" class="text-xs text-muted-foreground mt-1">
-            Не выбрано — все типы груза
-          </p>
-        </div>
+        <ChipButtonGroup
+          v-model="cargoTypes"
+          :options="cargoTypeOptions"
+          label="Типы груза"
+          empty-text="Не выбрано — все типы груза"
+        />
 
         <!-- Body Types -->
-        <div>
-          <Label class="text-sm font-medium mb-2 block">Типы кузова</Label>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in bodyTypeOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
-                bodyTypes.includes(option.value)
-                  ? 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-200'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300',
-              ]"
-              @click="toggleItem(bodyTypes, option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-          <p v-if="!bodyTypes.length" class="text-xs text-muted-foreground mt-1">
-            Не выбрано — все типы кузова
-          </p>
-        </div>
+        <ChipButtonGroup
+          v-model="bodyTypes"
+          :options="bodyTypeOptions"
+          label="Типы кузова"
+          empty-text="Не выбрано — все типы кузова"
+        />
 
         <!-- Payment Methods -->
-        <div>
-          <Label class="text-sm font-medium mb-2 block">Способы оплаты</Label>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in paymentMethodOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
-                paymentMethods.includes(option.value)
-                  ? 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-200'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300',
-              ]"
-              @click="toggleItem(paymentMethods, option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-          <p v-if="!paymentMethods.length" class="text-xs text-muted-foreground mt-1">
-            Не выбрано — все способы
-          </p>
-        </div>
+        <ChipButtonGroup
+          v-model="paymentMethods"
+          :options="paymentMethodOptions"
+          label="Способы оплаты"
+          empty-text="Не выбрано — все способы"
+        />
 
         <!-- Payment Terms -->
-        <div>
-          <Label class="text-sm font-medium mb-2 block">Условия оплаты</Label>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in paymentTermsOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
-                paymentTerms.includes(option.value)
-                  ? 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-200'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300',
-              ]"
-              @click="toggleItem(paymentTerms, option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-          <p v-if="!paymentTerms.length" class="text-xs text-muted-foreground mt-1">
-            Не выбрано — все условия
-          </p>
-        </div>
+        <ChipButtonGroup
+          v-model="paymentTerms"
+          :options="paymentTermsOptions"
+          label="Условия оплаты"
+          empty-text="Не выбрано — все условия"
+        />
 
         <!-- VAT Types -->
-        <div>
-          <Label class="text-sm font-medium mb-2 block">НДС</Label>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in vatTypeOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
-                vatTypes.includes(option.value)
-                  ? 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-200'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300',
-              ]"
-              @click="toggleItem(vatTypes, option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-          <p v-if="!vatTypes.length" class="text-xs text-muted-foreground mt-1">
-            Не выбрано — все варианты
-          </p>
-        </div>
+        <ChipButtonGroup
+          v-model="vatTypes"
+          :options="vatTypeOptions"
+          label="НДС"
+          empty-text="Не выбрано — все варианты"
+        />
       </form>
 
       <DialogFooter>

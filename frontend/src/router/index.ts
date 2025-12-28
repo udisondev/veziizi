@@ -156,7 +156,7 @@ const router = createRouter({
       path: '/subscriptions',
       name: 'freight-subscriptions',
       component: () => import('@/views/FreightSubscriptionsView.vue'),
-      meta: { title: 'Подписки на заявки' },
+      meta: { title: 'Рассылка' },
     },
 
     // Admin routes

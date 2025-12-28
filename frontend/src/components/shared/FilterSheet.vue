@@ -61,15 +61,15 @@ function handleReset() {
         </span>
       </Button>
     </SheetTrigger>
-    <SheetContent side="right" class="w-full sm:max-w-md">
-      <SheetHeader>
+    <SheetContent side="right" class="w-full sm:max-w-md flex flex-col">
+      <SheetHeader class="flex-shrink-0">
         <SheetTitle>{{ title }}</SheetTitle>
         <SheetDescription v-if="description">{{ description }}</SheetDescription>
       </SheetHeader>
-      <div class="mt-6 space-y-6">
+      <div class="mt-6 flex-1 overflow-y-auto space-y-6 pl-1 pr-3">
         <slot />
       </div>
-      <SheetFooter class="mt-6 gap-2">
+      <SheetFooter class="mt-6 gap-2 flex-shrink-0">
         <Button variant="outline" @click="handleReset">
           <X class="mr-2 h-4 w-4" />
           Сбросить

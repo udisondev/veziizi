@@ -16,6 +16,15 @@ export interface FreightRequestListParams {
   org_name?: string
   org_inn?: string
   org_country?: string
+  // Extended filters (subscription-like)
+  min_weight?: number
+  max_weight?: number
+  min_price?: number
+  max_price?: number
+  cargo_types?: string  // comma-separated
+  body_types?: string   // comma-separated
+  route_city_ids?: string // comma-separated city IDs
+  route_country_ids?: string // comma-separated country IDs (for filtering by country without city)
   limit?: number
   offset?: number
 }
@@ -33,6 +42,16 @@ export const freightRequestsApi = {
     if (params?.org_name) searchParams.set('org_name', params.org_name)
     if (params?.org_inn) searchParams.set('org_inn', params.org_inn)
     if (params?.org_country) searchParams.set('org_country', params.org_country)
+    // Extended filters
+    if (params?.min_weight !== undefined) searchParams.set('min_weight', params.min_weight.toString())
+    if (params?.max_weight !== undefined) searchParams.set('max_weight', params.max_weight.toString())
+    if (params?.min_price !== undefined) searchParams.set('min_price', params.min_price.toString())
+    if (params?.max_price !== undefined) searchParams.set('max_price', params.max_price.toString())
+    if (params?.cargo_types) searchParams.set('cargo_types', params.cargo_types)
+    if (params?.body_types) searchParams.set('body_types', params.body_types)
+    if (params?.route_city_ids) searchParams.set('route_city_ids', params.route_city_ids)
+    if (params?.route_country_ids) searchParams.set('route_country_ids', params.route_country_ids)
+    // Pagination
     if (params?.limit) searchParams.set('limit', params.limit.toString())
     if (params?.offset) searchParams.set('offset', params.offset.toString())
 
