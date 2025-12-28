@@ -40,61 +40,54 @@ let map: L.Map | null = null
 let markersLayer: L.LayerGroup | null = null
 let polyline: L.Polyline | null = null
 
-// Inline стили для маркеров (CSS классы могут не работать с Leaflet divIcon)
-const markerPinStyle = `
-  width: 20px;
-  height: 20px;
-  border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
-  margin: 5px;
-`
+// Создание иконки маркера с номером точки
+function createMarkerIcon(point: RoutePoint, index: number): L.DivIcon {
+  const number = index + 1
+  let bgColor = '#9ca3af' // gray по умолчанию
+  let bgHtml = ''
 
-// Маркер только погрузка (синий)
-const loadingIcon = L.divIcon({
-  className: 'custom-marker',
-  html: `<div style="${markerPinStyle} background-color: #3b82f6;"></div>`,
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-})
-
-// Маркер только разгрузка (зелёный)
-const unloadingIcon = L.divIcon({
-  className: 'custom-marker',
-  html: `<div style="${markerPinStyle} background-color: #22c55e;"></div>`,
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-})
-
-// Маркер и погрузка и разгрузка (двухцветный)
-const dualIcon = L.divIcon({
-  className: 'custom-marker',
-  html: `<div style="${markerPinStyle} overflow: hidden; position: relative;">
-    <div style="position: absolute; left: 0; top: 0; width: 50%; height: 100%; background-color: #3b82f6;"></div>
-    <div style="position: absolute; right: 0; top: 0; width: 50%; height: 100%; background-color: #22c55e;"></div>
-  </div>`,
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-})
-
-// Маркер без типа (серый)
-const neutralIcon = L.divIcon({
-  className: 'custom-marker',
-  html: `<div style="${markerPinStyle} background-color: #9ca3af;"></div>`,
-  iconSize: [30, 30],
-  iconAnchor: [15, 30],
-})
-
-function getMarkerIcon(point: RoutePoint): L.DivIcon {
   if (point.is_loading && point.is_unloading) {
-    return dualIcon
+    // Двухцветный маркер
+    bgHtml = `
+      <div style="position: absolute; left: 0; top: 0; width: 50%; height: 100%; background-color: #3b82f6;"></div>
+      <div style="position: absolute; right: 0; top: 0; width: 50%; height: 100%; background-color: #22c55e;"></div>
+    `
+  } else if (point.is_loading) {
+    bgColor = '#3b82f6' // blue
+  } else if (point.is_unloading) {
+    bgColor = '#22c55e' // green
   }
-  if (point.is_loading) {
-    return loadingIcon
-  }
-  if (point.is_unloading) {
-    return unloadingIcon
-  }
-  return neutralIcon
+
+  const isDual = point.is_loading && point.is_unloading
+
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `
+      <div style="
+        width: 24px;
+        height: 24px;
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        margin: 3px;
+        ${isDual ? 'overflow: hidden; position: relative;' : `background-color: ${bgColor};`}
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+        ${bgHtml}
+        <span style="
+          transform: rotate(45deg);
+          color: white;
+          font-size: 12px;
+          font-weight: 600;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+          ${isDual ? 'position: relative; z-index: 1;' : ''}
+        ">${number}</span>
+      </div>
+    `,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+  })
 }
 
 function getPointTypeLabel(point: RoutePoint): string {
@@ -132,7 +125,7 @@ function updateMarkers() {
     const latLng = L.latLng(point.coordinates.latitude, point.coordinates.longitude)
     coords.push(latLng)
 
-    const icon = getMarkerIcon(point)
+    const icon = createMarkerIcon(point, index)
     const marker = L.marker(latLng, { icon })
 
     marker.bindPopup(`
