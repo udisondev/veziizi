@@ -1,6 +1,9 @@
 package values
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // RoutePoint represents a point in the route (can be loading, unloading, or both)
 type RoutePoint struct {
@@ -72,6 +75,42 @@ func NewRoute(points []RoutePoint) (Route, error) {
 	}
 	if !hasUnloading {
 		return Route{}, fmt.Errorf("route must have at least one unloading point")
+	}
+
+	// Validate dates sequence
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	var prevEndDate time.Time
+
+	for i, p := range points {
+		dateFrom, err := time.Parse("2006-01-02", p.DateFrom)
+		if err != nil {
+			return Route{}, fmt.Errorf("точка %d: неверный формат даты: %w", i+1, err)
+		}
+
+		// First point: must be >= today
+		if i == 0 {
+			if dateFrom.Before(today) {
+				return Route{}, fmt.Errorf("точка 1: дата не может быть в прошлом")
+			}
+		} else {
+			// Subsequent points: must be >= previous point's end date
+			if dateFrom.Before(prevEndDate) {
+				return Route{}, fmt.Errorf("точка %d: дата должна быть не раньше даты предыдущей точки", i+1)
+			}
+		}
+
+		// Determine end date for this point
+		prevEndDate = dateFrom
+		if p.DateTo != nil && *p.DateTo != "" {
+			dateTo, err := time.Parse("2006-01-02", *p.DateTo)
+			if err != nil {
+				return Route{}, fmt.Errorf("точка %d: неверный формат даты окончания: %w", i+1, err)
+			}
+			if dateTo.Before(dateFrom) {
+				return Route{}, fmt.Errorf("точка %d: дата окончания не может быть раньше даты начала", i+1)
+			}
+			prevEndDate = dateTo
+		}
 	}
 
 	return Route{Points: points}, nil

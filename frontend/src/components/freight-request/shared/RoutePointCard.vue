@@ -61,6 +61,7 @@ const isLastPoint = computed(() => props.index === props.totalPoints - 1)
 
 const locationError = computed(() => props.errors?.[`point_${props.index}_location`] || props.errors?.[`point_${props.index}_address`])
 const dateFromError = computed(() => props.errors?.[`point_${props.index}_date_from`])
+const dateToError = computed(() => props.errors?.[`point_${props.index}_date_to`])
 const contactNameError = computed(() => props.errors?.[`point_${props.index}_contact_name`])
 const contactPhoneError = computed(() => props.errors?.[`point_${props.index}_contact_phone`])
 
@@ -339,10 +340,13 @@ watch(() => [props.index, props.totalPoints], () => {
             <input
               type="date"
               :value="point.date_to || ''"
-              :class="inputClass"
+              :class="dateToError ? inputErrorClass : inputClass"
               placeholder="до (опционально)"
               @change="handleDateToChange"
             />
+            <p v-if="dateToError" class="mt-1 text-sm text-red-600">
+              {{ dateToError }}
+            </p>
           </div>
         </div>
       </div>

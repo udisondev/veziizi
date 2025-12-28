@@ -36,6 +36,35 @@ const validators = {
     if (!hasUnloading) return 'Добавьте точку разгрузки'
     return null
   },
+
+  dateNotInPast(value: string): string | null {
+    if (!value) return null
+    const date = new Date(value)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (date < today) {
+      return 'Дата не может быть в прошлом'
+    }
+    return null
+  },
+
+  dateSequence(currentDateFrom: string, prevDateTo: string | undefined, prevDateFrom: string): string | null {
+    if (!currentDateFrom || !prevDateFrom) return null
+    const current = new Date(currentDateFrom)
+    const prevEnd = prevDateTo ? new Date(prevDateTo) : new Date(prevDateFrom)
+    if (current < prevEnd) {
+      return 'Дата должна быть не раньше даты предыдущей точки'
+    }
+    return null
+  },
+
+  dateToAfterFrom(dateFrom: string, dateTo: string): string | null {
+    if (!dateFrom || !dateTo) return null
+    if (new Date(dateTo) < new Date(dateFrom)) {
+      return 'Дата окончания не может быть раньше даты начала'
+    }
+    return null
+  },
 }
 
 let uidCounter = 0
@@ -184,7 +213,30 @@ export function useFreightRequestForm() {
 
     for (const [i, point] of routePoints.value.entries()) {
       errors[`point_${i}_address`] = validators.required(point.address)
-      errors[`point_${i}_date_from`] = validators.required(point.date_from)
+
+      // Проверка date_from: обязательность
+      const dateFromRequired = validators.required(point.date_from)
+      if (dateFromRequired) {
+        errors[`point_${i}_date_from`] = dateFromRequired
+      } else {
+        // Первая точка: не в прошлом
+        if (i === 0) {
+          errors[`point_${i}_date_from`] = validators.dateNotInPast(point.date_from)
+        } else {
+          // Последующие точки: >= предыдущей
+          const prevPoint = routePoints.value[i - 1]
+          errors[`point_${i}_date_from`] = validators.dateSequence(
+            point.date_from,
+            prevPoint.date_to,
+            prevPoint.date_from
+          )
+        }
+      }
+
+      // Проверка date_to >= date_from
+      if (point.date_to && point.date_from) {
+        errors[`point_${i}_date_to`] = validators.dateToAfterFrom(point.date_from, point.date_to)
+      }
 
       // Если хотя бы одно поле контакта заполнено, оба обязательны
       const hasContactName = !!point.contact_name?.trim()
@@ -204,6 +256,7 @@ export function useFreightRequestForm() {
       (_, i) =>
         errors[`point_${i}_address`] ||
         errors[`point_${i}_date_from`] ||
+        errors[`point_${i}_date_to`] ||
         errors[`point_${i}_contact_name`] ||
         errors[`point_${i}_contact_phone`]
     )
@@ -391,7 +444,29 @@ export function useFreightRequestForm() {
         if (pointField === 'address') {
           errors[field] = validators.required(point.address)
         } else if (pointField === 'date_from') {
-          errors[field] = validators.required(point.date_from)
+          // Проверка обязательности
+          const reqError = validators.required(point.date_from)
+          if (reqError) {
+            errors[field] = reqError
+          } else if (index === 0) {
+            // Первая точка: не в прошлом
+            errors[field] = validators.dateNotInPast(point.date_from)
+          } else {
+            // Последующие точки: >= предыдущей
+            const prevPoint = routePoints.value[index - 1]
+            errors[field] = validators.dateSequence(
+              point.date_from,
+              prevPoint.date_to,
+              prevPoint.date_from
+            )
+          }
+        } else if (pointField === 'date_to') {
+          // date_to >= date_from
+          if (point.date_to && point.date_from) {
+            errors[field] = validators.dateToAfterFrom(point.date_from, point.date_to)
+          } else {
+            errors[field] = null
+          }
         } else if (pointField === 'contact_name' || pointField === 'contact_phone') {
           // Валидация контактов — оба поля обязательны если одно заполнено
           const hasContactName = !!point.contact_name?.trim()
