@@ -90,11 +90,6 @@ function handleDimensionInput(dimension: 'length' | 'width' | 'height', event: E
   updateField(dimension, value)
 }
 
-function handleRequiresAdrChange(event: Event) {
-  const checked = (event.target as HTMLInputElement).checked
-  updateField('requires_adr', checked)
-}
-
 function handleTemperatureInput(field: 'min' | 'max', event: Event) {
   const inputValue = (event.target as HTMLInputElement).value
   // Не обрабатываем если только минус (пользователь ещё вводит)
@@ -314,20 +309,6 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
           {{ errors.temperature }}
         </p>
       </div>
-    </div>
-
-    <!-- Requires ADR -->
-    <div class="flex items-center gap-3">
-      <input
-        id="requires_adr"
-        type="checkbox"
-        :checked="vehicle.requires_adr"
-        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-        @change="handleRequiresAdrChange"
-      />
-      <label for="requires_adr" class="text-sm text-gray-700">
-        Требуется сертификация ADR (перевозка опасных грузов)
-      </label>
     </div>
   </div>
 </template>

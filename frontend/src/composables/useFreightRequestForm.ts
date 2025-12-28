@@ -77,6 +77,7 @@ export function useFreightRequestForm() {
     volume: undefined,
     dimensions: undefined,
     quantity: undefined,
+    adr_class: undefined,
   })
 
   // Step 3: Vehicle
@@ -89,7 +90,6 @@ export function useFreightRequestForm() {
     length: undefined,
     width: undefined,
     height: undefined,
-    requires_adr: false,
     temperature: undefined,
   })
 
@@ -309,6 +309,7 @@ export function useFreightRequestForm() {
         cleanedCargo.dimensions = { length, width, height }
       }
     }
+    if (cargo.adr_class) cleanedCargo.adr_class = cargo.adr_class
 
     const cleanedVehicle: VehicleRequirements = {
       vehicle_type: vehicle.vehicle_type,
@@ -323,7 +324,6 @@ export function useFreightRequestForm() {
     if (vehicle.length) cleanedVehicle.length = vehicle.length
     if (vehicle.width) cleanedVehicle.width = vehicle.width
     if (vehicle.height) cleanedVehicle.height = vehicle.height
-    if (vehicle.requires_adr) cleanedVehicle.requires_adr = vehicle.requires_adr
     if (vehicle.temperature) cleanedVehicle.temperature = vehicle.temperature
 
     const cleanedPayment: Payment = {
@@ -457,6 +457,7 @@ export function useFreightRequestForm() {
       volume: undefined,
       dimensions: undefined,
       quantity: undefined,
+      adr_class: undefined,
     })
     Object.assign(vehicle, {
       vehicle_type: undefined,
@@ -467,7 +468,6 @@ export function useFreightRequestForm() {
       length: undefined,
       width: undefined,
       height: undefined,
-      requires_adr: false,
       temperature: undefined,
     })
     Object.assign(payment, {
@@ -503,6 +503,7 @@ export function useFreightRequestForm() {
       volume: fr.cargo.volume,
       dimensions: fr.cargo.dimensions ? { ...fr.cargo.dimensions } : undefined,
       quantity: fr.cargo.quantity,
+      adr_class: fr.cargo.adr_class,
     })
 
     // Vehicle
@@ -515,7 +516,6 @@ export function useFreightRequestForm() {
       length: fr.vehicle_requirements.length,
       width: fr.vehicle_requirements.width,
       height: fr.vehicle_requirements.height,
-      requires_adr: fr.vehicle_requirements.requires_adr || false,
       temperature: fr.vehicle_requirements.temperature ? { ...fr.vehicle_requirements.temperature } : undefined,
     })
 

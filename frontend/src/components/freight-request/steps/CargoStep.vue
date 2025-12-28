@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import type { CargoInfo } from '@/types/freightRequest'
+import type { CargoInfo, ADRClass } from '@/types/freightRequest'
+import { adrClassOptions } from '@/types/freightRequest'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface Props {
   cargo: CargoInfo
@@ -35,6 +43,10 @@ function handleVolumeInput(event: Event) {
 function handleQuantityInput(event: Event) {
   const value = parseInt((event.target as HTMLInputElement).value) || undefined
   updateField('quantity', value)
+}
+
+function handleAdrClassChange(value: ADRClass) {
+  updateField('adr_class', value === 'none' ? undefined : value)
 }
 
 function handleDimensionInput(dimension: 'length' | 'width' | 'height', event: Event) {
@@ -172,6 +184,29 @@ const inputClass = (field: string) => [
       />
       <p v-if="errors.quantity" class="mt-1 text-sm text-red-600">
         {{ errors.quantity }}
+      </p>
+    </div>
+
+    <!-- ADR Class -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Класс опасности груза
+      </label>
+      <Select
+        :model-value="cargo.adr_class || 'none'"
+        @update:model-value="handleAdrClassChange($event as ADRClass)"
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Не требуется" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="option in adrClassOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <p class="mt-1 text-sm text-gray-500">
+        Выберите класс, если груз относится к опасным
       </p>
     </div>
   </div>

@@ -755,10 +755,6 @@ onMounted(() => {
                     <dt class="text-sm text-muted-foreground">Высота</dt>
                     <dd class="text-foreground">{{ freightRequest.vehicle_requirements.height }} м</dd>
                   </div>
-                  <div v-if="freightRequest.vehicle_requirements.requires_adr">
-                    <dt class="text-sm text-muted-foreground">ADR</dt>
-                    <dd class="text-foreground">Требуется</dd>
-                  </div>
                   <div v-if="freightRequest.vehicle_requirements.temperature">
                     <dt class="text-sm text-muted-foreground">Температурный режим</dt>
                     <dd class="text-foreground">

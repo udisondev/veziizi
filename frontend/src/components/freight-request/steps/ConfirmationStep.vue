@@ -9,6 +9,7 @@ import {
   vatTypeLabels,
   paymentMethodLabels,
   paymentTermsLabels,
+  adrClassLabels,
 } from '@/types/freightRequest'
 import LeafletMap from '../shared/LeafletMap.vue'
 
@@ -193,6 +194,13 @@ function handleCommentInput(event: Event) {
           <dt class="text-gray-500">Количество:</dt>
           <dd class="text-gray-900">{{ requestData.cargo.quantity }} мест</dd>
         </template>
+
+        <template v-if="requestData.cargo.adr_class && requestData.cargo.adr_class !== 'none'">
+          <dt class="text-gray-500">Класс опасности:</dt>
+          <dd class="text-gray-900 text-orange-600 font-medium">
+            {{ adrClassLabels[requestData.cargo.adr_class] }}
+          </dd>
+        </template>
       </dl>
     </div>
 
@@ -239,11 +247,6 @@ function handleCommentInput(event: Event) {
           <dd class="text-gray-900">
             {{ requestData.vehicle_requirements.temperature.min }}°C — {{ requestData.vehicle_requirements.temperature.max }}°C
           </dd>
-        </template>
-
-        <template v-if="requestData.vehicle_requirements.requires_adr">
-          <dt class="text-gray-500">ADR:</dt>
-          <dd class="text-gray-900 text-orange-600 font-medium">Требуется</dd>
         </template>
       </dl>
     </div>
