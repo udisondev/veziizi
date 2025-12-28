@@ -151,6 +151,7 @@ export interface VehicleRequirements {
   height?: number
   requires_adr?: boolean
   temperature?: Temperature
+  thermograph?: boolean // устройство фиксации температуры в пути
 }
 
 export interface Money {

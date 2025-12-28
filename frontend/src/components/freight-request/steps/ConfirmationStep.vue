@@ -248,6 +248,11 @@ function handleCommentInput(event: Event) {
             {{ requestData.vehicle_requirements.temperature.min }}°C — {{ requestData.vehicle_requirements.temperature.max }}°C
           </dd>
         </template>
+
+        <template v-if="requestData.vehicle_requirements.thermograph">
+          <dt class="text-gray-500">Термописец:</dt>
+          <dd class="text-gray-900">Да</dd>
+        </template>
       </dl>
     </div>
 

@@ -72,8 +72,10 @@ go run ./backend/cmd/tools/backfill-freight-requests  # Backfill freight request
 Скопировать `.env.example` в `.env` перед запуском (или `make env-init`):
 ```
 DATABASE_URL=postgres://veziizi:veziizi@localhost:5432/veziizi?sslmode=disable
-SESSION_KEY=32-byte-key-for-sessions
-ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
+SESSION_SECRET=32-byte-key-for-sessions
+SESSION_ADMIN_SECRET=32-byte-key-for-admin-sessions
+TELEGRAM_BOT_TOKEN=your-bot-token  # Required for telegram-bot and telegram-sender
+APP_ENV=development                # development | production
 ```
 
 ## Architecture
@@ -95,6 +97,7 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 - Register events via `RegisterEventType[T](eventType)` for deserialization
 - `EventEnvelope` wraps events for storage with metadata
 - Optimistic locking via UNIQUE constraint on `(aggregate_id, version)`
+- Errors: `ErrAggregateNotFound`, `ErrConcurrentModification`, `ErrEventVersionConflict`
 
 **Factory** (`backend/internal/pkg/factory/`):
 - Lazy-initialized, thread-safe dependency container (sync.Once)
@@ -136,8 +139,14 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 | review-activator | scheduled (1 min) | - | Activate approved reviews after activation_date |
 | fraudster-handler | organization.events | fraudster_handler | Deactivate reviews when org marked as fraudster |
 | order-fraud-analyzer | order.events | order_fraud_analyzer | Detect order fraud: cancel patterns, ghost deliveries, circular orders |
-| notification-dispatcher | *.events | notification_dispatcher | Route domain events to notification channels |
+| notification-dispatcher | *.events | notification_dispatcher | Route domain events to notification channels via rules |
 | telegram-sender | notification.send | telegram_sender | Send notifications via Telegram |
+
+**Notification Rules** (`backend/internal/domain/notification/rules/`):
+- Rules convert domain events to notifications (in-app, telegram)
+- Each rule implements `Rule` interface: `EventType()`, `Handle(event, deps)`
+- Rules register in `registry.go` via `RegisterRule()`
+- Adapters (`adapters.go`) provide access to projections for context (e.g., member names)
 
 **Lookup Tables (Projections)**:
 - Store only ID + filter columns (status, org_id, etc.), no JSONB
@@ -195,6 +204,12 @@ ADMIN_SESSION_KEY=32-byte-key-for-admin-sessions
 8. `migrations/` — lookup table migration
 9. `pkg/factory/` — add service and projection getters
 
+**New Notification Rule:**
+1. Create `domain/notification/rules/<domain>/<event_name>.go`
+2. Implement `Rule` interface: `EventType() string`, `Handle(event, deps) error`
+3. Register in `rules/registry.go` via `RegisterRule(&MyRule{})`
+4. Use `deps` adapters to fetch context (member names, org info)
+
 ### Event Registration (ВАЖНО!)
 
 Workers **должны** импортировать events packages через blank import для регистрации типов событий:
@@ -232,5 +247,5 @@ npm run build         # Production build
 
 ## Project Status
 
-Current: Phase 6 (Rating Fraud Protection) — Completed. Phase 8 (Frontend) — In Progress.
+Current: Phase 7 (Notifications) — Completed. Phase 8 (Frontend) — In Progress.
 See `ROADMAP.md` for details.

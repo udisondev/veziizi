@@ -14,6 +14,7 @@ type VehicleRequirements struct {
 	Height         float64        `json:"height,omitempty"`
 	RequiresADR    bool           `json:"requires_adr,omitempty"`
 	Temperature    *Temperature   `json:"temperature,omitempty"`
+	Thermograph    bool           `json:"thermograph,omitempty"` // устройство фиксации температуры в пути
 }
 
 // Validate validates vehicle requirements

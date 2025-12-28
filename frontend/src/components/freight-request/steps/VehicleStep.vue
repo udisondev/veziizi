@@ -310,5 +310,19 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
         </p>
       </div>
     </div>
+
+    <!-- Thermograph checkbox -->
+    <div class="flex items-center gap-3">
+      <input
+        id="thermograph"
+        :checked="vehicle.thermograph"
+        type="checkbox"
+        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+        @change="updateField('thermograph', ($event.target as HTMLInputElement).checked)"
+      />
+      <label for="thermograph" class="text-sm text-gray-700">
+        Термописец
+      </label>
+    </div>
   </div>
 </template>

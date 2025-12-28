@@ -723,16 +723,10 @@ onMounted(() => {
                     <dt class="text-sm text-muted-foreground">Тип кузова</dt>
                     <dd class="text-foreground">{{ vehicleSubTypeLabels[freightRequest.vehicle_requirements.vehicle_subtype] }}</dd>
                   </div>
-                  <div v-if="freightRequest.vehicle_requirements.loading_types?.length" class="sm:col-span-2">
-                    <dt class="text-sm text-muted-foreground mb-2">Типы загрузки</dt>
-                    <dd class="flex flex-wrap gap-2">
-                      <Badge
-                        v-for="loadingType in freightRequest.vehicle_requirements.loading_types"
-                        :key="loadingType"
-                        variant="secondary"
-                      >
-                        {{ loadingTypeLabels[loadingType] }}
-                      </Badge>
+                  <div v-if="freightRequest.vehicle_requirements.loading_types?.length">
+                    <dt class="text-sm text-muted-foreground">Типы загрузки</dt>
+                    <dd class="text-foreground">
+                      {{ freightRequest.vehicle_requirements.loading_types.map(t => loadingTypeLabels[t]).join(', ') }}
                     </dd>
                   </div>
                   <div v-if="freightRequest.vehicle_requirements.capacity">
@@ -761,6 +755,10 @@ onMounted(() => {
                       от {{ freightRequest.vehicle_requirements.temperature.min }}°C
                       до {{ freightRequest.vehicle_requirements.temperature.max }}°C
                     </dd>
+                  </div>
+                  <div v-if="freightRequest.vehicle_requirements.thermograph">
+                    <dt class="text-sm text-muted-foreground">Термописец</dt>
+                    <dd class="text-foreground">Да</dd>
                   </div>
                 </dl>
               </CardContent>

@@ -91,6 +91,7 @@ export function useFreightRequestForm() {
     width: undefined,
     height: undefined,
     temperature: undefined,
+    thermograph: undefined,
   })
 
   // Step 4: Payment
@@ -325,6 +326,7 @@ export function useFreightRequestForm() {
     if (vehicle.width) cleanedVehicle.width = vehicle.width
     if (vehicle.height) cleanedVehicle.height = vehicle.height
     if (vehicle.temperature) cleanedVehicle.temperature = vehicle.temperature
+    if (vehicle.thermograph) cleanedVehicle.thermograph = vehicle.thermograph
 
     const cleanedPayment: Payment = {
       vat_type: payment.vat_type,
@@ -469,6 +471,7 @@ export function useFreightRequestForm() {
       width: undefined,
       height: undefined,
       temperature: undefined,
+      thermograph: undefined,
     })
     Object.assign(payment, {
       price: undefined,
@@ -517,6 +520,7 @@ export function useFreightRequestForm() {
       width: fr.vehicle_requirements.width,
       height: fr.vehicle_requirements.height,
       temperature: fr.vehicle_requirements.temperature ? { ...fr.vehicle_requirements.temperature } : undefined,
+      thermograph: fr.vehicle_requirements.thermograph,
     })
 
     // Payment
