@@ -19,7 +19,6 @@ type CargoInfo struct {
 	Weight      float64     `json:"weight"`
 	Volume      float64     `json:"volume,omitempty"`
 	Dimensions  *Dimensions `json:"dimensions,omitempty"`
-	Type        CargoType   `json:"type"`
 	ADRClass    ADRClass    `json:"adr_class,omitempty"`
 	Quantity    int         `json:"quantity"`
 }

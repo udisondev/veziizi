@@ -44,20 +44,20 @@ func (h *SubscriptionsHandler) RegisterRoutes(r *mux.Router) {
 
 // SubscriptionRequest запрос на создание/обновление подписки
 type SubscriptionRequest struct {
-	Name           string                       `json:"name"`
-	MinWeight      *float64                     `json:"min_weight,omitempty"`
-	MaxWeight      *float64                     `json:"max_weight,omitempty"`
-	MinPrice       *int64                       `json:"min_price,omitempty"`
-	MaxPrice       *int64                       `json:"max_price,omitempty"`
-	MinVolume      *float64                     `json:"min_volume,omitempty"`
-	MaxVolume      *float64                     `json:"max_volume,omitempty"`
-	CargoTypes     []string                     `json:"cargo_types,omitempty"`
-	BodyTypes      []string                     `json:"body_types,omitempty"`
-	PaymentMethods []string                     `json:"payment_methods,omitempty"`
-	PaymentTerms   []string                     `json:"payment_terms,omitempty"`
-	VatTypes       []string                     `json:"vat_types,omitempty"`
-	RoutePoints    []RoutePointCriteriaRequest  `json:"route_points,omitempty"`
-	IsActive       bool                         `json:"is_active"`
+	Name            string                      `json:"name"`
+	MinWeight       *float64                    `json:"min_weight,omitempty"`
+	MaxWeight       *float64                    `json:"max_weight,omitempty"`
+	MinPrice        *int64                      `json:"min_price,omitempty"`
+	MaxPrice        *int64                      `json:"max_price,omitempty"`
+	MinVolume       *float64                    `json:"min_volume,omitempty"`
+	MaxVolume       *float64                    `json:"max_volume,omitempty"`
+	VehicleTypes    []string                    `json:"vehicle_types,omitempty"`
+	VehicleSubTypes []string                    `json:"vehicle_subtypes,omitempty"`
+	PaymentMethods  []string                    `json:"payment_methods,omitempty"`
+	PaymentTerms    []string                    `json:"payment_terms,omitempty"`
+	VatTypes        []string                    `json:"vat_types,omitempty"`
+	RoutePoints     []RoutePointCriteriaRequest `json:"route_points,omitempty"`
+	IsActive        bool                        `json:"is_active"`
 }
 
 // RoutePointCriteriaRequest запрос точки маршрута
@@ -69,24 +69,24 @@ type RoutePointCriteriaRequest struct {
 
 // FreightSubscriptionResponse ответ с подпиской на заявки
 type FreightSubscriptionResponse struct {
-	ID             uuid.UUID                    `json:"id"`
-	MemberID       uuid.UUID                    `json:"member_id"`
-	Name           string                       `json:"name"`
-	MinWeight      *float64                     `json:"min_weight,omitempty"`
-	MaxWeight      *float64                     `json:"max_weight,omitempty"`
-	MinPrice       *int64                       `json:"min_price,omitempty"`
-	MaxPrice       *int64                       `json:"max_price,omitempty"`
-	MinVolume      *float64                     `json:"min_volume,omitempty"`
-	MaxVolume      *float64                     `json:"max_volume,omitempty"`
-	CargoTypes     []string                     `json:"cargo_types,omitempty"`
-	BodyTypes      []string                     `json:"body_types,omitempty"`
-	PaymentMethods []string                     `json:"payment_methods,omitempty"`
-	PaymentTerms   []string                     `json:"payment_terms,omitempty"`
-	VatTypes       []string                     `json:"vat_types,omitempty"`
-	RoutePoints    []RoutePointCriteriaResponse `json:"route_points,omitempty"`
-	IsActive       bool                         `json:"is_active"`
-	CreatedAt      string                       `json:"created_at"`
-	UpdatedAt      string                       `json:"updated_at"`
+	ID              uuid.UUID                    `json:"id"`
+	MemberID        uuid.UUID                    `json:"member_id"`
+	Name            string                       `json:"name"`
+	MinWeight       *float64                     `json:"min_weight,omitempty"`
+	MaxWeight       *float64                     `json:"max_weight,omitempty"`
+	MinPrice        *int64                       `json:"min_price,omitempty"`
+	MaxPrice        *int64                       `json:"max_price,omitempty"`
+	MinVolume       *float64                     `json:"min_volume,omitempty"`
+	MaxVolume       *float64                     `json:"max_volume,omitempty"`
+	VehicleTypes    []string                     `json:"vehicle_types,omitempty"`
+	VehicleSubTypes []string                     `json:"vehicle_subtypes,omitempty"`
+	PaymentMethods  []string                     `json:"payment_methods,omitempty"`
+	PaymentTerms    []string                     `json:"payment_terms,omitempty"`
+	VatTypes        []string                     `json:"vat_types,omitempty"`
+	RoutePoints     []RoutePointCriteriaResponse `json:"route_points,omitempty"`
+	IsActive        bool                         `json:"is_active"`
+	CreatedAt       string                       `json:"created_at"`
+	UpdatedAt       string                       `json:"updated_at"`
 }
 
 // RoutePointCriteriaResponse ответ точки маршрута
@@ -313,11 +313,11 @@ func (h *SubscriptionsHandler) requestToCriteria(req SubscriptionRequest) frValu
 	}
 
 	// Конвертируем ENUM'ы из строк
-	for _, ct := range req.CargoTypes {
-		criteria.CargoTypes = append(criteria.CargoTypes, frValues.CargoType(ct))
+	for _, vt := range req.VehicleTypes {
+		criteria.VehicleTypes = append(criteria.VehicleTypes, frValues.VehicleType(vt))
 	}
-	for _, bt := range req.BodyTypes {
-		criteria.BodyTypes = append(criteria.BodyTypes, frValues.BodyType(bt))
+	for _, vs := range req.VehicleSubTypes {
+		criteria.VehicleSubTypes = append(criteria.VehicleSubTypes, frValues.VehicleSubType(vs))
 	}
 	for _, pm := range req.PaymentMethods {
 		criteria.PaymentMethods = append(criteria.PaymentMethods, frValues.PaymentMethod(pm))
@@ -359,11 +359,11 @@ func (h *SubscriptionsHandler) subscriptionToResponse(r *http.Request, sub frVal
 	}
 
 	// Конвертируем ENUM'ы в строки
-	for _, ct := range sub.Criteria.CargoTypes {
-		response.CargoTypes = append(response.CargoTypes, string(ct))
+	for _, vt := range sub.Criteria.VehicleTypes {
+		response.VehicleTypes = append(response.VehicleTypes, string(vt))
 	}
-	for _, bt := range sub.Criteria.BodyTypes {
-		response.BodyTypes = append(response.BodyTypes, string(bt))
+	for _, vs := range sub.Criteria.VehicleSubTypes {
+		response.VehicleSubTypes = append(response.VehicleSubTypes, string(vs))
 	}
 	for _, pm := range sub.Criteria.PaymentMethods {
 		response.PaymentMethods = append(response.PaymentMethods, string(pm))

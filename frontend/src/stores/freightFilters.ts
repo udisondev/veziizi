@@ -3,8 +3,8 @@ import { ref, computed } from 'vue'
 import type {
   FreightRequestStatusFilter,
   OwnershipFilter,
-  CargoType,
-  BodyType,
+  VehicleType,
+  VehicleSubType,
 } from '@/types/freightRequest'
 
 export interface RoutePointFilter {
@@ -27,8 +27,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   const maxWeight = ref<number | undefined>()
   const minPrice = ref<number | undefined>()
   const maxPrice = ref<number | undefined>()
-  const cargoTypes = ref<CargoType[]>([])
-  const bodyTypes = ref<BodyType[]>([])
+  const vehicleTypes = ref<VehicleType[]>([])
+  const vehicleSubTypes = ref<VehicleSubType[]>([])
 
   // Computed - subscription filters (everything except ownership and status)
   const hasSubscriptionFilters = computed(() =>
@@ -37,8 +37,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     maxWeight.value !== undefined ||
     minPrice.value !== undefined ||
     maxPrice.value !== undefined ||
-    cargoTypes.value.length > 0 ||
-    bodyTypes.value.length > 0
+    vehicleTypes.value.length > 0 ||
+    vehicleSubTypes.value.length > 0
   )
 
   const hasActiveFilters = computed(() =>
@@ -58,8 +58,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     if (routePoints.value.length > 0) count++
     if (minWeight.value !== undefined || maxWeight.value !== undefined) count++
     if (minPrice.value !== undefined || maxPrice.value !== undefined) count++
-    if (cargoTypes.value.length > 0) count++
-    if (bodyTypes.value.length > 0) count++
+    if (vehicleTypes.value.length > 0) count++
+    if (vehicleSubTypes.value.length > 0) count++
     return count
   })
 
@@ -74,8 +74,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     maxWeight?: number
     minPrice?: number
     maxPrice?: number
-    cargoTypes?: CargoType[]
-    bodyTypes?: BodyType[]
+    vehicleTypes?: VehicleType[]
+    vehicleSubTypes?: VehicleSubType[]
   }) {
     if (filters.ownership !== undefined) ownershipFilter.value = filters.ownership
     if (filters.status !== undefined) statusFilter.value = filters.status
@@ -86,8 +86,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     if (filters.maxWeight !== undefined) maxWeight.value = filters.maxWeight
     if (filters.minPrice !== undefined) minPrice.value = filters.minPrice
     if (filters.maxPrice !== undefined) maxPrice.value = filters.maxPrice
-    if (filters.cargoTypes !== undefined) cargoTypes.value = filters.cargoTypes
-    if (filters.bodyTypes !== undefined) bodyTypes.value = filters.bodyTypes
+    if (filters.vehicleTypes !== undefined) vehicleTypes.value = filters.vehicleTypes
+    if (filters.vehicleSubTypes !== undefined) vehicleSubTypes.value = filters.vehicleSubTypes
   }
 
   function resetFilters() {
@@ -100,8 +100,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     maxWeight.value = undefined
     minPrice.value = undefined
     maxPrice.value = undefined
-    cargoTypes.value = []
-    bodyTypes.value = []
+    vehicleTypes.value = []
+    vehicleSubTypes.value = []
   }
 
   // Route point management
@@ -145,8 +145,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     maxWeight,
     minPrice,
     maxPrice,
-    cargoTypes,
-    bodyTypes,
+    vehicleTypes,
+    vehicleSubTypes,
 
     // Computed
     hasSubscriptionFilters,

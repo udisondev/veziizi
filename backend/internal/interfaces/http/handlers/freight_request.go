@@ -274,17 +274,21 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if cargoTypes := r.URL.Query().Get("cargo_types"); cargoTypes != "" {
-		types := splitComma(cargoTypes)
+	if vehicleType := r.URL.Query().Get("vehicle_type"); vehicleType != "" {
+		opts = append(opts, projections.WithVehicleType(vehicleType))
+	}
+
+	if vehicleTypes := r.URL.Query().Get("vehicle_types"); vehicleTypes != "" {
+		types := splitComma(vehicleTypes)
 		if len(types) > 0 {
-			opts = append(opts, projections.WithCargoTypes(types))
+			opts = append(opts, projections.WithVehicleTypes(types))
 		}
 	}
 
-	if bodyTypes := r.URL.Query().Get("body_types"); bodyTypes != "" {
-		types := splitComma(bodyTypes)
-		if len(types) > 0 {
-			opts = append(opts, projections.WithBodyTypes(types))
+	if vehicleSubTypes := r.URL.Query().Get("vehicle_subtypes"); vehicleSubTypes != "" {
+		subtypes := splitComma(vehicleSubTypes)
+		if len(subtypes) > 0 {
+			opts = append(opts, projections.WithVehicleSubTypes(subtypes))
 		}
 	}
 

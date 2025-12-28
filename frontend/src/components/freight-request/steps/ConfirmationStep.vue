@@ -2,14 +2,13 @@
 import { computed } from 'vue'
 import type { CreateFreightRequestRequest, RoutePoint } from '@/types/freightRequest'
 import {
-  cargoTypeLabels,
-  bodyTypeLabels,
+  vehicleTypeLabels,
+  vehicleSubTypeLabels,
   loadingTypeLabels,
   currencyLabels,
   vatTypeLabels,
   paymentMethodLabels,
   paymentTermsLabels,
-  adrClassLabels,
 } from '@/types/freightRequest'
 import LeafletMap from '../shared/LeafletMap.vue'
 
@@ -175,9 +174,6 @@ function handleCommentInput(event: Event) {
         <dt class="text-gray-500">Описание:</dt>
         <dd class="text-gray-900">{{ requestData.cargo.description }}</dd>
 
-        <dt class="text-gray-500">Тип:</dt>
-        <dd class="text-gray-900">{{ cargoTypeLabels[requestData.cargo.type] }}</dd>
-
         <dt class="text-gray-500">Вес:</dt>
         <dd class="text-gray-900">{{ requestData.cargo.weight.toLocaleString('ru-RU') }} кг</dd>
 
@@ -197,11 +193,6 @@ function handleCommentInput(event: Event) {
           <dt class="text-gray-500">Количество:</dt>
           <dd class="text-gray-900">{{ requestData.cargo.quantity }} мест</dd>
         </template>
-
-        <template v-if="requestData.cargo.adr_class && requestData.cargo.adr_class !== 'none'">
-          <dt class="text-gray-500">ADR:</dt>
-          <dd class="text-gray-900">{{ adrClassLabels[requestData.cargo.adr_class] }}</dd>
-        </template>
       </dl>
     </div>
 
@@ -216,9 +207,14 @@ function handleCommentInput(event: Event) {
       </h4>
 
       <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <dt class="text-gray-500">Тип кузова:</dt>
+        <dt class="text-gray-500">Тип транспорта:</dt>
         <dd class="text-gray-900">
-          {{ requestData.vehicle_requirements.body_types.map(t => bodyTypeLabels[t]).join(', ') }}
+          {{ vehicleTypeLabels[requestData.vehicle_requirements.vehicle_type] }}
+        </dd>
+
+        <dt class="text-gray-500">Подтип:</dt>
+        <dd class="text-gray-900">
+          {{ vehicleSubTypeLabels[requestData.vehicle_requirements.vehicle_subtype] }}
         </dd>
 
         <template v-if="requestData.vehicle_requirements.loading_types?.length">

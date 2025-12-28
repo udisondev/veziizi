@@ -19,8 +19,8 @@ import type {
   PaymentMethod,
 } from '@/types/freightRequest'
 import {
-  cargoTypeLabels,
-  bodyTypeLabels,
+  vehicleTypeLabels,
+  vehicleSubTypeLabels,
   loadingTypeLabels,
   currencyLabels,
   vatTypeLabels,
@@ -678,10 +678,6 @@ onMounted(() => {
                     <dd class="text-foreground break-words">{{ freightRequest.cargo.description }}</dd>
                   </div>
                   <div>
-                    <dt class="text-sm text-muted-foreground">Тип груза</dt>
-                    <dd class="text-foreground">{{ cargoTypeLabels[freightRequest.cargo.type] }}</dd>
-                  </div>
-                  <div>
                     <dt class="text-sm text-muted-foreground">Вес</dt>
                     <dd class="text-foreground">{{ freightRequest.cargo.weight }} кг</dd>
                   </div>
@@ -719,17 +715,13 @@ onMounted(() => {
               </CardHeader>
               <CardContent>
                 <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div class="sm:col-span-2">
-                    <dt class="text-sm text-muted-foreground mb-2">Типы кузова</dt>
-                    <dd class="flex flex-wrap gap-2">
-                      <Badge
-                        v-for="bodyType in freightRequest.vehicle_requirements.body_types"
-                        :key="bodyType"
-                        variant="secondary"
-                      >
-                        {{ bodyTypeLabels[bodyType] }}
-                      </Badge>
-                    </dd>
+                  <div>
+                    <dt class="text-sm text-muted-foreground">Тип транспорта</dt>
+                    <dd class="text-foreground">{{ vehicleTypeLabels[freightRequest.vehicle_requirements.vehicle_type] }}</dd>
+                  </div>
+                  <div>
+                    <dt class="text-sm text-muted-foreground">Тип кузова</dt>
+                    <dd class="text-foreground">{{ vehicleSubTypeLabels[freightRequest.vehicle_requirements.vehicle_subtype] }}</dd>
                   </div>
                   <div v-if="freightRequest.vehicle_requirements.loading_types?.length" class="sm:col-span-2">
                     <dt class="text-sm text-muted-foreground mb-2">Типы загрузки</dt>

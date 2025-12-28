@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import {
-  cargoTypeLabels,
-  bodyTypeLabels,
+  vehicleTypeLabels,
+  vehicleSubTypeLabels,
   paymentMethodLabels,
   paymentTermsLabels,
   vatTypeLabels,
-  type CargoType,
-  type BodyType,
+  type VehicleType,
+  type VehicleSubType,
   type PaymentMethod,
   type PaymentTerms,
   type VatType,
 } from '@/types/freightRequest'
-import { MapPin, Package, Truck, CreditCard, Scale, Box } from 'lucide-vue-next'
+import { MapPin, Truck, CreditCard, Scale, Box } from 'lucide-vue-next'
 
 export interface RoutePointDisplay {
   countryId?: number
@@ -30,8 +30,8 @@ export interface FiltersData {
   maxPrice?: number
   minVolume?: number
   maxVolume?: number
-  cargoTypes?: CargoType[]
-  bodyTypes?: BodyType[]
+  vehicleTypes?: VehicleType[]
+  vehicleSubTypes?: VehicleSubType[]
   paymentMethods?: PaymentMethod[]
   paymentTerms?: PaymentTerms[]
   vatTypes?: VatType[]
@@ -52,8 +52,8 @@ const hasFilters = computed(() => {
     f.minWeight || f.maxWeight ||
     f.minPrice || f.maxPrice ||
     f.minVolume || f.maxVolume ||
-    (f.cargoTypes && f.cargoTypes.length > 0) ||
-    (f.bodyTypes && f.bodyTypes.length > 0) ||
+    (f.vehicleTypes && f.vehicleTypes.length > 0) ||
+    (f.vehicleSubTypes && f.vehicleSubTypes.length > 0) ||
     (f.paymentMethods && f.paymentMethods.length > 0) ||
     (f.paymentTerms && f.paymentTerms.length > 0) ||
     (f.vatTypes && f.vatTypes.length > 0) ||
@@ -86,14 +86,14 @@ const volumeRange = computed(() => {
   return `до ${f.maxVolume} м³`
 })
 
-const cargoTypesDisplay = computed(() => {
-  if (!props.filters.cargoTypes?.length) return null
-  return props.filters.cargoTypes.map(t => cargoTypeLabels[t]).join(', ')
+const vehicleTypesDisplay = computed(() => {
+  if (!props.filters.vehicleTypes?.length) return null
+  return props.filters.vehicleTypes.map(t => vehicleTypeLabels[t]).join(', ')
 })
 
-const bodyTypesDisplay = computed(() => {
-  if (!props.filters.bodyTypes?.length) return null
-  return props.filters.bodyTypes.map(t => bodyTypeLabels[t]).join(', ')
+const vehicleSubTypesDisplay = computed(() => {
+  if (!props.filters.vehicleSubTypes?.length) return null
+  return props.filters.vehicleSubTypes.map(t => vehicleSubTypeLabels[t]).join(', ')
 })
 
 const paymentMethodsDisplay = computed(() => {
@@ -150,18 +150,18 @@ const routeDisplay = computed(() => {
       <span>{{ priceRange }}</span>
     </div>
 
-    <!-- Cargo Types -->
-    <div v-if="cargoTypesDisplay" class="flex items-start gap-2">
-      <Package :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
-      <span class="text-muted-foreground">Груз:</span>
-      <span>{{ cargoTypesDisplay }}</span>
+    <!-- Vehicle Types -->
+    <div v-if="vehicleTypesDisplay" class="flex items-start gap-2">
+      <Truck :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
+      <span class="text-muted-foreground">Транспорт:</span>
+      <span>{{ vehicleTypesDisplay }}</span>
     </div>
 
-    <!-- Body Types -->
-    <div v-if="bodyTypesDisplay" class="flex items-start gap-2">
+    <!-- Vehicle Sub Types -->
+    <div v-if="vehicleSubTypesDisplay" class="flex items-start gap-2">
       <Truck :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
-      <span class="text-muted-foreground">Кузов:</span>
-      <span>{{ bodyTypesDisplay }}</span>
+      <span class="text-muted-foreground">Тип кузова:</span>
+      <span>{{ vehicleSubTypesDisplay }}</span>
     </div>
 
     <!-- Payment Methods -->

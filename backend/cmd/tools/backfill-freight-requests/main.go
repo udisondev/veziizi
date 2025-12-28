@@ -81,10 +81,8 @@ func main() {
 			destAddr = route.Points[len(route.Points)-1].Address
 		}
 
-		bodyTypes := make([]string, len(fr.VehicleRequirements().BodyTypes))
-		for i, t := range fr.VehicleRequirements().BodyTypes {
-			bodyTypes[i] = t.String()
-		}
+		vehicleType := fr.VehicleRequirements().VehicleType.String()
+		vehicleSubType := fr.VehicleRequirements().VehicleSubType.String()
 
 		var priceAmount *int64
 		var priceCurrency *string
@@ -116,11 +114,11 @@ func main() {
 			Update("freight_requests_lookup").
 			Set("origin_address", originAddr).
 			Set("destination_address", destAddr).
-			Set("cargo_type", fr.Cargo().Type.String()).
 			Set("cargo_weight", fr.Cargo().Weight).
 			Set("price_amount", priceAmount).
 			Set("price_currency", priceCurrency).
-			Set("body_types", bodyTypes).
+			Set("vehicle_type", vehicleType).
+			Set("vehicle_subtype", vehicleSubType).
 			Set("customer_org_name", orgName).
 			Set("customer_org_inn", orgINN).
 			Set("customer_org_country", orgCountry).

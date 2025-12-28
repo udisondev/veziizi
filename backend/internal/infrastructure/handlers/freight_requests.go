@@ -81,7 +81,6 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 
 	// Extract display data
 	originAddr, destAddr := extractRouteAddresses(e.Route)
-	bodyTypes := extractBodyTypes(e.VehicleRequirements.BodyTypes)
 
 	// Serialize route to JSON
 	routeJSON, err := json.Marshal(e.Route)
@@ -122,15 +121,15 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 		Insert("freight_requests_lookup").
 		Columns(
 			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "route", "cargo_type", "cargo_weight",
-			"price_amount", "price_currency", "body_types",
+			"origin_address", "destination_address", "route", "cargo_weight",
+			"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 			"route_city_ids", "route_country_ids",
 		).
 		Values(
 			e.AggregateID(), e.RequestNumber, e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
-			originAddr, destAddr, routeJSON, e.Cargo.Type.String(), e.Cargo.Weight,
-			priceAmount, priceCurrency, bodyTypes,
+			originAddr, destAddr, routeJSON, e.Cargo.Weight,
+			priceAmount, priceCurrency, e.VehicleRequirements.VehicleType.String(), e.VehicleRequirements.VehicleSubType.String(),
 			orgName, orgINN, orgCountry, e.CustomerMemberID,
 			routeCityIDs, routeCountryIDs,
 		).
@@ -154,14 +153,6 @@ func extractRouteAddresses(route values.Route) (origin, destination string) {
 	origin = route.Points[0].Address
 	destination = route.Points[len(route.Points)-1].Address
 	return origin, destination
-}
-
-func extractBodyTypes(types []values.BodyType) []string {
-	result := make([]string, len(types))
-	for i, t := range types {
-		result[i] = t.String()
-	}
-	return result
 }
 
 func extractRouteCityIDs(route values.Route) []int {
@@ -207,13 +198,14 @@ func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.Freight
 	}
 
 	if e.Cargo != nil {
-		builder = builder.Set("cargo_type", e.Cargo.Type.String()).Set("cargo_weight", e.Cargo.Weight)
+		builder = builder.Set("cargo_weight", e.Cargo.Weight)
 		hasUpdates = true
 	}
 
 	if e.VehicleRequirements != nil {
-		bodyTypes := extractBodyTypes(e.VehicleRequirements.BodyTypes)
-		builder = builder.Set("body_types", bodyTypes)
+		builder = builder.
+			Set("vehicle_type", e.VehicleRequirements.VehicleType.String()).
+			Set("vehicle_subtype", e.VehicleRequirements.VehicleSubType.String())
 		hasUpdates = true
 	}
 

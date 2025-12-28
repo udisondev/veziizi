@@ -34,23 +34,23 @@ func NewFreightSubscriptionsProjection(db dbtx.TxManager) *FreightSubscriptionsP
 
 // SubscriptionRow представляет запись в БД
 type SubscriptionRow struct {
-	ID             uuid.UUID  `db:"id"`
-	MemberID       uuid.UUID  `db:"member_id"`
-	Name           string     `db:"name"`
-	MinWeight      *float64   `db:"min_weight"`
-	MaxWeight      *float64   `db:"max_weight"`
-	MinPrice       *int64     `db:"min_price"`
-	MaxPrice       *int64     `db:"max_price"`
-	MinVolume      *float64   `db:"min_volume"`
-	MaxVolume      *float64   `db:"max_volume"`
-	CargoTypes     []string   `db:"cargo_types"`
-	BodyTypes      []string   `db:"body_types"`
-	PaymentMethods []string   `db:"payment_methods"`
-	PaymentTerms   []string   `db:"payment_terms"`
-	VatTypes       []string   `db:"vat_types"`
-	IsActive       bool       `db:"is_active"`
-	CreatedAt      time.Time  `db:"created_at"`
-	UpdatedAt      time.Time  `db:"updated_at"`
+	ID              uuid.UUID  `db:"id"`
+	MemberID        uuid.UUID  `db:"member_id"`
+	Name            string     `db:"name"`
+	MinWeight       *float64   `db:"min_weight"`
+	MaxWeight       *float64   `db:"max_weight"`
+	MinPrice        *int64     `db:"min_price"`
+	MaxPrice        *int64     `db:"max_price"`
+	MinVolume       *float64   `db:"min_volume"`
+	MaxVolume       *float64   `db:"max_volume"`
+	VehicleTypes    []string   `db:"vehicle_types"`
+	VehicleSubTypes []string   `db:"vehicle_subtypes"`
+	PaymentMethods  []string   `db:"payment_methods"`
+	PaymentTerms    []string   `db:"payment_terms"`
+	VatTypes        []string   `db:"vat_types"`
+	IsActive        bool       `db:"is_active"`
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       time.Time  `db:"updated_at"`
 }
 
 // RoutePointRow представляет точку маршрута в БД
@@ -91,7 +91,7 @@ func (p *FreightSubscriptionsProjection) Create(ctx context.Context, memberID uu
 				"min_weight", "max_weight",
 				"min_price", "max_price",
 				"min_volume", "max_volume",
-				"cargo_types", "body_types",
+				"vehicle_types", "vehicle_subtypes",
 				"payment_methods", "payment_terms", "vat_types",
 				"is_active", "created_at", "updated_at",
 			).
@@ -100,8 +100,8 @@ func (p *FreightSubscriptionsProjection) Create(ctx context.Context, memberID uu
 				criteria.MinWeight, criteria.MaxWeight,
 				criteria.MinPrice, criteria.MaxPrice,
 				criteria.MinVolume, criteria.MaxVolume,
-				pq.Array(cargoTypesToStrings(criteria.CargoTypes)),
-				pq.Array(bodyTypesToStrings(criteria.BodyTypes)),
+				pq.Array(vehicleTypesToStrings(criteria.VehicleTypes)),
+				pq.Array(vehicleSubTypesToStrings(criteria.VehicleSubTypes)),
 				pq.Array(paymentMethodsToStrings(criteria.PaymentMethods)),
 				pq.Array(paymentTermsToStrings(criteria.PaymentTerms)),
 				pq.Array(vatTypesToStrings(criteria.VatTypes)),
@@ -157,8 +157,8 @@ func (p *FreightSubscriptionsProjection) Update(ctx context.Context, subscriptio
 			Set("max_price", criteria.MaxPrice).
 			Set("min_volume", criteria.MinVolume).
 			Set("max_volume", criteria.MaxVolume).
-			Set("cargo_types", pq.Array(cargoTypesToStrings(criteria.CargoTypes))).
-			Set("body_types", pq.Array(bodyTypesToStrings(criteria.BodyTypes))).
+			Set("vehicle_types", pq.Array(vehicleTypesToStrings(criteria.VehicleTypes))).
+			Set("vehicle_subtypes", pq.Array(vehicleSubTypesToStrings(criteria.VehicleSubTypes))).
 			Set("payment_methods", pq.Array(paymentMethodsToStrings(criteria.PaymentMethods))).
 			Set("payment_terms", pq.Array(paymentTermsToStrings(criteria.PaymentTerms))).
 			Set("vat_types", pq.Array(vatTypesToStrings(criteria.VatTypes))).
@@ -231,7 +231,7 @@ func (p *FreightSubscriptionsProjection) GetByID(ctx context.Context, subscripti
 			"min_weight", "max_weight",
 			"min_price", "max_price",
 			"min_volume", "max_volume",
-			"cargo_types", "body_types",
+			"vehicle_types", "vehicle_subtypes",
 			"payment_methods", "payment_terms", "vat_types",
 			"is_active", "created_at", "updated_at",
 		).
@@ -267,7 +267,7 @@ func (p *FreightSubscriptionsProjection) GetByMemberID(ctx context.Context, memb
 			"min_weight", "max_weight",
 			"min_price", "max_price",
 			"min_volume", "max_volume",
-			"cargo_types", "body_types",
+			"vehicle_types", "vehicle_subtypes",
 			"payment_methods", "payment_terms", "vat_types",
 			"is_active", "created_at", "updated_at",
 		).
@@ -366,8 +366,8 @@ func (p *FreightSubscriptionsProjection) FindMatchingSubscriptions(
 			s.name as subscription_name,
 			s.member_id,
 			m.organization_id,
-			s.cargo_types,
-			s.body_types,
+			s.vehicle_types,
+			s.vehicle_subtypes,
 			s.payment_methods,
 			s.payment_terms,
 			s.vat_types,
@@ -392,10 +392,10 @@ func (p *FreightSubscriptionsProjection) FindMatchingSubscriptions(
 		  AND (s.max_volume IS NULL OR $4 <= s.max_volume)
 
 		  -- ENUM фильтры (NULL/пустой = все подходят)
-		  AND (s.cargo_types IS NULL OR array_length(s.cargo_types, 1) IS NULL
-		       OR $5 = ANY(s.cargo_types))
-		  AND (s.body_types IS NULL OR array_length(s.body_types, 1) IS NULL
-		       OR s.body_types && $6::text[])
+		  AND (s.vehicle_types IS NULL OR array_length(s.vehicle_types, 1) IS NULL
+		       OR $5 = ANY(s.vehicle_types))
+		  AND (s.vehicle_subtypes IS NULL OR array_length(s.vehicle_subtypes, 1) IS NULL
+		       OR $6 = ANY(s.vehicle_subtypes))
 		  AND (s.payment_methods IS NULL OR array_length(s.payment_methods, 1) IS NULL
 		       OR $7 = ANY(s.payment_methods))
 		  AND (s.payment_terms IS NULL OR array_length(s.payment_terms, 1) IS NULL
@@ -409,8 +409,8 @@ func (p *FreightSubscriptionsProjection) FindMatchingSubscriptions(
 		data.Cargo.Weight,
 		priceAmount,
 		data.Cargo.Volume,
-		string(data.Cargo.Type),
-		pq.Array(bodyTypesToStrings(data.VehicleReqs.BodyTypes)),
+		string(data.VehicleReqs.VehicleType),
+		string(data.VehicleReqs.VehicleSubType),
 		string(data.Payment.Method),
 		string(data.Payment.Terms),
 		string(data.Payment.VatType),
@@ -431,7 +431,7 @@ func (p *FreightSubscriptionsProjection) FindMatchingSubscriptions(
 
 	for rows.Next() {
 		var c candidate
-		var cargoTypes, bodyTypes, paymentMethods, paymentTerms, vatTypes []string
+		var vehicleTypes, vehicleSubTypes, paymentMethods, paymentTerms, vatTypes []string
 		var minWeight, maxWeight, minVolume, maxVolume *float64
 		var minPrice, maxPrice *int64
 
@@ -440,8 +440,8 @@ func (p *FreightSubscriptionsProjection) FindMatchingSubscriptions(
 			&c.SubscriptionName,
 			&c.MemberID,
 			&c.OrganizationID,
-			&cargoTypes,
-			&bodyTypes,
+			&vehicleTypes,
+			&vehicleSubTypes,
 			&paymentMethods,
 			&paymentTerms,
 			&vatTypes,
@@ -605,20 +605,20 @@ func (p *FreightSubscriptionsProjection) rowToSubscription(row *SubscriptionRow,
 		ID:       row.ID,
 		MemberID: row.MemberID,
 		Criteria: values.SubscriptionCriteria{
-			Name:           row.Name,
-			MinWeight:      row.MinWeight,
-			MaxWeight:      row.MaxWeight,
-			MinPrice:       row.MinPrice,
-			MaxPrice:       row.MaxPrice,
-			MinVolume:      row.MinVolume,
-			MaxVolume:      row.MaxVolume,
-			CargoTypes:     stringsToCargoTypes(row.CargoTypes),
-			BodyTypes:      stringsToBodyTypes(row.BodyTypes),
-			PaymentMethods: stringsToPaymentMethods(row.PaymentMethods),
-			PaymentTerms:   stringsToPaymentTerms(row.PaymentTerms),
-			VatTypes:       stringsToVatTypes(row.VatTypes),
-			RoutePoints:    routePoints,
-			IsActive:       row.IsActive,
+			Name:            row.Name,
+			MinWeight:       row.MinWeight,
+			MaxWeight:       row.MaxWeight,
+			MinPrice:        row.MinPrice,
+			MaxPrice:        row.MaxPrice,
+			MinVolume:       row.MinVolume,
+			MaxVolume:       row.MaxVolume,
+			VehicleTypes:    stringsToVehicleTypes(row.VehicleTypes),
+			VehicleSubTypes: stringsToVehicleSubTypes(row.VehicleSubTypes),
+			PaymentMethods:  stringsToPaymentMethods(row.PaymentMethods),
+			PaymentTerms:    stringsToPaymentTerms(row.PaymentTerms),
+			VatTypes:        stringsToVatTypes(row.VatTypes),
+			RoutePoints:     routePoints,
+			IsActive:        row.IsActive,
 		},
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
@@ -627,7 +627,7 @@ func (p *FreightSubscriptionsProjection) rowToSubscription(row *SubscriptionRow,
 
 // Вспомогательные функции конвертации
 
-func cargoTypesToStrings(types []values.CargoType) []string {
+func vehicleTypesToStrings(types []values.VehicleType) []string {
 	result := make([]string, len(types))
 	for i, t := range types {
 		result[i] = string(t)
@@ -635,15 +635,15 @@ func cargoTypesToStrings(types []values.CargoType) []string {
 	return result
 }
 
-func stringsToCargoTypes(strings []string) []values.CargoType {
-	result := make([]values.CargoType, len(strings))
+func stringsToVehicleTypes(strings []string) []values.VehicleType {
+	result := make([]values.VehicleType, len(strings))
 	for i, s := range strings {
-		result[i] = values.CargoType(s)
+		result[i] = values.VehicleType(s)
 	}
 	return result
 }
 
-func bodyTypesToStrings(types []values.BodyType) []string {
+func vehicleSubTypesToStrings(types []values.VehicleSubType) []string {
 	result := make([]string, len(types))
 	for i, t := range types {
 		result[i] = string(t)
@@ -651,10 +651,10 @@ func bodyTypesToStrings(types []values.BodyType) []string {
 	return result
 }
 
-func stringsToBodyTypes(strings []string) []values.BodyType {
-	result := make([]values.BodyType, len(strings))
+func stringsToVehicleSubTypes(strings []string) []values.VehicleSubType {
+	result := make([]values.VehicleSubType, len(strings))
 	for i, s := range strings {
-		result[i] = values.BodyType(s)
+		result[i] = values.VehicleSubType(s)
 	}
 	return result
 }

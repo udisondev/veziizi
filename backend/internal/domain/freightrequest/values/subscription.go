@@ -30,9 +30,9 @@ type SubscriptionCriteria struct {
 	MaxVolume *float64 `json:"max_volume,omitempty"` // Макс. объём м³
 
 	// ENUM массивы (nil/пустой = все подходят)
-	CargoTypes     []CargoType     `json:"cargo_types,omitempty"`
-	BodyTypes      []BodyType      `json:"body_types,omitempty"`
-	PaymentMethods []PaymentMethod `json:"payment_methods,omitempty"`
+	VehicleTypes    []VehicleType    `json:"vehicle_types,omitempty"`
+	VehicleSubTypes []VehicleSubType `json:"vehicle_subtypes,omitempty"`
+	PaymentMethods  []PaymentMethod  `json:"payment_methods,omitempty"`
 	PaymentTerms   []PaymentTerms  `json:"payment_terms,omitempty"`
 	VatTypes       []VatType       `json:"vat_types,omitempty"`
 
@@ -198,10 +198,7 @@ func MatchesCriteria(criteria SubscriptionCriteria, data FreightRequestMatchData
 	}
 
 	// ENUM массивы
-	if len(criteria.CargoTypes) > 0 && !containsCargoType(criteria.CargoTypes, data.Cargo.Type) {
-		return false
-	}
-	if len(criteria.BodyTypes) > 0 && !hasBodyTypeOverlap(criteria.BodyTypes, data.VehicleReqs.BodyTypes) {
+	if !hasVehicleTypeMatch(criteria.VehicleTypes, criteria.VehicleSubTypes, data.VehicleReqs.VehicleType, data.VehicleReqs.VehicleSubType) {
 		return false
 	}
 	if len(criteria.PaymentMethods) > 0 && !containsPaymentMethod(criteria.PaymentMethods, data.Payment.Method) {
@@ -224,24 +221,32 @@ func MatchesCriteria(criteria SubscriptionCriteria, data FreightRequestMatchData
 
 // Вспомогательные функции для проверки ENUM
 
-func containsCargoType(slice []CargoType, item CargoType) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
+// hasVehicleTypeMatch checks if freight request vehicle matches subscription criteria
+func hasVehicleTypeMatch(criteriaTypes []VehicleType, criteriaSubTypes []VehicleSubType, actualType VehicleType, actualSubType VehicleSubType) bool {
+	// Если нет фильтров - все подходит
+	if len(criteriaTypes) == 0 && len(criteriaSubTypes) == 0 {
+		return true
 	}
-	return false
-}
 
-func hasBodyTypeOverlap(criteria []BodyType, actual []BodyType) bool {
-	for _, c := range criteria {
-		for _, a := range actual {
-			if c == a {
-				return true
-			}
+	// Проверка по типу
+	typeMatch := len(criteriaTypes) == 0
+	for _, ct := range criteriaTypes {
+		if ct == actualType {
+			typeMatch = true
+			break
 		}
 	}
-	return false
+
+	// Проверка по подтипу
+	subTypeMatch := len(criteriaSubTypes) == 0
+	for _, cst := range criteriaSubTypes {
+		if cst == actualSubType {
+			subTypeMatch = true
+			break
+		}
+	}
+
+	return typeMatch && subTypeMatch
 }
 
 func containsPaymentMethod(slice []PaymentMethod, item PaymentMethod) bool {

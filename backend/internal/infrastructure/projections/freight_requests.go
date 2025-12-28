@@ -37,11 +37,11 @@ type FreightRequestListItem struct {
 	OriginAddress      *string         `json:"origin_address,omitempty"`
 	DestinationAddress *string         `json:"destination_address,omitempty"`
 	Route              json.RawMessage `json:"route,omitempty"`
-	CargoType          *string         `json:"cargo_type,omitempty"`
 	CargoWeight        *float64        `json:"cargo_weight,omitempty"`
 	PriceAmount        *int64          `json:"price_amount,omitempty"`
 	PriceCurrency      *string         `json:"price_currency,omitempty"`
-	BodyTypes          []string        `json:"body_types,omitempty"`
+	VehicleType        *string         `json:"vehicle_type,omitempty"`
+	VehicleSubType     *string         `json:"vehicle_subtype,omitempty"`
 	CustomerOrgName    *string         `json:"customer_org_name,omitempty"`
 	CustomerOrgINN     *string         `json:"customer_org_inn,omitempty"`
 	CustomerOrgCountry *string         `json:"customer_org_country,omitempty"`
@@ -133,28 +133,30 @@ func WithMaxPrice(price int64) FilterOption {
 	}
 }
 
-func WithCargoType(cargoType string) FilterOption {
+func WithVehicleType(vt string) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		return b.Where(squirrel.Eq{"cargo_type": cargoType})
+		if vt == "" {
+			return b
+		}
+		return b.Where(squirrel.Eq{"vehicle_type": vt})
 	}
 }
 
-func WithCargoTypes(types []string) FilterOption {
+func WithVehicleTypes(types []string) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		if len(types) == 0 {
 			return b
 		}
-		return b.Where(squirrel.Eq{"cargo_type": types})
+		return b.Where(squirrel.Eq{"vehicle_type": types})
 	}
 }
 
-func WithBodyTypes(types []string) FilterOption {
+func WithVehicleSubTypes(subtypes []string) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		if len(types) == 0 {
+		if len(subtypes) == 0 {
 			return b
 		}
-		// body_types is an array, use && operator for overlap check
-		return b.Where("body_types && ?::text[]", fmt.Sprintf("{%s}", joinStrings(types)))
+		return b.Where(squirrel.Eq{"vehicle_subtype": subtypes})
 	}
 }
 
@@ -206,8 +208,8 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 	query, args, err := p.psql.
 		Select(
 			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "route", "cargo_type", "cargo_weight",
-			"price_amount", "price_currency", "body_types",
+			"origin_address", "destination_address", "route", "cargo_weight",
+			"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 			"order_id",
 		).
@@ -229,11 +231,11 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 		&item.OriginAddress,
 		&item.DestinationAddress,
 		&item.Route,
-		&item.CargoType,
 		&item.CargoWeight,
 		&item.PriceAmount,
 		&item.PriceCurrency,
-		&item.BodyTypes,
+		&item.VehicleType,
+		&item.VehicleSubType,
 		&item.CustomerOrgName,
 		&item.CustomerOrgINN,
 		&item.CustomerOrgCountry,
@@ -250,8 +252,8 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 	builder := p.psql.
 		Select(
 			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "route", "cargo_type", "cargo_weight",
-			"price_amount", "price_currency", "body_types",
+			"origin_address", "destination_address", "route", "cargo_weight",
+			"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 			"order_id",
 		).
@@ -286,11 +288,11 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			&item.OriginAddress,
 			&item.DestinationAddress,
 			&item.Route,
-			&item.CargoType,
 			&item.CargoWeight,
 			&item.PriceAmount,
 			&item.PriceCurrency,
-			&item.BodyTypes,
+			&item.VehicleType,
+			&item.VehicleSubType,
 			&item.CustomerOrgName,
 			&item.CustomerOrgINN,
 			&item.CustomerOrgCountry,

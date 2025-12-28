@@ -1,7 +1,19 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { VehicleRequirements, BodyType, LoadingType } from '@/types/freightRequest'
-import { bodyTypeOptions, loadingTypeOptions, bodyTypeLabels, loadingTypeLabels } from '@/types/freightRequest'
+import { ref, watch, computed } from 'vue'
+import type { VehicleRequirements, VehicleType, VehicleSubType, LoadingType } from '@/types/freightRequest'
+import {
+  vehicleTypeOptions,
+  getVehicleSubTypeOptions,
+  loadingTypeOptions,
+  loadingTypeLabels,
+} from '@/types/freightRequest'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface Props {
   vehicle: VehicleRequirements
@@ -18,6 +30,12 @@ const emit = defineEmits<Emits>()
 
 // Галочка для температурного режима
 const showTemperature = ref(!!props.vehicle.temperature)
+
+// Получаем доступные подтипы на основе выбранного типа
+const availableSubTypes = computed(() => {
+  if (!props.vehicle.vehicle_type) return []
+  return getVehicleSubTypeOptions(props.vehicle.vehicle_type)
+})
 
 // Следим за галочкой: инициализируем температуру при включении, очищаем при выключении
 watch(showTemperature, (show) => {
@@ -36,12 +54,17 @@ function updateField<K extends keyof VehicleRequirements>(
   emit('update:vehicle', { ...props.vehicle, [field]: value })
 }
 
-function toggleBodyType(type: BodyType) {
-  const current = props.vehicle.body_types || []
-  const updated = current.includes(type)
-    ? current.filter((t) => t !== type)
-    : [...current, type]
-  updateField('body_types', updated)
+function selectVehicleType(type: VehicleType) {
+  // При смене типа сбрасываем подтип
+  emit('update:vehicle', {
+    ...props.vehicle,
+    vehicle_type: type,
+    vehicle_subtype: undefined as unknown as VehicleSubType,
+  })
+}
+
+function selectVehicleSubType(subtype: VehicleSubType) {
+  updateField('vehicle_subtype', subtype)
 }
 
 function toggleLoadingType(type: LoadingType) {
@@ -83,37 +106,53 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
   const updated = { ...current, [field]: isNaN(value) ? 0 : value }
   updateField('temperature', updated)
 }
-
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Body types -->
+    <!-- Vehicle type -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 mb-2">
-        Тип кузова <span class="text-red-500">*</span>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Тип транспорта <span class="text-red-500">*</span>
       </label>
-      <div class="flex flex-wrap gap-2">
-        <button
-          v-for="option in bodyTypeOptions"
-          :key="option.value"
-          type="button"
-          :class="[
-            'px-3 py-2 rounded-md text-sm font-medium border transition-colors',
-            vehicle.body_types?.includes(option.value)
-              ? 'bg-blue-100 border-blue-500 text-blue-700'
-              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50',
-          ]"
-          @click="toggleBodyType(option.value)"
-        >
-          {{ option.label }}
-        </button>
-      </div>
-      <p v-if="errors.body_types" class="mt-1 text-sm text-red-600">
-        {{ errors.body_types }}
+      <Select
+        :model-value="vehicle.vehicle_type"
+        @update:model-value="selectVehicleType($event as VehicleType)"
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Выберите тип транспорта" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="option in vehicleTypeOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <p v-if="errors.vehicle_type" class="mt-1 text-sm text-red-600">
+        {{ errors.vehicle_type }}
       </p>
-      <p v-if="vehicle.body_types?.length" class="mt-2 text-sm text-gray-500">
-        Выбрано: {{ vehicle.body_types.map(t => bodyTypeLabels[t]).join(', ') }}
+    </div>
+
+    <!-- Vehicle subtype (показывается после выбора типа) -->
+    <div v-if="vehicle.vehicle_type && availableSubTypes.length > 0">
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Подтип транспорта <span class="text-red-500">*</span>
+      </label>
+      <Select
+        :model-value="vehicle.vehicle_subtype"
+        @update:model-value="selectVehicleSubType($event as VehicleSubType)"
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Выберите подтип" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="option in availableSubTypes" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <p v-if="errors.vehicle_subtype" class="mt-1 text-sm text-red-600">
+        {{ errors.vehicle_subtype }}
       </p>
     </div>
 

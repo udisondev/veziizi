@@ -12,28 +12,16 @@ import (
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
-// Русские названия типов груза
-var cargoTypeLabels = map[frValues.CargoType]string{
-	frValues.CargoTypeGeneral:      "Генеральный",
-	frValues.CargoTypeBulk:         "Насыпной",
-	frValues.CargoTypeLiquid:       "Наливной",
-	frValues.CargoTypeRefrigerated: "Рефрижераторный",
-	frValues.CargoTypeDangerous:    "Опасный",
-	frValues.CargoTypeOversized:    "Негабаритный",
-	frValues.CargoTypeContainer:    "Контейнерный",
-}
-
-// Русские названия типов кузова
-var bodyTypeLabels = map[frValues.BodyType]string{
-	frValues.BodyTypeTent:         "Тент",
-	frValues.BodyTypeRefrigerator: "Рефрижератор",
-	frValues.BodyTypeIsothermal:   "Изотерм",
-	frValues.BodyTypeContainer:    "Контейнеровоз",
-	frValues.BodyTypeOpenbed:      "Открытая",
-	frValues.BodyTypeLowbed:       "Низкорамник",
-	frValues.BodyTypeJumbo:        "Джамбо",
-	frValues.BodyTypeTank:         "Цистерна",
-	frValues.BodyTypeTipper:       "Самосвал",
+// Русские названия типов транспорта
+var vehicleTypeLabels = map[frValues.VehicleType]string{
+	frValues.VehicleTypeVan:              "Фургон",
+	frValues.VehicleTypeFlatbed:          "Платформа",
+	frValues.VehicleTypeTanker:           "Цистерна",
+	frValues.VehicleTypeDumpTruck:        "Самосвал",
+	frValues.VehicleTypeSpecializedTruck: "Спецтранспорт",
+	frValues.VehicleTypeLightTruck:       "Легкий грузовик",
+	frValues.VehicleTypeMediumTruck:      "Средний грузовик",
+	frValues.VehicleTypeHeavyTruck:       "Тяжелый грузовик",
 }
 
 // FreightRequestCreatedRule уведомляет подписчиков о новой заявке
@@ -93,31 +81,19 @@ func (r *FreightRequestCreatedRule) Process(ctx context.Context, event eventstor
 		routeText = fmt.Sprintf("%s → %s", from, to)
 	}
 
-	// Груз: тип и вес
-	cargoLabel := cargoTypeLabels[e.Cargo.Type]
-	if cargoLabel == "" {
-		cargoLabel = e.Cargo.Type.String()
-	}
-
 	// Формируем body для уведомления
 	var bodyParts []string
 	if routeText != "" {
 		bodyParts = append(bodyParts, fmt.Sprintf("📍 %s", routeText))
 	}
-	bodyParts = append(bodyParts, fmt.Sprintf("📦 %s, %.1f т", cargoLabel, e.Cargo.Weight))
+	bodyParts = append(bodyParts, fmt.Sprintf("📦 %.1f т", e.Cargo.Weight))
 
-	// Кузов
-	if len(e.VehicleRequirements.BodyTypes) > 0 {
-		var bodyNames []string
-		for _, bt := range e.VehicleRequirements.BodyTypes {
-			label := bodyTypeLabels[bt]
-			if label == "" {
-				label = bt.String()
-			}
-			bodyNames = append(bodyNames, label)
-		}
-		bodyParts = append(bodyParts, fmt.Sprintf("🚛 %s", strings.Join(bodyNames, ", ")))
+	// Транспорт
+	vehicleLabel := vehicleTypeLabels[e.VehicleRequirements.VehicleType]
+	if vehicleLabel == "" {
+		vehicleLabel = e.VehicleRequirements.VehicleType.String()
 	}
+	bodyParts = append(bodyParts, fmt.Sprintf("🚛 %s", vehicleLabel))
 
 	// Цена
 	if e.Payment.Price != nil {

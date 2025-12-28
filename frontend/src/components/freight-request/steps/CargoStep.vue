@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { CargoInfo, CargoType, ADRClass } from '@/types/freightRequest'
-import { cargoTypeOptions, adrClassOptions } from '@/types/freightRequest'
+import type { CargoInfo } from '@/types/freightRequest'
 
 interface Props {
   cargo: CargoInfo
@@ -39,14 +37,6 @@ function handleQuantityInput(event: Event) {
   updateField('quantity', value)
 }
 
-function handleTypeChange(event: Event) {
-  updateField('type', (event.target as HTMLSelectElement).value as CargoType)
-}
-
-function handleAdrClassChange(event: Event) {
-  updateField('adr_class', (event.target as HTMLSelectElement).value as ADRClass)
-}
-
 function handleDimensionInput(dimension: 'length' | 'width' | 'height', event: Event) {
   const value = parseFloat((event.target as HTMLInputElement).value) || 0
   const current = props.cargo.dimensions || { length: 0, width: 0, height: 0 }
@@ -64,8 +54,6 @@ const inputClass = (field: string) => [
   'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
   props.errors[field] ? 'border-red-300' : 'border-gray-300',
 ]
-
-const showAdrClass = computed(() => props.cargo.type === 'dangerous')
 </script>
 
 <template>
@@ -86,41 +74,6 @@ const showAdrClass = computed(() => props.cargo.type === 'dangerous')
       <p v-if="errors.description" class="mt-1 text-sm text-red-600">
         {{ errors.description }}
       </p>
-    </div>
-
-    <!-- Cargo type -->
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Тип груза <span class="text-red-500">*</span>
-      </label>
-      <select
-        :value="cargo.type"
-        :class="inputClass('cargo_type')"
-        @change="handleTypeChange"
-      >
-        <option v-for="option in cargoTypeOptions" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
-      <p v-if="errors.cargo_type" class="mt-1 text-sm text-red-600">
-        {{ errors.cargo_type }}
-      </p>
-    </div>
-
-    <!-- ADR class (only for dangerous cargo) -->
-    <div v-if="showAdrClass">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Класс опасности (ADR)
-      </label>
-      <select
-        :value="cargo.adr_class || 'none'"
-        class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-        @change="handleAdrClassChange"
-      >
-        <option v-for="option in adrClassOptions" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
     </div>
 
     <!-- Weight and Volume -->

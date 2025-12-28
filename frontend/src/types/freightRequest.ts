@@ -1,23 +1,61 @@
 // Enums (синхронизированы с backend)
-export type CargoType =
-  | 'general'
-  | 'bulk'
-  | 'liquid'
-  | 'refrigerated'
-  | 'dangerous'
-  | 'oversized'
-  | 'container'
 
-export type BodyType =
-  | 'tent'
+// 8 типов транспортных средств
+export type VehicleType =
+  | 'van'
+  | 'flatbed'
+  | 'tanker'
+  | 'dump_truck'
+  | 'specialized_truck'
+  | 'light_truck'
+  | 'medium_truck'
+  | 'heavy_truck'
+
+// 35 подтипов транспортных средств
+export type VehicleSubType =
+  // Van (фургон)
+  | 'dry_van'
+  | 'insulated'
   | 'refrigerator'
-  | 'isothermal'
-  | 'container'
-  | 'openbed'
-  | 'lowbed'
-  | 'jumbo'
-  | 'tank'
-  | 'tipper'
+  | 'curtain_side'
+  | 'box_truck'
+  | 'furniture_van'
+  // Flatbed (платформа)
+  | 'standard_flatbed'
+  | 'drop_deck'
+  | 'lowboy'
+  | 'extendable'
+  | 'conestoga'
+  // Tanker (цистерна)
+  | 'liquid_tanker'
+  | 'gas_tanker'
+  | 'chemical_tanker'
+  | 'food_tanker'
+  | 'bitumen_tanker'
+  // Dump truck (самосвал)
+  | 'rear_dump'
+  | 'side_dump'
+  | 'bottom_dump'
+  // Specialized truck (специализированный)
+  | 'car_carrier'
+  | 'timber_truck'
+  | 'grain_truck'
+  | 'livestock_carrier'
+  | 'concrete_mixer'
+  | 'container_chassis'
+  | 'tow_truck'
+  | 'crane_truck'
+  // Light truck (легкий грузовик)
+  | 'city_van'
+  | 'pickup'
+  | 'minivan_cargo'
+  // Medium truck (средний грузовик)
+  | 'medium_box'
+  | 'medium_flatbed'
+  // Heavy truck (тяжелый грузовик)
+  | 'semi_trailer'
+  | 'road_train'
+  | 'mega_trailer'
 
 export type LoadingType = 'rear' | 'side' | 'top'
 
@@ -93,7 +131,6 @@ export interface CargoInfo {
   weight: number
   volume?: number
   dimensions?: Dimensions
-  type: CargoType
   adr_class?: ADRClass
   quantity?: number
 }
@@ -104,7 +141,8 @@ export interface Temperature {
 }
 
 export interface VehicleRequirements {
-  body_types: BodyType[]
+  vehicle_type: VehicleType
+  vehicle_subtype: VehicleSubType
   loading_types?: LoadingType[]
   capacity?: number
   volume?: number
@@ -170,11 +208,11 @@ export interface FreightRequestListItem {
   origin_address?: string
   destination_address?: string
   route?: Route
-  cargo_type?: CargoType
   cargo_weight?: number
   price_amount?: number
   price_currency?: Currency
-  body_types?: BodyType[]
+  vehicle_type?: VehicleType
+  vehicle_subtype?: VehicleSubType
   customer_org_name?: string
   customer_org_inn?: string
   customer_org_country?: string
@@ -219,26 +257,76 @@ export const statusOptions: { value: FreightRequestStatusFilter; label: string }
 ]
 
 // Labels для UI
-export const cargoTypeLabels: Record<CargoType, string> = {
-  general: 'Общий груз',
-  bulk: 'Насыпной',
-  liquid: 'Наливной',
-  refrigerated: 'Рефрижераторный',
-  dangerous: 'Опасный',
-  oversized: 'Негабаритный',
-  container: 'Контейнерный',
+
+// Лейблы типов транспорта
+export const vehicleTypeLabels: Record<VehicleType, string> = {
+  van: 'Фургон',
+  flatbed: 'Платформа',
+  tanker: 'Цистерна',
+  dump_truck: 'Самосвал',
+  specialized_truck: 'Спецтранспорт',
+  light_truck: 'Легкий грузовик',
+  medium_truck: 'Средний грузовик',
+  heavy_truck: 'Тяжелый грузовик',
 }
 
-export const bodyTypeLabels: Record<BodyType, string> = {
-  tent: 'Тент',
+// Лейблы подтипов транспорта
+export const vehicleSubTypeLabels: Record<VehicleSubType, string> = {
+  // Van
+  dry_van: 'Сухой фургон',
+  insulated: 'Изотермический',
   refrigerator: 'Рефрижератор',
-  isothermal: 'Изотерм',
-  container: 'Контейнеровоз',
-  openbed: 'Открытая площадка',
-  lowbed: 'Низкорамник',
-  jumbo: 'Джамбо',
-  tank: 'Цистерна',
-  tipper: 'Самосвал',
+  curtain_side: 'Тентованный',
+  box_truck: 'Цельнометаллический',
+  furniture_van: 'Мебельный фургон',
+  // Flatbed
+  standard_flatbed: 'Стандартная платформа',
+  drop_deck: 'Низкорамная платформа',
+  lowboy: 'Низкорамник',
+  extendable: 'Раздвижная платформа',
+  conestoga: 'Конестога',
+  // Tanker
+  liquid_tanker: 'Жидкостная цистерна',
+  gas_tanker: 'Газовая цистерна',
+  chemical_tanker: 'Химическая цистерна',
+  food_tanker: 'Пищевая цистерна',
+  bitumen_tanker: 'Битумовоз',
+  // Dump truck
+  rear_dump: 'Задняя разгрузка',
+  side_dump: 'Боковая разгрузка',
+  bottom_dump: 'Донная разгрузка',
+  // Specialized
+  car_carrier: 'Автовоз',
+  timber_truck: 'Лесовоз',
+  grain_truck: 'Зерновоз',
+  livestock_carrier: 'Скотовоз',
+  concrete_mixer: 'Бетоносмеситель',
+  container_chassis: 'Контейнеровоз',
+  tow_truck: 'Эвакуатор',
+  crane_truck: 'Кран-манипулятор',
+  // Light truck
+  city_van: 'Городской фургон',
+  pickup: 'Пикап',
+  minivan_cargo: 'Грузовой минивэн',
+  // Medium truck
+  medium_box: 'Среднетоннажный фургон',
+  medium_flatbed: 'Среднетоннажная платформа',
+  // Heavy truck
+  semi_trailer: 'Полуприцеп',
+  road_train: 'Автопоезд',
+  mega_trailer: 'Мега-трейлер',
+}
+
+// Маппинг: какие подтипы доступны для каждого типа
+export const vehicleTypeSubTypes: Record<VehicleType, VehicleSubType[]> = {
+  van: ['dry_van', 'insulated', 'refrigerator', 'curtain_side', 'box_truck', 'furniture_van'],
+  flatbed: ['standard_flatbed', 'drop_deck', 'lowboy', 'extendable', 'conestoga'],
+  tanker: ['liquid_tanker', 'gas_tanker', 'chemical_tanker', 'food_tanker', 'bitumen_tanker'],
+  dump_truck: ['rear_dump', 'side_dump', 'bottom_dump'],
+  specialized_truck: ['car_carrier', 'timber_truck', 'grain_truck', 'livestock_carrier', 'concrete_mixer', 'container_chassis', 'tow_truck', 'crane_truck'],
+  light_truck: ['city_van', 'pickup', 'minivan_cargo'],
+  medium_truck: ['medium_box', 'medium_flatbed'],
+  heavy_truck: ['semi_trailer', 'road_train', 'mega_trailer'],
 }
 
 export const loadingTypeLabels: Record<LoadingType, string> = {
@@ -304,15 +392,19 @@ export const freightRequestStatusLabels: Record<FreightRequestStatus, string> = 
 }
 
 // Options для селектов
-export const cargoTypeOptions = Object.entries(cargoTypeLabels).map(([value, label]) => ({
-  value: value as CargoType,
+export const vehicleTypeOptions = Object.entries(vehicleTypeLabels).map(([value, label]) => ({
+  value: value as VehicleType,
   label,
 }))
 
-export const bodyTypeOptions = Object.entries(bodyTypeLabels).map(([value, label]) => ({
-  value: value as BodyType,
-  label,
-}))
+// Функция для получения подтипов по типу
+export function getVehicleSubTypeOptions(vehicleType: VehicleType) {
+  const subtypes = vehicleTypeSubTypes[vehicleType] || []
+  return subtypes.map((value) => ({
+    value,
+    label: vehicleSubTypeLabels[value],
+  }))
+}
 
 export const loadingTypeOptions = Object.entries(loadingTypeLabels).map(([value, label]) => ({
   value: value as LoadingType,

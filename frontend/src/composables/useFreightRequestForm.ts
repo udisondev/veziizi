@@ -2,15 +2,14 @@ import { ref, reactive, computed } from 'vue'
 import type {
   RoutePoint,
   CargoInfo,
-  CargoType,
   VehicleRequirements,
-  BodyType,
+  VehicleType,
+  VehicleSubType,
   LoadingType,
   Payment,
   VatType,
   PaymentMethod,
   PaymentTerms,
-  ADRClass,
   CreateFreightRequestRequest,
   FreightRequest,
 } from '@/types/freightRequest'
@@ -77,14 +76,13 @@ export function useFreightRequestForm() {
     weight: 0,
     volume: undefined,
     dimensions: undefined,
-    type: 'general' as CargoType,
-    adr_class: 'none' as ADRClass,
     quantity: undefined,
   })
 
   // Step 3: Vehicle
   const vehicle = reactive<VehicleRequirements>({
-    body_types: [] as BodyType[],
+    vehicle_type: undefined as unknown as VehicleType,
+    vehicle_subtype: undefined as unknown as VehicleSubType,
     loading_types: [] as LoadingType[],
     capacity: undefined,
     volume: undefined,
@@ -113,10 +111,11 @@ export function useFreightRequestForm() {
 
   // Route point management
   function addRoutePoint() {
-    // Добавляем точку перед последней (которая всегда unloading)
+    // Добавляем точку в конец — она станет новой разгрузкой,
+    // а старая последняя точка станет промежуточной
     const newPoint = createEmptyRoutePoint(false, false)
-    const insertIndex = routePoints.value.length - 1
-    routePoints.value.splice(insertIndex, 0, newPoint)
+    routePoints.value.push(newPoint)
+    ensureRouteConstraints()
   }
 
   function removeRoutePoint(index: number) {
@@ -216,16 +215,16 @@ export function useFreightRequestForm() {
 
     errors.description = validators.required(cargo.description)
     errors.weight = validators.positiveNumber(cargo.weight)
-    errors.cargo_type = validators.required(cargo.type)
     errors.quantity = validators.positiveNumber(cargo.quantity)
 
-    return !errors.description && !errors.weight && !errors.cargo_type && !errors.quantity
+    return !errors.description && !errors.weight && !errors.quantity
   }
 
   function validateStep3(): boolean {
     clearErrors()
 
-    errors.body_types = validators.required(vehicle.body_types)
+    errors.vehicle_type = validators.required(vehicle.vehicle_type)
+    errors.vehicle_subtype = validators.required(vehicle.vehicle_subtype)
 
     // Если температура включена, проверяем min и max
     if (vehicle.temperature !== undefined) {
@@ -244,7 +243,7 @@ export function useFreightRequestForm() {
       }
     }
 
-    return !errors.body_types && !errors.temperature_min && !errors.temperature_max && !errors.temperature
+    return !errors.vehicle_type && !errors.vehicle_subtype && !errors.temperature_min && !errors.temperature_max && !errors.temperature
   }
 
   function validateStep4(): boolean {
@@ -300,12 +299,10 @@ export function useFreightRequestForm() {
     const cleanedCargo: CargoInfo = {
       description: cargo.description,
       weight: cargo.weight,
-      type: cargo.type,
     }
 
     if (cargo.volume) cleanedCargo.volume = cargo.volume
     if (cargo.quantity) cleanedCargo.quantity = cargo.quantity
-    if (cargo.adr_class && cargo.adr_class !== 'none') cleanedCargo.adr_class = cargo.adr_class
     if (cargo.dimensions) {
       const { length, width, height } = cargo.dimensions
       if (length && width && height) {
@@ -314,7 +311,8 @@ export function useFreightRequestForm() {
     }
 
     const cleanedVehicle: VehicleRequirements = {
-      body_types: vehicle.body_types,
+      vehicle_type: vehicle.vehicle_type,
+      vehicle_subtype: vehicle.vehicle_subtype,
     }
 
     if (vehicle.loading_types && vehicle.loading_types.length > 0) {
@@ -421,15 +419,16 @@ export function useFreightRequestForm() {
       errors.description = validators.required(cargo.description)
     } else if (field === 'weight') {
       errors.weight = validators.positiveNumber(cargo.weight)
-    } else if (field === 'cargo_type') {
-      errors.cargo_type = validators.required(cargo.type)
     } else if (field === 'quantity') {
       errors.quantity = validators.positiveNumber(cargo.quantity)
     }
 
     // Vehicle
-    if (field === 'body_types') {
-      errors.body_types = validators.required(vehicle.body_types)
+    if (field === 'vehicle_type') {
+      errors.vehicle_type = validators.required(vehicle.vehicle_type)
+    }
+    if (field === 'vehicle_subtype') {
+      errors.vehicle_subtype = validators.required(vehicle.vehicle_subtype)
     }
 
     // Payment
@@ -457,12 +456,11 @@ export function useFreightRequestForm() {
       weight: 0,
       volume: undefined,
       dimensions: undefined,
-      type: 'general',
-      adr_class: 'none',
       quantity: undefined,
     })
     Object.assign(vehicle, {
-      body_types: [],
+      vehicle_type: undefined,
+      vehicle_subtype: undefined,
       loading_types: [],
       capacity: undefined,
       volume: undefined,
@@ -504,14 +502,13 @@ export function useFreightRequestForm() {
       weight: fr.cargo.weight,
       volume: fr.cargo.volume,
       dimensions: fr.cargo.dimensions ? { ...fr.cargo.dimensions } : undefined,
-      type: fr.cargo.type,
-      adr_class: fr.cargo.adr_class || 'none',
       quantity: fr.cargo.quantity,
     })
 
     // Vehicle
     Object.assign(vehicle, {
-      body_types: [...fr.vehicle_requirements.body_types],
+      vehicle_type: fr.vehicle_requirements.vehicle_type,
+      vehicle_subtype: fr.vehicle_requirements.vehicle_subtype,
       loading_types: fr.vehicle_requirements.loading_types ? [...fr.vehicle_requirements.loading_types] : [],
       capacity: fr.vehicle_requirements.capacity,
       volume: fr.vehicle_requirements.volume,

@@ -12,18 +12,17 @@ import type {
   FreightRequestStatus,
   FreightRequestStatusFilter,
   OwnershipFilter,
-  CargoType,
-  BodyType,
+  VehicleType,
+  VehicleSubType,
 } from '@/types/freightRequest'
 import {
-  cargoTypeLabels,
-  bodyTypeLabels,
+  vehicleTypeLabels,
+  vehicleSubTypeLabels,
+  vehicleTypeOptions,
   currencyLabels,
   countryLabels,
   ownershipOptions,
   statusOptions,
-  cargoTypeOptions,
-  bodyTypeOptions,
   type Country,
 } from '@/types/freightRequest'
 
@@ -82,8 +81,8 @@ const {
   maxWeight,
   minPrice,
   maxPrice,
-  cargoTypes,
-  bodyTypes,
+  vehicleTypes,
+  vehicleSubTypes,
   hasSubscriptionFilters,
   hasActiveFilters,
   activeFiltersCount,
@@ -99,8 +98,8 @@ const tempMinWeight = ref<number | undefined>()
 const tempMaxWeight = ref<number | undefined>()
 const tempMinPrice = ref<number | undefined>()
 const tempMaxPrice = ref<number | undefined>()
-const tempCargoTypes = ref<CargoType[]>([])
-const tempBodyTypes = ref<BodyType[]>([])
+const tempVehicleTypes = ref<VehicleType[]>([])
+const tempVehicleSubTypes = ref<VehicleSubType[]>([])
 
 // Status map for StatusBadge
 const freightStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
@@ -122,8 +121,8 @@ function openFilters() {
   tempMaxWeight.value = maxWeight.value
   tempMinPrice.value = minPrice.value
   tempMaxPrice.value = maxPrice.value
-  tempCargoTypes.value = [...cargoTypes.value]
-  tempBodyTypes.value = [...bodyTypes.value]
+  tempVehicleTypes.value = [...vehicleTypes.value]
+  tempVehicleSubTypes.value = [...vehicleSubTypes.value]
   showFilters.value = true
 }
 
@@ -138,8 +137,8 @@ function applyFilters() {
     maxWeight: tempMaxWeight.value,
     minPrice: tempMinPrice.value,
     maxPrice: tempMaxPrice.value,
-    cargoTypes: [...tempCargoTypes.value],
-    bodyTypes: [...tempBodyTypes.value],
+    vehicleTypes: [...tempVehicleTypes.value],
+    vehicleSubTypes: [...tempVehicleSubTypes.value],
   })
   showFilters.value = false
 }
@@ -154,8 +153,8 @@ function resetTempFilters() {
   tempMaxWeight.value = undefined
   tempMinPrice.value = undefined
   tempMaxPrice.value = undefined
-  tempCargoTypes.value = []
-  tempBodyTypes.value = []
+  tempVehicleTypes.value = []
+  tempVehicleSubTypes.value = []
 }
 
 // Load data with filters
@@ -182,8 +181,8 @@ async function loadItems() {
     if (maxWeight.value !== undefined) params.max_weight = maxWeight.value
     if (minPrice.value !== undefined) params.min_price = minPrice.value
     if (maxPrice.value !== undefined) params.max_price = maxPrice.value
-    if (cargoTypes.value.length > 0) params.cargo_types = cargoTypes.value.join(',')
-    if (bodyTypes.value.length > 0) params.body_types = bodyTypes.value.join(',')
+    if (vehicleTypes.value.length > 0) params.vehicle_types = vehicleTypes.value.join(',')
+    if (vehicleSubTypes.value.length > 0) params.vehicle_subtypes = vehicleSubTypes.value.join(',')
 
     // Route filter - extract city IDs and country IDs from route points
     if (routePoints.value.length > 0) {
@@ -239,8 +238,8 @@ const currentSubscriptionFilters = computed(() => ({
   maxWeight: maxWeight.value,
   minPrice: minPrice.value,
   maxPrice: maxPrice.value,
-  cargoTypes: cargoTypes.value,
-  bodyTypes: bodyTypes.value,
+  vehicleTypes: vehicleTypes.value,
+  vehicleSubTypes: vehicleSubTypes.value,
 }))
 
 // Route point management functions for temp state
@@ -298,11 +297,14 @@ function formatDate(dateStr: string): string {
   })
 }
 
-function formatBodyTypes(types?: string[]): string {
-  if (!types || types.length === 0) return '—'
-  return types
-    .map(t => bodyTypeLabels[t as keyof typeof bodyTypeLabels] || t)
-    .join(', ')
+function formatVehicleType(type?: string, subtype?: string): string {
+  if (!type) return '—'
+  const typeLabel = vehicleTypeLabels[type as keyof typeof vehicleTypeLabels] || type
+  if (subtype) {
+    const subtypeLabel = vehicleSubTypeLabels[subtype as keyof typeof vehicleSubTypeLabels] || subtype
+    return `${typeLabel} (${subtypeLabel})`
+  }
+  return typeLabel
 }
 
 function isExpiringSoon(expiresAt: string): boolean {
@@ -315,7 +317,7 @@ function isExpiringSoon(expiresAt: string): boolean {
 // Watch filters and reload
 watch(
   [ownershipFilter, statusFilter, orgNameFilter, orgINNFilter, routePoints,
-   minWeight, maxWeight, minPrice, maxPrice, cargoTypes, bodyTypes],
+   minWeight, maxWeight, minPrice, maxPrice, vehicleTypes, vehicleSubTypes],
   () => loadItems(),
   { deep: true }
 )
@@ -437,20 +439,12 @@ onMounted(() => {
             @update:max-value="tempMaxPrice = $event"
           />
 
-          <!-- Cargo Types -->
+          <!-- Vehicle Types -->
           <ChipButtonGroup
-            v-model="tempCargoTypes"
-            :options="cargoTypeOptions"
-            label="Типы груза"
-            empty-text="Не выбрано — все типы груза"
-          />
-
-          <!-- Body Types -->
-          <ChipButtonGroup
-            v-model="tempBodyTypes"
-            :options="bodyTypeOptions"
-            label="Типы кузова"
-            empty-text="Не выбрано — все типы кузова"
+            v-model="tempVehicleTypes"
+            :options="vehicleTypeOptions"
+            label="Тип транспорта"
+            empty-text="Не выбрано — все типы транспорта"
           />
         </FilterSheet>
 
@@ -575,20 +569,17 @@ onMounted(() => {
 
             <!-- Details -->
             <div class="flex flex-wrap gap-4 lg:gap-6 text-sm">
-              <!-- Cargo -->
+              <!-- Weight -->
               <div class="min-w-24">
-                <div class="text-muted-foreground">Груз</div>
-                <div class="font-medium">
-                  {{ item.cargo_type ? cargoTypeLabels[item.cargo_type] : '—' }}
-                </div>
-                <div class="text-muted-foreground">{{ formatWeight(item.cargo_weight) }}</div>
+                <div class="text-muted-foreground">Вес</div>
+                <div class="font-medium">{{ formatWeight(item.cargo_weight) }}</div>
               </div>
 
               <!-- Vehicle -->
               <div class="min-w-24">
-                <div class="text-muted-foreground">Кузов</div>
+                <div class="text-muted-foreground">Транспорт</div>
                 <div class="font-medium truncate max-w-32">
-                  {{ formatBodyTypes(item.body_types) }}
+                  {{ formatVehicleType(item.vehicle_type, item.vehicle_subtype) }}
                 </div>
               </div>
 

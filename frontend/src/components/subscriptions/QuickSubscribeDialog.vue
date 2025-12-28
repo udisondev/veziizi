@@ -2,8 +2,8 @@
 import { ref, computed, watch } from 'vue'
 import { useSubscriptionsStore } from '@/stores/subscriptions'
 import { useToast } from '@/components/ui/toast/use-toast'
-import type { CargoType, BodyType } from '@/types/freightRequest'
-import { cargoTypeLabels, bodyTypeLabels } from '@/types/freightRequest'
+import type { VehicleType, VehicleSubType } from '@/types/freightRequest'
+import { vehicleTypeLabels, vehicleSubTypeLabels } from '@/types/freightRequest'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -32,8 +32,8 @@ interface Filters {
   maxWeight?: number
   minPrice?: number
   maxPrice?: number
-  cargoTypes: CargoType[]
-  bodyTypes: BodyType[]
+  vehicleTypes: VehicleType[]
+  vehicleSubTypes: VehicleSubType[]
 }
 
 interface Props {
@@ -87,25 +87,25 @@ function generateDefaultName(): string {
     }
   }
 
-  // Cargo types (first one)
-  const firstCargoType = props.filters.cargoTypes[0]
-  if (firstCargoType) {
-    const firstTypeLabel = cargoTypeLabels[firstCargoType]
-    if (props.filters.cargoTypes.length > 1) {
-      parts.push(`${firstTypeLabel} +${props.filters.cargoTypes.length - 1}`)
+  // Vehicle types (first one)
+  const firstVehicleType = props.filters.vehicleTypes[0]
+  if (firstVehicleType) {
+    const firstTypeLabel = vehicleTypeLabels[firstVehicleType]
+    if (props.filters.vehicleTypes.length > 1) {
+      parts.push(`${firstTypeLabel} +${props.filters.vehicleTypes.length - 1}`)
     } else {
       parts.push(firstTypeLabel)
     }
   }
 
-  // Body types (first one)
-  const firstBodyType = props.filters.bodyTypes[0]
-  if (firstBodyType) {
-    const firstTypeLabel = bodyTypeLabels[firstBodyType]
-    if (props.filters.bodyTypes.length > 1) {
-      parts.push(`${firstTypeLabel} +${props.filters.bodyTypes.length - 1}`)
+  // Vehicle subtypes (first one)
+  const firstVehicleSubType = props.filters.vehicleSubTypes[0]
+  if (firstVehicleSubType) {
+    const firstSubTypeLabel = vehicleSubTypeLabels[firstVehicleSubType]
+    if (props.filters.vehicleSubTypes.length > 1) {
+      parts.push(`${firstSubTypeLabel} +${props.filters.vehicleSubTypes.length - 1}`)
     } else {
-      parts.push(firstTypeLabel)
+      parts.push(firstSubTypeLabel)
     }
   }
 
@@ -123,8 +123,8 @@ const filtersForSummary = computed<FiltersData>(() => ({
   maxWeight: props.filters.maxWeight,
   minPrice: props.filters.minPrice,
   maxPrice: props.filters.maxPrice,
-  cargoTypes: props.filters.cargoTypes,
-  bodyTypes: props.filters.bodyTypes,
+  vehicleTypes: props.filters.vehicleTypes,
+  vehicleSubTypes: props.filters.vehicleSubTypes,
 }))
 
 const isValid = computed(() => subscriptionName.value.trim().length > 0)
@@ -150,8 +150,8 @@ async function handleSubmit() {
       max_weight: props.filters.maxWeight,
       min_price: props.filters.minPrice,
       max_price: props.filters.maxPrice,
-      cargo_types: props.filters.cargoTypes.length > 0 ? props.filters.cargoTypes : undefined,
-      body_types: props.filters.bodyTypes.length > 0 ? props.filters.bodyTypes : undefined,
+      vehicle_types: props.filters.vehicleTypes.length > 0 ? props.filters.vehicleTypes : undefined,
+      vehicle_subtypes: props.filters.vehicleSubTypes.length > 0 ? props.filters.vehicleSubTypes : undefined,
       is_active: true,
     })
 
