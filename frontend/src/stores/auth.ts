@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth'
 import { getFingerprint } from '@/composables/useFingerprint'
+import { logger } from '@/utils/logger'
 import type {
   MemberRole,
   OrganizationBrief,
@@ -54,7 +55,8 @@ export const useAuthStore = defineStore('auth', () => {
       phone.value = data.phone ?? null
       telegramId.value = data.telegram_id ?? null
       organization.value = data.organization ?? null
-    } catch {
+    } catch (e) {
+      logger.error('Failed to fetch user', e)
       clearAuth()
     }
   }
