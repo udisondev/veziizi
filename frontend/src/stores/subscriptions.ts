@@ -7,6 +7,7 @@ import type {
   FreightSubscriptionUpdate,
 } from '@/types/subscription'
 import { MAX_SUBSCRIPTIONS_PER_MEMBER } from '@/types/subscription'
+import { logger } from '@/utils/logger'
 
 export const useSubscriptionsStore = defineStore('subscriptions', () => {
   // ===============================
@@ -46,7 +47,7 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
       subscriptions.value = await subscriptionsApi.list()
     } catch (e) {
       error.value = 'Не удалось загрузить подписки'
-      console.error('Failed to fetch subscriptions:', e)
+      logger.error('Failed to fetch subscriptions', e)
     } finally {
       isLoading.value = false
     }
@@ -56,7 +57,7 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
     try {
       return await subscriptionsApi.get(id)
     } catch (e) {
-      console.error('Failed to get subscription:', e)
+      logger.error('Failed to get subscription', e)
       return null
     }
   }
@@ -75,7 +76,7 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
       return subscription
     } catch (e) {
       error.value = 'Не удалось создать подписку'
-      console.error('Failed to create subscription:', e)
+      logger.error('Failed to create subscription', e)
       return null
     } finally {
       isSaving.value = false
@@ -97,7 +98,7 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
       return subscription
     } catch (e) {
       error.value = 'Не удалось обновить подписку'
-      console.error('Failed to update subscription:', e)
+      logger.error('Failed to update subscription', e)
       return null
     } finally {
       isSaving.value = false
@@ -113,7 +114,7 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
       return true
     } catch (e) {
       error.value = 'Не удалось удалить подписку'
-      console.error('Failed to delete subscription:', e)
+      logger.error('Failed to delete subscription', e)
       return false
     } finally {
       isSaving.value = false
@@ -132,7 +133,7 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
       }
       return true
     } catch (e) {
-      console.error('Failed to toggle subscription active:', e)
+      logger.error('Failed to toggle subscription active', e)
       return false
     }
   }

@@ -25,6 +25,9 @@ import {
   statusOptions,
   type Country,
 } from '@/types/freightRequest'
+import { freightRequestStatusMap } from '@/constants/statusMaps'
+import { formatDateShort, formatWeight } from '@/utils/formatters'
+import { logger } from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -101,14 +104,6 @@ const tempMaxPrice = ref<number | undefined>()
 const tempVehicleTypes = ref<VehicleType[]>([])
 const tempVehicleSubTypes = ref<VehicleSubType[]>([])
 
-// Status map for StatusBadge
-const freightStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
-  published: { label: 'Опубликована', variant: 'success' },
-  selected: { label: 'Выбран исполнитель', variant: 'warning' },
-  confirmed: { label: 'Подтверждена', variant: 'info' },
-  cancelled: { label: 'Отменена', variant: 'destructive' },
-  expired: { label: 'Истекла', variant: 'secondary' },
-}
 
 // Sheet functions
 function openFilters() {
@@ -206,7 +201,7 @@ async function loadItems() {
     items.value = await freightRequestsApi.list(params)
   } catch (e) {
     error.value = 'Не удалось загрузить заявки'
-    console.error(e)
+    logger.error('Failed to load freight requests', e)
   } finally {
     isLoading.value = false
   }
@@ -279,22 +274,14 @@ function formatPrice(amount?: number, currency?: string): string {
   return `${value.toLocaleString('ru-RU')} ${symbol}`
 }
 
-function formatWeight(weight?: number): string {
+function formatWeightDisplay(weight?: number): string {
   if (!weight) return '—'
-  return `${weight.toLocaleString('ru-RU')} т`
+  return formatWeight(weight * 1000) // конвертация из тонн в кг для formatWeight
 }
 
 function getTransitPointsCount(item: FreightRequestListItem): number {
   if (!item.route?.points || item.route.points.length <= 2) return 0
   return item.route.points.length - 2
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 function formatVehicleType(type?: string, subtype?: string): string {
@@ -572,7 +559,7 @@ onMounted(() => {
               <!-- Weight -->
               <div class="min-w-24">
                 <div class="text-muted-foreground">Вес</div>
-                <div class="font-medium">{{ formatWeight(item.cargo_weight) }}</div>
+                <div class="font-medium">{{ formatWeightDisplay(item.cargo_weight) }}</div>
               </div>
 
               <!-- Vehicle -->
@@ -594,7 +581,7 @@ onMounted(() => {
               <!-- Date -->
               <div class="min-w-24">
                 <div class="text-muted-foreground">Создана</div>
-                <div class="font-medium">{{ formatDate(item.created_at) }}</div>
+                <div class="font-medium">{{ formatDateShort(item.created_at) }}</div>
               </div>
             </div>
           </div>

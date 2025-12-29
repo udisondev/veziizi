@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { organizationsApi } from '@/api/organizations'
 import type { OrganizationDetail, OrganizationRating, OrganizationReview } from '@/types/admin'
+import { logger } from '@/utils/logger'
 
 // Shared Components
 import { DetailPageHeader } from '@/components/shared'
@@ -73,7 +74,7 @@ async function loadMoreReviews() {
     })
     reviews.value.push(...(reviewsData.items ?? []))
   } catch (e) {
-    console.error('Failed to load more reviews:', e)
+    logger.error('Failed to load more reviews', e)
   } finally {
     isLoadingMore.value = false
   }

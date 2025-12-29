@@ -6,6 +6,7 @@ import { invitationsApi } from '@/api/invitations'
 import { useAuthStore } from '@/stores/auth'
 import { getFingerprint } from '@/composables/useFingerprint'
 import type { InvitationDetails, AcceptInvitationRequest } from '@/types/invitation'
+import { logger } from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -86,15 +87,15 @@ async function loadInvitation() {
     } else if (data.status === 'accepted') {
       loadError.value = 'Приглашение уже использовано'
     }
-  } catch (e: any) {
-    if (e?.status === 404) {
+  } catch (e: unknown) {
+    if (e instanceof Error && 'status' in e && (e as { status: number }).status === 404) {
       loadError.value = 'Приглашение не найдено'
-    } else if (e?.message?.includes('expired')) {
+    } else if (e instanceof Error && e.message?.includes('expired')) {
       loadError.value = 'Приглашение истекло'
     } else {
-      loadError.value = e?.message || 'Не удалось загрузить приглашение'
+      loadError.value = e instanceof Error ? e.message : 'Не удалось загрузить приглашение'
     }
-    console.error(e)
+    logger.error('Failed to load invitation', e)
   } finally {
     isLoading.value = false
   }
@@ -179,15 +180,16 @@ async function handleSubmit() {
         })
       }
     }, 2000)
-  } catch (e: any) {
-    if (e?.message?.includes('expired')) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : ''
+    if (message.includes('expired')) {
       submitError.value = 'Приглашение истекло'
-    } else if (e?.message?.includes('already')) {
+    } else if (message.includes('already')) {
       submitError.value = 'Приглашение уже использовано'
     } else {
-      submitError.value = e?.message || 'Не удалось принять приглашение'
+      submitError.value = message || 'Не удалось принять приглашение'
     }
-    console.error(e)
+    logger.error('Failed to accept invitation', e)
   } finally {
     isSubmitting.value = false
   }

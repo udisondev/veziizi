@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
-import { useGeo, type City } from '@/composables/useGeo'
+import { ref, watch, onMounted, computed } from 'vue'
+import { useGeo, type City, searchCities } from '@/composables/useGeo'
+import { useCityDropdown } from '@/composables/useCityDropdown'
 import {
   Select,
   SelectContent,
@@ -51,9 +52,19 @@ const citySearch = ref('')
 const cities = ref<City[]>([])
 const isLoadingCities = ref(false)
 const isCityDropdownOpen = ref(false)
-const highlightedIndex = ref(-1)
-const cityInputRef = ref<HTMLInputElement | null>(null)
-const cityDropdownRef = ref<HTMLDivElement | null>(null)
+
+const {
+  highlightedIndex,
+  cityInputRef,
+  cityDropdownRef,
+  handleKeydown: handleCityKeydown,
+  resetHighlight,
+} = useCityDropdown({
+  cities,
+  isOpen: isCityDropdownOpen,
+  onSelect: (city) => handleCitySelect(city),
+  onClose: () => { isCityDropdownOpen.value = false },
+})
 
 // Filter countries by search
 const countrySearch = ref('')
@@ -101,7 +112,7 @@ function handleCountryChange(value: AcceptableValue) {
 async function handleCityInput(event: Event) {
   const value = (event.target as HTMLInputElement).value
   citySearch.value = value
-  highlightedIndex.value = -1
+  resetHighlight()
 
   if (!props.point.countryId || value.length < 1) {
     cities.value = []
@@ -115,7 +126,6 @@ async function handleCityInput(event: Event) {
 
   isLoadingCities.value = true
   try {
-    const { searchCities } = await import('@/composables/useGeo')
     const results = await searchCities(props.point.countryId, value, 10)
     cities.value = results
     isCityDropdownOpen.value = results.length > 0
@@ -136,52 +146,8 @@ function handleCitySelect(city: City) {
   isCityDropdownOpen.value = false
 }
 
-// Keyboard navigation
-function handleCityKeydown(event: KeyboardEvent) {
-  if (!isCityDropdownOpen.value || cities.value.length === 0) return
-
-  switch (event.key) {
-    case 'ArrowDown':
-      event.preventDefault()
-      highlightedIndex.value = Math.min(highlightedIndex.value + 1, cities.value.length - 1)
-      break
-    case 'ArrowUp':
-      event.preventDefault()
-      highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0)
-      break
-    case 'Enter':
-      event.preventDefault()
-      const selected = cities.value[highlightedIndex.value]
-      if (highlightedIndex.value >= 0 && selected) {
-        handleCitySelect(selected)
-      }
-      break
-    case 'Escape':
-      isCityDropdownOpen.value = false
-      break
-  }
-}
-
-// Click outside handler
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as Node
-  if (
-    cityInputRef.value &&
-    !cityInputRef.value.contains(target) &&
-    cityDropdownRef.value &&
-    !cityDropdownRef.value.contains(target)
-  ) {
-    isCityDropdownOpen.value = false
-  }
-}
-
 onMounted(async () => {
   await fetchCountries()
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 

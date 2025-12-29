@@ -13,91 +13,24 @@ import type {
   CreateFreightRequestRequest,
   FreightRequest,
 } from '@/types/freightRequest'
-
-// Валидаторы
-const validators = {
-  required(value: unknown): string | null {
-    if (value === undefined || value === null || value === '') return 'Обязательное поле'
-    if (Array.isArray(value) && value.length === 0) return 'Выберите хотя бы один вариант'
-    return null
-  },
-
-  positiveNumber(value: number | undefined | null): string | null {
-    if (value === undefined || value === null || value === 0) return 'Обязательное поле'
-    if (value <= 0) return 'Должно быть больше 0'
-    return null
-  },
-
-  minRoutePoints(points: RoutePoint[]): string | null {
-    if (points.length < 2) return 'Минимум 2 точки маршрута'
-    const hasLoading = points.some((p) => p.is_loading)
-    const hasUnloading = points.some((p) => p.is_unloading)
-    if (!hasLoading) return 'Добавьте точку погрузки'
-    if (!hasUnloading) return 'Добавьте точку разгрузки'
-    return null
-  },
-
-  dateNotInPast(value: string): string | null {
-    if (!value) return null
-    const date = new Date(value)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    if (date < today) {
-      return 'Дата не может быть в прошлом'
-    }
-    return null
-  },
-
-  dateSequence(currentDateFrom: string, prevDateTo: string | undefined, prevDateFrom: string): string | null {
-    if (!currentDateFrom || !prevDateFrom) return null
-    const current = new Date(currentDateFrom)
-    const prevEnd = prevDateTo ? new Date(prevDateTo) : new Date(prevDateFrom)
-    if (current < prevEnd) {
-      return 'Дата должна быть не раньше даты предыдущей точки'
-    }
-    return null
-  },
-
-  dateToAfterFrom(dateFrom: string, dateTo: string): string | null {
-    if (!dateFrom || !dateTo) return null
-    if (new Date(dateTo) < new Date(dateFrom)) {
-      return 'Дата окончания не может быть раньше даты начала'
-    }
-    return null
-  },
-}
-
-let uidCounter = 0
-function generateUid(): string {
-  return `point_${Date.now()}_${++uidCounter}`
-}
-
-function createEmptyRoutePoint(isFirst: boolean, isLast: boolean): RoutePoint {
-  return {
-    _uid: generateUid(),
-    is_loading: isFirst,
-    is_unloading: isLast,
-    address: '',
-    date_from: '',
-    date_to: undefined,
-    time_from: undefined,
-    time_to: undefined,
-    contact_name: undefined,
-    contact_phone: undefined,
-    comment: undefined,
-    coordinates: undefined,
-  }
-}
+import { freightFormValidators as validators } from '@/utils/freightFormValidators'
+import { useRoutePointsManager } from '@/composables/useRoutePointsManager'
 
 export function useFreightRequestForm() {
   const currentStep = ref(1)
   const totalSteps = 5
 
-  // Step 1: Route
-  const routePoints = ref<RoutePoint[]>([
-    createEmptyRoutePoint(true, false),
-    createEmptyRoutePoint(false, true),
-  ])
+  // Step 1: Route - delegate to useRoutePointsManager
+  const {
+    routePoints,
+    addRoutePoint,
+    removeRoutePoint,
+    updateRoutePoint,
+    reorderRoutePoints,
+    ensureRouteConstraints,
+    resetRoutePoints,
+    loadRoutePoints,
+  } = useRoutePointsManager()
 
   // Step 2: Cargo
   const cargo = reactive<CargoInfo>({
@@ -138,63 +71,6 @@ export function useFreightRequestForm() {
 
   // Errors
   const errors = reactive<Record<string, string | null>>({})
-
-  // Route point management
-  function addRoutePoint() {
-    // Добавляем точку в конец — она станет новой разгрузкой,
-    // а старая последняя точка станет промежуточной
-    const newPoint = createEmptyRoutePoint(false, false)
-    routePoints.value.push(newPoint)
-    ensureRouteConstraints()
-  }
-
-  function removeRoutePoint(index: number) {
-    if (routePoints.value.length > 2) {
-      routePoints.value.splice(index, 1)
-      // Обеспечиваем, что первая точка loading, последняя unloading
-      ensureRouteConstraints()
-    }
-  }
-
-  function updateRoutePoint(index: number, updates: Partial<RoutePoint>) {
-    if (routePoints.value[index]) {
-      Object.assign(routePoints.value[index], updates)
-    }
-  }
-
-  function reorderRoutePoints(newOrder: RoutePoint[]) {
-    routePoints.value = newOrder
-    ensureRouteConstraints()
-  }
-
-  function ensureRouteConstraints() {
-    const points = routePoints.value
-    if (points.length === 0) return
-
-    const firstPoint = points[0]
-    const lastPoint = points[points.length - 1]
-
-    // Первая точка: всегда loading, никогда unloading
-    if (firstPoint) {
-      firstPoint.is_loading = true
-      firstPoint.is_unloading = false
-    }
-
-    // Последняя точка: всегда unloading, никогда loading
-    if (lastPoint && lastPoint !== firstPoint) {
-      lastPoint.is_unloading = true
-      lastPoint.is_loading = false
-    }
-
-    // Промежуточные точки: если нет ни одного флага, ставим оба
-    for (let i = 1; i < points.length - 1; i++) {
-      const point = points[i]
-      if (point && !point.is_loading && !point.is_unloading) {
-        point.is_loading = true
-        point.is_unloading = true
-      }
-    }
-  }
 
   // Validation
   function clearErrors() {
@@ -524,10 +400,7 @@ export function useFreightRequestForm() {
   // Reset form
   function resetForm() {
     currentStep.value = 1
-    routePoints.value = [
-      createEmptyRoutePoint(true, false),
-      createEmptyRoutePoint(false, true),
-    ]
+    resetRoutePoints()
     Object.assign(cargo, {
       description: '',
       weight: 0,
@@ -562,17 +435,8 @@ export function useFreightRequestForm() {
 
   // Load from existing freight request (for edit mode)
   function loadFromRequest(fr: FreightRequest) {
-    // Route points - преобразуем даты из ISO в YYYY-MM-DD для input type="date"
-    // Добавляем _uid для корректного отслеживания компонентов при drag-and-drop
-    routePoints.value = fr.route.points.map((p): RoutePoint => ({
-      ...p,
-      _uid: generateUid(),
-      date_from: p.date_from?.split('T')[0] || '',
-      date_to: p.date_to?.split('T')[0],
-    }))
-
-    // Гарантируем корректные флаги is_loading/is_unloading
-    ensureRouteConstraints()
+    // Route points - delegate to manager
+    loadRoutePoints(fr.route.points)
 
     // Cargo
     Object.assign(cargo, {

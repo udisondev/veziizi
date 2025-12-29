@@ -1,4 +1,4 @@
-import type { ApiError } from '@/types/api'
+import { ApiError, type ApiErrorResponse } from '@/api/errors'
 
 export class ApiClient {
   private baseUrl: string
@@ -22,10 +22,15 @@ export class ApiClient {
     })
 
     if (!response.ok) {
-      const error: ApiError = await response.json().catch(() => ({
+      const errorData: ApiErrorResponse = await response.json().catch(() => ({
         error: `HTTP ${response.status}`,
       }))
-      throw new Error(error.error)
+      throw new ApiError(
+        response.status,
+        errorData.error,
+        errorData.error_code,
+        errorData.details
+      )
     }
 
     if (response.status === 204) {

@@ -25,7 +25,7 @@ export async function authGuard(
   if (to.meta.public) {
     // Redirect authenticated users away from login page
     if (to.name === 'login' && auth.isAuthenticated) {
-      return { name: 'dashboard' }
+      return { name: 'freight-requests' }
     }
     return true
   }

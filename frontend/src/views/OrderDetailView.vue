@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ordersApi } from '@/api/orders'
 import { historyApi } from '@/api/history'
 import { membersApi } from '@/api/members'
 import type { MemberListItem } from '@/types/member'
 import { useAuthStore } from '@/stores/auth'
-import type { Order, OrderMessage, OrderDocument, LeaveReviewRequest } from '@/types/order'
+import type { Order, OrderDocument, LeaveReviewRequest } from '@/types/order'
 import { isOrderFinished, isOrderCancelled, isOrderActive } from '@/types/order'
+import { orderStatusMap } from '@/constants/statusMaps'
+import { formatDateTime } from '@/utils/formatters'
 import EventHistory from '@/components/EventHistory.vue'
+import OrderMessagesTab from '@/components/order/OrderMessagesTab.vue'
+import OrderDocumentsTab from '@/components/order/OrderDocumentsTab.vue'
+import OrderReviewsTab from '@/components/order/OrderReviewsTab.vue'
 
 // UI Components
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -52,10 +55,6 @@ import {
   FileText,
   Star,
   Clock,
-  Send,
-  Upload,
-  Download,
-  Trash2,
   Check,
   XCircle,
   UserCog,
@@ -75,13 +74,9 @@ const actionLoading = ref(false)
 // Tabs
 const activeTab = ref('info')
 
-// Messages
-const messageInput = ref('')
-const messagesContainer = ref<HTMLDivElement | null>(null)
-
-// Documents
-const fileInput = ref<HTMLInputElement | null>(null)
-const uploadingFile = ref(false)
+// Component refs
+const messagesTabRef = ref<InstanceType<typeof OrderMessagesTab> | null>(null)
+const documentsTabRef = ref<InstanceType<typeof OrderDocumentsTab> | null>(null)
 
 // Modals
 const showCancelModal = ref(false)
@@ -97,15 +92,6 @@ const reviewForm = ref<LeaveReviewRequest>({
 const showReassignModal = ref(false)
 const selectedNewMember = ref('')
 const availableMembers = ref<{ id: string; name: string }[]>([])
-
-// Status map for StatusBadge
-const orderStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
-  active: { label: 'Активен', variant: 'info' },
-  customer_completed: { label: 'Завершён заказчиком', variant: 'warning' },
-  carrier_completed: { label: 'Завершён перевозчиком', variant: 'warning' },
-  completed: { label: 'Завершён', variant: 'success' },
-  cancelled: { label: 'Отменён', variant: 'destructive' },
-}
 
 // Computed
 const isCustomer = computed(() => {
@@ -140,16 +126,6 @@ const canComplete = computed(() => {
 const canCancel = computed(() => {
   if (!order.value || !isParticipant.value) return false
   return order.value.status === 'active'
-})
-
-const canSendMessage = computed(() => {
-  if (!order.value || !isResponsible.value) return false
-  return !isOrderCancelled(order.value.status)
-})
-
-const canUploadDocument = computed(() => {
-  if (!order.value || !isResponsible.value) return false
-  return !isOrderFinished(order.value.status)
 })
 
 const canLeaveReview = computed(() => {
@@ -198,13 +174,6 @@ const orderNumber = computed(() => {
   return order.value.order_number
 })
 
-const sortedMessages = computed(() => {
-  if (!order.value) return []
-  return [...order.value.messages].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
-})
-
 // Methods
 async function loadData() {
   isLoading.value = true
@@ -219,55 +188,20 @@ async function loadData() {
   }
 }
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 function loadOrderHistory(limit: number, offset: number) {
   const id = route.params.id as string
   return historyApi.getOrderHistory(id, { limit, offset })
 }
 
-function isMyMessage(msg: OrderMessage): boolean {
-  return msg.sender_org_id === auth.organizationId
-}
-
-function getMessageSenderLabel(msg: OrderMessage): string {
-  if (!order.value) return ''
-  if (msg.sender_org_id === order.value.customer_org_id) return 'Заказчик'
-  if (msg.sender_org_id === order.value.carrier_org_id) return 'Перевозчик'
-  return ''
-}
-
-async function scrollToBottom() {
-  await nextTick()
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-  }
-}
-
 // Actions
-async function handleSendMessage() {
-  if (!order.value || !messageInput.value.trim()) return
+async function handleSendMessage(content: string) {
+  if (!order.value) return
 
   actionLoading.value = true
   try {
-    await ordersApi.sendMessage(order.value.id, { content: messageInput.value.trim() })
-    messageInput.value = ''
+    await ordersApi.sendMessage(order.value.id, { content })
     await loadData()
-    scrollToBottom()
+    messagesTabRef.value?.scrollToBottom()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка отправки'
   } finally {
@@ -275,24 +209,16 @@ async function handleSendMessage() {
   }
 }
 
-function triggerFileUpload() {
-  fileInput.value?.click()
-}
+async function handleFileUpload(file: File) {
+  if (!order.value) return
 
-async function handleFileUpload(event: Event) {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (!file || !order.value) return
-
-  uploadingFile.value = true
   try {
     await ordersApi.uploadDocument(order.value.id, file)
     await loadData()
-    target.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка загрузки'
   } finally {
-    uploadingFile.value = false
+    documentsTabRef.value?.onUploadComplete()
   }
 }
 
@@ -575,150 +501,29 @@ onMounted(() => {
 
               <!-- Messages Tab -->
               <TabsContent value="messages" class="mt-0">
-                <!-- Messages List -->
-                <div
-                  ref="messagesContainer"
-                  class="h-64 sm:h-80 overflow-y-auto border rounded-lg p-3 sm:p-4 mb-4 space-y-3"
-                >
-                  <div v-if="sortedMessages.length === 0" class="text-center text-muted-foreground py-8">
-                    Сообщений пока нет
-                  </div>
-
-                  <div
-                    v-for="msg in sortedMessages"
-                    :key="msg.id"
-                    :class="[
-                      'max-w-[80%] p-3 rounded-lg',
-                      isMyMessage(msg)
-                        ? 'ml-auto bg-primary/10 text-foreground'
-                        : 'bg-muted text-foreground'
-                    ]"
-                  >
-                    <div class="text-xs text-muted-foreground mb-1">
-                      {{ getMessageSenderLabel(msg) }} &middot; {{ formatDateTime(msg.created_at) }}
-                    </div>
-                    <div class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
-                  </div>
-                </div>
-
-                <!-- Message Input -->
-                <div v-if="canSendMessage" class="flex flex-col gap-2 sm:flex-row">
-                  <Input
-                    v-model="messageInput"
-                    @keyup.enter="handleSendMessage"
-                    placeholder="Введите сообщение..."
-                    :disabled="actionLoading"
-                    class="flex-1"
-                  />
-                  <Button
-                    :disabled="!messageInput.trim() || actionLoading"
-                    @click="handleSendMessage"
-                  >
-                    <Send class="mr-2 h-4 w-4" />
-                    Отправить
-                  </Button>
-                </div>
-                <div v-else-if="isOrderCancelled(order.status)" class="text-sm text-muted-foreground">
-                  Отправка сообщений недоступна для отменённого заказа
-                </div>
+                <OrderMessagesTab
+                  ref="messagesTabRef"
+                  :order="order"
+                  :action-loading="actionLoading"
+                  @send="handleSendMessage"
+                />
               </TabsContent>
 
               <!-- Documents Tab -->
               <TabsContent value="documents" class="mt-0">
-                <!-- Upload button -->
-                <div v-if="canUploadDocument" class="mb-4">
-                  <input
-                    ref="fileInput"
-                    type="file"
-                    @change="handleFileUpload"
-                    class="hidden"
-                  />
-                  <Button
-                    :disabled="uploadingFile"
-                    @click="triggerFileUpload"
-                  >
-                    <Upload class="mr-2 h-4 w-4" />
-                    {{ uploadingFile ? 'Загрузка...' : 'Загрузить документ' }}
-                  </Button>
-                </div>
-
-                <!-- Documents List -->
-                <div v-if="order.documents.length === 0" class="text-center text-muted-foreground py-8">
-                  Документов пока нет
-                </div>
-
-                <div v-else class="space-y-3">
-                  <Card
-                    v-for="doc in order.documents"
-                    :key="doc.id"
-                  >
-                    <CardContent class="flex items-center justify-between p-4">
-                      <div class="flex-1 min-w-0">
-                        <p class="font-medium text-foreground truncate">{{ doc.name }}</p>
-                        <p class="text-sm text-muted-foreground">
-                          {{ formatFileSize(doc.size) }} &middot; {{ formatDateTime(doc.created_at) }}
-                        </p>
-                      </div>
-                      <div class="flex gap-2 ml-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          @click="handleDownloadDocument(doc)"
-                        >
-                          <Download class="h-4 w-4" />
-                        </Button>
-                        <Button
-                          v-if="isResponsible && !isOrderFinished(order.status)"
-                          variant="ghost"
-                          size="sm"
-                          class="text-destructive hover:text-destructive"
-                          :disabled="actionLoading"
-                          @click="handleRemoveDocument(doc)"
-                        >
-                          <Trash2 class="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                <OrderDocumentsTab
+                  ref="documentsTabRef"
+                  :order="order"
+                  :action-loading="actionLoading"
+                  @upload="handleFileUpload"
+                  @download="handleDownloadDocument"
+                  @remove="handleRemoveDocument"
+                />
               </TabsContent>
 
               <!-- Reviews Tab -->
               <TabsContent value="reviews" class="mt-0">
-                <div v-if="order.reviews.length === 0" class="text-center text-muted-foreground py-8">
-                  Отзывов пока нет
-                </div>
-
-                <div v-else class="space-y-4">
-                  <Card
-                    v-for="review in order.reviews"
-                    :key="review.id"
-                  >
-                    <CardContent class="p-4">
-                      <div class="flex items-center gap-2 mb-2">
-                        <div class="flex">
-                          <Star
-                            v-for="star in 5"
-                            :key="star"
-                            :class="[
-                              'h-5 w-5',
-                              star <= review.rating ? 'text-warning fill-warning' : 'text-muted-foreground'
-                            ]"
-                          />
-                        </div>
-                        <Badge variant="secondary">
-                          {{ review.reviewer_org_id === order.customer_org_id ? 'Заказчик' : 'Перевозчик' }}
-                        </Badge>
-                      </div>
-                      <p v-if="review.comment" class="text-foreground break-words">{{ review.comment }}</p>
-                      <p v-else class="text-muted-foreground italic">Без комментария</p>
-                      <p class="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                        <Clock class="h-3 w-3" />
-                        {{ formatDateTime(review.created_at) }}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
+                <OrderReviewsTab :order="order" />
               </TabsContent>
 
               <!-- History Tab -->

@@ -125,8 +125,8 @@ async function confirmBlock() {
     // Optimistic update - сразу обновляем локальное состояние
     member.value.status = 'blocked'
     closeBlockModal()
-  } catch (e: any) {
-    blockError.value = e?.message || 'Не удалось заблокировать сотрудника'
+  } catch (e: unknown) {
+    blockError.value = e instanceof Error ? e.message : 'Не удалось заблокировать сотрудника'
   } finally {
     blockLoading.value = false
   }
@@ -153,8 +153,8 @@ async function confirmUnblock() {
     // Optimistic update - сразу обновляем локальное состояние
     member.value.status = 'active'
     closeUnblockModal()
-  } catch (e: any) {
-    unblockError.value = e?.message || 'Не удалось разблокировать сотрудника'
+  } catch (e: unknown) {
+    unblockError.value = e instanceof Error ? e.message : 'Не удалось разблокировать сотрудника'
   } finally {
     unblockLoading.value = false
   }

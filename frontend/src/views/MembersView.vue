@@ -1,22 +1,23 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
-import { vMaska } from 'maska/vue'
 import { membersApi } from '@/api/members'
 import { freightRequestsApi } from '@/api/freightRequests'
-import { invitationsApi } from '@/api/invitations'
 import { historyApi } from '@/api/history'
 import type { MemberListItem, MemberRole, MemberRoleFilter, MemberStatus, MemberStatusFilter } from '@/types/member'
-import type { InvitationListItem, InvitationStatus, InvitationRole } from '@/types/invitation'
 import {
   roleLabels,
   statusLabels,
   roleOptions,
   statusOptions,
 } from '@/types/member'
+import { memberStatusMapExtended as memberStatusMap } from '@/constants/statusMaps'
+import { formatDateShort } from '@/utils/formatters'
+import { logger } from '@/utils/logger'
 import EventHistory from '@/components/EventHistory.vue'
+import InvitationsTab from '@/components/members/InvitationsTab.vue'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -34,14 +35,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
   Table,
   TableBody,
   TableCell,
@@ -57,24 +50,13 @@ import {
   LoadingSpinner,
   EmptyState,
   ErrorBanner,
-  ConfirmDialog,
   TabsDropdown,
   FilterSheet,
   type TabItem,
 } from '@/components/shared'
 
 // Icons
-import {
-  Users,
-  Mail,
-  Plus,
-  Copy,
-  Check,
-  Clock,
-  UserPlus,
-  History,
-  AlertCircle,
-} from 'lucide-vue-next'
+import { Users, UserPlus, History } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -113,63 +95,8 @@ const tempSearch = ref('')
 const tempRole = ref<MemberRoleFilter>('all')
 const tempStatus = ref<MemberStatusFilter>('all')
 
-// Invitations data
-const invitations = ref<InvitationListItem[]>([])
-const isLoadingInvitations = ref(false)
-
-// Invitations filters
-type InvitationStatusFilter = InvitationStatus | 'all'
-const invitationsStatusFilter = ref<InvitationStatusFilter>('all')
-const tempInvitationsStatus = ref<InvitationStatusFilter>('all')
-
-const invitationStatusOptions: { value: InvitationStatusFilter, label: string }[] = [
-  { value: 'all', label: 'Все статусы' },
-  { value: 'pending', label: 'Ожидают' },
-  { value: 'accepted', label: 'Приняты' },
-  { value: 'expired', label: 'Истекли' },
-  { value: 'cancelled', label: 'Отменены' },
-]
-
-const invitationRoleOptions: { value: InvitationRole, label: string }[] = [
-  { value: 'employee', label: 'Сотрудник' },
-  { value: 'administrator', label: 'Администратор' },
-]
-
-// Invitation form
-const showInvitationForm = ref(false)
-const isSubmitting = ref(false)
-const formError = ref<string | null>(null)
-const createdToken = ref<string | null>(null)
-const copied = ref(false)
-const phoneMask = '+7 (###) ###-##-##'
-const phonePlaceholder = '+7 (999) 999-99-99'
-
-const invitationForm = ref({
-  email: '',
-  role: 'employee' as InvitationRole,
-  name: '',
-  phone: '',
-})
-
-// Cancel invitation
-const cancellingId = ref<string | null>(null)
-const showCancelModal = ref(false)
-const cancellingInvitation = ref<InvitationListItem | null>(null)
-const cancelError = ref<string | null>(null)
-
-// Status maps for StatusBadge
-const memberStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
-  active: { label: 'Активен', variant: 'success' },
-  inactive: { label: 'Неактивен', variant: 'secondary' },
-  blocked: { label: 'Заблокирован', variant: 'destructive' },
-}
-
-const invitationStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
-  pending: { label: 'Ожидает', variant: 'warning' },
-  accepted: { label: 'Принято', variant: 'success' },
-  expired: { label: 'Истекло', variant: 'secondary' },
-  cancelled: { label: 'Отменено', variant: 'destructive' },
-}
+// Invitations tab ref
+const invitationsTabRef = ref<InstanceType<typeof InvitationsTab> | null>(null)
 
 // Computed
 const filteredMembers = computed(() => {
@@ -201,30 +128,16 @@ const filteredMembers = computed(() => {
   })
 })
 
-const hasActiveMembersFilters = computed(
+const hasActiveFilters = computed(
   () => searchQuery.value.trim() !== '' || roleFilter.value !== 'all' || statusFilter.value !== 'all'
 )
 
-const hasActiveInvitationsFilters = computed(
-  () => invitationsStatusFilter.value !== 'all'
-)
-
-const hasActiveFilters = computed(() => {
-  if (currentTab.value === 'members') {
-    return hasActiveMembersFilters.value
-  }
-  return hasActiveInvitationsFilters.value
-})
-
 const activeFiltersCount = computed(() => {
-  if (currentTab.value === 'members') {
-    let count = 0
-    if (searchQuery.value.trim()) count++
-    if (roleFilter.value !== 'all') count++
-    if (statusFilter.value !== 'all') count++
-    return count
-  }
-  return invitationsStatusFilter.value !== 'all' ? 1 : 0
+  let count = 0
+  if (searchQuery.value.trim()) count++
+  if (roleFilter.value !== 'all') count++
+  if (statusFilter.value !== 'all') count++
+  return count
 })
 
 const tabItems = computed((): TabItem[] => {
@@ -251,177 +164,37 @@ async function loadMembers() {
     members.value = await membersApi.listByOrganization(auth.organizationId)
   } catch (e) {
     error.value = 'Не удалось загрузить список сотрудников'
-    console.error(e)
+    logger.error('Failed to load members', e)
   } finally {
     isLoading.value = false
   }
 }
 
-async function loadInvitations() {
-  if (!auth.organizationId) return
-
-  isLoadingInvitations.value = true
-  error.value = null
-
-  try {
-    const status = invitationsStatusFilter.value !== 'all' ? invitationsStatusFilter.value as InvitationStatus : undefined
-    const response = await invitationsApi.list(auth.organizationId, status)
-    invitations.value = response.items ?? []
-  } catch (e) {
-    error.value = 'Не удалось загрузить приглашения'
-    console.error(e)
-  } finally {
-    isLoadingInvitations.value = false
-  }
-}
-
-// Invitation CRUD
-async function createInvitation() {
-  if (!auth.organizationId) return
-
-  isSubmitting.value = true
-  formError.value = null
-  createdToken.value = null
-
-  try {
-    const response = await invitationsApi.create(auth.organizationId, {
-      email: invitationForm.value.email,
-      role: invitationForm.value.role,
-      name: invitationForm.value.name || undefined,
-      phone: invitationForm.value.phone || undefined,
-    })
-
-    createdToken.value = response.token
-    invitationForm.value = { email: '', role: 'employee', name: '', phone: '' }
-    await loadInvitations()
-  } catch (e: any) {
-    formError.value = e?.message || 'Не удалось создать приглашение'
-    console.error(e)
-  } finally {
-    isSubmitting.value = false
-  }
-}
-
-function closeInvitationForm() {
-  showInvitationForm.value = false
-  createdToken.value = null
-  formError.value = null
-  copied.value = false
-}
-
-function openCancelModal(item: InvitationListItem) {
-  cancellingInvitation.value = item
-  cancelError.value = null
-  showCancelModal.value = true
-}
-
-function closeCancelModal() {
-  showCancelModal.value = false
-  cancellingInvitation.value = null
-  cancelError.value = null
-}
-
-async function confirmCancel() {
-  if (!auth.organizationId || !cancellingInvitation.value) return
-
-  cancellingId.value = cancellingInvitation.value.id
-  cancelError.value = null
-
-  try {
-    await invitationsApi.cancel(auth.organizationId, cancellingInvitation.value.id)
-    const item = invitations.value.find(i => i.id === cancellingInvitation.value!.id)
-    if (item) {
-      item.status = 'cancelled'
-    }
-    closeCancelModal()
-  } catch (e: any) {
-    console.error(e)
-    cancelError.value = e?.message || 'Не удалось отменить приглашение'
-  } finally {
-    cancellingId.value = null
-  }
-}
-
-// Helpers
-function getInvitationRoleLabel(role: string): string {
-  switch (role) {
-    case 'employee': return 'Сотрудник'
-    case 'administrator': return 'Администратор'
-    default: return role
-  }
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-function getInvitationUrl(token: string): string {
-  return `${window.location.origin}/invitations/${token}`
-}
-
-async function copyToClipboard(text: string) {
-  await navigator.clipboard.writeText(text)
-  copied.value = true
-  setTimeout(() => { copied.value = false }, 2000)
-}
-
 // Filter functions
 function openFilters() {
-  if (currentTab.value === 'members') {
-    tempSearch.value = searchQuery.value
-    tempRole.value = roleFilter.value
-    tempStatus.value = statusFilter.value
-  } else {
-    tempInvitationsStatus.value = invitationsStatusFilter.value
-  }
+  tempSearch.value = searchQuery.value
+  tempRole.value = roleFilter.value
+  tempStatus.value = statusFilter.value
   showFilters.value = true
 }
 
 function applyFilters() {
-  if (currentTab.value === 'members') {
-    searchQuery.value = tempSearch.value
-    roleFilter.value = tempRole.value
-    statusFilter.value = tempStatus.value
-  } else {
-    invitationsStatusFilter.value = tempInvitationsStatus.value
-    loadInvitations()
-  }
+  searchQuery.value = tempSearch.value
+  roleFilter.value = tempRole.value
+  statusFilter.value = tempStatus.value
   showFilters.value = false
 }
 
 function resetFilters() {
-  if (currentTab.value === 'members') {
-    tempSearch.value = ''
-    tempRole.value = 'all'
-    tempStatus.value = 'all'
-  } else {
-    tempInvitationsStatus.value = 'all'
-  }
+  tempSearch.value = ''
+  tempRole.value = 'all'
+  tempStatus.value = 'all'
 }
 
 function resetAllFilters() {
-  if (currentTab.value === 'members') {
-    searchQuery.value = ''
-    roleFilter.value = 'all'
-    statusFilter.value = 'all'
-  } else {
-    invitationsStatusFilter.value = 'all'
-    loadInvitations()
-  }
+  searchQuery.value = ''
+  roleFilter.value = 'all'
+  statusFilter.value = 'all'
 }
 
 // Navigation to member detail
@@ -441,8 +214,8 @@ async function selectMember(member: MemberListItem) {
   try {
     await freightRequestsApi.reassign(freightRequestId.value, member.id)
     router.push(`/freight-requests/${freightRequestId.value}`)
-  } catch (e: any) {
-    error.value = e?.message || 'Не удалось назначить ответственного'
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Не удалось назначить ответственного'
   } finally {
     selectLoading.value = false
   }
@@ -464,15 +237,6 @@ function getRoleBadgeVariant(role: MemberRole): 'default' | 'secondary' | 'outli
 
 onMounted(() => {
   loadMembers()
-  if (canManageInvitations.value) {
-    loadInvitations()
-  }
-})
-
-watch(currentTab, (tab) => {
-  if (tab === 'invitations' && invitations.value.length === 0 && canManageInvitations.value) {
-    loadInvitations()
-  }
 })
 </script>
 
@@ -494,108 +258,72 @@ watch(currentTab, (tab) => {
         >
           Отмена
         </Button>
-        <!-- Filters Sheet -->
+        <!-- Filters Sheet (only for members tab) -->
         <FilterSheet
+          v-if="currentTab === 'members'"
           v-model:open="showFilters"
           :active-filters-count="activeFiltersCount"
-          :description="currentTab === 'members' ? 'Фильтрация сотрудников' : 'Фильтрация приглашений'"
+          description="Фильтрация сотрудников"
           @open="openFilters"
           @apply="applyFilters"
           @reset="resetFilters"
         >
-          <!-- Members filters -->
-          <template v-if="currentTab === 'members'">
-            <div class="space-y-2">
-              <Label>Поиск</Label>
-              <Input
-                v-model="tempSearch"
-                placeholder="ФИО, email или телефон"
-              />
-            </div>
+          <div class="space-y-2">
+            <Label>Поиск</Label>
+            <Input
+              v-model="tempSearch"
+              placeholder="ФИО, email или телефон"
+            />
+          </div>
 
-            <div class="space-y-2">
-              <Label>Роль</Label>
-              <Select v-model="tempRole">
-                <SelectTrigger>
-                  <SelectValue placeholder="Все роли" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    v-for="opt in roleOptions"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
-                    {{ opt.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div class="space-y-2">
+            <Label>Роль</Label>
+            <Select v-model="tempRole">
+              <SelectTrigger>
+                <SelectValue placeholder="Все роли" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="opt in roleOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div class="space-y-2">
-              <Label>Статус</Label>
-              <Select v-model="tempStatus">
-                <SelectTrigger>
-                  <SelectValue placeholder="Все статусы" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    v-for="opt in statusOptions"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
-                    {{ opt.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </template>
-
-          <!-- Invitations filters -->
-          <template v-else>
-            <div class="space-y-2">
-              <Label>Статус</Label>
-              <Select v-model="tempInvitationsStatus">
-                <SelectTrigger>
-                  <SelectValue placeholder="Все статусы" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    v-for="opt in invitationStatusOptions"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
-                    {{ opt.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </template>
+          <div class="space-y-2">
+            <Label>Статус</Label>
+            <Select v-model="tempStatus">
+              <SelectTrigger>
+                <SelectValue placeholder="Все статусы" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="opt in statusOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </FilterSheet>
-
-        <Button
-          v-if="canManageInvitations && !isSelectionMode"
-          @click="showInvitationForm = true"
-        >
-          <Plus class="mr-2 h-4 w-4" />
-          Пригласить
-        </Button>
       </template>
     </PageHeader>
 
-    <!-- Active filters indicator -->
-    <Card v-if="hasActiveFilters" class="mb-6 border-primary/20 bg-primary/5">
+    <!-- Active filters indicator (only for members tab) -->
+    <Card v-if="hasActiveFilters && currentTab === 'members'" class="mb-6 border-primary/20 bg-primary/5">
       <CardContent class="flex items-center justify-between py-3">
         <div class="text-sm text-primary flex flex-wrap gap-x-2 gap-y-1">
-          <template v-if="currentTab === 'members'">
-            <span v-if="searchQuery">Поиск: "{{ searchQuery }}"</span>
-            <span v-if="searchQuery && (roleFilter !== 'all' || statusFilter !== 'all')">, </span>
-            <span v-if="roleFilter !== 'all'">Роль: {{ roleLabels[roleFilter as MemberRole] }}</span>
-            <span v-if="roleFilter !== 'all' && statusFilter !== 'all'">, </span>
-            <span v-if="statusFilter !== 'all'">Статус: {{ statusLabels[statusFilter as MemberStatus] }}</span>
-          </template>
-          <template v-else>
-            <span>Статус: {{ invitationStatusOptions.find(o => o.value === invitationsStatusFilter)?.label }}</span>
-          </template>
+          <span v-if="searchQuery">Поиск: "{{ searchQuery }}"</span>
+          <span v-if="searchQuery && (roleFilter !== 'all' || statusFilter !== 'all')">, </span>
+          <span v-if="roleFilter !== 'all'">Роль: {{ roleLabels[roleFilter as MemberRole] }}</span>
+          <span v-if="roleFilter !== 'all' && statusFilter !== 'all'">, </span>
+          <span v-if="statusFilter !== 'all'">Статус: {{ statusLabels[statusFilter as MemberStatus] }}</span>
         </div>
         <Button variant="ghost" size="sm" @click="resetAllFilters">
           Сбросить
@@ -658,7 +386,7 @@ watch(currentTab, (tab) => {
                   </div>
                 </div>
                 <div class="mt-2 text-xs text-muted-foreground">
-                  Добавлен {{ formatDate(member.created_at) }}
+                  Добавлен {{ formatDateShort(member.created_at) }}
                 </div>
               </CardContent>
             </Card>
@@ -690,7 +418,7 @@ watch(currentTab, (tab) => {
                   @click="isSelectionMode ? selectMember(member) : goToMember(member)"
                 >
                   <TableCell class="text-muted-foreground">
-                    {{ formatDate(member.created_at) }}
+                    {{ formatDateShort(member.created_at) }}
                   </TableCell>
                   <TableCell>
                     <div class="font-medium">{{ member.name }}</div>
@@ -721,108 +449,7 @@ watch(currentTab, (tab) => {
 
       <!-- Invitations Tab -->
       <TabsContent value="invitations">
-        <LoadingSpinner v-if="isLoadingInvitations" text="Загрузка приглашений..." />
-
-        <ErrorBanner
-          v-else-if="error"
-          :message="error"
-          @retry="loadInvitations"
-        />
-
-        <EmptyState
-          v-else-if="invitations.length === 0"
-          :icon="Mail"
-          :title="hasActiveFilters ? 'Нет приглашений по фильтрам' : 'Приглашений пока нет'"
-          :description="hasActiveFilters ? 'Попробуйте изменить параметры фильтрации' : 'Создайте приглашение для нового сотрудника'"
-        >
-          <template #action>
-            <Button @click="showInvitationForm = true">
-              <Plus class="mr-2 h-4 w-4" />
-              Создать приглашение
-            </Button>
-          </template>
-        </EmptyState>
-
-        <template v-else>
-          <!-- Mobile Cards -->
-          <div class="sm:hidden space-y-3">
-            <Card v-for="item in invitations" :key="item.id">
-              <CardContent class="p-4">
-                <div class="flex items-start justify-between gap-2 mb-2">
-                  <div class="min-w-0 flex-1">
-                    <div class="font-medium text-foreground truncate">{{ item.email }}</div>
-                    <div v-if="item.name" class="text-sm text-muted-foreground truncate">{{ item.name }}</div>
-                    <div v-if="item.phone" class="text-sm text-muted-foreground">{{ item.phone }}</div>
-                  </div>
-                  <div class="flex flex-col items-end gap-1">
-                    <Badge variant="outline">
-                      {{ getInvitationRoleLabel(item.role) }}
-                    </Badge>
-                    <StatusBadge :status="item.status" :status-map="invitationStatusMap" />
-                  </div>
-                </div>
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock class="h-3 w-3" />
-                    {{ formatDateTime(item.expires_at) }}
-                  </div>
-                  <Button
-                    v-if="item.status === 'pending'"
-                    variant="ghost"
-                    size="sm"
-                    class="text-destructive hover:text-destructive"
-                    @click="openCancelModal(item)"
-                  >
-                    Отменить
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <!-- Desktop Table -->
-          <Card class="hidden sm:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Роль</TableHead>
-                  <TableHead>ФИО</TableHead>
-                  <TableHead>Телефон</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Истекает</TableHead>
-                  <TableHead>Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow v-for="item in invitations" :key="item.id">
-                  <TableCell class="font-medium">{{ item.email }}</TableCell>
-                  <TableCell>{{ getInvitationRoleLabel(item.role) }}</TableCell>
-                  <TableCell class="text-muted-foreground">{{ item.name || '—' }}</TableCell>
-                  <TableCell class="text-muted-foreground">{{ item.phone || '—' }}</TableCell>
-                  <TableCell>
-                    <StatusBadge :status="item.status" :status-map="invitationStatusMap" />
-                  </TableCell>
-                  <TableCell class="text-muted-foreground">
-                    {{ formatDateTime(item.expires_at) }}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      v-if="item.status === 'pending'"
-                      variant="ghost"
-                      size="sm"
-                      class="text-destructive hover:text-destructive"
-                      @click="openCancelModal(item)"
-                    >
-                      Отменить
-                    </Button>
-                    <span v-else class="text-muted-foreground">—</span>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </Card>
-        </template>
+        <InvitationsTab ref="invitationsTabRef" />
       </TabsContent>
 
       <!-- History Tab -->
@@ -886,141 +513,5 @@ watch(currentTab, (tab) => {
       </div>
     </template>
 
-    <!-- Create Invitation Dialog -->
-    <Dialog v-model:open="showInvitationForm">
-      <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Новое приглашение</DialogTitle>
-          <DialogDescription>
-            Отправьте приглашение новому сотруднику
-          </DialogDescription>
-        </DialogHeader>
-
-        <!-- Success state with token -->
-        <div v-if="createdToken" class="space-y-4">
-          <div class="rounded-lg border border-success/50 bg-success/10 p-4">
-            <p class="text-success font-medium mb-2">Приглашение создано!</p>
-            <p class="text-sm text-muted-foreground mb-2">Ссылка для приглашения:</p>
-            <div class="flex items-center gap-2">
-              <Input
-                :model-value="getInvitationUrl(createdToken)"
-                readonly
-                class="flex-1 text-sm"
-              />
-              <Button
-                size="icon"
-                variant="outline"
-                @click="copyToClipboard(getInvitationUrl(createdToken))"
-              >
-                <Check v-if="copied" class="h-4 w-4 text-success" />
-                <Copy v-else class="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <Button variant="outline" class="w-full" @click="closeInvitationForm">
-            Закрыть
-          </Button>
-        </div>
-
-        <!-- Form -->
-        <form v-else @submit.prevent="createInvitation" class="space-y-4">
-          <div
-            v-if="formError"
-            class="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
-          >
-            <AlertCircle class="h-4 w-4 shrink-0" />
-            {{ formError }}
-          </div>
-
-          <div class="space-y-2">
-            <Label for="inv-email">
-              Email <span class="text-destructive">*</span>
-            </Label>
-            <Input
-              id="inv-email"
-              v-model="invitationForm.email"
-              type="email"
-              required
-              placeholder="user@example.com"
-            />
-          </div>
-
-          <div class="space-y-2">
-            <Label for="inv-role">
-              Роль <span class="text-destructive">*</span>
-            </Label>
-            <Select v-model="invitationForm.role">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="opt in invitationRoleOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-2">
-            <Label for="inv-name">
-              ФИО
-              <span class="text-muted-foreground font-normal">(опционально)</span>
-            </Label>
-            <Input
-              id="inv-name"
-              v-model="invitationForm.name"
-              placeholder="Иванов Иван Иванович"
-            />
-            <p class="text-xs text-muted-foreground">
-              Если заполнить, приглашённый не сможет изменить
-            </p>
-          </div>
-
-          <div class="space-y-2">
-            <Label for="inv-phone">
-              Телефон
-              <span class="text-muted-foreground font-normal">(опционально)</span>
-            </Label>
-            <Input
-              id="inv-phone"
-              v-model="invitationForm.phone"
-              v-maska
-              :data-maska="phoneMask"
-              type="tel"
-              inputmode="tel"
-              :placeholder="phonePlaceholder"
-            />
-            <p class="text-xs text-muted-foreground">
-              Если заполнить, приглашённый не сможет изменить
-            </p>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" @click="closeInvitationForm">
-              Отмена
-            </Button>
-            <Button type="submit" :disabled="isSubmitting">
-              {{ isSubmitting ? 'Создание...' : 'Создать' }}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-
-    <!-- Cancel Invitation Dialog -->
-    <ConfirmDialog
-      :open="showCancelModal"
-      title="Отменить приглашение?"
-      :description="`Вы уверены, что хотите отменить приглашение для ${cancellingInvitation?.email}? Пользователь не сможет принять это приглашение.`"
-      confirm-text="Отменить приглашение"
-      confirm-variant="destructive"
-      :loading="cancellingId !== null"
-      @confirm="confirmCancel"
-      @cancel="closeCancelModal"
-    />
   </div>
 </template>

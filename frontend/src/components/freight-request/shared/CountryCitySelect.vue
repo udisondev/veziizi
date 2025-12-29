@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { useGeo, type City } from '@/composables/useGeo'
+import { useCityDropdown } from '@/composables/useCityDropdown'
 import type { Coordinates } from '@/types/freightRequest'
 import {
   Select,
@@ -51,9 +52,18 @@ const {
   closeCityDropdown,
 } = useGeo()
 
-const cityInputRef = ref<HTMLInputElement | null>(null)
-const cityDropdownRef = ref<HTMLDivElement | null>(null)
-const highlightedIndex = ref(-1)
+const {
+  highlightedIndex,
+  cityInputRef,
+  cityDropdownRef,
+  handleKeydown: handleCityKeydown,
+  resetHighlight,
+} = useCityDropdown({
+  cities,
+  isOpen: isCityDropdownOpen,
+  onSelect: (city) => selectCity(city),
+  onClose: () => closeCityDropdown(),
+})
 
 // Filter countries by search (English, Russian, and ISO codes)
 const countrySearch = ref('')
@@ -144,7 +154,7 @@ function handleCountryChange(value: AcceptableValue) {
 function handleCityInput(event: Event) {
   const value = (event.target as HTMLInputElement).value
   setCitySearch(value)
-  highlightedIndex.value = -1
+  resetHighlight()
 }
 
 // Handle city selection
@@ -152,52 +162,8 @@ function handleCitySelect(city: City) {
   selectCity(city)
 }
 
-// Keyboard navigation for city dropdown
-function handleCityKeydown(event: KeyboardEvent) {
-  if (!isCityDropdownOpen.value || cities.value.length === 0) return
-
-  switch (event.key) {
-    case 'ArrowDown':
-      event.preventDefault()
-      highlightedIndex.value = Math.min(highlightedIndex.value + 1, cities.value.length - 1)
-      break
-    case 'ArrowUp':
-      event.preventDefault()
-      highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0)
-      break
-    case 'Enter':
-      event.preventDefault()
-      const selected = cities.value[highlightedIndex.value]
-      if (highlightedIndex.value >= 0 && selected) {
-        handleCitySelect(selected)
-      }
-      break
-    case 'Escape':
-      closeCityDropdown()
-      break
-  }
-}
-
-// Click outside handler
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as Node
-  if (
-    cityInputRef.value &&
-    !cityInputRef.value.contains(target) &&
-    cityDropdownRef.value &&
-    !cityDropdownRef.value.contains(target)
-  ) {
-    closeCityDropdown()
-  }
-}
-
 onMounted(async () => {
   await fetchCountries()
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
