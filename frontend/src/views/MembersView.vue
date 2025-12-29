@@ -494,14 +494,6 @@ watch(currentTab, (tab) => {
         >
           Отмена
         </Button>
-        <Button
-          v-if="canManageInvitations && !isSelectionMode"
-          @click="showInvitationForm = true"
-        >
-          <Plus class="mr-2 h-4 w-4" />
-          Пригласить
-        </Button>
-
         <!-- Filters Sheet -->
         <FilterSheet
           v-model:open="showFilters"
@@ -579,6 +571,14 @@ watch(currentTab, (tab) => {
             </div>
           </template>
         </FilterSheet>
+
+        <Button
+          v-if="canManageInvitations && !isSelectionMode"
+          @click="showInvitationForm = true"
+        >
+          <Plus class="mr-2 h-4 w-4" />
+          Пригласить
+        </Button>
       </template>
     </PageHeader>
 

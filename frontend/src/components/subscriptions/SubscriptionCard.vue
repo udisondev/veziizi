@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { FreightSubscription } from '@/types/subscription'
-import type { CargoType, BodyType, PaymentMethod, PaymentTerms, VatType } from '@/types/freightRequest'
+import type { VehicleType, VehicleSubType, PaymentMethod, PaymentTerms, VatType } from '@/types/freightRequest'
 import { useToast } from '@/components/ui/toast/use-toast'
 import { Button } from '@/components/ui/button'
 import {
@@ -54,8 +54,8 @@ const filtersData = computed<FiltersData>(() => {
     maxPrice: s.max_price,
     minVolume: s.min_volume,
     maxVolume: s.max_volume,
-    cargoTypes: (s.cargo_types || []) as CargoType[],
-    bodyTypes: (s.body_types || []) as BodyType[],
+    vehicleTypes: (s.vehicle_types || []) as VehicleType[],
+    vehicleSubTypes: (s.vehicle_subtypes || []) as VehicleSubType[],
     paymentMethods: (s.payment_methods || []) as PaymentMethod[],
     paymentTerms: (s.payment_terms || []) as PaymentTerms[],
     vatTypes: (s.vat_types || []) as VatType[],
@@ -69,8 +69,8 @@ const hasFilters = computed(() => {
     f.minWeight || f.maxWeight ||
     f.minPrice || f.maxPrice ||
     f.minVolume || f.maxVolume ||
-    (f.cargoTypes?.length ?? 0) > 0 ||
-    (f.bodyTypes?.length ?? 0) > 0 ||
+    (f.vehicleTypes?.length ?? 0) > 0 ||
+    (f.vehicleSubTypes?.length ?? 0) > 0 ||
     (f.paymentMethods?.length ?? 0) > 0 ||
     (f.paymentTerms?.length ?? 0) > 0 ||
     (f.vatTypes?.length ?? 0) > 0 ||

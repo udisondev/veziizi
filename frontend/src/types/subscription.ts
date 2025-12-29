@@ -1,6 +1,6 @@
 import type {
-  CargoType,
-  BodyType,
+  VehicleType,
+  VehicleSubType,
   PaymentMethod,
   PaymentTerms,
   VatType,
@@ -30,8 +30,8 @@ export interface FreightSubscription {
   max_volume?: number
 
   // ENUM массивы
-  cargo_types?: CargoType[]
-  body_types?: BodyType[]
+  vehicle_types?: VehicleType[]
+  vehicle_subtypes?: VehicleSubType[]
   payment_methods?: PaymentMethod[]
   payment_terms?: PaymentTerms[]
   vat_types?: VatType[]
@@ -53,8 +53,8 @@ export interface FreightSubscriptionCreate {
   max_price?: number
   min_volume?: number
   max_volume?: number
-  cargo_types?: CargoType[]
-  body_types?: BodyType[]
+  vehicle_types?: VehicleType[]
+  vehicle_subtypes?: VehicleSubType[]
   payment_methods?: PaymentMethod[]
   payment_terms?: PaymentTerms[]
   vat_types?: VatType[]

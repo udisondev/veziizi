@@ -179,9 +179,9 @@ onUnmounted(() => {
         <CardContent>
           <!-- Подключён -->
           <div v-if="isTelegramConnected" class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <Check class="h-5 w-5 text-green-500" />
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <Check class="h-5 w-5 text-green-500 shrink-0" />
                 <span class="font-medium">Подключён</span>
                 <Badge v-if="preferences.telegram.username" variant="secondary">
                   @{{ preferences.telegram.username }}
@@ -190,6 +190,7 @@ onUnmounted(() => {
               <Button
                 variant="outline"
                 size="sm"
+                class="w-full sm:w-auto"
                 :disabled="isDisconnecting"
                 @click="disconnectTelegram"
               >
@@ -268,43 +269,44 @@ onUnmounted(() => {
             </div>
           </div>
         </CardHeader>
-        <CardContent class="space-y-6">
+        <CardContent class="space-y-4">
           <div
             v-for="(category, index) in allCategories"
             :key="category"
+            class="space-y-3"
           >
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="font-medium">{{ categoryLabels[category] }}</p>
-                <p class="text-sm text-muted-foreground">
-                  {{ categoryDescriptions[category] }}
-                </p>
-              </div>
-
-              <div class="flex items-center gap-4">
-                <!-- In-app toggle -->
-                <div class="flex items-center gap-2">
-                  <Label class="text-sm text-muted-foreground">В приложении</Label>
-                  <Switch
-                    :checked="preferences.enabled_categories[category].in_app"
-                    :disabled="isSaving"
-                    @update:checked="(v: boolean) => toggleSetting(category, 'in_app', v)"
-                  />
-                </div>
-
-                <!-- Telegram toggle (only if connected) -->
-                <div v-if="isTelegramConnected" class="flex items-center gap-2">
-                  <Label class="text-sm text-muted-foreground">Telegram</Label>
-                  <Switch
-                    :checked="preferences.enabled_categories[category].telegram"
-                    :disabled="isSaving"
-                    @update:checked="(v: boolean) => toggleSetting(category, 'telegram', v)"
-                  />
-                </div>
-              </div>
+            <!-- Название и описание -->
+            <div>
+              <p class="font-medium">{{ categoryLabels[category] }}</p>
+              <p class="text-sm text-muted-foreground">
+                {{ categoryDescriptions[category] }}
+              </p>
             </div>
 
-            <Separator v-if="index < allCategories.length - 1" class="mt-4" />
+            <!-- Переключатели -->
+            <div class="flex flex-wrap gap-x-6 gap-y-2">
+              <!-- In-app toggle -->
+              <label class="flex items-center gap-2 cursor-pointer">
+                <Switch
+                  :checked="preferences.enabled_categories[category].in_app"
+                  :disabled="isSaving"
+                  @update:checked="(v: boolean) => toggleSetting(category, 'in_app', v)"
+                />
+                <span class="text-sm">В приложении</span>
+              </label>
+
+              <!-- Telegram toggle (only if connected) -->
+              <label v-if="isTelegramConnected" class="flex items-center gap-2 cursor-pointer">
+                <Switch
+                  :checked="preferences.enabled_categories[category].telegram"
+                  :disabled="isSaving"
+                  @update:checked="(v: boolean) => toggleSetting(category, 'telegram', v)"
+                />
+                <span class="text-sm">Telegram</span>
+              </label>
+            </div>
+
+            <Separator v-if="index < allCategories.length - 1" />
           </div>
         </CardContent>
       </Card>

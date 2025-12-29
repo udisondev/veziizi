@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
@@ -19,11 +19,14 @@ const router = useRouter()
 const notificationsStore = useNotificationsStore()
 const authStore = useAuthStore()
 
+const isOpen = ref(false)
+
 const recentNotifications = computed(() => notificationsStore.recentNotifications)
 const unreadCount = computed(() => notificationsStore.unreadCount)
 const hasUnread = computed(() => notificationsStore.hasUnread)
 
 function handleNotificationClick(notification: { id: string; link?: string }) {
+  isOpen.value = false
   notificationsStore.markAsRead(notification.id)
   if (notification.link) {
     router.push(notification.link)
@@ -31,6 +34,7 @@ function handleNotificationClick(notification: { id: string; link?: string }) {
 }
 
 function goToAllNotifications() {
+  isOpen.value = false
   router.push('/notifications')
 }
 
@@ -50,7 +54,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu v-model:open="isOpen">
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" size="icon" class="relative">
         <Bell class="h-5 w-5" />

@@ -8,13 +8,14 @@ import type {
   RoutePointCriteriaCreate,
 } from '@/types/subscription'
 import {
-  cargoTypeOptions,
-  bodyTypeOptions,
+  vehicleTypeOptions,
+  vehicleSubTypeLabels,
+  vehicleTypeSubTypes,
   paymentMethodOptions,
   paymentTermsOptions,
   vatTypeOptions,
-  type CargoType,
-  type BodyType,
+  type VehicleType,
+  type VehicleSubType,
   type PaymentMethod,
   type PaymentTerms,
   type VatType,
@@ -68,12 +69,28 @@ const minPrice = ref<number | undefined>()
 const maxPrice = ref<number | undefined>()
 const minVolume = ref<number | undefined>()
 const maxVolume = ref<number | undefined>()
-const cargoTypes = ref<CargoType[]>([])
-const bodyTypes = ref<BodyType[]>([])
+const vehicleTypes = ref<VehicleType[]>([])
+const vehicleSubTypes = ref<VehicleSubType[]>([])
 const paymentMethods = ref<PaymentMethod[]>([])
 const paymentTerms = ref<PaymentTerms[]>([])
 const vatTypes = ref<VatType[]>([])
 const isActive = ref(true)
+
+// Computed для доступных подтипов транспорта
+const availableSubTypes = computed(() => {
+  if (vehicleTypes.value.length === 0) return []
+  const subTypes = new Set<VehicleSubType>()
+  for (const vt of vehicleTypes.value) {
+    const subs = vehicleTypeSubTypes[vt] || []
+    for (const sub of subs) {
+      subTypes.add(sub)
+    }
+  }
+  return Array.from(subTypes).map(value => ({
+    value,
+    label: vehicleSubTypeLabels[value],
+  }))
+})
 
 // Route points
 interface RoutePointLocal {
@@ -109,8 +126,8 @@ function loadSubscription(sub: FreightSubscription) {
   maxPrice.value = sub.max_price
   minVolume.value = sub.min_volume
   maxVolume.value = sub.max_volume
-  cargoTypes.value = (sub.cargo_types || []) as CargoType[]
-  bodyTypes.value = (sub.body_types || []) as BodyType[]
+  vehicleTypes.value = (sub.vehicle_types || []) as VehicleType[]
+  vehicleSubTypes.value = (sub.vehicle_subtypes || []) as VehicleSubType[]
   paymentMethods.value = (sub.payment_methods || []) as PaymentMethod[]
   paymentTerms.value = (sub.payment_terms || []) as PaymentTerms[]
   vatTypes.value = (sub.vat_types || []) as VatType[]
@@ -134,8 +151,8 @@ function resetForm() {
   maxPrice.value = undefined
   minVolume.value = undefined
   maxVolume.value = undefined
-  cargoTypes.value = []
-  bodyTypes.value = []
+  vehicleTypes.value = []
+  vehicleSubTypes.value = []
   paymentMethods.value = []
   paymentTerms.value = []
   vatTypes.value = []
@@ -197,7 +214,7 @@ async function handleSubmit() {
     .map((rp, idx) => ({
       country_id: rp.countryId!,
       city_id: rp.cityId,
-      order: idx,
+      order: idx + 1,
     }))
 
   const data: FreightSubscriptionCreate = {
@@ -208,8 +225,8 @@ async function handleSubmit() {
     max_price: maxPrice.value,
     min_volume: minVolume.value,
     max_volume: maxVolume.value,
-    cargo_types: cargoTypes.value.length > 0 ? cargoTypes.value : undefined,
-    body_types: bodyTypes.value.length > 0 ? bodyTypes.value : undefined,
+    vehicle_types: vehicleTypes.value.length > 0 ? vehicleTypes.value : undefined,
+    vehicle_subtypes: vehicleSubTypes.value.length > 0 ? vehicleSubTypes.value : undefined,
     payment_methods: paymentMethods.value.length > 0 ? paymentMethods.value : undefined,
     payment_terms: paymentTerms.value.length > 0 ? paymentTerms.value : undefined,
     vat_types: vatTypes.value.length > 0 ? vatTypes.value : undefined,
@@ -311,20 +328,21 @@ function handleCancel() {
 
         <Separator />
 
-        <!-- Cargo Types -->
+        <!-- Vehicle Types -->
         <ChipButtonGroup
-          v-model="cargoTypes"
-          :options="cargoTypeOptions"
-          label="Типы груза"
-          empty-text="Не выбрано — все типы груза"
+          v-model="vehicleTypes"
+          :options="vehicleTypeOptions"
+          label="Типы транспорта"
+          empty-text="Не выбрано — все типы транспорта"
         />
 
-        <!-- Body Types -->
+        <!-- Vehicle Sub Types -->
         <ChipButtonGroup
-          v-model="bodyTypes"
-          :options="bodyTypeOptions"
-          label="Типы кузова"
-          empty-text="Не выбрано — все типы кузова"
+          v-if="availableSubTypes.length > 0"
+          v-model="vehicleSubTypes"
+          :options="availableSubTypes"
+          label="Подтипы транспорта"
+          empty-text="Не выбрано — все подтипы"
         />
 
         <!-- Payment Methods -->

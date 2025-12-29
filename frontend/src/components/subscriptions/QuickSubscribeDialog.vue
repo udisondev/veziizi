@@ -143,7 +143,7 @@ async function handleSubmit() {
             .map((rp, idx) => ({
               country_id: rp.countryId!,
               city_id: rp.cityId,
-              order: idx,
+              order: idx + 1,
             }))
         : undefined,
       min_weight: props.filters.minWeight,
