@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { ordersApi } from '@/api/orders'
@@ -42,6 +42,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
@@ -151,9 +152,12 @@ const offerForm = ref<MakeOfferRequest>({
   vat_type: 'included' as VatType,
   payment_method: 'bank_transfer' as PaymentMethod,
 })
-
+const acceptRequestTerms = ref(false)
 
 // Computed
+const hasRequestRate = computed(() => {
+  return freightRequest.value?.payment?.price?.amount && freightRequest.value.payment.price.amount > 0
+})
 const isOwner = computed(() => {
   if (!freightRequest.value) return false
   return permissions.isFreightRequestOwner(freightRequest.value.customer_org_id)
@@ -225,6 +229,33 @@ const visibleOffers = computed(() => {
 const requestNumber = computed(() => {
   if (!freightRequest.value) return 0
   return freightRequest.value.request_number
+})
+
+// Watch для автозаполнения формы при согласии с условиями
+watch(acceptRequestTerms, (accepted) => {
+  if (!freightRequest.value) return
+
+  if (accepted && hasRequestRate.value) {
+    // Заполнить данными из заявки (amount в копейках -> конвертируем в рубли)
+    const payment = freightRequest.value.payment
+    offerForm.value.price.amount = payment.price!.amount / 100
+    offerForm.value.price.currency = payment.price!.currency
+    offerForm.value.vat_type = payment.vat_type
+    offerForm.value.payment_method = payment.method
+  } else {
+    // Сброс к значениям по умолчанию
+    offerForm.value.price.amount = 0
+    offerForm.value.price.currency = 'RUB'
+    offerForm.value.vat_type = 'included'
+    offerForm.value.payment_method = 'bank_transfer'
+  }
+})
+
+// Сброс галочки при закрытии модалки
+watch(showMakeOfferModal, (open) => {
+  if (!open) {
+    acceptRequestTerms.value = false
+  }
 })
 
 // Methods
@@ -816,6 +847,21 @@ onMounted(() => {
         </DialogHeader>
 
         <div class="space-y-4">
+          <!-- Чекбокс "Согласен с условиями" - показывается только если есть ставка -->
+          <div v-if="hasRequestRate" class="flex items-center space-x-2">
+            <Checkbox
+              id="accept-terms"
+              :checked="acceptRequestTerms"
+              @update:checked="acceptRequestTerms = $event"
+            />
+            <label
+              for="accept-terms"
+              class="text-sm font-medium leading-none cursor-pointer"
+            >
+              Согласен с условиями заказчика
+            </label>
+          </div>
+
           <div class="space-y-2">
             <Label>Цена *</Label>
             <div class="flex gap-2">
@@ -826,8 +872,9 @@ onMounted(() => {
                 step="100"
                 placeholder="0"
                 class="flex-1"
+                :disabled="acceptRequestTerms"
               />
-              <Select v-model="offerForm.price.currency">
+              <Select v-model="offerForm.price.currency" :disabled="acceptRequestTerms">
                 <SelectTrigger class="w-24">
                   <SelectValue />
                 </SelectTrigger>
@@ -842,7 +889,7 @@ onMounted(() => {
 
           <div class="space-y-2">
             <Label>НДС</Label>
-            <Select v-model="offerForm.vat_type">
+            <Select v-model="offerForm.vat_type" :disabled="acceptRequestTerms">
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -856,7 +903,7 @@ onMounted(() => {
 
           <div class="space-y-2">
             <Label>Способ оплаты</Label>
-            <Select v-model="offerForm.payment_method">
+            <Select v-model="offerForm.payment_method" :disabled="acceptRequestTerms">
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
