@@ -7,6 +7,7 @@ import type {
   NotificationFilters,
   NotificationCategory,
 } from '@/types/notification'
+import { logger } from '@/utils/logger'
 
 export const useNotificationsStore = defineStore('notifications', () => {
   // ===============================
@@ -49,7 +50,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
       })
     } catch (e) {
       error.value = 'Не удалось загрузить уведомления'
-      console.error('Failed to fetch notifications:', e)
+      logger.error('Failed to fetch notifications', e)
     } finally {
       isLoading.value = false
     }
@@ -65,7 +66,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
         notifications.value = [...newNotifications, ...notifications.value]
       }
     } catch (e) {
-      console.error('Failed to fetch recent notifications:', e)
+      logger.error('Failed to fetch recent notifications', e)
     }
   }
 
@@ -73,7 +74,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     try {
       unreadCount.value = await notificationsApi.getUnreadCount()
     } catch (e) {
-      console.error('Failed to fetch unread count:', e)
+      logger.error('Failed to fetch unread count', e)
     }
   }
 
@@ -88,7 +89,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
         unreadCount.value = Math.max(0, unreadCount.value - 1)
       }
     } catch (e) {
-      console.error('Failed to mark notification as read:', e)
+      logger.error('Failed to mark notification as read', e)
     }
   }
 
@@ -103,7 +104,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
       })
       unreadCount.value = 0
     } catch (e) {
-      console.error('Failed to mark all as read:', e)
+      logger.error('Failed to mark all as read', e)
     }
   }
 
@@ -115,7 +116,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     try {
       preferences.value = await notificationsApi.getPreferences()
     } catch (e) {
-      console.error('Failed to fetch notification preferences:', e)
+      logger.error('Failed to fetch notification preferences', e)
     } finally {
       isLoadingPreferences.value = false
     }
@@ -141,7 +142,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
       // Обновляем локально
       preferences.value.enabled_categories[category] = newSettings
     } catch (e) {
-      console.error('Failed to update category setting:', e)
+      logger.error('Failed to update category setting', e)
       throw e
     }
   }
@@ -158,7 +159,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
         }
       }
     } catch (e) {
-      console.error('Failed to disconnect telegram:', e)
+      logger.error('Failed to disconnect telegram', e)
       throw e
     }
   }

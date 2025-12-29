@@ -1,4 +1,5 @@
 import FingerprintJS from '@fingerprintjs/fingerprintjs'
+import { logger } from '@/utils/logger'
 
 let cachedFingerprint: string | null = null
 let fpPromise: Promise<string> | null = null
@@ -26,7 +27,7 @@ export async function getFingerprint(): Promise<string> {
       cachedFingerprint = result.visitorId
       return result.visitorId
     } catch (error) {
-      console.error('Failed to get fingerprint:', error)
+      logger.error('Failed to get fingerprint', error)
       return ''
     } finally {
       fpPromise = null

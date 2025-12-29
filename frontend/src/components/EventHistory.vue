@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import type { DisplayableHistoryItem, DisplayableHistoryPage } from '@/api/history'
 import { isAutomaticEvent } from '@/types/eventHistory'
+import { logger } from '@/utils/logger'
 
 const props = defineProps<{
   loadFn: (limit: number, offset: number) => Promise<DisplayableHistoryPage>
@@ -24,7 +25,7 @@ async function loadData() {
     total.value = result.total
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка загрузки истории'
-    console.error('Failed to load history:', e)
+    logger.error('Failed to load history', e)
   } finally {
     isLoading.value = false
   }

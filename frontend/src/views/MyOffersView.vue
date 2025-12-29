@@ -8,6 +8,7 @@ import {
   currencyLabels,
   type Currency,
 } from '@/types/freightRequest'
+import { logger } from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -95,7 +96,7 @@ async function loadItems() {
     items.value = await offersApi.listMy(params)
   } catch (e) {
     error.value = 'Не удалось загрузить офферы'
-    console.error(e)
+    logger.error('Failed to load offers', e)
   } finally {
     isLoading.value = false
   }
@@ -258,7 +259,7 @@ async function executeAction() {
     await loadItems()
   } catch (e) {
     actionError.value = e instanceof Error ? e.message : 'Не удалось выполнить действие'
-    console.error(e)
+    logger.error('Failed to perform offer action', e)
   } finally {
     actionLoading.value = null
   }

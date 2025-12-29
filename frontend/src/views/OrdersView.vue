@@ -9,6 +9,9 @@ import {
   viewModeOptions,
   viewModeLabels,
 } from '@/types/order'
+import { orderStatusMapSimple as orderStatusMap } from '@/constants/statusMaps'
+import { formatDateShort } from '@/utils/formatters'
+import { logger } from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -52,15 +55,6 @@ const statusFilter = ref<OrderStatusFilter>('all')
 const tempViewMode = ref<ViewMode>('all')
 const tempStatus = ref<OrderStatusFilter>('all')
 
-// Status map for StatusBadge
-const orderStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
-  active: { label: 'Активный', variant: 'success' },
-  customer_completed: { label: 'Ожидает перевозчика', variant: 'warning' },
-  carrier_completed: { label: 'Ожидает заказчика', variant: 'warning' },
-  completed: { label: 'Завершён', variant: 'info' },
-  cancelled_by_customer: { label: 'Отменён заказчиком', variant: 'destructive' },
-  cancelled_by_carrier: { label: 'Отменён перевозчиком', variant: 'destructive' },
-}
 
 // Computed
 const hasActiveFilters = computed(() =>
@@ -94,7 +88,7 @@ async function loadItems() {
     items.value = await ordersApi.list(params)
   } catch (e) {
     error.value = 'Не удалось загрузить заказы'
-    console.error(e)
+    logger.error('Failed to load orders', e)
   } finally {
     isLoading.value = false
   }
@@ -102,14 +96,6 @@ async function loadItems() {
 
 function goToDetail(id: string) {
   router.push(`/orders/${id}`)
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 function getRole(item: OrderListItem): string {
@@ -266,7 +252,7 @@ onMounted(() => {
 
             <div class="flex items-center gap-1 text-sm text-muted-foreground">
               <Calendar class="h-4 w-4" />
-              {{ formatDate(item.created_at) }}
+              {{ formatDateShort(item.created_at) }}
             </div>
           </div>
         </CardContent>
