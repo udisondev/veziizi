@@ -10,6 +10,7 @@ import { usePermissions } from '@/composables/usePermissions'
 import type { OrderListItem } from '@/types/order'
 import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
 import EventHistory from '@/components/EventHistory.vue'
+import FreightRequestOffersTab from '@/components/freight-request/FreightRequestOffersTab.vue'
 import type {
   FreightRequest,
   Offer,
@@ -31,6 +32,9 @@ import {
   vatTypeOptions,
   paymentMethodOptions,
 } from '@/types/freightRequest'
+import { freightRequestStatusMap, offerStatusMap } from '@/constants/statusMaps'
+import { formatDate, formatDateTime, formatMoney } from '@/utils/formatters'
+import { logger } from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -148,23 +152,6 @@ const offerForm = ref<MakeOfferRequest>({
   payment_method: 'bank_transfer' as PaymentMethod,
 })
 
-// Status map for StatusBadge
-const freightStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
-  published: { label: 'Опубликована', variant: 'success' },
-  selected: { label: 'Выбран исполнитель', variant: 'warning' },
-  confirmed: { label: 'Подтверждена', variant: 'info' },
-  cancelled: { label: 'Отменена', variant: 'destructive' },
-  expired: { label: 'Истекла', variant: 'secondary' },
-}
-
-const offerStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
-  pending: { label: 'Ожидает', variant: 'secondary' },
-  selected: { label: 'Выбран', variant: 'info' },
-  confirmed: { label: 'Подтверждён', variant: 'success' },
-  rejected: { label: 'Отклонён', variant: 'destructive' },
-  withdrawn: { label: 'Отозван', variant: 'secondary' },
-  declined: { label: 'Отказ', variant: 'destructive' },
-}
 
 // Computed
 const isOwner = computed(() => {
@@ -188,14 +175,6 @@ const canCancel = computed(() => {
       freightRequest.value.customer_member_id
     ) &&
     ['published', 'selected'].includes(freightRequest.value.status)
-  )
-})
-
-const canManageOffers = computed(() => {
-  if (!freightRequest.value) return false
-  return permissions.canSelectOffer(
-    freightRequest.value.customer_org_id,
-    freightRequest.value.customer_member_id
   )
 })
 
@@ -228,10 +207,6 @@ const canViewOrderLink = computed(() => {
   return fr.customer_org_id === auth.organizationId || order.carrier_org_id === auth.organizationId
 })
 
-const myOffers = computed(() => {
-  return offers.value.filter((o) => o.carrier_org_id === auth.organizationId)
-})
-
 const myActiveOffer = computed(() => {
   return offers.value.find(
     (o) =>
@@ -244,7 +219,7 @@ const visibleOffers = computed(() => {
   if (isOwner.value) {
     return offers.value
   }
-  return myOffers.value
+  return offers.value.filter((o) => o.carrier_org_id === auth.organizationId)
 })
 
 const requestNumber = computed(() => {
@@ -270,8 +245,8 @@ async function loadData() {
     if (fr.customer_org_id === auth.organizationId) {
       try {
         creatorProfile.value = await membersApi.getProfile(fr.customer_member_id)
-      } catch {
-        // Ignore
+      } catch (e) {
+        logger.warn('Failed to load creator profile', e)
       }
     }
 
@@ -281,8 +256,8 @@ async function loadData() {
         if (orders.length > 0 && orders[0]) {
           linkedOrder.value = orders[0]
         }
-      } catch {
-        // Ignore
+      } catch (e) {
+        logger.warn('Failed to load linked order', e)
       }
     }
   } catch (e) {
@@ -292,27 +267,8 @@ async function loadData() {
   }
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function formatPrice(amount: number, currency: Currency): string {
-  const value = amount / 100
-  return `${value.toLocaleString('ru-RU')} ${currencyLabels[currency]}`
+  return formatMoney({ amount, currency })
 }
 
 function getPointTypeLabel(point: { is_loading: boolean; is_unloading: boolean }): string {
@@ -821,123 +777,17 @@ onMounted(() => {
           </TabsContent>
 
           <!-- Offers Tab -->
-          <TabsContent value="offers" class="space-y-6">
-            <div v-if="visibleOffers.length === 0" class="text-center py-8 text-muted-foreground">
-              Пока нет предложений
-            </div>
-
-            <div v-else class="space-y-4">
-              <div
-                v-for="offer in visibleOffers"
-                :key="offer.id"
-                :class="[
-                  'border rounded-lg p-4',
-                  offer.status === 'selected' ? 'border-info/50 bg-info/5' :
-                  offer.status === 'confirmed' ? 'border-success/50 bg-success/5' :
-                  'border-border'
-                ]"
-              >
-                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-3 mb-2">
-                      <span class="text-xl font-semibold text-foreground">
-                        {{ formatPrice(offer.price.amount, offer.price.currency) }}
-                      </span>
-                      <StatusBadge :status="offer.status" :status-map="offerStatusMap" />
-                    </div>
-                    <div v-if="offer.carrier_org_name || offer.carrier_member_name" class="mb-2 flex flex-wrap items-center gap-x-2">
-                      <router-link
-                        v-if="isOwner && offer.carrier_org_name"
-                        :to="`/organizations/${offer.carrier_org_id}`"
-                        class="text-primary hover:underline font-medium truncate"
-                      >
-                        <Building2 class="inline h-4 w-4 mr-1" />
-                        {{ offer.carrier_org_name }}
-                      </router-link>
-                      <span v-if="isOwner && offer.carrier_org_name && offer.carrier_member_name" class="text-muted-foreground">•</span>
-                      <router-link
-                        v-if="offer.carrier_member_name"
-                        :to="`/members/${offer.carrier_member_id}`"
-                        class="text-primary hover:underline truncate"
-                      >
-                        {{ offer.carrier_member_name }}
-                      </router-link>
-                    </div>
-                    <div class="text-sm text-muted-foreground space-y-1">
-                      <p>
-                        <span class="text-muted-foreground/70">НДС:</span>
-                        {{ vatTypeLabels[offer.vat_type] }}
-                      </p>
-                      <p>
-                        <span class="text-muted-foreground/70">Способ оплаты:</span>
-                        {{ paymentMethodLabels[offer.payment_method] }}
-                      </p>
-                      <p v-if="offer.comment" class="break-words">
-                        <span class="text-muted-foreground/70">Комментарий:</span>
-                        {{ offer.comment }}
-                      </p>
-                      <p class="text-xs flex items-center gap-1">
-                        <Clock class="h-3 w-3" />
-                        {{ formatDateTime(offer.created_at) }}
-                      </p>
-                    </div>
-                  </div>
-
-                  <!-- Owner/Admin actions -->
-                  <div v-if="canManageOffers && offer.status === 'pending' && freightRequest.status === 'published'" class="flex gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      :disabled="actionLoading"
-                      @click="handleSelectOffer(offer.id)"
-                    >
-                      <Check class="mr-1 h-4 w-4" />
-                      Выбрать
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      :disabled="actionLoading"
-                      @click="openRejectModal(offer.id)"
-                    >
-                      Отклонить
-                    </Button>
-                  </div>
-
-                  <!-- Carrier actions (own offer) -->
-                  <div v-if="!isOwner && offer.carrier_org_id === auth.organizationId" class="flex gap-2 shrink-0">
-                    <template v-if="offer.status === 'pending' && permissions.canWithdrawOffer(offer.carrier_org_id, offer.carrier_member_id)">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        :disabled="actionLoading"
-                        @click="openWithdrawModal(offer.id)"
-                      >
-                        Отозвать
-                      </Button>
-                    </template>
-                    <template v-if="offer.status === 'selected' && permissions.canConfirmOffer(offer.carrier_org_id, offer.carrier_member_id)">
-                      <Button
-                        size="sm"
-                        :disabled="actionLoading"
-                        @click="handleConfirmOffer(offer.id)"
-                      >
-                        <Check class="mr-1 h-4 w-4" />
-                        Подтвердить
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        :disabled="actionLoading"
-                        @click="handleDeclineOffer(offer.id)"
-                      >
-                        Отказаться
-                      </Button>
-                    </template>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+          <TabsContent value="offers">
+            <FreightRequestOffersTab
+              :freight-request="freightRequest"
+              :offers="offers"
+              :action-loading="actionLoading"
+              @select="handleSelectOffer"
+              @reject="openRejectModal"
+              @withdraw="openWithdrawModal"
+              @confirm="handleConfirmOffer"
+              @decline="handleDeclineOffer"
+            />
           </TabsContent>
 
           <!-- History Tab -->
