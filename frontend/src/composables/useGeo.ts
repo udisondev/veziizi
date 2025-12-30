@@ -89,7 +89,8 @@ export async function searchCities(
     throw new Error('Failed to search cities')
   }
 
-  return res.json()
+  const data = await res.json()
+  return data ?? []
 }
 
 /**
