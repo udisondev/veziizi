@@ -4,6 +4,9 @@ import type { VehicleRequirements, VehicleType, VehicleSubType, LoadingType } fr
 import {
   vehicleTypeOptions,
   getVehicleSubTypeOptions,
+  allVehicleSubTypeOptions,
+  getVehicleTypeForSubType,
+  isSubTypeCompatible,
   loadingTypeOptions,
   loadingTypeLabels,
 } from '@/types/freightRequest'
@@ -28,12 +31,24 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+// Типы кузова с температурным режимом
+const temperatureSubTypes: VehicleSubType[] = ['insulated', 'refrigerator']
+
+// Показывать температурные поля только для изотермического/рефрижератора
+const isTemperatureSubType = computed(() => {
+  return props.vehicle.vehicle_subtype && temperatureSubTypes.includes(props.vehicle.vehicle_subtype)
+})
+
 // Галочка для температурного режима
 const showTemperature = ref(!!props.vehicle.temperature)
 
 // Получаем доступные подтипы на основе выбранного типа
 const availableSubTypes = computed(() => {
-  if (!props.vehicle.vehicle_type) return []
+  // Если тип не выбран - показываем все подтипы
+  if (!props.vehicle.vehicle_type) {
+    return allVehicleSubTypeOptions
+  }
+  // Иначе - только подтипы выбранного типа
   return getVehicleSubTypeOptions(props.vehicle.vehicle_type)
 })
 
@@ -47,6 +62,19 @@ watch(showTemperature, (show) => {
   }
 })
 
+// Очищаем температурные данные при смене на не-температурный тип кузова
+watch(isTemperatureSubType, (isTemp) => {
+  if (!isTemp) {
+    showTemperature.value = false
+    if (props.vehicle.temperature) {
+      updateField('temperature', undefined)
+    }
+    if (props.vehicle.thermograph) {
+      updateField('thermograph', false)
+    }
+  }
+})
+
 function updateField<K extends keyof VehicleRequirements>(
   field: K,
   value: VehicleRequirements[K]
@@ -55,16 +83,28 @@ function updateField<K extends keyof VehicleRequirements>(
 }
 
 function selectVehicleType(type: VehicleType) {
-  // При смене типа сбрасываем подтип
+  const currentSubType = props.vehicle.vehicle_subtype
+  // Сбрасываем подтип только если он несовместим с новым типом
+  const newSubType = currentSubType && isSubTypeCompatible(type, currentSubType)
+    ? currentSubType
+    : undefined
+
   emit('update:vehicle', {
     ...props.vehicle,
     vehicle_type: type,
-    vehicle_subtype: undefined as unknown as VehicleSubType,
+    vehicle_subtype: newSubType as VehicleSubType,
   })
 }
 
 function selectVehicleSubType(subtype: VehicleSubType) {
-  updateField('vehicle_subtype', subtype)
+  // Если тип транспорта не выбран - проставляем автоматически
+  const vehicleType = props.vehicle.vehicle_type || getVehicleTypeForSubType(subtype)
+
+  emit('update:vehicle', {
+    ...props.vehicle,
+    vehicle_type: vehicleType,
+    vehicle_subtype: subtype,
+  })
 }
 
 function toggleLoadingType(type: LoadingType) {
@@ -128,17 +168,17 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       </p>
     </div>
 
-    <!-- Vehicle subtype (показывается после выбора типа) -->
-    <div v-if="vehicle.vehicle_type && availableSubTypes.length > 0">
+    <!-- Vehicle subtype (тип кузова) -->
+    <div>
       <label class="block text-sm font-medium text-gray-700 mb-1">
-        Подтип транспорта <span class="text-red-500">*</span>
+        Тип кузова <span class="text-red-500">*</span>
       </label>
       <Select
         :model-value="vehicle.vehicle_subtype"
         @update:model-value="selectVehicleSubType($event as VehicleSubType)"
       >
         <SelectTrigger>
-          <SelectValue placeholder="Выберите подтип" />
+          <SelectValue placeholder="Выберите тип кузова" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem v-for="option in availableSubTypes" :key="option.value" :value="option.value">
@@ -251,8 +291,8 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       </div>
     </div>
 
-    <!-- Temperature checkbox -->
-    <div class="space-y-3">
+    <!-- Temperature checkbox (только для изотермического/рефрижератора) -->
+    <div v-if="isTemperatureSubType" class="space-y-3">
       <div class="flex items-center gap-3">
         <input
           id="show_temperature"
@@ -311,8 +351,8 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       </div>
     </div>
 
-    <!-- Thermograph checkbox -->
-    <div class="flex items-center gap-3">
+    <!-- Thermograph checkbox (только для изотермического/рефрижератора) -->
+    <div v-if="isTemperatureSubType" class="flex items-center gap-3">
       <input
         id="thermograph"
         :checked="vehicle.thermograph"

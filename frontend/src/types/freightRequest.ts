@@ -330,6 +330,63 @@ export const vehicleTypeSubTypes: Record<VehicleType, VehicleSubType[]> = {
   heavy_truck: ['semi_trailer', 'road_train', 'mega_trailer'],
 }
 
+// Обратный маппинг: подтип → тип транспорта
+export const subTypeToVehicleType: Record<VehicleSubType, VehicleType> = {
+  // Van
+  dry_van: 'van',
+  insulated: 'van',
+  refrigerator: 'van',
+  curtain_side: 'van',
+  box_truck: 'van',
+  furniture_van: 'van',
+  // Flatbed
+  standard_flatbed: 'flatbed',
+  drop_deck: 'flatbed',
+  lowboy: 'flatbed',
+  extendable: 'flatbed',
+  conestoga: 'flatbed',
+  // Tanker
+  liquid_tanker: 'tanker',
+  gas_tanker: 'tanker',
+  chemical_tanker: 'tanker',
+  food_tanker: 'tanker',
+  bitumen_tanker: 'tanker',
+  // Dump truck
+  rear_dump: 'dump_truck',
+  side_dump: 'dump_truck',
+  bottom_dump: 'dump_truck',
+  // Specialized truck
+  car_carrier: 'specialized_truck',
+  timber_truck: 'specialized_truck',
+  grain_truck: 'specialized_truck',
+  livestock_carrier: 'specialized_truck',
+  concrete_mixer: 'specialized_truck',
+  container_chassis: 'specialized_truck',
+  tow_truck: 'specialized_truck',
+  crane_truck: 'specialized_truck',
+  // Light truck
+  city_van: 'light_truck',
+  pickup: 'light_truck',
+  minivan_cargo: 'light_truck',
+  // Medium truck
+  medium_box: 'medium_truck',
+  medium_flatbed: 'medium_truck',
+  // Heavy truck
+  semi_trailer: 'heavy_truck',
+  road_train: 'heavy_truck',
+  mega_trailer: 'heavy_truck',
+}
+
+// Получить тип транспорта по подтипу
+export function getVehicleTypeForSubType(subtype: VehicleSubType): VehicleType {
+  return subTypeToVehicleType[subtype]
+}
+
+// Проверить совместимость подтипа с типом
+export function isSubTypeCompatible(vehicleType: VehicleType, subtype: VehicleSubType): boolean {
+  return vehicleTypeSubTypes[vehicleType].includes(subtype)
+}
+
 export const loadingTypeLabels: Record<LoadingType, string> = {
   rear: 'Задняя',
   side: 'Боковая',
@@ -406,6 +463,12 @@ export function getVehicleSubTypeOptions(vehicleType: VehicleType) {
     label: vehicleSubTypeLabels[value],
   }))
 }
+
+// Все подтипы для начального состояния (без фильтрации по типу)
+export const allVehicleSubTypeOptions = Object.entries(vehicleSubTypeLabels).map(([value, label]) => ({
+  value: value as VehicleSubType,
+  label,
+}))
 
 export const loadingTypeOptions = Object.entries(loadingTypeLabels).map(([value, label]) => ({
   value: value as LoadingType,
