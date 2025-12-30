@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { useGeo, type City, searchCities } from '@/composables/useGeo'
 import { useCityDropdown } from '@/composables/useCityDropdown'
 import {
@@ -64,6 +64,34 @@ const {
   isOpen: isCityDropdownOpen,
   onSelect: (city) => handleCitySelect(city),
   onClose: () => { isCityDropdownOpen.value = false },
+})
+
+// Dropdown direction (up or down)
+const dropdownDirection = ref<'down' | 'up'>('down')
+
+function calculateDropdownDirection() {
+  if (!cityInputRef.value) return
+
+  const inputRect = cityInputRef.value.getBoundingClientRect()
+  const viewportHeight = window.innerHeight
+  const dropdownMaxHeight = 240 // max-h-60 = 15rem = 240px
+
+  const spaceBelow = viewportHeight - inputRect.bottom
+  const spaceAbove = inputRect.top
+
+  // Открываем вверх если снизу недостаточно места, а сверху больше
+  if (spaceBelow < dropdownMaxHeight && spaceAbove > spaceBelow) {
+    dropdownDirection.value = 'up'
+  } else {
+    dropdownDirection.value = 'down'
+  }
+}
+
+// Recalculate direction when dropdown opens
+watch(isCityDropdownOpen, (isOpen) => {
+  if (isOpen) {
+    nextTick(() => calculateDropdownDirection())
+  }
 })
 
 // Filter countries by search
@@ -277,7 +305,10 @@ onMounted(async () => {
             <div
               v-if="isCityDropdownOpen && cities.length > 0"
               ref="cityDropdownRef"
-              class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"
+              :class="[
+                'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto',
+                dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
+              ]"
             >
               <button
                 v-for="(city, idx) in cities"
@@ -302,7 +333,10 @@ onMounted(async () => {
             <!-- No results -->
             <div
               v-if="isCityDropdownOpen && cities.length === 0 && !isLoadingCities && citySearch.length > 0"
-              class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-3 text-sm text-gray-500 text-center"
+              :class="[
+                'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg p-3 text-sm text-gray-500 text-center',
+                dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
+              ]"
             >
               Города не найдены
             </div>
