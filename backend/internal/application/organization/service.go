@@ -25,11 +25,12 @@ const invitationTTL = 7 * 24 * time.Hour // 7 days
 const bcryptCost = 12
 
 type Service struct {
-	db          dbtx.TxManager
-	eventStore  eventstore.Store
-	publisher   *messaging.EventPublisher
-	invitations *projections.InvitationsProjection
-	members     *projections.MembersProjection
+	db            dbtx.TxManager
+	eventStore    eventstore.Store
+	publisher     *messaging.EventPublisher
+	invitations   *projections.InvitationsProjection
+	members       *projections.MembersProjection
+	organizations *projections.OrganizationsProjection
 }
 
 func NewService(
@@ -38,13 +39,15 @@ func NewService(
 	publisher *messaging.EventPublisher,
 	invitations *projections.InvitationsProjection,
 	members *projections.MembersProjection,
+	organizations *projections.OrganizationsProjection,
 ) *Service {
 	return &Service{
-		db:          db,
-		eventStore:  eventStore,
-		publisher:   publisher,
-		invitations: invitations,
-		members:     members,
+		db:            db,
+		eventStore:    eventStore,
+		publisher:     publisher,
+		invitations:   invitations,
+		members:       members,
+		organizations: organizations,
 	}
 }
 
@@ -123,18 +126,9 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*organization.Organiza
 }
 
 // GetNames возвращает названия организаций по их ID
+// Использует batch query через projection вместо N+1 запросов к event store
 func (s *Service) GetNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
-	result := make(map[uuid.UUID]string, len(ids))
-	for _, id := range ids {
-		org, err := s.Get(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get organization %s: %w", id, err)
-		}
-		if org.Version() > 0 {
-			result[id] = org.Name()
-		}
-	}
-	return result, nil
+	return s.organizations.GetNames(ctx, ids)
 }
 
 // MemberInfo содержит данные сотрудника для отображения

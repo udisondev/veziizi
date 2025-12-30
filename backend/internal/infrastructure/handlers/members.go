@@ -83,6 +83,7 @@ func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded
 			nil, e.Role.String(), "active", e.OccurredAt(),
 			regIP, regFingerprint, regUserAgent,
 		).
+		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("failed to build insert query: %w", err)

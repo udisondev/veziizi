@@ -60,6 +60,7 @@ func (h *PendingOrganizationsHandler) onCreated(ctx context.Context, e events.Or
 		Insert("pending_organizations").
 		Columns("id", "name", "inn", "legal_name", "country", "email", "created_at").
 		Values(e.AggregateID(), e.Name, e.INN, e.LegalName, e.Country.String(), e.Email, e.OccurredAt()).
+		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("failed to build insert query: %w", err)

@@ -109,7 +109,11 @@ func main() {
 		slog.Error("failed to create temp dir", "error", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			slog.Error("failed to remove temp dir", "error", err)
+		}
+	}()
 
 	// Step 1: Download and parse countries
 	slog.Info("downloading countries from GeoNames...")
@@ -169,7 +173,11 @@ func downloadAndParseCountries(url string) ([]Country, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http get: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("failed to close response body", "error", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -223,7 +231,11 @@ func downloadAndParseCities(url string, tmpDir string) ([]City, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open zip: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			slog.Error("failed to close zip reader", "error", err)
+		}
+	}()
 
 	var cities []City
 
@@ -293,7 +305,11 @@ func downloadAndParseAlternateNames(url string, tmpDir string, language string) 
 	if err != nil {
 		return nil, fmt.Errorf("open zip: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			slog.Error("failed to close zip reader", "error", err)
+		}
+	}()
 
 	names := make(map[int]string)
 	preferred := make(map[int]bool)

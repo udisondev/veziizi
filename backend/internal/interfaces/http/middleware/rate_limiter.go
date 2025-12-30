@@ -172,8 +172,19 @@ func RateLimiter(
 				return
 			}
 
-			// Skip for admin paths (они имеют свою защиту)
+			// SEC-003: Admin paths rate limiting (более высокий лимит, но всё равно ограничен)
 			if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
+				clientIP := httputil.GetClientIP(r)
+				// 50 requests per minute для admin - защита от brute force
+				allowed, reason := publicRateLimiter.checkIPRateLimitWithMax(clientIP, "admin", 50)
+				if !allowed {
+					slog.Warn("SEC-003: Admin endpoint rate limited",
+						slog.String("ip", clientIP),
+						slog.String("path", r.URL.Path),
+					)
+					writeError(w, http.StatusTooManyRequests, reason)
+					return
+				}
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -97,9 +97,10 @@ func main() {
 
 	invitations := projections.NewInvitationsProjection(txManager)
 	members := projections.NewMembersProjection(txManager)
+	organizations := projections.NewOrganizationsProjection(txManager)
 	pendingOrgs := projections.NewPendingOrganizationsProjection(txManager)
 
-	orgService := organization.NewService(txManager, evtStore, publisher, invitations, members)
+	orgService := organization.NewService(txManager, evtStore, publisher, invitations, members, organizations)
 	adminService := admin.NewService(txManager, evtStore, publisher, pendingOrgs)
 
 	fmt.Println("Creating seed organizations...")

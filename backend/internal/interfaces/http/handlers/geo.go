@@ -90,8 +90,9 @@ func (h *GeoHandler) ListCities(w http.ResponseWriter, r *http.Request) {
 	// Parse query params
 	search := r.URL.Query().Get("search")
 	limit := 20
+	const maxGeoLimit = 100
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= maxGeoLimit {
 			limit = l
 		}
 	}

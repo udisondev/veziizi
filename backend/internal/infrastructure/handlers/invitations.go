@@ -64,6 +64,7 @@ func (h *InvitationsHandler) onInvitationCreated(ctx context.Context, e events.I
 		Insert("invitations_lookup").
 		Columns("id", "organization_id", "email", "role", "token", "status", "created_by", "created_at", "expires_at", "name", "phone").
 		Values(e.InvitationID, e.AggregateID(), e.Email, e.Role.String(), e.Token, "pending", e.CreatedBy, e.OccurredAt(), expiresAt, e.Name, e.Phone).
+		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("failed to build insert query: %w", err)
