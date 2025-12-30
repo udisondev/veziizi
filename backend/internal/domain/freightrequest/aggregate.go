@@ -450,30 +450,31 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 
 	case events.OfferWithdrawn:
 		if offer, ok := f.offers[e.OfferID]; ok {
-			offer.Withdraw()
+			// In Replay, events are already validated - ignore FSM errors
+			_ = offer.Withdraw()
 		}
 
 	case events.OfferSelected:
 		if offer, ok := f.offers[e.OfferID]; ok {
-			offer.Select()
+			_ = offer.Select()
 			f.selectedOffer = &e.OfferID
 			f.status = values.FreightRequestStatusSelected
 		}
 
 	case events.OfferRejected:
 		if offer, ok := f.offers[e.OfferID]; ok {
-			offer.Reject()
+			_ = offer.Reject()
 		}
 
 	case events.OfferConfirmed:
 		if offer, ok := f.offers[e.OfferID]; ok {
-			offer.Confirm()
+			_ = offer.Confirm()
 			f.status = values.FreightRequestStatusConfirmed
 		}
 
 	case events.OfferDeclined:
 		if offer, ok := f.offers[e.OfferID]; ok {
-			offer.Decline()
+			_ = offer.Decline()
 			f.selectedOffer = nil
 			f.status = values.FreightRequestStatusPublished
 		}

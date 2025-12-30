@@ -80,6 +80,13 @@ func (p *EventPublisher) Publish(ctx context.Context, topic string, events ...ev
 		if err != nil {
 			return fmt.Errorf("failed to create tx publisher: %w", err)
 		}
+		// CRITICAL: Close txPublisher to prevent resource leak
+		defer func() {
+			if err := txPublisher.Close(); err != nil {
+				// Log but don't fail - transaction already handled
+				p.logger.Error("failed to close tx publisher", err, nil)
+			}
+		}()
 
 		if err := txPublisher.Publish(topic, messages...); err != nil {
 			return fmt.Errorf("failed to publish messages in tx: %w", err)

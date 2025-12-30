@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -83,7 +84,11 @@ func (c *TelegramClient) SendMessage(chatID int64, text string) error {
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("failed to close response body", slog.String("error", err.Error()))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -149,7 +154,11 @@ func (c *TelegramClient) SendMessageWithButton(chatID int64, text, buttonText, b
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("failed to close response body", slog.String("error", err.Error()))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

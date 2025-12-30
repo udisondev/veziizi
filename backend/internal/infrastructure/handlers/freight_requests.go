@@ -133,6 +133,7 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 			orgName, orgINN, orgCountry, e.CustomerMemberID,
 			routeCityIDs, routeCountryIDs,
 		).
+		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert query: %w", err)
@@ -265,6 +266,7 @@ func (h *FreightRequestsHandler) onOfferMade(ctx context.Context, e events.Offer
 		Insert("offers_lookup").
 		Columns("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").
 		Values(e.OfferID, e.AggregateID(), e.CarrierOrgID, e.CarrierMemberID, values.OfferStatusPending.String(), e.OccurredAt()).
+		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert query: %w", err)

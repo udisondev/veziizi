@@ -285,7 +285,7 @@ func (f *Factory) TelegramClient() *notifications.TelegramClient {
 
 func (f *Factory) OrganizationService() *orgApp.Service {
 	f.orgOnce.Do(func() {
-		f.orgService = orgApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.InvitationsProjection(), f.MembersProjection())
+		f.orgService = orgApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.InvitationsProjection(), f.MembersProjection(), f.OrganizationsProjection())
 	})
 	return f.orgService
 }

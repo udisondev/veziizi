@@ -237,7 +237,11 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithStatus(status))
 	}
 
-	if orgName := r.URL.Query().Get("org_name"); orgName != "" {
+	if orgName := strings.TrimSpace(r.URL.Query().Get("org_name")); orgName != "" {
+		// Limit org_name search to 100 chars to prevent SQL abuse
+		if len(orgName) > 100 {
+			orgName = orgName[:100]
+		}
 		opts = append(opts, projections.WithOrgNameLike(orgName))
 	}
 

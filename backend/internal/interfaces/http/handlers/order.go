@@ -106,8 +106,8 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid limit")
+		if err != nil || limit <= 0 || limit > 100 {
+			writeError(w, http.StatusBadRequest, "invalid limit (1-100)")
 			return
 		}
 		opts = append(opts, projections.OrderWithLimit(limit))
@@ -115,7 +115,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
 		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
+		if err != nil || offset < 0 {
 			writeError(w, http.StatusBadRequest, "invalid offset")
 			return
 		}

@@ -82,6 +82,7 @@ func (h *OrdersHandler) onCreated(ctx context.Context, e events.OrderCreated) er
 		Insert("orders_lookup").
 		Columns("id", "order_number", "freight_request_id", "customer_org_id", "carrier_org_id", "customer_member_id", "carrier_member_id", "status", "created_at").
 		Values(e.AggregateID(), e.OrderNumber, e.FreightRequestID, e.CustomerOrgID, e.CarrierOrgID, e.CustomerMemberID, e.CarrierMemberID, values.OrderStatusActive.String(), e.OccurredAt()).
+		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert query: %w", err)

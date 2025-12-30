@@ -1,11 +1,15 @@
 package entities
 
 import (
+	"errors"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/google/uuid"
 )
+
+// ErrInvalidStatusTransition is returned when an invalid offer status transition is attempted
+var ErrInvalidStatusTransition = errors.New("invalid offer status transition")
 
 type Offer struct {
 	id              uuid.UUID
@@ -60,8 +64,47 @@ func (o Offer) IsPending() bool   { return o.status == values.OfferStatusPending
 func (o Offer) IsSelected() bool  { return o.status == values.OfferStatusSelected }
 func (o Offer) IsConfirmed() bool { return o.status == values.OfferStatusConfirmed }
 
-func (o *Offer) Select()   { o.status = values.OfferStatusSelected }
-func (o *Offer) Confirm()  { o.status = values.OfferStatusConfirmed }
-func (o *Offer) Reject()   { o.status = values.OfferStatusRejected }
-func (o *Offer) Withdraw() { o.status = values.OfferStatusWithdrawn }
-func (o *Offer) Decline()  { o.status = values.OfferStatusDeclined }
+// Select transitions offer from pending to selected (customer selects offer)
+func (o *Offer) Select() error {
+	if !o.IsPending() {
+		return ErrInvalidStatusTransition
+	}
+	o.status = values.OfferStatusSelected
+	return nil
+}
+
+// Confirm transitions offer from selected to confirmed (carrier confirms)
+func (o *Offer) Confirm() error {
+	if !o.IsSelected() {
+		return ErrInvalidStatusTransition
+	}
+	o.status = values.OfferStatusConfirmed
+	return nil
+}
+
+// Reject transitions offer from pending to rejected (customer rejects offer)
+func (o *Offer) Reject() error {
+	if !o.IsPending() {
+		return ErrInvalidStatusTransition
+	}
+	o.status = values.OfferStatusRejected
+	return nil
+}
+
+// Withdraw transitions offer from pending to withdrawn (carrier withdraws offer)
+func (o *Offer) Withdraw() error {
+	if !o.IsPending() {
+		return ErrInvalidStatusTransition
+	}
+	o.status = values.OfferStatusWithdrawn
+	return nil
+}
+
+// Decline transitions offer from selected to declined (carrier declines)
+func (o *Offer) Decline() error {
+	if !o.IsSelected() {
+		return ErrInvalidStatusTransition
+	}
+	o.status = values.OfferStatusDeclined
+	return nil
+}

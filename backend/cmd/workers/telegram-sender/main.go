@@ -8,6 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	// Event registration - CRITICAL for deserialization of notification events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
+
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
