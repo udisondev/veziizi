@@ -13,6 +13,7 @@ import (
 var publicPaths = map[string]map[string]bool{
 	"/api/v1/auth/login":    {http.MethodPost: true},
 	"/api/v1/organizations": {http.MethodPost: true}, // registration
+	"/api/v1/support/faq":   {http.MethodGet: true},  // public FAQ
 }
 
 // Public path prefixes

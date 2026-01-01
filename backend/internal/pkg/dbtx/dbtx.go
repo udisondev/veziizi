@@ -2,7 +2,9 @@ package dbtx
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
@@ -75,7 +77,11 @@ func (e *TxExecutor) InTx(ctx context.Context, fn func(ctx context.Context) erro
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("failed to rollback transaction", slog.String("error", err.Error()))
+		}
+	}()
 
 	if err := fn(WithTx(ctx, tx)); err != nil {
 		return err
@@ -89,7 +95,11 @@ func inSavepoint(ctx context.Context, tx pgx.Tx, fn func(ctx context.Context) er
 	if err != nil {
 		return fmt.Errorf("begin savepoint: %w", err)
 	}
-	defer sp.Rollback(ctx) //nolint:errcheck
+	defer func() {
+		if err := sp.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("failed to rollback savepoint", slog.String("error", err.Error()))
+		}
+	}()
 
 	if err := fn(WithTx(ctx, sp)); err != nil {
 		return err

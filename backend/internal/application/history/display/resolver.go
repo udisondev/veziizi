@@ -61,9 +61,12 @@ func (r *CachedResolver) ResolveMember(ctx context.Context, id uuid.UUID) string
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Double-check после взятия лока для предотвращения TOCTOU race condition
+	if name, ok := r.memberCache[id]; ok {
+		return name
+	}
 	r.memberCache[id] = member.Name
-	r.mu.Unlock()
-
 	return member.Name
 }
 
@@ -87,9 +90,12 @@ func (r *CachedResolver) ResolveOrganization(ctx context.Context, id uuid.UUID) 
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Double-check после взятия лока для предотвращения TOCTOU race condition
+	if name, ok := r.orgCache[id]; ok {
+		return name
+	}
 	r.orgCache[id] = org.Name
-	r.mu.Unlock()
-
 	return org.Name
 }
 

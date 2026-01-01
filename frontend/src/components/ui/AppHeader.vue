@@ -37,6 +37,7 @@ import {
   User,
   LogOut,
   Building2,
+  HelpCircle,
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -158,6 +159,11 @@ const userInitial = computed(() => {
             <Building2 class="h-4 w-4" />
             <span class="max-w-40 truncate">{{ auth.organization?.name }}</span>
           </div>
+
+          <!-- Support -->
+          <Button variant="ghost" size="icon" @click="router.push('/support')" title="Поддержка">
+            <HelpCircle class="h-5 w-5" />
+          </Button>
 
           <!-- Notifications -->
           <NotificationBell />

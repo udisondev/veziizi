@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/organization"
@@ -37,6 +38,9 @@ func NewService(
 func (s *Service) GetOrganization(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
 	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
 	if err != nil {
+		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+			return nil, organization.ErrOrganizationNotFound
+		}
 		return nil, fmt.Errorf("failed to load organization: %w", err)
 	}
 	if len(evts) == 0 {

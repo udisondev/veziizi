@@ -2,6 +2,7 @@ package freightrequest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -43,9 +44,18 @@ func NewService(
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*freightrequest.FreightRequest, error) {
 	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
 	if err != nil {
+		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+			return nil, freightrequest.ErrFreightRequestNotFound
+		}
 		return nil, fmt.Errorf("failed to load freight request: %w", err)
 	}
-	return freightrequest.NewFromEvents(id, evts), nil
+
+	fr := freightrequest.NewFromEvents(id, evts)
+	if fr.Version() == 0 {
+		return nil, freightrequest.ErrFreightRequestNotFound
+	}
+
+	return fr, nil
 }
 
 func (s *Service) getOrganization(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {

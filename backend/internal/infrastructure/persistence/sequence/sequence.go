@@ -36,3 +36,13 @@ func (g *Generator) NextRequestNumber(ctx context.Context) (int64, error) {
 	}
 	return num, nil
 }
+
+// NextTicketNumber returns the next support ticket number from the sequence
+func (g *Generator) NextTicketNumber(ctx context.Context) (int64, error) {
+	var num int64
+	err := g.db.QueryRow(ctx, "SELECT nextval('ticket_number_seq')").Scan(&num)
+	if err != nil {
+		return 0, fmt.Errorf("get next ticket number: %w", err)
+	}
+	return num, nil
+}

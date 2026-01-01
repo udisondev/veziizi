@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -120,6 +121,9 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterO
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
 	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
 	if err != nil {
+		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+			return nil, organization.ErrOrganizationNotFound
+		}
 		return nil, fmt.Errorf("failed to load organization: %w", err)
 	}
 	return organization.NewFromEvents(id, evts), nil

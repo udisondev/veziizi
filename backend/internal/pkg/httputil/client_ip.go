@@ -4,30 +4,65 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 )
 
+var (
+	trustedProxies     = map[string]struct{}{"127.0.0.1": {}, "::1": {}}
+	trustedProxiesMu   sync.RWMutex
+)
+
+// SetTrustedProxies устанавливает список доверенных прокси-серверов.
+// Вызывается при инициализации приложения из конфигурации.
+// SEC-004: Только запросы от trusted proxy доверяют заголовкам X-Forwarded-For и X-Real-IP.
+func SetTrustedProxies(proxies []string) {
+	trustedProxiesMu.Lock()
+	defer trustedProxiesMu.Unlock()
+	trustedProxies = make(map[string]struct{}, len(proxies))
+	for _, p := range proxies {
+		trustedProxies[strings.TrimSpace(p)] = struct{}{}
+	}
+}
+
+// isTrustedProxy проверяет, является ли IP доверенным прокси.
+func isTrustedProxy(ip string) bool {
+	trustedProxiesMu.RLock()
+	defer trustedProxiesMu.RUnlock()
+	_, ok := trustedProxies[ip]
+	return ok
+}
+
 // GetClientIP извлекает реальный IP клиента из HTTP request.
-// Учитывает заголовки X-Forwarded-For, X-Real-IP и RemoteAddr.
+// SEC-004: Заголовки X-Forwarded-For и X-Real-IP доверяются только от trusted proxy.
 func GetClientIP(r *http.Request) string {
-	// 1. X-Forwarded-For (первый IP в цепочке — клиент)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		ips := strings.Split(xff, ",")
-		clientIP := strings.TrimSpace(ips[0])
-		if clientIP != "" {
-			return clientIP
+	remoteIP := getRemoteIP(r.RemoteAddr)
+
+	// SEC-004: Доверяем proxy headers только от trusted proxies
+	if isTrustedProxy(remoteIP) {
+		// 1. X-Forwarded-For (первый IP в цепочке — клиент)
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			ips := strings.Split(xff, ",")
+			clientIP := strings.TrimSpace(ips[0])
+			if clientIP != "" {
+				return clientIP
+			}
+		}
+
+		// 2. X-Real-IP (устанавливается nginx/reverse proxy)
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
 		}
 	}
 
-	// 2. X-Real-IP (устанавливается nginx/reverse proxy)
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
-	}
+	// 3. RemoteAddr (прямое соединение или недоверенный proxy)
+	return remoteIP
+}
 
-	// 3. RemoteAddr (прямое соединение, убираем порт)
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+// getRemoteIP извлекает IP из RemoteAddr (убирает порт).
+func getRemoteIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		// Если не удалось разделить — вернуть как есть
-		return r.RemoteAddr
+		return remoteAddr
 	}
 	return host
 }

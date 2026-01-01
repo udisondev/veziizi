@@ -28,5 +28,11 @@ func (c CargoInfo) Validate() error {
 	if c.Quantity <= 0 {
 		return fmt.Errorf("quantity must be greater than 0")
 	}
+	if c.Weight < 0 {
+		return fmt.Errorf("weight cannot be negative")
+	}
+	if c.Volume < 0 {
+		return fmt.Errorf("volume cannot be negative")
+	}
 	return nil
 }

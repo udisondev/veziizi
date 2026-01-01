@@ -1,2 +1,3 @@
 backend: air -c .air-backend.toml
 frontend: cd frontend && npm run dev
+support: go run ./backend/cmd/workers/support-tickets

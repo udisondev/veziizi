@@ -24,10 +24,11 @@ type DatabaseConfig struct {
 }
 
 type HTTPConfig struct {
-	Addr         string        `env:"HTTP_ADDR" envDefault:":8080" validate:"required"`
-	ReadTimeout  time.Duration `env:"HTTP_READ_TIMEOUT" envDefault:"15s" validate:"required"`
-	WriteTimeout time.Duration `env:"HTTP_WRITE_TIMEOUT" envDefault:"15s" validate:"required"`
-	IdleTimeout  time.Duration `env:"HTTP_IDLE_TIMEOUT" envDefault:"60s" validate:"required"`
+	Addr           string        `env:"HTTP_ADDR" envDefault:":8080" validate:"required"`
+	ReadTimeout    time.Duration `env:"HTTP_READ_TIMEOUT" envDefault:"15s" validate:"required"`
+	WriteTimeout   time.Duration `env:"HTTP_WRITE_TIMEOUT" envDefault:"15s" validate:"required"`
+	IdleTimeout    time.Duration `env:"HTTP_IDLE_TIMEOUT" envDefault:"60s" validate:"required"`
+	TrustedProxies string        `env:"HTTP_TRUSTED_PROXIES" envDefault:"127.0.0.1,::1"` // Comma-separated list of trusted proxy IPs
 }
 
 type SessionConfig struct {

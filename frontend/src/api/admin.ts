@@ -69,4 +69,63 @@ export const adminApi = {
   unmarkFraudster(orgId: string, data: UnmarkFraudsterRequest): Promise<void> {
     return api.post(`/admin/organizations/${orgId}/unmark-fraudster`, data)
   },
+
+  // Support tickets
+  async getSupportTickets(params?: {
+    status?: string
+    limit?: number
+    offset?: number
+  }): Promise<{ tickets: AdminSupportTicket[]; total: number }> {
+    const queryParams = new URLSearchParams()
+    if (params?.status) queryParams.set('status', params.status)
+    if (params?.limit) queryParams.set('limit', params.limit.toString())
+    if (params?.offset) queryParams.set('offset', params.offset.toString())
+    const query = queryParams.toString()
+    return api.get(`/admin/support/tickets${query ? '?' + query : ''}`)
+  },
+
+  getSupportTicket(id: string): Promise<AdminSupportTicketDetail> {
+    return api.get(`/admin/support/tickets/${id}`)
+  },
+
+  addSupportMessage(ticketId: string, content: string): Promise<void> {
+    return api.post(`/admin/support/tickets/${ticketId}/messages`, { content })
+  },
+
+  closeSupportTicket(ticketId: string, resolution?: string): Promise<void> {
+    return api.post(`/admin/support/tickets/${ticketId}/close`, { resolution })
+  },
+}
+
+// Support ticket types
+export interface AdminSupportTicket {
+  id: string
+  ticket_number: number
+  member_id: string
+  org_id: string
+  subject: string
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminSupportTicketMessage {
+  id: string
+  sender_type: 'user' | 'admin'
+  sender_id: string
+  content: string
+  created_at: string
+}
+
+export interface AdminSupportTicketDetail {
+  id: string
+  ticket_number: number
+  member_id: string
+  org_id: string
+  subject: string
+  status: string
+  messages: AdminSupportTicketMessage[]
+  created_at: string
+  updated_at: string
+  closed_at?: string
 }

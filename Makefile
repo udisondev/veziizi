@@ -1,5 +1,5 @@
 .PHONY: help up down logs db-shell migrate migrate-down migrate-status migrate-create \
-        build build-api build-workers run-api run-telegram-bot run-workers test lint fmt env-init generate \
+        build build-api build-workers run-api run-telegram-bot run-workers test test-e2e test-e2e-setup test-e2e-containers lint fmt env-init generate \
         back-dev create-admin create-admin-dev dev-all dev-setup create-test-org seed-geo
 
 # Load .env file if exists
@@ -66,6 +66,7 @@ build: ## Build all binaries
 	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
 	go build -o bin/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher
 	go build -o bin/worker-telegram-sender ./backend/cmd/workers/telegram-sender
+	go build -o bin/worker-support-tickets ./backend/cmd/workers/support-tickets
 
 build-api: ## Build API server
 	go build -o bin/api ./backend/cmd/api
@@ -86,6 +87,7 @@ build-workers: ## Build all workers
 	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
 	go build -o bin/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher
 	go build -o bin/worker-telegram-sender ./backend/cmd/workers/telegram-sender
+	go build -o bin/worker-support-tickets ./backend/cmd/workers/support-tickets
 
 # Run
 run-api: ## Run API server
@@ -110,14 +112,42 @@ run-workers: ## Run all workers
 	go run ./backend/cmd/workers/order-fraud-analyzer &
 	go run ./backend/cmd/workers/notification-dispatcher &
 	go run ./backend/cmd/workers/telegram-sender &
+	go run ./backend/cmd/workers/support-tickets &
 
-# Development
-test: ## Run tests
-	go test -v ./...
+# Testing
+test: ## Run unit tests
+	go test -v ./backend/internal/...
 
 test-cover: ## Run tests with coverage
-	go test -v -coverprofile=coverage.out ./...
+	go test -v -coverprofile=coverage.out ./backend/internal/...
 	go tool cover -html=coverage.out -o coverage.html
+
+# E2E Tests
+TEST_DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/veziizi_test?sslmode=disable
+
+test-e2e-setup: up ## Setup E2E test database
+	@echo "Creating test database..."
+	@docker exec veziizi-postgres psql -U $(POSTGRES_USER) -c "DROP DATABASE IF EXISTS veziizi_test" || true
+	@docker exec veziizi-postgres psql -U $(POSTGRES_USER) -c "CREATE DATABASE veziizi_test"
+	@echo "Running migrations on test database..."
+	@goose -dir backend/migrations postgres "$(TEST_DATABASE_URL)" up
+	@echo "Seeding geo data..."
+	@TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go run ./backend/cmd/tools/seed-geo
+	@echo "Creating test admin..."
+	@DATABASE_URL="$(TEST_DATABASE_URL)" go run ./backend/cmd/tools/create-admin \
+		--email="admin@veziizi.local" \
+		--name="Admin" \
+		--password="admin123" || true
+	@echo "E2E test database ready"
+
+test-e2e: test-e2e-setup ## Run E2E tests (uses docker-compose DB)
+	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test -v -count=1 -p=1 ./backend/e2e/tests/...
+
+test-e2e-parallel: test-e2e-setup ## Run E2E tests in parallel (uses docker-compose DB)
+	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test -v -count=1 ./backend/e2e/tests/...
+
+test-e2e-containers: ## Run E2E tests with testcontainers (requires Docker)
+	go test -v -count=1 -p=1 ./backend/e2e/tests/...
 
 lint: ## Run linter
 	golangci-lint run ./...

@@ -5,12 +5,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events" // register events
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"   // register events
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"          // register events
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"   // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"        // register events
 
 	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http"
@@ -20,6 +22,7 @@ import (
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/geoip"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
 )
 
 func main() {
@@ -27,6 +30,13 @@ func main() {
 	if err != nil {
 		slog.Error("failed to load config", slog.String("error", err.Error()))
 		os.Exit(1)
+	}
+
+	// SEC-004: Configure trusted proxies for IP extraction
+	if cfg.HTTP.TrustedProxies != "" {
+		proxies := strings.Split(cfg.HTTP.TrustedProxies, ",")
+		httputil.SetTrustedProxies(proxies)
+		slog.Info("trusted proxies configured", slog.Int("count", len(proxies)))
 	}
 
 	logFile, err := setupLogger(cfg.App.LogLevel)
@@ -116,6 +126,22 @@ func main() {
 	)
 	subscriptionsHandler.RegisterRoutes(server.Router())
 
+	// Support handler (user tickets)
+	supportHandler := handlers.NewSupportHandler(
+		f.SupportService(),
+		f.SupportTicketsProjection(),
+		sessionManager,
+	)
+	supportHandler.RegisterRoutes(server.Router())
+
+	// Admin support handler (admin tickets management)
+	adminSupportHandler := handlers.NewAdminSupportHandler(
+		f.SupportService(),
+		f.SupportTicketsProjection(),
+		adminSessionManager,
+	)
+	adminSupportHandler.RegisterRoutes(server.Router())
+
 	// Dev handler (only in development mode)
 	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
 	if cfg.IsDevelopment() {
@@ -138,6 +164,10 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down...")
+
+	// Stop rate limiter cleanup goroutine
+	middleware.StopRateLimiterCleanup()
+
 	if err := server.Shutdown(ctx); err != nil {
 		slog.Error("failed to shutdown server", slog.String("error", err.Error()))
 	}

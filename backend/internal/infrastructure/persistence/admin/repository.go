@@ -67,3 +67,30 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Admin, error) 
 
 	return &a, nil
 }
+
+// AdminWithTelegram представляет админа с подключённым Telegram
+type AdminWithTelegram struct {
+	ID             uuid.UUID `db:"id"`
+	Name           string    `db:"name"`
+	TelegramChatID int64     `db:"telegram_chat_id"`
+}
+
+// GetAdminsWithTelegram возвращает активных админов с подключённым Telegram
+func (r *Repository) GetAdminsWithTelegram(ctx context.Context) ([]AdminWithTelegram, error) {
+	query, args, err := r.psql.
+		Select("id", "name", "telegram_chat_id").
+		From("platform_admins").
+		Where(squirrel.Eq{"is_active": true}).
+		Where(squirrel.NotEq{"telegram_chat_id": nil}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build select query: %w", err)
+	}
+
+	var admins []AdminWithTelegram
+	if err := pgxscan.Select(ctx, r.db, &admins, query, args...); err != nil {
+		return nil, fmt.Errorf("failed to get admins with telegram: %w", err)
+	}
+
+	return admins, nil
+}

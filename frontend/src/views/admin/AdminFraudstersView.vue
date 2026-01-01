@@ -31,6 +31,7 @@ import {
   Star,
   AlertTriangle,
   ShieldOff,
+  Headphones,
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -52,6 +53,7 @@ const navItems = [
   { to: '/admin/organizations', label: 'Организации', icon: Building2 },
   { to: '/admin/reviews', label: 'Отзывы', icon: Star },
   { to: '/admin/fraudsters', label: 'Накрутчики', icon: AlertTriangle },
+  { to: '/admin/support', label: 'Поддержка', icon: Headphones },
 ]
 
 onMounted(async () => {

@@ -139,6 +139,7 @@ type PendingOrganizationResponse struct {
 	LegalName string `json:"legal_name"`
 	Country   string `json:"country"`
 	Email     string `json:"email"`
+	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -164,6 +165,7 @@ func (h *AdminHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 			LegalName: org.LegalName,
 			Country:   org.Country,
 			Email:     org.Email,
+			Status:    "pending",
 			CreatedAt: org.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		})
 	}
@@ -264,11 +266,11 @@ func handleAdminDomainError(w http.ResponseWriter, err error) {
 	case errors.Is(err, orgDomain.ErrOrganizationNotFound):
 		writeError(w, http.StatusNotFound, "organization not found")
 	case errors.Is(err, orgDomain.ErrOrganizationNotPending):
-		writeError(w, http.StatusBadRequest, "organization is not pending")
+		writeError(w, http.StatusConflict, "organization is not pending")
 	case errors.Is(err, orgDomain.ErrAlreadyFraudster):
-		writeError(w, http.StatusBadRequest, "organization is already marked as fraudster")
+		writeError(w, http.StatusConflict, "organization is already marked as fraudster")
 	case errors.Is(err, orgDomain.ErrNotFraudster):
-		writeError(w, http.StatusBadRequest, "organization is not marked as fraudster")
+		writeError(w, http.StatusConflict, "organization is not marked as fraudster")
 	default:
 		slog.Error("unhandled domain error", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")

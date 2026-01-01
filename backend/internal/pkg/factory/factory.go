@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	adminApp "codeberg.org/udison/veziizi/backend/internal/application/admin"
 	frApp "codeberg.org/udison/veziizi/backend/internal/application/freightrequest"
@@ -13,6 +14,7 @@ import (
 	notifApp "codeberg.org/udison/veziizi/backend/internal/application/notification"
 	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
+	supportApp "codeberg.org/udison/veziizi/backend/internal/application/support"
 	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
 	sessionApp "codeberg.org/udison/veziizi/backend/internal/application/session"
 	"codeberg.org/udison/veziizi/backend/internal/domain/notification/rules"
@@ -79,6 +81,9 @@ type Factory struct {
 	notificationService *notifApp.Service
 	notificationOnce    sync.Once
 
+	supportService *supportApp.Service
+	supportOnce    sync.Once
+
 	// Projections (lazy)
 	membersProjection *projections.MembersProjection
 	membersOnce       sync.Once
@@ -131,6 +136,10 @@ type Factory struct {
 	// Проекция подписок на заявки (opt-in модель)
 	freightSubscriptionsProjection *projections.FreightSubscriptionsProjection
 	freightSubscriptionsOnce       sync.Once
+
+	// Проекция тикетов поддержки
+	supportTicketsProjection *projections.SupportTicketsProjection
+	supportTicketsOnce       sync.Once
 
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
@@ -196,7 +205,10 @@ func (f *Factory) Close() error {
 // Pool returns the database connection pool (lazily created)
 func (f *Factory) Pool() (*pgxpool.Pool, error) {
 	f.poolOnce.Do(func() {
-		ctx := context.Background()
+		// Таймаут на инициализацию подключения к БД
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		pool, err := pgxpool.New(ctx, f.cfg.Database.URL)
 		if err != nil {
 			f.poolErr = fmt.Errorf("create pool: %w", err)
@@ -340,6 +352,18 @@ func (f *Factory) NotificationService() *notifApp.Service {
 	return f.notificationService
 }
 
+func (f *Factory) SupportService() *supportApp.Service {
+	f.supportOnce.Do(func() {
+		f.supportService = supportApp.NewService(
+			f.DB(),
+			f.EventStore(),
+			f.MustPublisher(),
+			f.SequenceGenerator(),
+		)
+	})
+	return f.supportService
+}
+
 // ============================================
 // Projections
 // ============================================
@@ -462,6 +486,14 @@ func (f *Factory) FreightSubscriptionsProjection() *projections.FreightSubscript
 		f.freightSubscriptionsProjection = projections.NewFreightSubscriptionsProjection(f.DB())
 	})
 	return f.freightSubscriptionsProjection
+}
+
+// SupportTicketsProjection возвращает проекцию тикетов поддержки
+func (f *Factory) SupportTicketsProjection() *projections.SupportTicketsProjection {
+	f.supportTicketsOnce.Do(func() {
+		f.supportTicketsProjection = projections.NewSupportTicketsProjection(f.DB())
+	})
+	return f.supportTicketsProjection
 }
 
 // ============================================

@@ -102,8 +102,21 @@ func Run(cfg Config) {
 	<-quit
 
 	slog.Info(fmt.Sprintf("shutting down %s worker...", cfg.Name))
-	if err := router.Close(); err != nil {
-		slog.Error("failed to close router", slog.String("error", err.Error()))
+
+	// Graceful shutdown с таймаутом
+	shutdownDone := make(chan struct{})
+	go func() {
+		if err := router.Close(); err != nil {
+			slog.Error("failed to close router", slog.String("error", err.Error()))
+		}
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+		slog.Info(fmt.Sprintf("%s worker shutdown complete", cfg.Name))
+	case <-time.After(30 * time.Second):
+		slog.Error(fmt.Sprintf("%s worker shutdown timed out", cfg.Name))
 	}
 }
 
