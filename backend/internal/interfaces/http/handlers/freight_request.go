@@ -107,6 +107,10 @@ func (h *FreightRequestHandler) toFreightRequestResponse(fr *frDomain.FreightReq
 // Только владелец оффера видит информацию о сотруднике (member_id, member_name).
 // Заказчик видит только информацию об организации.
 func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer, orgName, memberName string, isOfferOwner bool) OfferResponse {
+	if offer == nil {
+		return OfferResponse{}
+	}
+
 	resp := OfferResponse{
 		ID:             offer.ID(),
 		CarrierOrgID:   offer.CarrierOrgID(),
@@ -187,6 +191,12 @@ func (h *FreightRequestHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Validate vehicle requirements
 	if err := req.VehicleRequirements.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Validate payment
+	if err := req.Payment.Validate(); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

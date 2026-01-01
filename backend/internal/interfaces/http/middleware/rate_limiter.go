@@ -38,10 +38,15 @@ var (
 		requests: make(map[string]*ipRequestInfo),
 	}
 	// Конфигурация rate limiting
-	maxRequestsPerWindow    = 10               // Максимум запросов за окно (public)
-	maxGeoRequestsPerWindow = 200              // Максимум запросов за окно (geo)
-	windowDuration          = 1 * time.Minute  // Окно в 1 минуту
-	blockDuration           = 15 * time.Minute // Блокировка на 15 минут
+	maxRequestsPerWindow      = 10               // Максимум запросов за окно (public)
+	maxGeoRequestsPerWindow   = 200              // Максимум запросов за окно (geo)
+	maxAdminRequestsPerWindow = 50               // Максимум запросов за окно (admin)
+	windowDuration            = 1 * time.Minute  // Окно в 1 минуту
+	blockDuration             = 15 * time.Minute // Блокировка на 15 минут
+
+	// Канал для graceful shutdown cleanup горутины
+	cleanupStop     chan struct{}
+	cleanupStopOnce sync.Once
 )
 
 // checkIPRateLimitWithMax проверяет rate limit по IP с настраиваемым лимитом
@@ -124,16 +129,38 @@ func (l *ipRateLimiter) cleanupOldEntries() {
 	}
 }
 
+// SetRateLimits allows configuring rate limits for testing.
+func SetRateLimits(maxPublic, maxGeo int) {
+	maxRequestsPerWindow = maxPublic
+	maxGeoRequestsPerWindow = maxGeo
+	maxAdminRequestsPerWindow = maxPublic // Use same limit for admin in tests
+}
+
 func init() {
-	// Запустить периодическую очистку
+	cleanupStop = make(chan struct{})
+	// Запустить периодическую очистку с поддержкой graceful shutdown
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			publicRateLimiter.cleanupOldEntries()
-			geoRateLimiter.cleanupOldEntries()
+		for {
+			select {
+			case <-ticker.C:
+				publicRateLimiter.cleanupOldEntries()
+				geoRateLimiter.cleanupOldEntries()
+			case <-cleanupStop:
+				slog.Debug("rate limiter cleanup goroutine stopped")
+				return
+			}
 		}
 	}()
+}
+
+// StopRateLimiterCleanup останавливает фоновую горутину очистки rate limiter.
+// Вызывается при graceful shutdown сервера.
+func StopRateLimiterCleanup() {
+	cleanupStopOnce.Do(func() {
+		close(cleanupStop)
+	})
 }
 
 // RateLimiter creates middleware that limits API request rate
@@ -175,8 +202,8 @@ func RateLimiter(
 			// SEC-003: Admin paths rate limiting (более высокий лимит, но всё равно ограничен)
 			if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
 				clientIP := httputil.GetClientIP(r)
-				// 50 requests per minute для admin - защита от brute force
-				allowed, reason := publicRateLimiter.checkIPRateLimitWithMax(clientIP, "admin", 50)
+				// maxAdminRequestsPerWindow requests per minute для admin - защита от brute force
+				allowed, reason := publicRateLimiter.checkIPRateLimitWithMax(clientIP, "admin", maxAdminRequestsPerWindow)
 				if !allowed {
 					slog.Warn("SEC-003: Admin endpoint rate limited",
 						slog.String("ip", clientIP),

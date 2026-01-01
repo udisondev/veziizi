@@ -159,6 +159,26 @@ const router = createRouter({
       meta: { title: 'Рассылка' },
     },
 
+    // Support
+    {
+      path: '/support',
+      name: 'support',
+      component: () => import('@/views/SupportView.vue'),
+      meta: { title: 'Поддержка' },
+    },
+    {
+      path: '/support/my-tickets',
+      name: 'my-tickets',
+      component: () => import('@/views/MyTicketsView.vue'),
+      meta: { title: 'Мои обращения' },
+    },
+    {
+      path: '/support/tickets/:id',
+      name: 'ticket-detail',
+      component: () => import('@/views/TicketDetailView.vue'),
+      meta: { title: 'Обращение' },
+    },
+
     // Admin routes
     {
       path: '/admin/login',
@@ -199,6 +219,20 @@ const router = createRouter({
       name: 'admin-fraudsters',
       component: () => import('@/views/admin/AdminFraudstersView.vue'),
       meta: { admin: true, title: 'Накрутчики' },
+      beforeEnter: adminGuard,
+    },
+    {
+      path: '/admin/support',
+      name: 'admin-support',
+      component: () => import('@/views/admin/AdminSupportView.vue'),
+      meta: { admin: true, title: 'Поддержка' },
+      beforeEnter: adminGuard,
+    },
+    {
+      path: '/admin/support/:id',
+      name: 'admin-ticket-detail',
+      component: () => import('@/views/admin/AdminTicketDetailView.vue'),
+      meta: { admin: true, title: 'Обращение' },
       beforeEnter: adminGuard,
     },
 

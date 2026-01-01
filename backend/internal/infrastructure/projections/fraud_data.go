@@ -450,11 +450,11 @@ func (p *FraudDataProjection) ListFraudsters(ctx context.Context, limit, offset 
 		return []FraudsterInfo{}, 0, nil
 	}
 
-	// Select with org name from members_lookup (owner's org)
+	// Select with org name from organizations_lookup
 	query := `
 		SELECT
 			r.org_id,
-			COALESCE(m.org_name, '') as org_name,
+			COALESCE(o.name, '') as org_name,
 			r.is_confirmed_fraudster,
 			COALESCE(r.fraudster_marked_at, NOW()) as marked_at,
 			COALESCE(r.fraudster_marked_by, '00000000-0000-0000-0000-000000000000'::uuid) as marked_by,
@@ -463,11 +463,7 @@ func (p *FraudDataProjection) ListFraudsters(ctx context.Context, limit, offset 
 			r.deactivated_reviews,
 			r.reputation_score
 		FROM org_reviewer_reputation r
-		LEFT JOIN (
-			SELECT DISTINCT ON (org_id) org_id, org_name
-			FROM members_lookup
-			ORDER BY org_id, created_at
-		) m ON m.org_id = r.org_id
+		LEFT JOIN organizations_lookup o ON o.id = r.org_id
 		WHERE r.is_confirmed_fraudster = TRUE OR r.is_suspected_fraudster = TRUE
 		ORDER BY r.fraudster_marked_at DESC NULLS LAST
 		LIMIT $1 OFFSET $2

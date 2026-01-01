@@ -288,15 +288,7 @@ func (h *SubscriptionsHandler) SetActive(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Получаем обновленную подписку
-	subscription, err := h.projection.GetByID(r.Context(), subscriptionID)
-	if err != nil {
-		slog.Error("failed to get updated subscription", slog.String("error", err.Error()))
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, h.subscriptionToResponse(r, *subscription))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // requestToCriteria конвертирует request в SubscriptionCriteria
