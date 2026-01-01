@@ -44,6 +44,12 @@ var SessionFraudThresholds = struct {
 	ScrapingThreshold:      50,    // 50 GETs without POST/PUT
 }
 
+// SetSessionFraudLimits allows configuring session fraud limits for testing.
+func SetSessionFraudLimits(maxRequestsPerMinute, maxRequestsPerHour int) {
+	SessionFraudThresholds.MaxRequestsPerMinute = maxRequestsPerMinute
+	SessionFraudThresholds.MaxRequestsPerHour = maxRequestsPerHour
+}
+
 type SessionFraudProjection struct {
 	db   dbtx.TxManager
 	psql squirrel.StatementBuilderType
@@ -154,7 +160,12 @@ type MemberSessionBehavior struct {
 // GetMemberSessionBehavior retrieves behavior data for a member
 func (p *SessionFraudProjection) GetMemberSessionBehavior(ctx context.Context, memberID uuid.UUID) (*MemberSessionBehavior, error) {
 	query, args, err := p.psql.
-		Select("*").
+		Select(
+			"member_id", "typical_login_hours", "typical_countries", "typical_ips",
+			"last_login_at", "last_login_ip::TEXT as last_login_ip", "last_login_country",
+			"last_login_lat", "last_login_lon", "total_logins", "suspicious_logins",
+			"is_suspicious", "suspicious_reason", "updated_at",
+		).
 		From("member_session_behavior").
 		Where(squirrel.Eq{"member_id": memberID}).
 		ToSql()
@@ -227,7 +238,11 @@ func (p *SessionFraudProjection) UpsertMemberSessionBehavior(ctx context.Context
 // GetLastLogin returns the last login event for a member
 func (p *SessionFraudProjection) GetLastLogin(ctx context.Context, memberID uuid.UUID) (*SessionEvent, error) {
 	query, args, err := p.psql.
-		Select("*").
+		Select(
+			"id", "member_id", "organization_id", "event_type",
+			"ip_address::TEXT as ip_address", "fingerprint", "user_agent",
+			"geo_country", "geo_city", "geo_lat", "geo_lon", "endpoint", "created_at",
+		).
 		From("session_events").
 		Where(squirrel.And{
 			squirrel.Eq{"member_id": memberID},

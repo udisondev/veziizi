@@ -226,7 +226,7 @@ func (p *MembersProjection) RecordLoginHistory(
 // GetLoginHistory retrieves login history for a member
 func (p *MembersProjection) GetLoginHistory(ctx context.Context, memberID uuid.UUID, limit int) ([]LoginHistoryEntry, error) {
 	query, args, err := p.psql.
-		Select("id", "member_id", "organization_id", "ip_address", "fingerprint", "user_agent", "status", "created_at").
+		Select("id", "member_id", "organization_id", "ip_address::TEXT as ip_address", "fingerprint", "user_agent", "status", "created_at").
 		From("member_login_history").
 		Where(squirrel.Eq{"member_id": memberID}).
 		OrderBy("created_at DESC").
@@ -306,8 +306,8 @@ func (p *MembersProjection) GetMemberMetadata(ctx context.Context, orgID uuid.UU
 	query, args, err := p.psql.
 		Select(
 			"id", "organization_id",
-			"registration_ip", "registration_fingerprint",
-			"last_login_ip", "last_login_fingerprint", "last_login_at",
+			"registration_ip::TEXT as registration_ip", "registration_fingerprint",
+			"last_login_ip::TEXT as last_login_ip", "last_login_fingerprint", "last_login_at",
 		).
 		From("members_lookup").
 		Where(squirrel.Eq{"organization_id": orgID}).

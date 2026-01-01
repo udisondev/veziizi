@@ -177,6 +177,9 @@ func (o *Order) SendMessage(senderOrgID, senderMemberID uuid.UUID, content strin
 	if o.status.IsCancelled() {
 		return ErrOrderCancelled
 	}
+	if o.status == values.OrderStatusCompleted {
+		return ErrOrderCompleted
+	}
 
 	o.Apply(events.MessageSent{
 		BaseEvent:      eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
