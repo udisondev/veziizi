@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -213,15 +214,11 @@ func (c *Client) CreateFreightRequest(req CreateFreightRequestRequest) (*Respons
 func (c *Client) GetFreightRequests(filters map[string]string) (*Response[[]FreightRequestResponse], error) {
 	path := "/api/v1/freight-requests"
 	if len(filters) > 0 {
-		path += "?"
-		first := true
+		params := make([]string, 0, len(filters))
 		for k, v := range filters {
-			if !first {
-				path += "&"
-			}
-			path += k + "=" + v
-			first = false
+			params = append(params, k+"="+v)
 		}
+		path += "?" + strings.Join(params, "&")
 	}
 	return doRequest[[]FreightRequestResponse](c, http.MethodGet, path, nil, nil)
 }
@@ -298,15 +295,11 @@ func (c *Client) GetMyOffers(status string, limit, offset int) (*Response[[]Offe
 func (c *Client) GetOrders(filters map[string]string) (*Response[[]OrderResponse], error) {
 	path := "/api/v1/orders"
 	if len(filters) > 0 {
-		path += "?"
-		first := true
+		params := make([]string, 0, len(filters))
 		for k, v := range filters {
-			if !first {
-				path += "&"
-			}
-			path += k + "=" + v
-			first = false
+			params = append(params, k+"="+v)
 		}
+		path += "?" + strings.Join(params, "&")
 	}
 	return doRequest[[]OrderResponse](c, http.MethodGet, path, nil, nil)
 }

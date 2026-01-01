@@ -110,19 +110,26 @@ func (ctx *TestContext) CreateConfirmedOrder() (*CreatedFreightRequest, *Created
 }
 
 // waitForOrder waits for order to be created for a freight request.
+// Uses exponential backoff: 10ms -> 20ms -> 40ms -> ... -> 500ms max.
 func (ctx *TestContext) waitForOrder(frID uuid.UUID) uuid.UUID {
 	ctx.T.Helper()
 
-	// Poll for order (created async by worker)
-	// Timeout 30 seconds (300 attempts * 100ms) for parallel test stability
-	for range 300 {
+	// Exponential backoff for faster response in normal case
+	backoff := 10 * time.Millisecond
+	maxBackoff := 500 * time.Millisecond
+	deadline := time.Now().Add(10 * time.Second)
+
+	for time.Now().Before(deadline) {
 		ordersResp, err := ctx.Customer.Client.GetOrders(map[string]string{
 			"freight_request_id": frID.String(),
 		})
 		if err == nil && ordersResp.StatusCode == 200 && len(ordersResp.Body) > 0 {
 			return ordersResp.Body[0].ID
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(backoff)
+		if backoff < maxBackoff {
+			backoff = min(backoff*2, maxBackoff)
+		}
 	}
 
 	ctx.T.Fatalf("order was not created for freight request %s", frID)
@@ -148,14 +155,21 @@ func (ctx *TestContext) AddMemberToOrg(org *CreatedOrganization, role string) *c
 		ctx.T.Fatalf("failed to create invitation: %s", string(invResp.RawBody))
 	}
 
-	// Wait for invitation to be available in lookup (worker needs to process event)
+	// Wait for invitation with exponential backoff
 	token := invResp.Body.Token
-	for range 100 {
+	backoff := 10 * time.Millisecond
+	maxBackoff := 200 * time.Millisecond
+	deadline := time.Now().Add(5 * time.Second)
+
+	for time.Now().Before(deadline) {
 		getResp, err := ctx.AnonClient.GetInvitationByToken(token)
 		if err == nil && getResp.StatusCode == 200 {
 			break
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(backoff)
+		if backoff < maxBackoff {
+			backoff = min(backoff*2, maxBackoff)
+		}
 	}
 
 	// Accept invitation
@@ -173,14 +187,20 @@ func (ctx *TestContext) AddMemberToOrg(org *CreatedOrganization, role string) *c
 		ctx.T.Fatalf("failed to accept invitation: %s", string(acceptResp.RawBody))
 	}
 
-	// Wait for member to be available in lookup (worker needs to process event)
+	// Wait for member with exponential backoff
 	memberClient := ctx.AnonClient.Clone()
-	for range 100 {
+	backoff = 10 * time.Millisecond
+	deadline = time.Now().Add(5 * time.Second)
+
+	for time.Now().Before(deadline) {
 		loginResp, err := memberClient.Login(email, "password123")
 		if err == nil && loginResp.StatusCode == 200 {
 			return memberClient
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(backoff)
+		if backoff < maxBackoff {
+			backoff = min(backoff*2, maxBackoff)
+		}
 	}
 
 	ctx.T.Fatalf("failed to login as new member after waiting")

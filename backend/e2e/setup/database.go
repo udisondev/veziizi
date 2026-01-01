@@ -139,8 +139,8 @@ func CreateTestAdmin(cfg *config.Config) error {
 	}
 	defer db.Close()
 
-	// Hash password with bcrypt cost 12
-	hash, err := bcrypt.GenerateFromPassword([]byte("admin123"), 12)
+	// Hash password with bcrypt MinCost for faster tests
+	hash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.MinCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}

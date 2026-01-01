@@ -2,248 +2,127 @@ package tests
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 
-	"codeberg.org/udison/veziizi/backend/e2e/client"
 	"codeberg.org/udison/veziizi/backend/e2e/fixtures"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-// TestGetOrganizationHistory tests GET /api/v1/organizations/{id}/history
-func TestGetOrganizationHistory(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
+// HistorySuite combines all history tests with shared context.
+type HistorySuite struct {
+	suite.Suite
+	baseURL string
+	ctx     *fixtures.TestContext
 
-	otherOrg := ctx.QuickCustomer()
+	// Other organization for access tests
+	otherOrg *fixtures.CreatedOrganization
 
-	tests := []struct {
-		id         string
-		name       string
-		client     *client.Client
-		orgID      uuid.UUID
-		limit      int
-		offset     int
-		wantStatus int
-		wantErr    string
-	}{
-		// Happy path
-		{
-			id:         "HIST-001",
-			name:       "own organization history",
-			client:     ctx.Customer.Client,
-			orgID:      ctx.Customer.OrganizationID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusOK,
-		},
-		{
-			id:         "HIST-002",
-			name:       "pagination",
-			client:     ctx.Customer.Client,
-			orgID:      ctx.Customer.OrganizationID,
-			limit:      5,
-			offset:     0,
-			wantStatus: http.StatusOK,
-		},
-
-		// Auth errors (handler checks role first, returns 403 even for anon)
-		{
-			id:         "HIST-003",
-			name:       "without auth",
-			client:     ctx.AnonClient,
-			orgID:      ctx.Customer.OrganizationID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusForbidden,
-		},
-
-		// Access errors
-		{
-			id:         "HIST-004",
-			name:       "other organization",
-			client:     otherOrg.Client,
-			orgID:      ctx.Customer.OrganizationID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusForbidden,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := tt.client.GetOrganizationHistory(tt.orgID, tt.limit, tt.offset)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.wantErr != "" {
-				assert.Contains(t, strings.ToLower(string(resp.RawBody)), strings.ToLower(tt.wantErr))
-			}
-		})
-	}
+	// Shared entities
+	sharedFR      *fixtures.CreatedFreightRequest
+	sharedOrderID uuid.UUID
 }
 
-// TestGetFreightRequestHistory tests GET /api/v1/freight-requests/{id}/history
-func TestGetFreightRequestHistory(t *testing.T) {
+func TestHistorySuite(t *testing.T) {
 	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	// Create a freight request
-	fr := fixtures.NewFreightRequest(t, ctx.Customer.Client).Create()
-
-	otherOrg := ctx.QuickCustomer()
-
-	tests := []struct {
-		id         string
-		name       string
-		client     *client.Client
-		frID       uuid.UUID
-		limit      int
-		offset     int
-		wantStatus int
-		wantErr    string
-	}{
-		// Happy path
-		{
-			id:         "HIST-005",
-			name:       "freight request history",
-			client:     ctx.Customer.Client,
-			frID:       fr.ID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusOK,
-		},
-
-		// Auth errors
-		{
-			id:         "HIST-006",
-			name:       "without auth",
-			client:     ctx.AnonClient,
-			frID:       fr.ID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusUnauthorized,
-		},
-
-		// Not found
-		{
-			id:         "HIST-007",
-			name:       "nonexistent freight request",
-			client:     ctx.Customer.Client,
-			frID:       uuid.New(),
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusNotFound,
-		},
-
-		// Access errors (carrier cannot see customer's FR history)
-		{
-			id:         "HIST-007b",
-			name:       "other organization",
-			client:     otherOrg.Client,
-			frID:       fr.ID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusForbidden,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := tt.client.GetFreightRequestHistory(tt.frID, tt.limit, tt.offset)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.wantErr != "" {
-				assert.Contains(t, strings.ToLower(string(resp.RawBody)), strings.ToLower(tt.wantErr))
-			}
-		})
-	}
+	suite.Run(t, new(HistorySuite))
 }
 
-// TestGetOrderHistory tests GET /api/v1/orders/{id}/history
-func TestGetOrderHistory(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
+func (s *HistorySuite) SetupSuite() {
+	testSuite := getSuite(s.T())
+	s.baseURL = testSuite.BaseURL
+	s.ctx = fixtures.NewTestContext(s.T(), s.baseURL)
+	s.otherOrg = s.ctx.QuickCustomer()
 
-	// Create a confirmed order
-	_, _, orderID := ctx.CreateConfirmedOrder()
+	// Create shared freight request
+	s.sharedFR = fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
 
-	otherOrg := ctx.QuickCustomer()
-
-	tests := []struct {
-		id         string
-		name       string
-		client     *client.Client
-		orderID    uuid.UUID
-		limit      int
-		offset     int
-		wantStatus int
-		wantErr    string
-	}{
-		// Happy path
-		{
-			id:         "HIST-008",
-			name:       "order history as participant",
-			client:     ctx.Customer.Client,
-			orderID:    orderID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusOK,
-		},
-
-		// Auth errors
-		{
-			id:         "HIST-009",
-			name:       "without auth",
-			client:     ctx.AnonClient,
-			orderID:    orderID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusUnauthorized,
-		},
-
-		// Access errors
-		{
-			id:         "HIST-010",
-			name:       "non-participant",
-			client:     otherOrg.Client,
-			orderID:    orderID,
-			limit:      20,
-			offset:     0,
-			wantStatus: http.StatusForbidden,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := tt.client.GetOrderHistory(tt.orderID, tt.limit, tt.offset)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.wantErr != "" {
-				assert.Contains(t, strings.ToLower(string(resp.RawBody)), strings.ToLower(tt.wantErr))
-			}
-		})
-	}
+	// Create shared confirmed order
+	_, _, s.sharedOrderID = s.ctx.CreateConfirmedOrder()
 }
 
-// TestMemberRoleAccessToHistory tests that only owner/admin can access history
-func TestMemberRoleAccessToHistory(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
+// ==================== GET /api/v1/organizations/{id}/history ====================
 
+func (s *HistorySuite) TestHIST001_OwnOrganizationHistory() {
+	resp, err := s.ctx.Customer.Client.GetOrganizationHistory(s.ctx.Customer.OrganizationID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *HistorySuite) TestHIST002_Pagination() {
+	resp, err := s.ctx.Customer.Client.GetOrganizationHistory(s.ctx.Customer.OrganizationID, 5, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *HistorySuite) TestHIST003_WithoutAuth() {
+	// Handler checks role first, returns 403 even for anon
+	resp, err := s.ctx.AnonClient.GetOrganizationHistory(s.ctx.Customer.OrganizationID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+func (s *HistorySuite) TestHIST004_OtherOrganization() {
+	resp, err := s.otherOrg.Client.GetOrganizationHistory(s.ctx.Customer.OrganizationID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/freight-requests/{id}/history ====================
+
+func (s *HistorySuite) TestHIST005_FreightRequestHistory() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestHistory(s.sharedFR.ID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *HistorySuite) TestHIST006_FRHistoryWithoutAuth() {
+	resp, err := s.ctx.AnonClient.GetFreightRequestHistory(s.sharedFR.ID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *HistorySuite) TestHIST007_NonexistentFreightRequest() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestHistory(uuid.New(), 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+func (s *HistorySuite) TestHIST007b_OtherOrgFRHistory() {
+	// Carrier cannot see customer's FR history
+	resp, err := s.otherOrg.Client.GetFreightRequestHistory(s.sharedFR.ID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/orders/{id}/history ====================
+
+func (s *HistorySuite) TestHIST008_OrderHistoryAsParticipant() {
+	resp, err := s.ctx.Customer.Client.GetOrderHistory(s.sharedOrderID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *HistorySuite) TestHIST009_OrderHistoryWithoutAuth() {
+	resp, err := s.ctx.AnonClient.GetOrderHistory(s.sharedOrderID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *HistorySuite) TestHIST010_OrderHistoryNonParticipant() {
+	resp, err := s.otherOrg.Client.GetOrderHistory(s.sharedOrderID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+// ==================== Member role access ====================
+
+func (s *HistorySuite) TestMemberRoleAccessToHistory() {
 	// Add a regular employee to customer org
-	memberClient := ctx.AddMemberToOrg(ctx.Customer, "employee")
+	memberClient := s.ctx.AddMemberToOrg(s.ctx.Customer, "employee")
 
 	// Member should not be able to access history
-	resp, err := memberClient.GetOrganizationHistory(ctx.Customer.OrganizationID, 20, 0)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	resp, err := memberClient.GetOrganizationHistory(s.ctx.Customer.OrganizationID, 20, 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
 }
