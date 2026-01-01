@@ -2,16 +2,13 @@ package helpers
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
+// Note: Go 1.22+ math/rand/v2 auto-seeds, no need for manual seeding
 
 // RandomEmail generates a random email address.
 func RandomEmail() string {
@@ -25,12 +22,12 @@ func RandomEmailWithDomain(domain string) string {
 
 // RandomPhone generates a random Russian phone number.
 func RandomPhone() string {
-	return fmt.Sprintf("+7900%07d", rand.Intn(10000000))
+	return fmt.Sprintf("+7900%07d", rand.IntN(10000000))
 }
 
 // RandomINN generates a random 10-digit INN.
 func RandomINN() string {
-	return fmt.Sprintf("%010d", rand.Int63n(10000000000))
+	return fmt.Sprintf("%010d", rand.Int64N(10000000000))
 }
 
 // RandomName generates a random name.
@@ -44,9 +41,9 @@ func RandomOrgName() string {
 	names := []string{"Альфа", "Бета", "Гамма", "Дельта", "Омега", "Логистик", "Транс", "Карго"}
 	suffixes := []string{"Групп", "Сервис", "Трейд", "Экспресс", ""}
 
-	prefix := prefixes[rand.Intn(len(prefixes))]
-	name := names[rand.Intn(len(names))]
-	suffix := suffixes[rand.Intn(len(suffixes))]
+	prefix := prefixes[rand.IntN(len(prefixes))]
+	name := names[rand.IntN(len(names))]
+	suffix := suffixes[rand.IntN(len(suffixes))]
 
 	result := fmt.Sprintf("%s %s%s", prefix, name, suffix)
 	return strings.TrimSpace(result) + " " + uuid.New().String()[:4]
@@ -57,9 +54,9 @@ func RandomAddress() string {
 	cities := []string{"Москва", "Санкт-Петербург", "Новосибирск", "Казань", "Екатеринбург"}
 	streets := []string{"Ленина", "Пушкина", "Гагарина", "Мира", "Советская"}
 
-	city := cities[rand.Intn(len(cities))]
-	street := streets[rand.Intn(len(streets))]
-	building := rand.Intn(200) + 1
+	city := cities[rand.IntN(len(cities))]
+	street := streets[rand.IntN(len(streets))]
+	building := rand.IntN(200) + 1
 
 	return fmt.Sprintf("г. %s, ул. %s, д. %d", city, street, building)
 }
@@ -69,7 +66,7 @@ func RandomPassword(length int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)
 	for i := range result {
-		result[i] = chars[rand.Intn(len(chars))]
+		result[i] = chars[rand.IntN(len(chars))]
 	}
 	return string(result)
 }
@@ -79,14 +76,14 @@ func RandomString(length int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	result := make([]byte, length)
 	for i := range result {
-		result[i] = chars[rand.Intn(len(chars))]
+		result[i] = chars[rand.IntN(len(chars))]
 	}
 	return string(result)
 }
 
 // RandomInt returns a random integer in the range [min, max].
 func RandomInt(min, max int) int {
-	return min + rand.Intn(max-min+1)
+	return min + rand.IntN(max-min+1)
 }
 
 // RandomFloat returns a random float in the range [min, max].
@@ -112,19 +109,19 @@ func RandomVolume() float64 {
 // RandomVehicleType returns a random vehicle type.
 func RandomVehicleType() string {
 	types := []string{"tent", "ref", "isotherm", "tank", "container", "car_carrier", "grain_carrier", "flatbed"}
-	return types[rand.Intn(len(types))]
+	return types[rand.IntN(len(types))]
 }
 
 // RandomCountryCode returns a random supported country code.
 func RandomCountryCode() string {
 	codes := []string{"RU", "KZ", "BY", "AM", "KG", "UZ"}
-	return codes[rand.Intn(len(codes))]
+	return codes[rand.IntN(len(codes))]
 }
 
 // RandomCityName returns a random city name.
 func RandomCityName() string {
 	cities := []string{"Москва", "Санкт-Петербург", "Новосибирск", "Алматы", "Минск", "Ереван", "Бишкек", "Ташкент"}
-	return cities[rand.Intn(len(cities))]
+	return cities[rand.IntN(len(cities))]
 }
 
 // RandomComment generates a random comment.
@@ -137,7 +134,7 @@ func RandomComment() string {
 		"Документы в электронном виде",
 		"",
 	}
-	return comments[rand.Intn(len(comments))]
+	return comments[rand.IntN(len(comments))]
 }
 
 // UniqueID returns a short unique identifier.

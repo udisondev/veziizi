@@ -389,13 +389,21 @@ func (s *Suite) startServer() {
 func (s *Suite) waitForServer() error {
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 
-	for range 50 { // 5 seconds max
+	// Exponential backoff: 10ms -> 20ms -> 40ms -> ... -> 200ms max
+	backoff := 10 * time.Millisecond
+	maxBackoff := 200 * time.Millisecond
+	deadline := time.Now().Add(3 * time.Second)
+
+	for time.Now().Before(deadline) {
 		resp, err := client.Get(s.BaseURL + "/api/v1/geo/countries")
 		if err == nil {
 			resp.Body.Close()
 			return nil
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(backoff)
+		if backoff < maxBackoff {
+			backoff = min(backoff*2, maxBackoff)
+		}
 	}
 
 	return fmt.Errorf("server did not become ready")
@@ -434,4 +442,10 @@ func ShutdownShared() {
 		sharedSuite.Shutdown()
 		sharedSuite = nil
 	}
+}
+
+// Sync waits for event handlers to process pending events.
+// Uses a simple delay since watermill doesn't expose queue depth.
+func (s *Suite) Sync() {
+	time.Sleep(50 * time.Millisecond)
 }

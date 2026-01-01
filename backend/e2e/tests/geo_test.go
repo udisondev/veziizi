@@ -4,273 +4,157 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"codeberg.org/udison/veziizi/backend/e2e/client"
+	"github.com/stretchr/testify/suite"
 )
 
-// TestGetCountries tests GET /api/v1/geo/countries
-func TestGetCountries(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+// GeoSuite combines all geo tests with shared context.
+type GeoSuite struct {
+	suite.Suite
+	baseURL string
+	c       *client.Client
 
-	tests := []struct {
-		id         string
-		name       string
-		wantStatus int
-		check      func(*testing.T, []byte)
-	}{
-		{
-			id:         "GEO-001",
-			name:       "list countries",
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, body []byte) {
-				// Should have at least one country (seeded)
-				assert.Contains(t, string(body), "RU", "should contain Russia")
-			},
-		},
-		{
-			id:         "GEO-002",
-			name:       "public access without auth",
-			wantStatus: http.StatusOK,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := c.GetCountries()
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.check != nil && resp.StatusCode == http.StatusOK {
-				tt.check(t, resp.RawBody)
-			}
-		})
-	}
+	// Cached data from initial queries
+	validCountryID int
+	russiaID       int
+	validCityID    int
 }
 
-// TestGetCountry tests GET /api/v1/geo/countries/{id}
-func TestGetCountry(t *testing.T) {
+func TestGeoSuite(t *testing.T) {
 	t.Parallel()
-	c := getClient(t)
-
-	// First get list of countries to get a valid ID
-	countriesResp, err := c.GetCountries()
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, countriesResp.StatusCode)
-	require.True(t, len(countriesResp.Body) > 0, "should have at least one country")
-
-	validCountryID := countriesResp.Body[0].ID
-
-	tests := []struct {
-		id         string
-		name       string
-		countryID  int
-		useRaw     bool
-		rawID      string
-		wantStatus int
-	}{
-		{
-			id:         "GEO-003",
-			name:       "get existing country",
-			countryID:  validCountryID,
-			wantStatus: http.StatusOK,
-		},
-		{
-			id:         "GEO-004",
-			name:       "public access without auth",
-			countryID:  validCountryID,
-			wantStatus: http.StatusOK,
-		},
-		{
-			id:         "GEO-005",
-			name:       "invalid country ID (non-numeric)",
-			useRaw:     true,
-			rawID:      "abc",
-			wantStatus: http.StatusNotFound, // Router will not match pattern [0-9]+
-		},
-		{
-			id:         "GEO-006",
-			name:       "nonexistent country",
-			countryID:  999999,
-			wantStatus: http.StatusNotFound,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			if tt.useRaw {
-				status, _, err := c.GetCountryRaw(tt.rawID)
-				require.NoError(t, err)
-				require.Equal(t, tt.wantStatus, status)
-				return
-			}
-
-			resp, err := c.GetCountry(tt.countryID)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if resp.StatusCode == http.StatusOK {
-				assert.Equal(t, tt.countryID, resp.Body.ID)
-				assert.NotEmpty(t, resp.Body.Name)
-				assert.NotEmpty(t, resp.Body.ISOCode)
-			}
-		})
-	}
+	suite.Run(t, new(GeoSuite))
 }
 
-// TestGetCountryCities tests GET /api/v1/geo/countries/{id}/cities
-func TestGetCountryCities(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+func (s *GeoSuite) SetupSuite() {
+	testSuite := getSuite(s.T())
+	s.baseURL = testSuite.BaseURL
+	s.c = client.New(s.baseURL)
 
-	// Get Russia country ID (should be seeded)
-	countriesResp, err := c.GetCountries()
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, countriesResp.StatusCode)
+	// Pre-fetch countries to get valid IDs
+	countriesResp, err := s.c.GetCountries()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, countriesResp.StatusCode)
+	s.Require().True(len(countriesResp.Body) > 0, "should have at least one country")
 
-	var russiaID int
+	s.validCountryID = countriesResp.Body[0].ID
+
+	// Find Russia
 	for _, country := range countriesResp.Body {
 		if country.ISOCode == "RU" {
-			russiaID = country.ID
+			s.russiaID = country.ID
 			break
 		}
 	}
-	require.NotZero(t, russiaID, "Russia should be in countries list")
+	s.Require().NotZero(s.russiaID, "Russia should be in countries list")
 
-	tests := []struct {
-		id         string
-		name       string
-		countryID  int
-		search     string
-		limit      int
-		wantStatus int
-		check      func(*testing.T, []byte)
-	}{
-		{
-			id:         "GEO-007",
-			name:       "list cities for country",
-			countryID:  russiaID,
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, body []byte) {
-				assert.Contains(t, string(body), "[", "should be an array")
-			},
-		},
-		{
-			id:         "GEO-008",
-			name:       "search cities by name",
-			countryID:  russiaID,
-			search:     "Моск",
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, body []byte) {
-				// Moscow should be found when searching for "Моск"
-				assert.Contains(t, string(body), "Москва", "should find Moscow")
-			},
-		},
-		{
-			id:         "GEO-009",
-			name:       "pagination with limit",
-			countryID:  russiaID,
-			limit:      5,
-			wantStatus: http.StatusOK,
-		},
-		{
-			id:         "GEO-010",
-			name:       "public access without auth",
-			countryID:  russiaID,
-			wantStatus: http.StatusOK,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := c.GetCountryCities(tt.countryID, tt.search, tt.limit)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.check != nil && resp.StatusCode == http.StatusOK {
-				tt.check(t, resp.RawBody)
-			}
-
-			// Check limit is respected
-			if tt.limit > 0 && resp.StatusCode == http.StatusOK {
-				assert.LessOrEqual(t, len(resp.Body), tt.limit, "should respect limit")
-			}
-		})
+	// Get a valid city ID
+	citiesResp, err := s.c.GetCountryCities(s.validCountryID, "", 1)
+	s.Require().NoError(err)
+	if citiesResp.StatusCode == http.StatusOK && len(citiesResp.Body) > 0 {
+		s.validCityID = citiesResp.Body[0].ID
 	}
 }
 
-// TestGetCity tests GET /api/v1/geo/cities/{id}
-func TestGetCity(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+// ==================== GET /api/v1/geo/countries ====================
 
-	// Get a valid city ID first
-	countriesResp, err := c.GetCountries()
-	require.NoError(t, err)
-	require.True(t, len(countriesResp.Body) > 0)
+func (s *GeoSuite) TestGEO001_ListCountries() {
+	resp, err := s.c.GetCountries()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Contains(string(resp.RawBody), "RU", "should contain Russia")
+}
 
-	// Get cities for first country
-	citiesResp, err := c.GetCountryCities(countriesResp.Body[0].ID, "", 1)
-	require.NoError(t, err)
+func (s *GeoSuite) TestGEO002_PublicAccessWithoutAuth() {
+	resp, err := s.c.GetCountries()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
 
-	var validCityID int
-	if citiesResp.StatusCode == http.StatusOK && len(citiesResp.Body) > 0 {
-		validCityID = citiesResp.Body[0].ID
+// ==================== GET /api/v1/geo/countries/{id} ====================
+
+func (s *GeoSuite) TestGEO003_GetExistingCountry() {
+	resp, err := s.c.GetCountry(s.validCountryID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Equal(s.validCountryID, resp.Body.ID)
+	s.Assert().NotEmpty(resp.Body.Name)
+	s.Assert().NotEmpty(resp.Body.ISOCode)
+}
+
+func (s *GeoSuite) TestGEO004_CountryPublicAccess() {
+	resp, err := s.c.GetCountry(s.validCountryID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *GeoSuite) TestGEO005_InvalidCountryID() {
+	status, _, err := s.c.GetCountryRaw("abc")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, status) // Router will not match pattern [0-9]+
+}
+
+func (s *GeoSuite) TestGEO006_NonexistentCountry() {
+	resp, err := s.c.GetCountry(999999)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/geo/countries/{id}/cities ====================
+
+func (s *GeoSuite) TestGEO007_ListCitiesForCountry() {
+	resp, err := s.c.GetCountryCities(s.russiaID, "", 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Contains(string(resp.RawBody), "[", "should be an array")
+}
+
+func (s *GeoSuite) TestGEO008_SearchCitiesByName() {
+	resp, err := s.c.GetCountryCities(s.russiaID, "Моск", 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Contains(string(resp.RawBody), "Москва", "should find Moscow")
+}
+
+func (s *GeoSuite) TestGEO009_PaginationWithLimit() {
+	resp, err := s.c.GetCountryCities(s.russiaID, "", 5)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().LessOrEqual(len(resp.Body), 5, "should respect limit")
+}
+
+func (s *GeoSuite) TestGEO010_CitiesPublicAccess() {
+	resp, err := s.c.GetCountryCities(s.russiaID, "", 0)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
+
+// ==================== GET /api/v1/geo/cities/{id} ====================
+
+func (s *GeoSuite) TestGEO012_GetExistingCity() {
+	if s.validCityID == 0 {
+		s.T().Skip("no valid city ID available")
 	}
 
-	tests := []struct {
-		id         string
-		name       string
-		cityID     int
-		useRaw     bool
-		rawID      string
-		wantStatus int
-		skip       bool
-	}{
-		{
-			id:         "GEO-012",
-			name:       "get existing city",
-			cityID:     validCityID,
-			wantStatus: http.StatusOK,
-			skip:       validCityID == 0,
-		},
-		{
-			id:         "GEO-013",
-			name:       "public access without auth",
-			cityID:     validCityID,
-			wantStatus: http.StatusOK,
-			skip:       validCityID == 0,
-		},
-		{
-			id:         "GEO-014",
-			name:       "nonexistent city",
-			cityID:     999999999,
-			wantStatus: http.StatusNotFound,
-		},
+	resp, err := s.c.GetCity(s.validCityID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Equal(s.validCityID, resp.Body.ID)
+	s.Assert().NotEmpty(resp.Body.Name)
+	s.Assert().NotZero(resp.Body.CountryID)
+}
+
+func (s *GeoSuite) TestGEO013_CityPublicAccess() {
+	if s.validCityID == 0 {
+		s.T().Skip("no valid city ID available")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			if tt.skip {
-				t.Skip("no valid city ID available")
-			}
+	resp, err := s.c.GetCity(s.validCityID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
 
-			if tt.useRaw {
-				status, _, err := c.GetCityRaw(tt.rawID)
-				require.NoError(t, err)
-				require.Equal(t, tt.wantStatus, status)
-				return
-			}
-
-			resp, err := c.GetCity(tt.cityID)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if resp.StatusCode == http.StatusOK {
-				assert.Equal(t, tt.cityID, resp.Body.ID)
-				assert.NotEmpty(t, resp.Body.Name)
-				assert.NotZero(t, resp.Body.CountryID)
-			}
-		})
-	}
+func (s *GeoSuite) TestGEO014_NonexistentCity() {
+	resp, err := s.c.GetCity(999999999)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
 }

@@ -7,231 +7,158 @@ import (
 
 	"codeberg.org/udison/veziizi/backend/e2e/client"
 	"codeberg.org/udison/veziizi/backend/e2e/fixtures"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-// TestLogin tests POST /api/v1/auth/login
-func TestLogin(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+// AuthSuite combines all authentication tests with shared context.
+type AuthSuite struct {
+	suite.Suite
+	baseURL string
+	c       *client.Client // Anonymous client
 
-	// Create a test organization to have a user to login with
-	org := fixtures.NewOrganization(t, c).Create()
-
-	// Table-driven tests for login scenarios
-	tests := []struct {
-		id          string // Test ID from E2E_TESTS.md
-		name        string
-		email       string
-		password    string
-		wantStatus  int
-		wantErr     string
-		checkCookie bool
-	}{
-		// Happy path
-		{
-			id:          "AUTH-001",
-			name:        "successful login",
-			email:       org.OwnerEmail,
-			password:    org.OwnerPassword,
-			wantStatus:  http.StatusOK,
-			checkCookie: true,
-		},
-
-		// Validation errors (400)
-		{
-			id:         "AUTH-005",
-			name:       "missing email",
-			email:      "",
-			password:   "password123",
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			id:         "AUTH-006",
-			name:       "missing password",
-			email:      org.OwnerEmail,
-			password:   "",
-			wantStatus: http.StatusBadRequest,
-		},
-
-		// Auth errors (401)
-		{
-			id:         "AUTH-007",
-			name:       "nonexistent email",
-			email:      "nonexistent@test.local",
-			password:   "password123",
-			wantStatus: http.StatusUnauthorized,
-			wantErr:    "invalid credentials",
-		},
-		{
-			id:         "AUTH-008",
-			name:       "wrong password",
-			email:      org.OwnerEmail,
-			password:   "wrongpassword",
-			wantStatus: http.StatusUnauthorized,
-			wantErr:    "invalid credentials",
-		},
-		{
-			id:         "AUTH-016",
-			name:       "empty password",
-			email:      org.OwnerEmail,
-			password:   "",
-			wantStatus: http.StatusBadRequest,
-		},
-
-		// Edge cases
-		{
-			id:         "AUTH-012",
-			name:       "SQL injection in email",
-			email:      "'; DROP TABLE members--",
-			password:   "password123",
-			wantStatus: http.StatusUnauthorized, // Should be safely handled
-		},
-		{
-			id:         "AUTH-014",
-			name:       "unicode in email",
-			email:      "тест@test.com",
-			password:   "password123",
-			wantStatus: http.StatusUnauthorized, // Email doesn't exist
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			// Use fresh client for each test to avoid session interference
-			testClient := c.Clone()
-
-			resp, err := testClient.Login(tt.email, tt.password)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.wantErr != "" {
-				assert.Contains(t, strings.ToLower(string(resp.RawBody)), strings.ToLower(tt.wantErr))
-			}
-
-			if tt.checkCookie && resp.StatusCode == http.StatusOK {
-				// Verify we got a session cookie
-				assert.NotEmpty(t, resp.Body.Email, "email in response")
-				assert.NotEmpty(t, resp.Body.MemberID.String(), "member_id should be set")
-			}
-		})
-	}
+	// Shared organization for auth tests
+	org *fixtures.CreatedOrganization
 }
 
-// TestLogout tests POST /api/v1/auth/logout
-func TestLogout(t *testing.T) {
+func TestAuthSuite(t *testing.T) {
 	t.Parallel()
-	c := getClient(t)
-
-	org := fixtures.NewOrganization(t, c).Create()
-
-	tests := []struct {
-		id         string
-		name       string
-		setup      func(*client.Client)
-		wantStatus int
-	}{
-		{
-			id:   "AUTH-025",
-			name: "successful logout",
-			setup: func(c *client.Client) {
-				// Login first
-				c.Login(org.OwnerEmail, org.OwnerPassword)
-			},
-			wantStatus: http.StatusNoContent,
-		},
-		{
-			id:         "AUTH-027",
-			name:       "logout without session",
-			setup:      func(c *client.Client) {},
-			wantStatus: http.StatusUnauthorized, // Requires authentication
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			testClient := c.Clone()
-			tt.setup(testClient)
-
-			resp, err := testClient.Logout()
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-		})
-	}
+	suite.Run(t, new(AuthSuite))
 }
 
-// TestMe tests GET /api/v1/auth/me
-func TestMe(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+func (s *AuthSuite) SetupSuite() {
+	testSuite := getSuite(s.T())
+	s.baseURL = testSuite.BaseURL
+	s.c = client.New(s.baseURL)
 
-	org := fixtures.NewOrganization(t, c).Create()
-
-	tests := []struct {
-		id         string
-		name       string
-		setup      func(*client.Client)
-		wantStatus int
-		check      func(*testing.T, *client.Response[client.MeResponse])
-	}{
-		{
-			id:   "AUTH-030",
-			name: "get profile when logged in",
-			setup: func(c *client.Client) {
-				c.Login(org.OwnerEmail, org.OwnerPassword)
-			},
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, resp *client.Response[client.MeResponse]) {
-				assert.Equal(t, org.OwnerEmail, resp.Body.Email, "email")
-				assert.Equal(t, "owner", resp.Body.Role, "role")
-				assert.NotEmpty(t, resp.Body.OrganizationID.String(), "organization_id")
-			},
-		},
-		{
-			id:         "AUTH-036",
-			name:       "get profile without auth",
-			setup:      func(c *client.Client) {},
-			wantStatus: http.StatusUnauthorized,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			testClient := c.Clone()
-			tt.setup(testClient)
-
-			resp, err := testClient.Me()
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.check != nil && resp.StatusCode == http.StatusOK {
-				tt.check(t, resp)
-			}
-		})
-	}
+	// Create shared organization once
+	s.org = fixtures.NewOrganization(s.T(), s.c).Create()
 }
 
-// TestActionsAfterLogout tests AUTH-029: Actions after logout should fail
-func TestActionsAfterLogout(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+// ==================== POST /api/v1/auth/login ====================
 
-	org := fixtures.NewOrganization(t, c).Create()
+func (s *AuthSuite) TestAUTH001_SuccessfulLogin() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login(s.org.OwnerEmail, s.org.OwnerPassword)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().NotEmpty(resp.Body.Email, "email in response")
+	s.Assert().NotEmpty(resp.Body.MemberID.String(), "member_id should be set")
+}
+
+func (s *AuthSuite) TestAUTH005_MissingEmail() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login("", "password123")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (s *AuthSuite) TestAUTH006_MissingPassword() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login(s.org.OwnerEmail, "")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (s *AuthSuite) TestAUTH007_NonexistentEmail() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login("nonexistent@test.local", "password123")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+	s.Assert().Contains(strings.ToLower(string(resp.RawBody)), "invalid credentials")
+}
+
+func (s *AuthSuite) TestAUTH008_WrongPassword() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login(s.org.OwnerEmail, "wrongpassword")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+	s.Assert().Contains(strings.ToLower(string(resp.RawBody)), "invalid credentials")
+}
+
+func (s *AuthSuite) TestAUTH012_SQLInjectionInEmail() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login("'; DROP TABLE members--", "password123")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *AuthSuite) TestAUTH014_UnicodeInEmail() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login("тест@test.com", "password123")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *AuthSuite) TestAUTH016_EmptyPassword() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Login(s.org.OwnerEmail, "")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+// ==================== POST /api/v1/auth/logout ====================
+
+func (s *AuthSuite) TestAUTH025_SuccessfulLogout() {
+	testClient := s.c.Clone()
+	// Login first
+	_, err := testClient.Login(s.org.OwnerEmail, s.org.OwnerPassword)
+	s.Require().NoError(err)
+
+	resp, err := testClient.Logout()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *AuthSuite) TestAUTH027_LogoutWithoutSession() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Logout()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/auth/me ====================
+
+func (s *AuthSuite) TestAUTH030_GetProfileWhenLoggedIn() {
+	testClient := s.c.Clone()
+	_, err := testClient.Login(s.org.OwnerEmail, s.org.OwnerPassword)
+	s.Require().NoError(err)
+
+	resp, err := testClient.Me()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Equal(s.org.OwnerEmail, resp.Body.Email, "email")
+	s.Assert().Equal("owner", resp.Body.Role, "role")
+	s.Assert().NotEmpty(resp.Body.OrganizationID.String(), "organization_id")
+}
+
+func (s *AuthSuite) TestAUTH036_GetProfileWithoutAuth() {
+	testClient := s.c.Clone()
+	resp, err := testClient.Me()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// ==================== AUTH-029: Actions after logout ====================
+
+func (s *AuthSuite) TestAUTH029_ActionsAfterLogout() {
+	testClient := s.c.Clone()
 
 	// Login
-	_, err := org.Client.Login(org.OwnerEmail, org.OwnerPassword)
-	require.NoError(t, err)
+	_, err := testClient.Login(s.org.OwnerEmail, s.org.OwnerPassword)
+	s.Require().NoError(err)
 
 	// Verify logged in
-	meResp, _ := org.Client.Me()
-	require.Equal(t, http.StatusOK, meResp.StatusCode, string(meResp.RawBody))
+	meResp, err := testClient.Me()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, meResp.StatusCode, string(meResp.RawBody))
 
 	// Logout
-	logoutResp, _ := org.Client.Logout()
-	require.Equal(t, http.StatusNoContent, logoutResp.StatusCode, string(logoutResp.RawBody))
+	logoutResp, err := testClient.Logout()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, logoutResp.StatusCode, string(logoutResp.RawBody))
 
 	// Try to access protected endpoint
-	meResp2, _ := org.Client.Me()
-	require.Equal(t, http.StatusUnauthorized, meResp2.StatusCode, string(meResp2.RawBody))
+	meResp2, err := testClient.Me()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, meResp2.StatusCode, string(meResp2.RawBody))
 }

@@ -9,502 +9,331 @@ import (
 	"codeberg.org/udison/veziizi/backend/e2e/fixtures"
 	"codeberg.org/udison/veziizi/backend/e2e/helpers"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-// TestRegisterOrganization tests POST /api/v1/organizations
-func TestRegisterOrganization(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+// OrganizationsSuite combines all organization tests with shared context.
+type OrganizationsSuite struct {
+	suite.Suite
+	baseURL string
+	c       *client.Client // Anonymous client for registration tests
 
-	tests := []struct {
-		id          string
-		name        string
-		modify      func(*fixtures.OrganizationBuilder)
-		wantStatus  int
-		wantErr     string
-		checkResult func(*testing.T, *client.Response[client.RegisterOrganizationResponse])
-	}{
-		// Happy path - different countries
-		{
-			id:         "ORG-001",
-			name:       "register RU organization",
-			modify:     func(b *fixtures.OrganizationBuilder) { b.WithCountry("RU") },
-			wantStatus: http.StatusCreated,
-			checkResult: func(t *testing.T, resp *client.Response[client.RegisterOrganizationResponse]) {
-				assert.NotEmpty(t, resp.Body.OrganizationID.String(), "organization_id")
-				assert.NotEmpty(t, resp.Body.MemberID.String(), "member_id")
-			},
-		},
-		{
-			id:         "ORG-002",
-			name:       "register KZ organization",
-			modify:     func(b *fixtures.OrganizationBuilder) { b.WithCountry("KZ") },
-			wantStatus: http.StatusCreated,
-		},
-		{
-			id:         "ORG-003",
-			name:       "register BY organization",
-			modify:     func(b *fixtures.OrganizationBuilder) { b.WithCountry("BY") },
-			wantStatus: http.StatusCreated,
-		},
-
-		// Validation errors (400)
-		{
-			id:         "ORG-009",
-			name:       "invalid country code",
-			modify:     func(b *fixtures.OrganizationBuilder) { b.WithCountry("XX") },
-			wantStatus: http.StatusBadRequest,
-			wantErr:    "invalid country",
-		},
-		{
-			id:         "ORG-010",
-			name:       "empty country",
-			modify:     func(b *fixtures.OrganizationBuilder) { b.WithCountry("") },
-			wantStatus: http.StatusBadRequest,
-		},
-
-		// Edge cases
-		{
-			id:   "ORG-019",
-			name: "SQL injection in name",
-			modify: func(b *fixtures.OrganizationBuilder) {
-				b.WithName("'; DROP TABLE--")
-			},
-			wantStatus: http.StatusCreated, // Should be safely stored
-		},
-		{
-			id:   "ORG-022",
-			name: "unicode in data",
-			modify: func(b *fixtures.OrganizationBuilder) {
-				b.WithName("中文公司 🚛")
-				b.WithAddress("北京市朝阳区")
-			},
-			wantStatus: http.StatusCreated,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := fixtures.NewOrganization(t, c)
-			if tt.modify != nil {
-				tt.modify(builder)
-			}
-
-			resp, err := builder.CreateWithStatus()
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.wantErr != "" {
-				assert.Contains(t, strings.ToLower(string(resp.RawBody)), strings.ToLower(tt.wantErr))
-			}
-
-			if tt.checkResult != nil && resp.StatusCode == http.StatusCreated {
-				tt.checkResult(t, resp)
-			}
-		})
-	}
+	// Shared organization for tests that need an existing org
+	org      *fixtures.CreatedOrganization
+	otherOrg *fixtures.CreatedOrganization
 }
 
-// TestGetOrganization tests GET /api/v1/organizations/{id}
-func TestGetOrganization(t *testing.T) {
+func TestOrganizationsSuite(t *testing.T) {
 	t.Parallel()
-	c := getClient(t)
-
-	org := fixtures.NewOrganization(t, c).Create()
-
-	tests := []struct {
-		id         string
-		name       string
-		orgID      string
-		wantStatus int
-		check      func(*testing.T, *client.Response[client.OrganizationResponse])
-	}{
-		{
-			id:         "ORG-026",
-			name:       "get existing organization",
-			orgID:      org.OrganizationID.String(),
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, resp *client.Response[client.OrganizationResponse]) {
-				assert.Equal(t, org.OrganizationID, resp.Body.ID, "id")
-				assert.Equal(t, "pending", resp.Body.Status, "status")
-			},
-		},
-		{
-			id:         "ORG-028",
-			name:       "get without auth (public endpoint)",
-			orgID:      org.OrganizationID.String(),
-			wantStatus: http.StatusOK,
-		},
-		{
-			id:         "ORG-030",
-			name:       "invalid UUID",
-			orgID:      "not-a-uuid",
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			id:         "ORG-031",
-			name:       "nonexistent organization",
-			orgID:      uuid.New().String(),
-			wantStatus: http.StatusNotFound,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			testClient := c.Clone()
-
-			var resp *client.Response[client.OrganizationResponse]
-			var err error
-
-			orgID, parseErr := uuid.Parse(tt.orgID)
-			if parseErr != nil {
-				// For invalid UUID tests, use Raw request
-				status, body, err := testClient.Raw(http.MethodGet, "/api/v1/organizations/"+tt.orgID, nil, nil)
-				require.NoError(t, err)
-				require.Equal(t, tt.wantStatus, status, string(body))
-				return
-			}
-
-			resp, err = testClient.GetOrganization(orgID)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.check != nil && resp.StatusCode == http.StatusOK {
-				tt.check(t, resp)
-			}
-		})
-	}
+	suite.Run(t, new(OrganizationsSuite))
 }
 
-// TestGetOrganizationFull tests GET /api/v1/organizations/{id}/full
-func TestGetOrganizationFull(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+func (s *OrganizationsSuite) SetupSuite() {
+	testSuite := getSuite(s.T())
+	s.baseURL = testSuite.BaseURL
+	s.c = client.New(s.baseURL)
 
-	org := fixtures.NewOrganization(t, c).Create()
-	otherOrg := fixtures.NewOrganization(t, c).Create()
-
-	tests := []struct {
-		id         string
-		name       string
-		client     *client.Client
-		orgID      uuid.UUID
-		wantStatus int
-		check      func(*testing.T, *client.Response[client.OrganizationFullResponse])
-	}{
-		{
-			id:         "ORG-034",
-			name:       "get own organization with members",
-			client:     org.Client,
-			orgID:      org.OrganizationID,
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, resp *client.Response[client.OrganizationFullResponse]) {
-				assert.True(t, len(resp.Body.Members) > 0, "should have members")
-			},
-		},
-		{
-			id:         "ORG-036",
-			name:       "without auth",
-			client:     c,
-			orgID:      org.OrganizationID,
-			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			id:         "ORG-037",
-			name:       "different organization",
-			client:     otherOrg.Client,
-			orgID:      org.OrganizationID,
-			wantStatus: http.StatusForbidden,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := tt.client.GetOrganizationFull(tt.orgID)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.check != nil && resp.StatusCode == http.StatusOK {
-				tt.check(t, resp)
-			}
-		})
-	}
+	// Create shared organizations once
+	s.org = fixtures.NewOrganization(s.T(), s.c).Create()
+	s.otherOrg = fixtures.NewOrganization(s.T(), s.c).Create()
 }
 
-// TestOrganizationRating tests GET /api/v1/organizations/{id}/rating
-func TestOrganizationRating(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+// ==================== POST /api/v1/organizations ====================
 
-	org := fixtures.NewOrganization(t, c).Create()
-
-	tests := []struct {
-		id         string
-		name       string
-		orgID      uuid.UUID
-		wantStatus int
-		check      func(*testing.T, *client.Response[client.RatingResponse])
-	}{
-		{
-			id:         "ORG-040",
-			name:       "rating without reviews",
-			orgID:      org.OrganizationID,
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, resp *client.Response[client.RatingResponse]) {
-				assert.Equal(t, 0, resp.Body.TotalReviews, "total_reviews")
-				assert.Equal(t, 0.0, resp.Body.AverageRating, "average_rating")
-			},
-		},
-		{
-			id:         "ORG-042",
-			name:       "public access (no auth)",
-			orgID:      org.OrganizationID,
-			wantStatus: http.StatusOK,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := c.GetOrganizationRating(tt.orgID)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.check != nil && resp.StatusCode == http.StatusOK {
-				tt.check(t, resp)
-			}
-		})
-	}
+func (s *OrganizationsSuite) TestORG001_RegisterRUOrganization() {
+	builder := fixtures.NewOrganization(s.T(), s.c).WithCountry("RU")
+	resp, err := builder.CreateWithStatus()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(resp.RawBody))
+	s.Assert().NotEmpty(resp.Body.OrganizationID.String(), "organization_id")
+	s.Assert().NotEmpty(resp.Body.MemberID.String(), "member_id")
 }
 
-// TestCreateInvitation tests POST /api/v1/organizations/{id}/invitations
-func TestCreateInvitation(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
-
-	org := fixtures.NewOrganization(t, c).Create()
-	otherOrg := fixtures.NewOrganization(t, c).Create()
-
-	tests := []struct {
-		id         string
-		name       string
-		client     *client.Client
-		orgID      uuid.UUID
-		email      string
-		role       string
-		wantStatus int
-		wantErr    string
-	}{
-		{
-			id:         "ORG-052",
-			name:       "create administrator invitation",
-			client:     org.Client,
-			orgID:      org.OrganizationID,
-			email:      helpers.RandomEmail(),
-			role:       "administrator",
-			wantStatus: http.StatusCreated,
-		},
-		{
-			id:         "ORG-053",
-			name:       "create employee invitation",
-			client:     org.Client,
-			orgID:      org.OrganizationID,
-			email:      helpers.RandomEmail(),
-			role:       "employee",
-			wantStatus: http.StatusCreated,
-		},
-		{
-			id:         "ORG-056",
-			name:       "invalid role",
-			client:     org.Client,
-			orgID:      org.OrganizationID,
-			email:      helpers.RandomEmail(),
-			role:       "superadmin",
-			wantStatus: http.StatusBadRequest,
-			wantErr:    "invalid role",
-		},
-		{
-			id:         "ORG-060",
-			name:       "without auth",
-			client:     c,
-			orgID:      org.OrganizationID,
-			email:      helpers.RandomEmail(),
-			role:       "employee",
-			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			id:         "ORG-061",
-			name:       "different organization",
-			client:     otherOrg.Client,
-			orgID:      org.OrganizationID,
-			email:      helpers.RandomEmail(),
-			role:       "employee",
-			wantStatus: http.StatusNotFound, // member not found in target org
-			wantErr:    "member not found",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := tt.client.CreateInvitation(tt.orgID, client.CreateInvitationRequest{
-				Email: tt.email,
-				Role:  tt.role,
-			})
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.wantErr != "" {
-				assert.Contains(t, strings.ToLower(string(resp.RawBody)), strings.ToLower(tt.wantErr))
-			}
-		})
-	}
+func (s *OrganizationsSuite) TestORG002_RegisterKZOrganization() {
+	builder := fixtures.NewOrganization(s.T(), s.c).WithCountry("KZ")
+	resp, err := builder.CreateWithStatus()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(resp.RawBody))
 }
 
-// TestDuplicateInvitation tests ORG-064: Email already invited
-func TestDuplicateInvitation(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+func (s *OrganizationsSuite) TestORG003_RegisterBYOrganization() {
+	builder := fixtures.NewOrganization(s.T(), s.c).WithCountry("BY")
+	resp, err := builder.CreateWithStatus()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(resp.RawBody))
+}
 
-	org := fixtures.NewOrganization(t, c).Create()
+func (s *OrganizationsSuite) TestORG009_InvalidCountryCode() {
+	builder := fixtures.NewOrganization(s.T(), s.c).WithCountry("XX")
+	resp, err := builder.CreateWithStatus()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	s.Assert().Contains(strings.ToLower(string(resp.RawBody)), "invalid country")
+}
+
+func (s *OrganizationsSuite) TestORG010_EmptyCountry() {
+	builder := fixtures.NewOrganization(s.T(), s.c).WithCountry("")
+	resp, err := builder.CreateWithStatus()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (s *OrganizationsSuite) TestORG019_SQLInjectionInName() {
+	builder := fixtures.NewOrganization(s.T(), s.c).WithName("'; DROP TABLE--")
+	resp, err := builder.CreateWithStatus()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *OrganizationsSuite) TestORG022_UnicodeInData() {
+	builder := fixtures.NewOrganization(s.T(), s.c).
+		WithName("中文公司 🚛").
+		WithAddress("北京市朝阳区")
+	resp, err := builder.CreateWithStatus()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(resp.RawBody))
+}
+
+// ==================== GET /api/v1/organizations/{id} ====================
+
+func (s *OrganizationsSuite) TestORG026_GetExistingOrganization() {
+	resp, err := s.c.GetOrganization(s.org.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Equal(s.org.OrganizationID, resp.Body.ID, "id")
+	s.Assert().Equal("pending", resp.Body.Status, "status")
+}
+
+func (s *OrganizationsSuite) TestORG028_GetWithoutAuth() {
+	resp, err := s.c.GetOrganization(s.org.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *OrganizationsSuite) TestORG030_InvalidUUID() {
+	status, _, err := s.c.Raw(http.MethodGet, "/api/v1/organizations/not-a-uuid", nil, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, status)
+}
+
+func (s *OrganizationsSuite) TestORG031_NonexistentOrganization() {
+	resp, err := s.c.GetOrganization(uuid.New())
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/organizations/{id}/full ====================
+
+func (s *OrganizationsSuite) TestORG034_GetOwnOrganizationWithMembers() {
+	resp, err := s.org.Client.GetOrganizationFull(s.org.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().True(len(resp.Body.Members) > 0, "should have members")
+}
+
+func (s *OrganizationsSuite) TestORG036_FullWithoutAuth() {
+	resp, err := s.c.GetOrganizationFull(s.org.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *OrganizationsSuite) TestORG037_FullDifferentOrganization() {
+	resp, err := s.otherOrg.Client.GetOrganizationFull(s.org.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/organizations/{id}/rating ====================
+
+func (s *OrganizationsSuite) TestORG040_RatingWithoutReviews() {
+	resp, err := s.c.GetOrganizationRating(s.org.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Equal(0, resp.Body.TotalReviews, "total_reviews")
+	s.Assert().Equal(0.0, resp.Body.AverageRating, "average_rating")
+}
+
+func (s *OrganizationsSuite) TestORG042_RatingPublicAccess() {
+	resp, err := s.c.GetOrganizationRating(s.org.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+}
+
+// ==================== POST /api/v1/organizations/{id}/invitations ====================
+
+func (s *OrganizationsSuite) TestORG052_CreateAdministratorInvitation() {
+	resp, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
+		Email: helpers.RandomEmail(),
+		Role:  "administrator",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *OrganizationsSuite) TestORG053_CreateEmployeeInvitation() {
+	resp, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
+		Email: helpers.RandomEmail(),
+		Role:  "employee",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *OrganizationsSuite) TestORG056_InvalidRole() {
+	resp, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
+		Email: helpers.RandomEmail(),
+		Role:  "superadmin",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	s.Assert().Contains(strings.ToLower(string(resp.RawBody)), "invalid role")
+}
+
+func (s *OrganizationsSuite) TestORG060_InvitationWithoutAuth() {
+	resp, err := s.c.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
+		Email: helpers.RandomEmail(),
+		Role:  "employee",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *OrganizationsSuite) TestORG061_InvitationDifferentOrganization() {
+	resp, err := s.otherOrg.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
+		Email: helpers.RandomEmail(),
+		Role:  "employee",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+	s.Assert().Contains(strings.ToLower(string(resp.RawBody)), "member not found")
+}
+
+func (s *OrganizationsSuite) TestORG064_DuplicateInvitation() {
 	email := helpers.RandomEmail()
 
 	// First invitation
-	resp1, err := org.Client.CreateInvitation(org.OrganizationID, client.CreateInvitationRequest{
+	resp1, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
 		Email: email,
 		Role:  "employee",
 	})
-	require.NoError(t, err)
-	require.Equal(t, http.StatusCreated, resp1.StatusCode, string(resp1.RawBody))
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, resp1.StatusCode, string(resp1.RawBody))
 
 	// Second invitation with same email
-	resp2, err := org.Client.CreateInvitation(org.OrganizationID, client.CreateInvitationRequest{
+	resp2, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
 		Email: email,
 		Role:  "employee",
 	})
-	require.NoError(t, err)
-	require.Equal(t, http.StatusConflict, resp2.StatusCode, string(resp2.RawBody))
-	assert.Contains(t, strings.ToLower(string(resp2.RawBody)), "already invited")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusConflict, resp2.StatusCode)
+	s.Assert().Contains(strings.ToLower(string(resp2.RawBody)), "already invited")
 }
 
-// TestAcceptInvitation tests POST /api/v1/invitations/{token}/accept
-func TestAcceptInvitation(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+// ==================== POST /api/v1/invitations/{token}/accept ====================
 
-	org := fixtures.NewOrganization(t, c).Create()
-
-	// Create invitation for successful accept
+func (s *OrganizationsSuite) TestORG082_SuccessfulAccept() {
 	email := helpers.RandomEmail()
-	invResp, _ := org.Client.CreateInvitation(org.OrganizationID, client.CreateInvitationRequest{
+	invResp, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
 		Email: email,
 		Role:  "employee",
 	})
+	s.Require().NoError(err)
+
+	// Wait for invitation to be available
 	token := invResp.Body.Token
-
-	// Create second invitation for empty password test
-	email2 := helpers.RandomEmail()
-	invResp2, _ := org.Client.CreateInvitation(org.OrganizationID, client.CreateInvitationRequest{
-		Email: email2,
-		Role:  "employee",
-	})
-	token2 := invResp2.Body.Token
-
-	// Wait for invitations to be available in lookup
-	helpers.WaitFor(t, func() (bool, bool) {
-		getResp, err := c.GetInvitationByToken(token)
+	helpers.WaitFor(s.T(), func() (bool, bool) {
+		getResp, err := s.c.GetInvitationByToken(token)
 		return err == nil && getResp.StatusCode == 200, err == nil && getResp.StatusCode == 200
-	}, "invitation 1 should be available")
+	}, "invitation should be available")
 
-	helpers.WaitFor(t, func() (bool, bool) {
-		getResp, err := c.GetInvitationByToken(token2)
-		return err == nil && getResp.StatusCode == 200, err == nil && getResp.StatusCode == 200
-	}, "invitation 2 should be available")
-
-	t.Run("ORG-082_successful_accept", func(t *testing.T) {
-		resp, err := c.AcceptInvitation(token, client.AcceptInvitationRequest{
-			Password: "password123",
-			Name:     helpers.StringPtr("New Member"),
-			Phone:    helpers.StringPtr("+79001234567"),
-		})
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	resp, err := s.c.AcceptInvitation(token, client.AcceptInvitationRequest{
+		Password: "password123",
+		Name:     helpers.StringPtr("New Member"),
+		Phone:    helpers.StringPtr("+79001234567"),
 	})
-
-	t.Run("ORG-085_empty_password", func(t *testing.T) {
-		resp, err := c.AcceptInvitation(token2, client.AcceptInvitationRequest{
-			Password: "",
-		})
-		require.NoError(t, err)
-		require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
-	})
-
-	t.Run("ORG-088_nonexistent_token", func(t *testing.T) {
-		resp, err := c.AcceptInvitation("nonexistent-token", client.AcceptInvitationRequest{
-			Password: "password123",
-			Name:     helpers.StringPtr("Test"),
-			Phone:    helpers.StringPtr("+79001234567"),
-		})
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNotFound, resp.StatusCode, string(resp.RawBody))
-	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
 }
 
-// TestBlockUnblockMember tests member blocking functionality
-func TestBlockUnblockMember(t *testing.T) {
-	t.Parallel()
-	c := getClient(t)
+func (s *OrganizationsSuite) TestORG085_EmptyPassword() {
+	email := helpers.RandomEmail()
+	invResp, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
+		Email: email,
+		Role:  "employee",
+	})
+	s.Require().NoError(err)
 
-	org := fixtures.NewOrganization(t, c).Create()
+	// Wait for invitation
+	token := invResp.Body.Token
+	helpers.WaitFor(s.T(), func() (bool, bool) {
+		getResp, err := s.c.GetInvitationByToken(token)
+		return err == nil && getResp.StatusCode == 200, err == nil && getResp.StatusCode == 200
+	}, "invitation should be available")
 
+	resp, err := s.c.AcceptInvitation(token, client.AcceptInvitationRequest{
+		Password: "",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (s *OrganizationsSuite) TestORG088_NonexistentToken() {
+	resp, err := s.c.AcceptInvitation("nonexistent-token", client.AcceptInvitationRequest{
+		Password: "password123",
+		Name:     helpers.StringPtr("Test"),
+		Phone:    helpers.StringPtr("+79001234567"),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+// ==================== Block/Unblock Member ====================
+
+func (s *OrganizationsSuite) TestORG101_OwnerBlocksMember() {
 	// Create and accept invitation to have a second member
 	email := helpers.RandomEmail()
-	invResp, _ := org.Client.CreateInvitation(org.OrganizationID, client.CreateInvitationRequest{
+	invResp, err := s.org.Client.CreateInvitation(s.org.OrganizationID, client.CreateInvitationRequest{
 		Email: email,
 		Role:  "employee",
 	})
+	s.Require().NoError(err)
 
-	// Wait for invitation to be available in lookup
 	token := invResp.Body.Token
-	helpers.WaitFor(t, func() (bool, bool) {
-		getResp, err := c.GetInvitationByToken(token)
+	helpers.WaitFor(s.T(), func() (bool, bool) {
+		getResp, err := s.c.GetInvitationByToken(token)
 		return err == nil && getResp.StatusCode == 200, err == nil && getResp.StatusCode == 200
 	}, "invitation should be available")
 
 	name := "Member to Block"
 	phone := "+79001234567"
-	acceptResp, _ := c.AcceptInvitation(token, client.AcceptInvitationRequest{
+	acceptResp, err := s.c.AcceptInvitation(token, client.AcceptInvitationRequest{
 		Password: "password123",
 		Name:     &name,
 		Phone:    &phone,
 	})
+	s.Require().NoError(err)
 	memberID := acceptResp.Body.MemberID
 
-	// Wait for member to be available in lookup
-	helpers.WaitFor(t, func() (bool, bool) {
-		// Check if member can be found via organization API
-		meResp, err := c.Login(email, "password123")
+	// Wait for member to be available
+	helpers.WaitFor(s.T(), func() (bool, bool) {
+		meResp, err := s.c.Login(email, "password123")
 		return err == nil && meResp.StatusCode == 200, err == nil && meResp.StatusCode == 200
 	}, "member should be available")
 
-	t.Run("ORG-101_owner_blocks_member", func(t *testing.T) {
-		resp, err := org.Client.BlockMember(org.OrganizationID, memberID, "test block reason")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-	})
+	// Block
+	resp, err := s.org.Client.BlockMember(s.org.OrganizationID, memberID, "test block reason")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 
-	t.Run("ORG-110_owner_unblocks_member", func(t *testing.T) {
-		resp, err := org.Client.UnblockMember(org.OrganizationID, memberID)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-	})
+	// Unblock
+	resp2, err := s.org.Client.UnblockMember(s.org.OrganizationID, memberID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp2.StatusCode, string(resp2.RawBody))
+}
 
-	t.Run("ORG-104_cannot_block_self", func(t *testing.T) {
-		resp, err := org.Client.BlockMember(org.OrganizationID, org.MemberID, "test block reason")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
-		assert.Contains(t, strings.ToLower(string(resp.RawBody)), "cannot block yourself")
-	})
+func (s *OrganizationsSuite) TestORG104_CannotBlockSelf() {
+	resp, err := s.org.Client.BlockMember(s.org.OrganizationID, s.org.MemberID, "test block reason")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	s.Assert().Contains(strings.ToLower(string(resp.RawBody)), "cannot block yourself")
 }

@@ -2,430 +2,293 @@ package tests
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 
 	"codeberg.org/udison/veziizi/backend/e2e/client"
 	"codeberg.org/udison/veziizi/backend/e2e/fixtures"
 	"codeberg.org/udison/veziizi/backend/e2e/helpers"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-// TestAdminLogin tests POST /api/v1/admin/auth/login
-func TestAdminLogin(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	c := client.New(suite.BaseURL)
+// AdminSuite combines all admin tests with shared context.
+type AdminSuite struct {
+	suite.Suite
+	baseURL string
+	c       *client.Client
+	ctx     *fixtures.TestContext
 
-	tests := []struct {
-		id         string
-		name       string
-		email      string
-		password   string
-		wantStatus int
-		wantErr    string
-	}{
-		// Happy path
-		{
-			id:         "ADM-001",
-			name:       "successful login",
-			email:      "admin@veziizi.local",
-			password:   "admin123",
-			wantStatus: http.StatusOK,
-		},
-
-		// Auth errors
-		{
-			id:         "ADM-002",
-			name:       "wrong password",
-			email:      "admin@veziizi.local",
-			password:   "wrongpassword",
-			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			id:         "ADM-003",
-			name:       "nonexistent admin",
-			email:      "notanadmin@veziizi.local",
-			password:   "password",
-			wantStatus: http.StatusUnauthorized,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := c.AdminLogin(tt.email, tt.password)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.wantErr != "" {
-				assert.Contains(t, strings.ToLower(string(resp.RawBody)), strings.ToLower(tt.wantErr))
-			}
-
-			if resp.StatusCode == http.StatusOK {
-				assert.NotEmpty(t, resp.Body.Email)
-			}
-		})
-	}
+	// Shared pending organization for tests
+	pendingOrg *fixtures.CreatedOrganization
 }
 
-// TestAdminLogout tests POST /api/v1/admin/auth/logout
-func TestAdminLogout(t *testing.T) {
+func TestAdminSuite(t *testing.T) {
 	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	t.Run("ADM-004_successful_logout", func(t *testing.T) {
-		resp, err := ctx.AdminClient.AdminLogout()
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-	})
+	suite.Run(t, new(AdminSuite))
 }
 
-// TestAdminListOrganizations tests GET /api/v1/admin/organizations
-func TestAdminListOrganizations(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
+func (s *AdminSuite) SetupSuite() {
+	testSuite := getSuite(s.T())
+	s.baseURL = testSuite.BaseURL
+	s.c = client.New(s.baseURL)
+	s.ctx = fixtures.NewTestContext(s.T(), s.baseURL)
 
-	// Create pending org
-	pendingOrg := fixtures.NewOrganization(t, ctx.AnonClient).Create()
-
-	tests := []struct {
-		id         string
-		name       string
-		client     *client.Client
-		status     string
-		wantStatus int
-		check      func(*testing.T, *client.Response[[]client.OrganizationResponse])
-	}{
-		// Happy path
-		{
-			id:         "ADM-005",
-			name:       "list pending organizations",
-			client:     ctx.AdminClient,
-			status:     "pending",
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, resp *client.Response[[]client.OrganizationResponse]) {
-				// Should find our pending org
-				found := false
-				for _, org := range resp.Body {
-					if org.ID == pendingOrg.OrganizationID {
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "should find the pending organization")
-			},
-		},
-		{
-			id:         "ADM-006",
-			name:       "filter by status",
-			client:     ctx.AdminClient,
-			status:     "pending",
-			wantStatus: http.StatusOK,
-			check: func(t *testing.T, resp *client.Response[[]client.OrganizationResponse]) {
-				for _, org := range resp.Body {
-					assert.Equal(t, "pending", org.Status)
-				}
-			},
-		},
-
-		// Auth errors
-		{
-			id:         "ADM-008",
-			name:       "without admin session",
-			client:     ctx.AnonClient,
-			status:     "",
-			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			id:         "ADM-009",
-			name:       "with user session",
-			client:     ctx.Customer.Client,
-			status:     "",
-			wantStatus: http.StatusUnauthorized,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := tt.client.AdminGetOrganizations(tt.status)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if tt.check != nil && resp.StatusCode == http.StatusOK {
-				tt.check(t, resp)
-			}
-		})
-	}
+	// Create pending org for tests that need it
+	s.pendingOrg = fixtures.NewOrganization(s.T(), s.ctx.AnonClient).Create()
 }
 
-// TestAdminGetOrganization tests GET /api/v1/admin/organizations/{id}
-func TestAdminGetOrganization(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
+// ==================== POST /api/v1/admin/auth/login ====================
 
-	tests := []struct {
-		id         string
-		name       string
-		orgID      uuid.UUID
-		wantStatus int
-	}{
-		// Happy path
-		{
-			id:         "ADM-010",
-			name:       "get organization",
-			orgID:      ctx.Customer.OrganizationID,
-			wantStatus: http.StatusOK,
-		},
-
-		// Not found
-		{
-			id:         "ADM-011",
-			name:       "nonexistent org",
-			orgID:      uuid.New(),
-			wantStatus: http.StatusNotFound,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.id+"_"+tt.name, func(t *testing.T) {
-			resp, err := ctx.AdminClient.AdminGetOrganization(tt.orgID)
-			require.NoError(t, err)
-			require.Equal(t, tt.wantStatus, resp.StatusCode, string(resp.RawBody))
-
-			if resp.StatusCode == http.StatusOK {
-				assert.Equal(t, tt.orgID, resp.Body.ID)
-			}
-		})
-	}
+func (s *AdminSuite) TestADM001_SuccessfulLogin() {
+	resp, err := s.c.AdminLogin("admin@veziizi.local", "admin123")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().NotEmpty(resp.Body.Email)
 }
 
-// TestAdminApproveOrganization tests POST /api/v1/admin/organizations/{id}/approve
-func TestAdminApproveOrganization(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	t.Run("ADM-012_approve_pending", func(t *testing.T) {
-		// Create pending org
-		pendingOrg := fixtures.NewOrganization(t, ctx.AnonClient).Create()
-
-		resp, err := ctx.AdminClient.AdminApproveOrganization(pendingOrg.OrganizationID, nil)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-
-		// Verify status changed
-		orgResp, err := ctx.AdminClient.AdminGetOrganization(pendingOrg.OrganizationID)
-		require.NoError(t, err)
-		assert.Equal(t, "active", orgResp.Body.Status)
-	})
-
-	t.Run("ADM-013_already_approved", func(t *testing.T) {
-		// ctx.Customer is already approved
-		resp, err := ctx.AdminClient.AdminApproveOrganization(ctx.Customer.OrganizationID, nil)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusConflict, resp.StatusCode)
-	})
+func (s *AdminSuite) TestADM002_WrongPassword() {
+	resp, err := s.c.AdminLogin("admin@veziizi.local", "wrongpassword")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
 }
 
-// TestAdminRejectOrganization tests POST /api/v1/admin/organizations/{id}/reject
-func TestAdminRejectOrganization(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	t.Run("ADM-015_reject_pending", func(t *testing.T) {
-		// Create pending org
-		pendingOrg := fixtures.NewOrganization(t, ctx.AnonClient).Create()
-
-		resp, err := ctx.AdminClient.AdminRejectOrganization(pendingOrg.OrganizationID, "Test rejection reason")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-	})
-
-	t.Run("ADM-016_with_reason", func(t *testing.T) {
-		pendingOrg := fixtures.NewOrganization(t, ctx.AnonClient).Create()
-
-		reason := "Invalid documentation provided"
-		resp, err := ctx.AdminClient.AdminRejectOrganization(pendingOrg.OrganizationID, reason)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-	})
+func (s *AdminSuite) TestADM003_NonexistentAdmin() {
+	resp, err := s.c.AdminLogin("notanadmin@veziizi.local", "password")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
 }
 
-// TestAdminMarkFraudster tests POST /api/v1/admin/organizations/{id}/mark-fraudster
-func TestAdminMarkFraudster(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
+// ==================== POST /api/v1/admin/auth/logout ====================
 
-	t.Run("ADM-017_mark_fraudster", func(t *testing.T) {
-		// Create a new org to mark as fraudster
-		org := fixtures.NewActiveOrganization(t, ctx.AnonClient, ctx.AdminClient).Create()
+func (s *AdminSuite) TestADM004_SuccessfulLogout() {
+	// Create a separate admin client for logout test to not affect shared AdminClient
+	logoutClient := client.New(s.baseURL)
+	_, err := logoutClient.AdminLogin("admin@veziizi.local", "admin123")
+	s.Require().NoError(err)
 
-		resp, err := ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, "Fraudulent activity detected")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-
-		// Verify org is in fraudsters list (wait for projection sync)
-		orgIDStr := org.OrganizationID.String()
-		helpers.Wait(t, func() bool {
-			fraudstersResp, err := ctx.AdminClient.AdminListFraudsters()
-			if err != nil || fraudstersResp.StatusCode != 200 {
-				return false
-			}
-			for _, f := range fraudstersResp.Body.Fraudsters {
-				if f.OrgID == orgIDStr {
-					return true
-				}
-			}
-			return false
-		}, "org should be in fraudsters list")
-	})
-
-	t.Run("ADM-018_with_reason", func(t *testing.T) {
-		org := fixtures.NewActiveOrganization(t, ctx.AnonClient, ctx.AdminClient).Create()
-
-		reason := "Multiple fraud reports received"
-		resp, err := ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, reason)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-	})
+	resp, err := logoutClient.AdminLogout()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 }
 
-// TestAdminUnmarkFraudster tests POST /api/v1/admin/organizations/{id}/unmark-fraudster
-func TestAdminUnmarkFraudster(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
+// ==================== GET /api/v1/admin/organizations ====================
 
-	t.Run("ADM-019_unmark_fraudster", func(t *testing.T) {
-		// Create org and mark as fraudster
-		org := fixtures.NewActiveOrganization(t, ctx.AnonClient, ctx.AdminClient).Create()
+func (s *AdminSuite) TestADM005_ListPendingOrganizations() {
+	resp, err := s.ctx.AdminClient.AdminGetOrganizations("pending")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
 
-		_, err := ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, "Test")
-		require.NoError(t, err)
-
-		// Unmark
-		resp, err := ctx.AdminClient.AdminUnmarkFraudster(org.OrganizationID, "No longer fraudster")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
-	})
-}
-
-// TestAdminListFraudsters tests GET /api/v1/admin/fraudsters
-func TestAdminListFraudsters(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	t.Run("ADM-020_list_fraudsters", func(t *testing.T) {
-		// Create and mark as fraudster
-		org := fixtures.NewActiveOrganization(t, ctx.AnonClient, ctx.AdminClient).Create()
-		_, err := ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, "Test")
-		require.NoError(t, err)
-
-		// Wait for projection sync and verify org is in list
-		orgIDStr := org.OrganizationID.String()
-		helpers.Wait(t, func() bool {
-			resp, err := ctx.AdminClient.AdminListFraudsters()
-			if err != nil || resp.StatusCode != 200 {
-				return false
-			}
-			for _, f := range resp.Body.Fraudsters {
-				if f.OrgID == orgIDStr {
-					return true
-				}
-			}
-			return false
-		}, "org should be in fraudsters list")
-	})
-
-	t.Run("ADM-021_empty_list", func(t *testing.T) {
-		// Just check endpoint works
-		resp, err := ctx.AdminClient.AdminListFraudsters()
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-	})
-}
-
-// TestAdminGetReviews tests GET /api/v1/admin/reviews
-func TestAdminGetReviews(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	t.Run("ADM-022_list_pending_reviews", func(t *testing.T) {
-		resp, err := ctx.AdminClient.AdminGetReviews("pending")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-	})
-
-	t.Run("ADM-023_filter_by_status", func(t *testing.T) {
-		resp, err := ctx.AdminClient.AdminGetReviews("pending")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-
-		for _, r := range resp.Body {
-			assert.Equal(t, "pending", r.Status)
+	// Should find our pending org
+	found := false
+	for _, org := range resp.Body {
+		if org.ID == s.pendingOrg.OrganizationID {
+			found = true
+			break
 		}
-	})
-}
-
-// TestAdminGetReview tests GET /api/v1/admin/reviews/{id}
-func TestAdminGetReview(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	t.Run("ADM-025_nonexistent_review", func(t *testing.T) {
-		resp, err := ctx.AdminClient.AdminGetReview(uuid.New())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusNotFound, resp.StatusCode)
-	})
-}
-
-// TestAdminWithUserSession tests that user session cannot access admin endpoints
-func TestAdminWithUserSession(t *testing.T) {
-	t.Parallel()
-	suite := getSuite(t)
-	ctx := fixtures.NewTestContext(t, suite.BaseURL)
-
-	endpoints := []struct {
-		name   string
-		call   func() int
-	}{
-		{
-			name: "list organizations",
-			call: func() int {
-				resp, _ := ctx.Customer.Client.AdminGetOrganizations("")
-				return resp.StatusCode
-			},
-		},
-		{
-			name: "list fraudsters",
-			call: func() int {
-				resp, _ := ctx.Customer.Client.AdminListFraudsters()
-				return resp.StatusCode
-			},
-		},
-		{
-			name: "list reviews",
-			call: func() int {
-				resp, _ := ctx.Customer.Client.AdminGetReviews("")
-				return resp.StatusCode
-			},
-		},
 	}
+	s.Assert().True(found, "should find the pending organization")
+}
 
-	for _, ep := range endpoints {
-		t.Run(ep.name, func(t *testing.T) {
-			status := ep.call()
-			assert.Equal(t, http.StatusUnauthorized, status)
-		})
+func (s *AdminSuite) TestADM006_FilterByStatus() {
+	resp, err := s.ctx.AdminClient.AdminGetOrganizations("pending")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+
+	for _, org := range resp.Body {
+		s.Assert().Equal("pending", org.Status)
 	}
 }
+
+func (s *AdminSuite) TestADM008_WithoutAdminSession() {
+	resp, err := s.ctx.AnonClient.AdminGetOrganizations("")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *AdminSuite) TestADM009_WithUserSession() {
+	resp, err := s.ctx.Customer.Client.AdminGetOrganizations("")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/admin/organizations/{id} ====================
+
+func (s *AdminSuite) TestADM010_GetOrganization() {
+	resp, err := s.ctx.AdminClient.AdminGetOrganization(s.ctx.Customer.OrganizationID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().Equal(s.ctx.Customer.OrganizationID, resp.Body.ID)
+}
+
+func (s *AdminSuite) TestADM011_NonexistentOrg() {
+	resp, err := s.ctx.AdminClient.AdminGetOrganization(uuid.New())
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+// ==================== POST /api/v1/admin/organizations/{id}/approve ====================
+
+func (s *AdminSuite) TestADM012_ApprovePending() {
+	// Create pending org for this test
+	pendingOrg := fixtures.NewOrganization(s.T(), s.ctx.AnonClient).Create()
+
+	resp, err := s.ctx.AdminClient.AdminApproveOrganization(pendingOrg.OrganizationID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+
+	// Verify status changed
+	orgResp, err := s.ctx.AdminClient.AdminGetOrganization(pendingOrg.OrganizationID)
+	s.Require().NoError(err)
+	s.Assert().Equal("active", orgResp.Body.Status)
+}
+
+func (s *AdminSuite) TestADM013_AlreadyApproved() {
+	// ctx.Customer is already approved
+	resp, err := s.ctx.AdminClient.AdminApproveOrganization(s.ctx.Customer.OrganizationID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusConflict, resp.StatusCode)
+}
+
+// ==================== POST /api/v1/admin/organizations/{id}/reject ====================
+
+func (s *AdminSuite) TestADM015_RejectPending() {
+	pendingOrg := fixtures.NewOrganization(s.T(), s.ctx.AnonClient).Create()
+
+	resp, err := s.ctx.AdminClient.AdminRejectOrganization(pendingOrg.OrganizationID, "Test rejection reason")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *AdminSuite) TestADM016_WithReason() {
+	pendingOrg := fixtures.NewOrganization(s.T(), s.ctx.AnonClient).Create()
+
+	reason := "Invalid documentation provided"
+	resp, err := s.ctx.AdminClient.AdminRejectOrganization(pendingOrg.OrganizationID, reason)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+// ==================== POST /api/v1/admin/organizations/{id}/mark-fraudster ====================
+
+func (s *AdminSuite) TestADM017_MarkFraudster() {
+	// Create a new org to mark as fraudster
+	org := fixtures.NewActiveOrganization(s.T(), s.ctx.AnonClient, s.ctx.AdminClient).Create()
+
+	resp, err := s.ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, "Fraudulent activity detected")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+
+	// Verify org is in fraudsters list (wait for projection sync)
+	orgIDStr := org.OrganizationID.String()
+	helpers.Wait(s.T(), func() bool {
+		fraudstersResp, err := s.ctx.AdminClient.AdminListFraudsters()
+		if err != nil || fraudstersResp.StatusCode != 200 {
+			return false
+		}
+		for _, f := range fraudstersResp.Body.Fraudsters {
+			if f.OrgID == orgIDStr {
+				return true
+			}
+		}
+		return false
+	}, "org should be in fraudsters list")
+}
+
+func (s *AdminSuite) TestADM018_MarkFraudsterWithReason() {
+	org := fixtures.NewActiveOrganization(s.T(), s.ctx.AnonClient, s.ctx.AdminClient).Create()
+
+	reason := "Multiple fraud reports received"
+	resp, err := s.ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, reason)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+// ==================== POST /api/v1/admin/organizations/{id}/unmark-fraudster ====================
+
+func (s *AdminSuite) TestADM019_UnmarkFraudster() {
+	// Create org and mark as fraudster
+	org := fixtures.NewActiveOrganization(s.T(), s.ctx.AnonClient, s.ctx.AdminClient).Create()
+
+	_, err := s.ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, "Test")
+	s.Require().NoError(err)
+
+	// Unmark
+	resp, err := s.ctx.AdminClient.AdminUnmarkFraudster(org.OrganizationID, "No longer fraudster")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+// ==================== GET /api/v1/admin/fraudsters ====================
+
+func (s *AdminSuite) TestADM020_ListFraudsters() {
+	// Create and mark as fraudster
+	org := fixtures.NewActiveOrganization(s.T(), s.ctx.AnonClient, s.ctx.AdminClient).Create()
+	_, err := s.ctx.AdminClient.AdminMarkFraudster(org.OrganizationID, true, "Test")
+	s.Require().NoError(err)
+
+	// Wait for projection sync and verify org is in list
+	orgIDStr := org.OrganizationID.String()
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.AdminClient.AdminListFraudsters()
+		if err != nil || resp.StatusCode != 200 {
+			return false
+		}
+		for _, f := range resp.Body.Fraudsters {
+			if f.OrgID == orgIDStr {
+				return true
+			}
+		}
+		return false
+	}, "org should be in fraudsters list")
+}
+
+func (s *AdminSuite) TestADM021_EmptyList() {
+	// Just check endpoint works
+	resp, err := s.ctx.AdminClient.AdminListFraudsters()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/admin/reviews ====================
+
+func (s *AdminSuite) TestADM022_ListPendingReviews() {
+	resp, err := s.ctx.AdminClient.AdminGetReviews("pending")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+}
+
+func (s *AdminSuite) TestADM023_FilterReviewsByStatus() {
+	resp, err := s.ctx.AdminClient.AdminGetReviews("pending")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	for _, r := range resp.Body {
+		s.Assert().Equal("pending", r.Status)
+	}
+}
+
+// ==================== GET /api/v1/admin/reviews/{id} ====================
+
+func (s *AdminSuite) TestADM025_NonexistentReview() {
+	resp, err := s.ctx.AdminClient.AdminGetReview(uuid.New())
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+// ==================== User session cannot access admin endpoints ====================
+
+func (s *AdminSuite) TestUserSessionCannotAccessListOrganizations() {
+	resp, _ := s.ctx.Customer.Client.AdminGetOrganizations("")
+	s.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *AdminSuite) TestUserSessionCannotAccessListFraudsters() {
+	resp, _ := s.ctx.Customer.Client.AdminListFraudsters()
+	s.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *AdminSuite) TestUserSessionCannotAccessListReviews() {
+	resp, _ := s.ctx.Customer.Client.AdminGetReviews("")
+	s.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
