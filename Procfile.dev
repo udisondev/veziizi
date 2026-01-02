@@ -1,19 +1,20 @@
 backend: air -c .air-backend.toml
 frontend: cd frontend && npm run dev
-members: go run ./backend/cmd/workers/members
-invitations: go run ./backend/cmd/workers/invitations
-pending-orgs: go run ./backend/cmd/workers/pending-organizations
-organizations: go run ./backend/cmd/workers/organizations
-freight-reqs: go run ./backend/cmd/workers/freight-requests
-orders: go run ./backend/cmd/workers/orders
-order-creator: go run ./backend/cmd/workers/order-creator
-review-receiver: go run ./backend/cmd/workers/review-receiver
-review-analyzer: go run ./backend/cmd/workers/review-analyzer
-reviews-proj: go run ./backend/cmd/workers/reviews-projection
-review-activator: go run ./backend/cmd/workers/review-activator
-fraudster: go run ./backend/cmd/workers/fraudster-handler
-order-fraud: go run ./backend/cmd/workers/order-fraud-analyzer
-notif-dispatch: go run ./backend/cmd/workers/notification-dispatcher
-telegram-sender: go run ./backend/cmd/workers/telegram-sender
-support: go run ./backend/cmd/workers/support-tickets
-rate-limiter: go run ./backend/cmd/workers/rate-limiter-cleanup
+members: ./bin/worker-members
+invitations: ./bin/worker-invitations
+pending-orgs: ./bin/worker-pending-organizations
+organizations: ./bin/worker-organizations
+freight-reqs: ./bin/worker-freight-requests
+orders: ./bin/worker-orders
+order-creator: ./bin/worker-order-creator
+review-receiver: ./bin/worker-review-receiver
+review-analyzer: ./bin/worker-review-analyzer
+reviews-proj: ./bin/worker-reviews-projection
+review-activator: ./bin/worker-review-activator
+fraudster: ./bin/worker-fraudster-handler
+order-fraud: ./bin/worker-order-fraud-analyzer
+notif-dispatch: ./bin/worker-notification-dispatcher
+telegram-sender: ./bin/worker-telegram-sender
+telegram-bot: ./bin/telegram-bot
+support: ./bin/worker-support-tickets
+rate-limiter: ./bin/worker-rate-limiter-cleanup
