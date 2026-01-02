@@ -74,8 +74,10 @@ CREATE INDEX idx_api_rate_limits_blocked ON api_rate_limits(blocked_until) WHERE
 
 -- +goose Down
 -- +goose StatementBegin
+
 DROP TABLE IF EXISTS api_rate_limits;
 DROP TABLE IF EXISTS member_session_behavior;
 DROP TABLE IF EXISTS session_fraud_signals;
 DROP TABLE IF EXISTS session_events;
+
 -- +goose StatementEnd

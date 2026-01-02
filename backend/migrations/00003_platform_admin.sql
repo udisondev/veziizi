@@ -2,18 +2,21 @@
 -- +goose StatementBegin
 
 -- Platform admins table (simple table, not event sourced)
+-- Consolidated from: 00003, 20251231
 CREATE TABLE platform_admins (
     id UUID PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT true,
+    telegram_chat_id BIGINT,
+    telegram_username VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Pending organizations (для админ-панели модерации)
--- Добавляется при OrganizationCreated, удаляется при Approved/Rejected
+-- Pending organizations (for admin moderation panel)
+-- Added on OrganizationCreated, removed on Approved/Rejected
 CREATE TABLE pending_organizations (
     id UUID PRIMARY KEY,
     name VARCHAR(255) NOT NULL,

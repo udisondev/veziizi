@@ -1,5 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
+
 CREATE TABLE organizations_lookup (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
@@ -12,9 +13,12 @@ CREATE TABLE organizations_lookup (
 
 CREATE INDEX idx_organizations_lookup_status ON organizations_lookup(status);
 CREATE INDEX idx_organizations_lookup_inn ON organizations_lookup(inn);
+
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+
 DROP TABLE IF EXISTS organizations_lookup;
+
 -- +goose StatementEnd

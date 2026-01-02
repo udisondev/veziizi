@@ -2,13 +2,7 @@
 -- +goose StatementBegin
 
 -- ==========================================================
--- Удаляем старую систему рейтингов
--- ==========================================================
-DROP TABLE IF EXISTS organization_reviews_lookup;
-DROP TABLE IF EXISTS organization_ratings;
-
--- ==========================================================
--- Основная таблица отзывов с весами и статусами
+-- Reviews with weights and statuses
 -- ==========================================================
 CREATE TABLE reviews_lookup (
     id UUID PRIMARY KEY,
@@ -18,13 +12,13 @@ CREATE TABLE reviews_lookup (
     rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
     comment TEXT,
 
-    -- Данные заказа для расчета веса
+    -- Order data for weight calculation
     order_amount BIGINT NOT NULL,
     order_currency VARCHAR(3) NOT NULL,
     order_created_at TIMESTAMPTZ NOT NULL,
     order_completed_at TIMESTAMPTZ NOT NULL,
 
-    -- Весовые коэффициенты
+    -- Weight coefficients
     raw_weight NUMERIC(5,4) NOT NULL DEFAULT 1.0,
     final_weight NUMERIC(5,4) NOT NULL DEFAULT 1.0,
 
@@ -32,7 +26,7 @@ CREATE TABLE reviews_lookup (
     fraud_score NUMERIC(5,4) NOT NULL DEFAULT 0.0,
     requires_moderation BOOLEAN NOT NULL DEFAULT FALSE,
 
-    -- Статус и таймлайн
+    -- Status and timeline
     status VARCHAR(30) NOT NULL DEFAULT 'pending_analysis',
     activation_date TIMESTAMPTZ,
 
@@ -59,7 +53,7 @@ CREATE INDEX idx_reviews_active ON reviews_lookup(reviewed_org_id)
     WHERE status = 'active';
 
 -- ==========================================================
--- Fraud сигналы для каждого отзыва (детализация)
+-- Fraud signals for each review (details)
 -- ==========================================================
 CREATE TABLE review_fraud_signals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -76,24 +70,24 @@ CREATE INDEX idx_fraud_signals_review ON review_fraud_signals(review_id);
 CREATE INDEX idx_fraud_signals_type ON review_fraud_signals(signal_type);
 
 -- ==========================================================
--- Статистика взаимодействий между организациями
+-- Interaction statistics between organizations
 -- ==========================================================
 CREATE TABLE org_interaction_stats (
     org_a UUID NOT NULL,
     org_b UUID NOT NULL,
 
-    -- Статистика заказов
+    -- Order statistics
     total_orders INT NOT NULL DEFAULT 0,
     completed_orders INT NOT NULL DEFAULT 0,
     cancelled_orders INT NOT NULL DEFAULT 0,
 
-    -- Статистика отзывов (направленные)
+    -- Review statistics (directional)
     reviews_a_to_b INT NOT NULL DEFAULT 0,
     reviews_b_to_a INT NOT NULL DEFAULT 0,
     sum_rating_a_to_b INT NOT NULL DEFAULT 0,
     sum_rating_b_to_a INT NOT NULL DEFAULT 0,
 
-    -- Средние метрики
+    -- Average metrics
     avg_order_amount BIGINT,
     avg_completion_hours INT,
 
@@ -108,21 +102,21 @@ CREATE INDEX idx_org_interaction_org_a ON org_interaction_stats(org_a);
 CREATE INDEX idx_org_interaction_org_b ON org_interaction_stats(org_b);
 
 -- ==========================================================
--- Репутация организации как рецензента
+-- Organization reputation as reviewer
 -- ==========================================================
 CREATE TABLE org_reviewer_reputation (
     org_id UUID PRIMARY KEY,
 
-    -- Статистика оставленных отзывов
+    -- Statistics of left reviews
     total_reviews_left INT NOT NULL DEFAULT 0,
     active_reviews_left INT NOT NULL DEFAULT 0,
     rejected_reviews INT NOT NULL DEFAULT 0,
     deactivated_reviews INT NOT NULL DEFAULT 0,
 
-    -- Репутационный скор (0.0-1.0)
+    -- Reputation score (0.0-1.0)
     reputation_score NUMERIC(5,4) NOT NULL DEFAULT 1.0,
 
-    -- Флаги накрутчика
+    -- Fraudster flags
     is_suspected_fraudster BOOLEAN NOT NULL DEFAULT FALSE,
     is_confirmed_fraudster BOOLEAN NOT NULL DEFAULT FALSE,
     fraudster_marked_at TIMESTAMPTZ,
@@ -134,22 +128,22 @@ CREATE TABLE org_reviewer_reputation (
 );
 
 -- ==========================================================
--- Агрегированный рейтинг организации (взвешенный)
+-- Aggregated organization rating (weighted)
 -- ==========================================================
 CREATE TABLE organization_ratings (
     org_id UUID PRIMARY KEY,
 
-    -- Простой рейтинг (для обратной совместимости API)
+    -- Simple rating (for API backward compatibility)
     total_reviews INT NOT NULL DEFAULT 0,
     sum_rating INT NOT NULL DEFAULT 0,
     average_rating NUMERIC(3,2) NOT NULL DEFAULT 0,
 
-    -- Взвешенный рейтинг
+    -- Weighted rating
     weighted_sum NUMERIC(10,4) NOT NULL DEFAULT 0,
     weight_total NUMERIC(10,4) NOT NULL DEFAULT 0,
     weighted_average NUMERIC(3,2) NOT NULL DEFAULT 0,
 
-    -- Счетчики по статусам
+    -- Status counters
     pending_reviews INT NOT NULL DEFAULT 0,
     rejected_reviews INT NOT NULL DEFAULT 0,
 
@@ -157,7 +151,7 @@ CREATE TABLE organization_ratings (
 );
 
 -- ==========================================================
--- Метаданные регистрации для обнаружения sock puppets
+-- Registration metadata for sock puppet detection
 -- ==========================================================
 CREATE TABLE org_registration_metadata (
     org_id UUID PRIMARY KEY,
@@ -182,28 +176,5 @@ DROP TABLE IF EXISTS org_reviewer_reputation;
 DROP TABLE IF EXISTS org_interaction_stats;
 DROP TABLE IF EXISTS review_fraud_signals;
 DROP TABLE IF EXISTS reviews_lookup;
-
--- Восстанавливаем старые таблицы
-CREATE TABLE organization_reviews_lookup (
-    id UUID PRIMARY KEY,
-    order_id UUID NOT NULL,
-    reviewer_org_id UUID NOT NULL,
-    reviewer_org_name VARCHAR(255) NOT NULL,
-    reviewed_org_id UUID NOT NULL,
-    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
-    comment TEXT,
-    created_at TIMESTAMPTZ NOT NULL
-);
-
-CREATE INDEX idx_org_reviews_reviewed_org ON organization_reviews_lookup (reviewed_org_id, created_at DESC);
-CREATE INDEX idx_org_reviews_reviewer_org ON organization_reviews_lookup (reviewer_org_id);
-CREATE INDEX idx_org_reviews_order ON organization_reviews_lookup (order_id);
-
-CREATE TABLE organization_ratings (
-    org_id UUID PRIMARY KEY,
-    total_reviews INT NOT NULL DEFAULT 0,
-    sum_rating INT NOT NULL DEFAULT 0,
-    average_rating NUMERIC(3,2) NOT NULL DEFAULT 0
-);
 
 -- +goose StatementEnd
