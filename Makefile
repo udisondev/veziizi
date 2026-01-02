@@ -1,6 +1,9 @@
 .PHONY: help up down logs db-shell migrate migrate-down migrate-status migrate-create \
-        build build-api build-workers run-api run-telegram-bot run-workers test test-e2e test-e2e-setup test-e2e-containers lint fmt env-init generate \
-        back-dev create-admin create-admin-dev dev-all dev-setup create-test-org seed-geo
+        build build-api build-telegram-bot build-workers run-api run-telegram-bot run-workers \
+        test test-cover test-e2e test-e2e-setup test-e2e-parallel test-e2e-containers \
+        lint fmt tidy generate env-init check-env dev dev-setup dev-all back-dev \
+        create-admin create-admin-dev create-test-org \
+        seed-geo seed-orgs resend-telegram backfill-freight-requests
 
 # Load .env file if exists
 ifneq (,$(wildcard ./.env))
@@ -15,6 +18,13 @@ POSTGRES_DB ?= veziizi
 POSTGRES_HOST ?= localhost
 POSTGRES_PORT ?= 5432
 DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+
+# Workers list
+WORKERS := members invitations pending-organizations organizations \
+           freight-requests orders order-creator review-receiver \
+           review-analyzer reviews-projection review-activator \
+           fraudster-handler order-fraud-analyzer notification-dispatcher \
+           telegram-sender support-tickets rate-limiter-cleanup
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -47,47 +57,18 @@ migrate-create: ## Create new migration (use: make migrate-create name=create_us
 	goose -dir backend/migrations create $(name) sql
 
 # Build
-build: ## Build all binaries
-	go build -o bin/api ./backend/cmd/api
-	go build -o bin/telegram-bot ./backend/cmd/telegram-bot
-	go build -o bin/migrator ./backend/cmd/migrator
-	go build -o bin/worker-members ./backend/cmd/workers/members
-	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
-	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
-	go build -o bin/worker-organizations ./backend/cmd/workers/organizations
-	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
-	go build -o bin/worker-orders ./backend/cmd/workers/orders
-	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
-	go build -o bin/worker-review-receiver ./backend/cmd/workers/review-receiver
-	go build -o bin/worker-review-analyzer ./backend/cmd/workers/review-analyzer
-	go build -o bin/worker-reviews-projection ./backend/cmd/workers/reviews-projection
-	go build -o bin/worker-review-activator ./backend/cmd/workers/review-activator
-	go build -o bin/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler
-	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
-	go build -o bin/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher
-	go build -o bin/worker-telegram-sender ./backend/cmd/workers/telegram-sender
-	go build -o bin/worker-support-tickets ./backend/cmd/workers/support-tickets
+build: build-api build-telegram-bot build-workers ## Build all binaries
 
 build-api: ## Build API server
 	go build -o bin/api ./backend/cmd/api
 
+build-telegram-bot: ## Build Telegram bot
+	go build -o bin/telegram-bot ./backend/cmd/telegram-bot
+
 build-workers: ## Build all workers
-	go build -o bin/worker-members ./backend/cmd/workers/members
-	go build -o bin/worker-invitations ./backend/cmd/workers/invitations
-	go build -o bin/worker-pending-organizations ./backend/cmd/workers/pending-organizations
-	go build -o bin/worker-organizations ./backend/cmd/workers/organizations
-	go build -o bin/worker-freight-requests ./backend/cmd/workers/freight-requests
-	go build -o bin/worker-orders ./backend/cmd/workers/orders
-	go build -o bin/worker-order-creator ./backend/cmd/workers/order-creator
-	go build -o bin/worker-review-receiver ./backend/cmd/workers/review-receiver
-	go build -o bin/worker-review-analyzer ./backend/cmd/workers/review-analyzer
-	go build -o bin/worker-reviews-projection ./backend/cmd/workers/reviews-projection
-	go build -o bin/worker-review-activator ./backend/cmd/workers/review-activator
-	go build -o bin/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler
-	go build -o bin/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer
-	go build -o bin/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher
-	go build -o bin/worker-telegram-sender ./backend/cmd/workers/telegram-sender
-	go build -o bin/worker-support-tickets ./backend/cmd/workers/support-tickets
+	@for worker in $(WORKERS); do \
+		go build -o bin/worker-$$worker ./backend/cmd/workers/$$worker; \
+	done
 
 # Run
 run-api: ## Run API server
@@ -96,23 +77,11 @@ run-api: ## Run API server
 run-telegram-bot: ## Run Telegram bot for link code handling
 	go run ./backend/cmd/telegram-bot
 
-run-workers: ## Run all workers
-	go run ./backend/cmd/workers/members &
-	go run ./backend/cmd/workers/invitations &
-	go run ./backend/cmd/workers/pending-organizations &
-	go run ./backend/cmd/workers/organizations &
-	go run ./backend/cmd/workers/freight-requests &
-	go run ./backend/cmd/workers/orders &
-	go run ./backend/cmd/workers/order-creator &
-	go run ./backend/cmd/workers/review-receiver &
-	go run ./backend/cmd/workers/review-analyzer &
-	go run ./backend/cmd/workers/reviews-projection &
-	go run ./backend/cmd/workers/review-activator &
-	go run ./backend/cmd/workers/fraudster-handler &
-	go run ./backend/cmd/workers/order-fraud-analyzer &
-	go run ./backend/cmd/workers/notification-dispatcher &
-	go run ./backend/cmd/workers/telegram-sender &
-	go run ./backend/cmd/workers/support-tickets &
+run-workers: ## Run all workers in background
+	@for worker in $(WORKERS); do \
+		go run ./backend/cmd/workers/$$worker & \
+	done
+	@echo "All workers started in background"
 
 # Testing
 test: ## Run unit tests
@@ -225,3 +194,12 @@ create-test-org: check-env ## Create test org with owner (owner@test.local / tes
 
 seed-geo: check-env ## Seed geo data (countries and cities)
 	go run ./backend/cmd/tools/seed-geo
+
+seed-orgs: check-env ## Seed test organizations
+	go run ./backend/cmd/tools/seed-orgs
+
+resend-telegram: check-env ## Resend failed telegram notifications
+	go run ./backend/cmd/tools/resend-telegram
+
+backfill-freight-requests: check-env ## Backfill freight requests projection
+	go run ./backend/cmd/tools/backfill-freight-requests
