@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 -- ==========================================================
--- Fraud сигналы для заказов
+-- Fraud signals for orders
 -- ==========================================================
 CREATE TABLE order_fraud_signals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,26 +21,26 @@ CREATE INDEX idx_order_fraud_signals_org ON order_fraud_signals(org_id);
 CREATE INDEX idx_order_fraud_signals_type ON order_fraud_signals(signal_type);
 
 -- ==========================================================
--- Поведение организации в заказах (для fraud detection)
+-- Organization behavior in orders (for fraud detection)
 -- ==========================================================
 CREATE TABLE org_order_behavior (
     org_id UUID PRIMARY KEY,
 
-    -- Статистика как заказчик
+    -- Statistics as customer
     total_orders_as_customer INT NOT NULL DEFAULT 0,
     completed_as_customer INT NOT NULL DEFAULT 0,
     cancelled_as_customer INT NOT NULL DEFAULT 0,
 
-    -- Статистика как перевозчик
+    -- Statistics as carrier
     total_orders_as_carrier INT NOT NULL DEFAULT 0,
     completed_as_carrier INT NOT NULL DEFAULT 0,
     cancelled_as_carrier INT NOT NULL DEFAULT 0,
 
-    -- Метрики выполнения
+    -- Completion metrics
     avg_completion_hours NUMERIC(10,2),
     min_completion_hours NUMERIC(10,2),
 
-    -- Fraud флаги
+    -- Fraud flags
     is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
     suspicious_reason TEXT,
     suspicious_marked_at TIMESTAMPTZ,
@@ -50,24 +50,24 @@ CREATE TABLE org_order_behavior (
 );
 
 -- ==========================================================
--- Circular orders detection (цепочки заказов между орг)
+-- Circular orders detection (order chains between orgs)
 -- ==========================================================
 CREATE TABLE org_order_chains (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    -- Участники цепочки (JSON массив org_id)
+    -- Chain participants (JSON array of org_id)
     chain_orgs JSONB NOT NULL,
     chain_length INT NOT NULL,
 
-    -- Детали
+    -- Details
     order_ids JSONB NOT NULL,
     total_amount BIGINT NOT NULL DEFAULT 0,
 
-    -- Временное окно
+    -- Time window
     first_order_at TIMESTAMPTZ NOT NULL,
     last_order_at TIMESTAMPTZ NOT NULL,
 
-    -- Статус
+    -- Status
     is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
     reviewed_at TIMESTAMPTZ,
     reviewed_by UUID,

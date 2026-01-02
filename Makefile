@@ -152,12 +152,12 @@ dev-setup: ## Install dev tools (goreman, air)
 	@command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest
 	@echo "Dev tools ready"
 
-dev-all: check-env dev-setup up ## Start everything with hot-reload (API + workers + frontend)
+dev-all: check-env dev-setup up build-workers ## Start everything with hot-reload (API + workers + frontend)
 	@echo "Waiting for PostgreSQL..."
 	@until docker exec veziizi-postgres pg_isready -U $(POSTGRES_USER) >/dev/null 2>&1; do sleep 1; done
 	@echo "PostgreSQL ready, running migrations..."
 	@$(MAKE) migrate
-	@echo "Seeding geo data (countries and cities)..."
+	@echo "Seeding geo data..."
 	@$(MAKE) seed-geo
 	@echo "Starting all services..."
 	goreman -f Procfile.dev start
