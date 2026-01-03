@@ -154,10 +154,35 @@ func (f *FreightRequest) Cancel(actorID uuid.UUID, reason string) error {
 	if f.customerMemberID != actorID {
 		return ErrNotFreightRequestOwner
 	}
-	if !f.IsPublished() {
-		return ErrFreightRequestNotPublished
+
+	// Разрешаем отмену для published и selected
+	if f.status != values.FreightRequestStatusPublished &&
+		f.status != values.FreightRequestStatusSelected {
+		return ErrCannotCancelFreightRequest
 	}
 
+	// 1. Отклоняем все pending офферы
+	for offerID, offer := range f.offers {
+		if offer.IsPending() {
+			f.Apply(events.OfferRejected{
+				BaseEvent:  eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+				OfferID:    offerID,
+				RejectedBy: actorID,
+				Reason:     "freight request cancelled",
+			})
+		}
+	}
+
+	// 2. Отклоняем selected оффер (если есть)
+	if f.selectedOffer != nil {
+		f.Apply(events.OfferCancelledWithRequest{
+			BaseEvent: eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+			OfferID:   *f.selectedOffer,
+			Reason:    reason,
+		})
+	}
+
+	// 3. Отменяем заявку
 	f.Apply(events.FreightRequestCancelled{
 		BaseEvent:   eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		CancelledBy: actorID,
@@ -382,6 +407,46 @@ func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	return nil
 }
 
+func (f *FreightRequest) UnselectOffer(offerID uuid.UUID, actorID uuid.UUID, actorOrgID uuid.UUID, reason string) error {
+	// Проверка: актор должен быть из организации-заказчика
+	if f.customerOrgID != actorOrgID {
+		return ErrNotFreightRequestOwner
+	}
+
+	// Проверка: только ответственный член может отменять выбор офферов
+	if f.customerMemberID != actorID {
+		return ErrNotResponsibleMember
+	}
+
+	// Проверка: заявка должна быть в статусе selected
+	if f.status != values.FreightRequestStatusSelected {
+		return ErrFreightRequestNotSelected
+	}
+
+	// Проверка: оффер должен существовать и быть выбранным
+	offer, ok := f.offers[offerID]
+	if !ok {
+		return ErrOfferNotFound
+	}
+	if !offer.IsSelected() {
+		return ErrOfferNotSelected
+	}
+
+	// Проверка: это должен быть именно выбранный оффер
+	if f.selectedOffer == nil || *f.selectedOffer != offerID {
+		return ErrOfferNotSelected
+	}
+
+	f.Apply(events.OfferUnselected{
+		BaseEvent:    eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+		OfferID:      offerID,
+		UnselectedBy: actorID,
+		Reason:       reason,
+	})
+
+	return nil
+}
+
 // Apply applies event and records it as change
 func (f *FreightRequest) Apply(evt eventstore.Event) {
 	f.apply(evt)
@@ -478,5 +543,18 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 			f.selectedOffer = nil
 			f.status = values.FreightRequestStatusPublished
 		}
+
+	case events.OfferUnselected:
+		if offer, ok := f.offers[e.OfferID]; ok {
+			_ = offer.Unselect()
+			f.selectedOffer = nil
+			f.status = values.FreightRequestStatusPublished
+		}
+
+	case events.OfferCancelledWithRequest:
+		if offer, ok := f.offers[e.OfferID]; ok {
+			_ = offer.CancelWithRequest()
+		}
+		f.selectedOffer = nil
 	}
 }

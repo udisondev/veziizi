@@ -160,6 +160,45 @@ func WithVehicleSubTypes(subtypes []string) FilterOption {
 	}
 }
 
+func WithMinVolume(volume float64) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.GtOrEq{"cargo_volume": volume})
+	}
+}
+
+func WithMaxVolume(volume float64) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"cargo_volume": volume})
+	}
+}
+
+func WithPaymentMethods(methods []string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(methods) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"payment_method": methods})
+	}
+}
+
+func WithPaymentTerms(terms []string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(terms) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"payment_terms": terms})
+	}
+}
+
+func WithVatTypes(types []string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(types) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"vat_type": types})
+	}
+}
+
 // joinStrings joins strings with comma for PostgreSQL array literal
 func joinStrings(s []string) string {
 	if len(s) == 0 {

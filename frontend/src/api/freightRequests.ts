@@ -21,8 +21,13 @@ export interface FreightRequestListParams {
   max_weight?: number
   min_price?: number
   max_price?: number
-  cargo_types?: string  // comma-separated
-  body_types?: string   // comma-separated
+  min_volume?: number
+  max_volume?: number
+  vehicle_types?: string  // comma-separated
+  vehicle_subtypes?: string   // comma-separated
+  payment_methods?: string // comma-separated
+  payment_terms?: string // comma-separated
+  vat_types?: string // comma-separated
   route_city_ids?: string // comma-separated city IDs
   route_country_ids?: string // comma-separated country IDs (for filtering by country without city)
   limit?: number
@@ -47,8 +52,13 @@ export const freightRequestsApi = {
     if (params?.max_weight !== undefined) searchParams.set('max_weight', params.max_weight.toString())
     if (params?.min_price !== undefined) searchParams.set('min_price', params.min_price.toString())
     if (params?.max_price !== undefined) searchParams.set('max_price', params.max_price.toString())
-    if (params?.cargo_types) searchParams.set('cargo_types', params.cargo_types)
-    if (params?.body_types) searchParams.set('body_types', params.body_types)
+    if (params?.min_volume !== undefined) searchParams.set('min_volume', params.min_volume.toString())
+    if (params?.max_volume !== undefined) searchParams.set('max_volume', params.max_volume.toString())
+    if (params?.vehicle_types) searchParams.set('vehicle_types', params.vehicle_types)
+    if (params?.vehicle_subtypes) searchParams.set('vehicle_subtypes', params.vehicle_subtypes)
+    if (params?.payment_methods) searchParams.set('payment_methods', params.payment_methods)
+    if (params?.payment_terms) searchParams.set('payment_terms', params.payment_terms)
+    if (params?.vat_types) searchParams.set('vat_types', params.vat_types)
     if (params?.route_city_ids) searchParams.set('route_city_ids', params.route_city_ids)
     if (params?.route_country_ids) searchParams.set('route_country_ids', params.route_country_ids)
     // Pagination
@@ -100,6 +110,10 @@ export const freightRequestsApi = {
 
   declineOffer(frId: string, offerId: string, reason?: string): Promise<void> {
     return api.post(`/freight-requests/${frId}/offers/${offerId}/decline`, reason ? { reason } : undefined)
+  },
+
+  unselectOffer(frId: string, offerId: string, reason?: string): Promise<void> {
+    return api.post(`/freight-requests/${frId}/offers/${offerId}/unselect`, reason ? { reason } : undefined)
   },
 
   reassign(frId: string, newMemberId: string): Promise<void> {

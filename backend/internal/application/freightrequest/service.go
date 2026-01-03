@@ -371,6 +371,27 @@ func (s *Service) DeclineOffer(ctx context.Context, input DeclineOfferInput) err
 	return s.saveAndPublish(ctx, fr)
 }
 
+type UnselectOfferInput struct {
+	FreightRequestID uuid.UUID
+	OfferID          uuid.UUID
+	ActorID          uuid.UUID
+	ActorOrgID       uuid.UUID
+	Reason           string
+}
+
+func (s *Service) UnselectOffer(ctx context.Context, input UnselectOfferInput) error {
+	fr, err := s.Get(ctx, input.FreightRequestID)
+	if err != nil {
+		return err
+	}
+
+	if err := fr.UnselectOffer(input.OfferID, input.ActorID, input.ActorOrgID, input.Reason); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, fr)
+}
+
 func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.FreightRequest) error {
 	changes := fr.Changes()
 	if len(changes) == 0 {

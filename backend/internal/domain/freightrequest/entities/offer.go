@@ -108,3 +108,23 @@ func (o *Offer) Decline() error {
 	o.status = values.OfferStatusDeclined
 	return nil
 }
+
+// CancelWithRequest transitions offer from selected to rejected
+// when the freight request is cancelled by customer
+func (o *Offer) CancelWithRequest() error {
+	if !o.IsSelected() {
+		return ErrInvalidStatusTransition
+	}
+	o.status = values.OfferStatusRejected
+	return nil
+}
+
+// Unselect transitions offer from selected back to pending
+// when customer unselects the offer (carrier did not respond)
+func (o *Offer) Unselect() error {
+	if !o.IsSelected() {
+		return ErrInvalidStatusTransition
+	}
+	o.status = values.OfferStatusPending
+	return nil
+}
