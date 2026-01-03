@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type {
-  FreightRequestStatusFilter,
   OwnershipFilter,
-  VehicleType,
   VehicleSubType,
+  PaymentMethod,
+  PaymentTerms,
+  VatType,
 } from '@/types/freightRequest'
 
 export interface RoutePointFilter {
@@ -19,32 +20,36 @@ export interface RoutePointFilter {
 export const useFreightFiltersStore = defineStore('freightFilters', () => {
   // Filter state
   const ownershipFilter = ref<OwnershipFilter>('all')
-  const statusFilter = ref<FreightRequestStatusFilter>('all')
-  const orgNameFilter = ref('')
   const orgINNFilter = ref('')
   const routePoints = ref<RoutePointFilter[]>([])
   const minWeight = ref<number | undefined>()
   const maxWeight = ref<number | undefined>()
   const minPrice = ref<number | undefined>()
   const maxPrice = ref<number | undefined>()
-  const vehicleTypes = ref<VehicleType[]>([])
+  const minVolume = ref<number | undefined>()
+  const maxVolume = ref<number | undefined>()
   const vehicleSubTypes = ref<VehicleSubType[]>([])
+  const paymentMethods = ref<PaymentMethod[]>([])
+  const paymentTerms = ref<PaymentTerms[]>([])
+  const vatTypes = ref<VatType[]>([])
 
-  // Computed - subscription filters (everything except ownership and status)
+  // Computed - subscription filters (everything except ownership and INN)
   const hasSubscriptionFilters = computed(() =>
     routePoints.value.length > 0 ||
     minWeight.value !== undefined ||
     maxWeight.value !== undefined ||
     minPrice.value !== undefined ||
     maxPrice.value !== undefined ||
-    vehicleTypes.value.length > 0 ||
-    vehicleSubTypes.value.length > 0
+    minVolume.value !== undefined ||
+    maxVolume.value !== undefined ||
+    vehicleSubTypes.value.length > 0 ||
+    paymentMethods.value.length > 0 ||
+    paymentTerms.value.length > 0 ||
+    vatTypes.value.length > 0
   )
 
   const hasActiveFilters = computed(() =>
     ownershipFilter.value !== 'all' ||
-    statusFilter.value !== 'all' ||
-    orgNameFilter.value !== '' ||
     orgINNFilter.value !== '' ||
     hasSubscriptionFilters.value
   )
@@ -52,56 +57,63 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   const activeFiltersCount = computed(() => {
     let count = 0
     if (ownershipFilter.value !== 'all') count++
-    if (statusFilter.value !== 'all') count++
-    if (orgNameFilter.value !== '') count++
     if (orgINNFilter.value !== '') count++
     if (routePoints.value.length > 0) count++
     if (minWeight.value !== undefined || maxWeight.value !== undefined) count++
     if (minPrice.value !== undefined || maxPrice.value !== undefined) count++
-    if (vehicleTypes.value.length > 0) count++
+    if (minVolume.value !== undefined || maxVolume.value !== undefined) count++
     if (vehicleSubTypes.value.length > 0) count++
+    if (paymentMethods.value.length > 0) count++
+    if (paymentTerms.value.length > 0) count++
+    if (vatTypes.value.length > 0) count++
     return count
   })
 
   // Actions
   function setFilters(filters: {
     ownership?: OwnershipFilter
-    status?: FreightRequestStatusFilter
-    orgName?: string
     orgINN?: string
     routePoints?: RoutePointFilter[]
     minWeight?: number
     maxWeight?: number
     minPrice?: number
     maxPrice?: number
-    vehicleTypes?: VehicleType[]
+    minVolume?: number
+    maxVolume?: number
     vehicleSubTypes?: VehicleSubType[]
+    paymentMethods?: PaymentMethod[]
+    paymentTerms?: PaymentTerms[]
+    vatTypes?: VatType[]
   }) {
     if (filters.ownership !== undefined) ownershipFilter.value = filters.ownership
-    if (filters.status !== undefined) statusFilter.value = filters.status
-    if (filters.orgName !== undefined) orgNameFilter.value = filters.orgName
     if (filters.orgINN !== undefined) orgINNFilter.value = filters.orgINN
     if (filters.routePoints !== undefined) routePoints.value = filters.routePoints
     if (filters.minWeight !== undefined) minWeight.value = filters.minWeight
     if (filters.maxWeight !== undefined) maxWeight.value = filters.maxWeight
     if (filters.minPrice !== undefined) minPrice.value = filters.minPrice
     if (filters.maxPrice !== undefined) maxPrice.value = filters.maxPrice
-    if (filters.vehicleTypes !== undefined) vehicleTypes.value = filters.vehicleTypes
+    if (filters.minVolume !== undefined) minVolume.value = filters.minVolume
+    if (filters.maxVolume !== undefined) maxVolume.value = filters.maxVolume
     if (filters.vehicleSubTypes !== undefined) vehicleSubTypes.value = filters.vehicleSubTypes
+    if (filters.paymentMethods !== undefined) paymentMethods.value = filters.paymentMethods
+    if (filters.paymentTerms !== undefined) paymentTerms.value = filters.paymentTerms
+    if (filters.vatTypes !== undefined) vatTypes.value = filters.vatTypes
   }
 
   function resetFilters() {
     ownershipFilter.value = 'all'
-    statusFilter.value = 'all'
-    orgNameFilter.value = ''
     orgINNFilter.value = ''
     routePoints.value = []
     minWeight.value = undefined
     maxWeight.value = undefined
     minPrice.value = undefined
     maxPrice.value = undefined
-    vehicleTypes.value = []
+    minVolume.value = undefined
+    maxVolume.value = undefined
     vehicleSubTypes.value = []
+    paymentMethods.value = []
+    paymentTerms.value = []
+    vatTypes.value = []
   }
 
   // Route point management
@@ -137,16 +149,18 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   return {
     // State
     ownershipFilter,
-    statusFilter,
-    orgNameFilter,
     orgINNFilter,
     routePoints,
     minWeight,
     maxWeight,
     minPrice,
     maxPrice,
-    vehicleTypes,
+    minVolume,
+    maxVolume,
     vehicleSubTypes,
+    paymentMethods,
+    paymentTerms,
+    vatTypes,
 
     // Computed
     hasSubscriptionFilters,

@@ -7,18 +7,11 @@ import type {
   FreightSubscriptionCreate,
   RoutePointCriteriaCreate,
 } from '@/types/subscription'
-import {
-  vehicleTypeOptions,
-  vehicleSubTypeLabels,
-  vehicleTypeSubTypes,
-  paymentMethodOptions,
-  paymentTermsOptions,
-  vatTypeOptions,
-  type VehicleType,
-  type VehicleSubType,
-  type PaymentMethod,
-  type PaymentTerms,
-  type VatType,
+import type {
+  VehicleSubType,
+  PaymentMethod,
+  PaymentTerms,
+  VatType,
 } from '@/types/freightRequest'
 
 // UI Components
@@ -36,10 +29,7 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 
 // Filter Components
-import { ChipButtonGroup, RangeInput } from '@/components/filters'
-
-// Subscription Components
-import SubscriptionRouteStep from './SubscriptionRouteStep.vue'
+import { FreightFiltersForm, type RoutePointFilter } from '@/components/filters'
 
 interface Props {
   open: boolean
@@ -69,39 +59,14 @@ const minPrice = ref<number | undefined>()
 const maxPrice = ref<number | undefined>()
 const minVolume = ref<number | undefined>()
 const maxVolume = ref<number | undefined>()
-const vehicleTypes = ref<VehicleType[]>([])
 const vehicleSubTypes = ref<VehicleSubType[]>([])
 const paymentMethods = ref<PaymentMethod[]>([])
 const paymentTerms = ref<PaymentTerms[]>([])
 const vatTypes = ref<VatType[]>([])
 const isActive = ref(true)
 
-// Computed для доступных подтипов транспорта
-const availableSubTypes = computed(() => {
-  if (vehicleTypes.value.length === 0) return []
-  const subTypes = new Set<VehicleSubType>()
-  for (const vt of vehicleTypes.value) {
-    const subs = vehicleTypeSubTypes[vt] || []
-    for (const sub of subs) {
-      subTypes.add(sub)
-    }
-  }
-  return Array.from(subTypes).map(value => ({
-    value,
-    label: vehicleSubTypeLabels[value],
-  }))
-})
-
 // Route points
-interface RoutePointLocal {
-  id: string
-  countryId?: number
-  countryName?: string
-  cityId?: number
-  cityName?: string
-  order: number
-}
-const routePoints = ref<RoutePointLocal[]>([])
+const routePoints = ref<RoutePointFilter[]>([])
 
 // Initialize form when dialog opens or subscription changes
 watch(
@@ -126,7 +91,6 @@ function loadSubscription(sub: FreightSubscription) {
   maxPrice.value = sub.max_price
   minVolume.value = sub.min_volume
   maxVolume.value = sub.max_volume
-  vehicleTypes.value = (sub.vehicle_types || []) as VehicleType[]
   vehicleSubTypes.value = (sub.vehicle_subtypes || []) as VehicleSubType[]
   paymentMethods.value = (sub.payment_methods || []) as PaymentMethod[]
   paymentTerms.value = (sub.payment_terms || []) as PaymentTerms[]
@@ -151,7 +115,6 @@ function resetForm() {
   maxPrice.value = undefined
   minVolume.value = undefined
   maxVolume.value = undefined
-  vehicleTypes.value = []
   vehicleSubTypes.value = []
   paymentMethods.value = []
   paymentTerms.value = []
@@ -180,14 +143,14 @@ function removeRoutePoint(id: string) {
   })
 }
 
-function updateRoutePoint(id: string, updates: Partial<RoutePointLocal>) {
+function updateRoutePoint(id: string, updates: Partial<RoutePointFilter>) {
   const point = routePoints.value.find(rp => rp.id === id)
   if (point) {
     Object.assign(point, updates)
   }
 }
 
-function reorderRoutePoints(points: RoutePointLocal[]) {
+function reorderRoutePoints(points: RoutePointFilter[]) {
   routePoints.value = points
 }
 
@@ -225,7 +188,6 @@ async function handleSubmit() {
     max_price: maxPrice.value,
     min_volume: minVolume.value,
     max_volume: maxVolume.value,
-    vehicle_types: vehicleTypes.value.length > 0 ? vehicleTypes.value : undefined,
     vehicle_subtypes: vehicleSubTypes.value.length > 0 ? vehicleSubTypes.value : undefined,
     payment_methods: paymentMethods.value.length > 0 ? paymentMethods.value : undefined,
     payment_terms: paymentTerms.value.length > 0 ? paymentTerms.value : undefined,
@@ -286,87 +248,33 @@ function handleCancel() {
 
         <Separator />
 
-        <!-- Numeric Ranges -->
-        <div class="space-y-4">
-          <h4 class="font-medium">Числовые параметры</h4>
-
-          <RangeInput
-            v-model:min-value="minWeight"
-            v-model:max-value="maxWeight"
-            label="Вес груза, т"
-            :min="0"
-            step="0.1"
-          />
-
-          <RangeInput
-            v-model:min-value="minPrice"
-            v-model:max-value="maxPrice"
-            label="Ставка, руб."
-            :min="0"
-            step="1000"
-          />
-
-          <RangeInput
-            v-model:min-value="minVolume"
-            v-model:max-value="maxVolume"
-            label="Объём груза, м³"
-            :min="0"
-            step="1"
-          />
-        </div>
-
-        <Separator />
-
-        <!-- Route Points -->
-        <SubscriptionRouteStep
+        <!-- Filters Form -->
+        <FreightFiltersForm
           :route-points="routePoints"
-          @add-point="addRoutePoint"
-          @remove-point="removeRoutePoint"
-          @update-point="updateRoutePoint"
-          @reorder="reorderRoutePoints"
-        />
-
-        <Separator />
-
-        <!-- Vehicle Types -->
-        <ChipButtonGroup
-          v-model="vehicleTypes"
-          :options="vehicleTypeOptions"
-          label="Типы транспорта"
-          empty-text="Не выбрано — все типы транспорта"
-        />
-
-        <!-- Vehicle Sub Types -->
-        <ChipButtonGroup
-          v-if="availableSubTypes.length > 0"
-          v-model="vehicleSubTypes"
-          :options="availableSubTypes"
-          label="Подтипы транспорта"
-          empty-text="Не выбрано — все подтипы"
-        />
-
-        <!-- Payment Methods -->
-        <ChipButtonGroup
-          v-model="paymentMethods"
-          :options="paymentMethodOptions"
-          label="Способы оплаты"
-          empty-text="Не выбрано — все способы"
-        />
-
-        <!-- Payment Terms -->
-        <ChipButtonGroup
-          v-model="paymentTerms"
-          :options="paymentTermsOptions"
-          label="Условия оплаты"
-          empty-text="Не выбрано — все условия"
-        />
-
-        <!-- VAT Types -->
-        <ChipButtonGroup
-          v-model="vatTypes"
-          :options="vatTypeOptions"
-          label="НДС"
-          empty-text="Не выбрано — все варианты"
+          :min-weight="minWeight"
+          :max-weight="maxWeight"
+          :min-price="minPrice"
+          :max-price="maxPrice"
+          :min-volume="minVolume"
+          :max-volume="maxVolume"
+          :vehicle-sub-types="vehicleSubTypes"
+          :payment-methods="paymentMethods"
+          :payment-terms="paymentTerms"
+          :vat-types="vatTypes"
+          @add-route-point="addRoutePoint"
+          @remove-route-point="removeRoutePoint"
+          @update-route-point="updateRoutePoint"
+          @reorder-route-points="reorderRoutePoints"
+          @update:min-weight="minWeight = $event"
+          @update:max-weight="maxWeight = $event"
+          @update:min-price="minPrice = $event"
+          @update:max-price="maxPrice = $event"
+          @update:min-volume="minVolume = $event"
+          @update:max-volume="maxVolume = $event"
+          @update:vehicle-sub-types="vehicleSubTypes = $event"
+          @update:payment-methods="paymentMethods = $event"
+          @update:payment-terms="paymentTerms = $event"
+          @update:vat-types="vatTypes = $event"
         />
       </form>
 

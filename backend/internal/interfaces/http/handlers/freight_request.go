@@ -148,6 +148,7 @@ func (h *FreightRequestHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/reject", h.RejectOffer).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/confirm", h.ConfirmOffer).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/decline", h.DeclineOffer).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/unselect", h.UnselectOffer).Methods(http.MethodPost)
 	// My offers (for current organization)
 	r.HandleFunc("/api/v1/offers", h.ListMyOffers).Methods(http.MethodGet)
 }
@@ -317,6 +318,41 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		ids := splitCommaInt(routeCountryIDs)
 		if len(ids) > 0 {
 			opts = append(opts, projections.WithRouteCountries(ids))
+		}
+	}
+
+	// Volume filters
+	if minVolume := r.URL.Query().Get("min_volume"); minVolume != "" {
+		if v, err := parseFloat(minVolume); err == nil {
+			opts = append(opts, projections.WithMinVolume(v))
+		}
+	}
+
+	if maxVolume := r.URL.Query().Get("max_volume"); maxVolume != "" {
+		if v, err := parseFloat(maxVolume); err == nil {
+			opts = append(opts, projections.WithMaxVolume(v))
+		}
+	}
+
+	// Payment filters
+	if paymentMethods := r.URL.Query().Get("payment_methods"); paymentMethods != "" {
+		methods := splitComma(paymentMethods)
+		if len(methods) > 0 {
+			opts = append(opts, projections.WithPaymentMethods(methods))
+		}
+	}
+
+	if paymentTerms := r.URL.Query().Get("payment_terms"); paymentTerms != "" {
+		terms := splitComma(paymentTerms)
+		if len(terms) > 0 {
+			opts = append(opts, projections.WithPaymentTerms(terms))
+		}
+	}
+
+	if vatTypes := r.URL.Query().Get("vat_types"); vatTypes != "" {
+		types := splitComma(vatTypes)
+		if len(types) > 0 {
+			opts = append(opts, projections.WithVatTypes(types))
 		}
 	}
 
@@ -895,6 +931,51 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type UnselectOfferRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+func (h *FreightRequestHandler) UnselectOffer(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	frID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	offerID, err := uuid.Parse(vars["offerId"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid offer id")
+		return
+	}
+
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req UnselectOfferRequest
+	_ = json.NewDecoder(r.Body).Decode(&req) // reason опционален
+
+	if err := h.service.UnselectOffer(r.Context(), freightrequest.UnselectOfferInput{
+		FreightRequestID: frID,
+		OfferID:          offerID,
+		ActorID:          memberID,
+		ActorOrgID:       orgID,
+		Reason:           req.Reason,
+	}); err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, frDomain.ErrFreightRequestNotFound):
@@ -907,6 +988,8 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 		writeError(w, http.StatusConflict, "freight request is cancelled")
 	case errors.Is(err, frDomain.ErrFreightRequestConfirmed):
 		writeError(w, http.StatusConflict, "freight request is confirmed")
+	case errors.Is(err, frDomain.ErrCannotCancelFreightRequest):
+		writeError(w, http.StatusConflict, "cannot cancel freight request in current status")
 	case errors.Is(err, frDomain.ErrOfferNotFound):
 		writeError(w, http.StatusNotFound, "offer not found")
 	case errors.Is(err, frDomain.ErrOfferNotPending):
@@ -925,6 +1008,8 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 		writeError(w, http.StatusForbidden, "not offer owner")
 	case errors.Is(err, frDomain.ErrHasSelectedOffer):
 		writeError(w, http.StatusConflict, "already has selected offer")
+	case errors.Is(err, frDomain.ErrFreightRequestNotSelected):
+		writeError(w, http.StatusConflict, "freight request has no selected offer")
 	case errors.Is(err, orgDomain.ErrMemberNotFound):
 		writeError(w, http.StatusNotFound, "member not found")
 	case errors.Is(err, orgDomain.ErrInsufficientPermissions):

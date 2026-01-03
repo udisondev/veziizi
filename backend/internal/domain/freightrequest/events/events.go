@@ -16,11 +16,13 @@ const (
 	TypeFreightRequestCancelled  = "freight_request.cancelled"
 	TypeFreightRequestExpired    = "freight_request.expired"
 	TypeOfferMade                = "offer.made"
-	TypeOfferWithdrawn          = "offer.withdrawn"
-	TypeOfferSelected           = "offer.selected"
-	TypeOfferRejected           = "offer.rejected"
-	TypeOfferConfirmed          = "offer.confirmed"
-	TypeOfferDeclined           = "offer.declined"
+	TypeOfferWithdrawn           = "offer.withdrawn"
+	TypeOfferSelected            = "offer.selected"
+	TypeOfferRejected            = "offer.rejected"
+	TypeOfferConfirmed            = "offer.confirmed"
+	TypeOfferDeclined             = "offer.declined"
+	TypeOfferUnselected           = "offer.unselected"
+	TypeOfferCancelledWithRequest = "offer.cancelled_with_request"
 )
 
 func init() {
@@ -35,6 +37,8 @@ func init() {
 	eventstore.RegisterEventType[OfferRejected](TypeOfferRejected)
 	eventstore.RegisterEventType[OfferConfirmed](TypeOfferConfirmed)
 	eventstore.RegisterEventType[OfferDeclined](TypeOfferDeclined)
+	eventstore.RegisterEventType[OfferUnselected](TypeOfferUnselected)
+	eventstore.RegisterEventType[OfferCancelledWithRequest](TypeOfferCancelledWithRequest)
 }
 
 // FreightRequestCreated is emitted when a new freight request is published
@@ -155,3 +159,24 @@ type OfferDeclined struct {
 }
 
 func (e OfferDeclined) EventType() string { return TypeOfferDeclined }
+
+// OfferUnselected is emitted when customer unselects a previously selected offer
+// (carrier did not respond, customer wants to choose another offer)
+type OfferUnselected struct {
+	eventstore.BaseEvent
+	OfferID      uuid.UUID `json:"offer_id"`
+	UnselectedBy uuid.UUID `json:"unselected_by"`
+	Reason       string    `json:"reason,omitempty"`
+}
+
+func (e OfferUnselected) EventType() string { return TypeOfferUnselected }
+
+// OfferCancelledWithRequest is emitted when a selected offer is cancelled
+// due to freight request cancellation by customer
+type OfferCancelledWithRequest struct {
+	eventstore.BaseEvent
+	OfferID uuid.UUID `json:"offer_id"`
+	Reason  string    `json:"reason,omitempty"`
+}
+
+func (e OfferCancelledWithRequest) EventType() string { return TypeOfferCancelledWithRequest }

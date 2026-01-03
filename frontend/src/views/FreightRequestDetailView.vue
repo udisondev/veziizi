@@ -444,6 +444,19 @@ async function handleDeclineOffer(offerId: string) {
   }
 }
 
+async function handleUnselectOffer(offerId: string) {
+  if (!freightRequest.value) return
+  actionLoading.value = true
+  try {
+    await freightRequestsApi.unselectOffer(freightRequest.value.id, offerId)
+    await loadData()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Ошибка'
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadData()
 })
@@ -818,6 +831,7 @@ onMounted(() => {
               @withdraw="openWithdrawModal"
               @confirm="handleConfirmOffer"
               @decline="handleDeclineOffer"
+              @unselect="handleUnselectOffer"
             />
           </TabsContent>
 

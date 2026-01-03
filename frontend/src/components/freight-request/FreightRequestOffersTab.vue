@@ -24,6 +24,7 @@ interface Emits {
   (e: 'withdraw', offerId: string): void
   (e: 'confirm', offerId: string): void
   (e: 'decline', offerId: string): void
+  (e: 'unselect', offerId: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -125,7 +126,7 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
             </div>
           </div>
 
-          <!-- Owner/Admin actions -->
+          <!-- Owner/Admin actions for pending offers -->
           <div v-if="canManageOffers && offer.status === 'pending' && freightRequest.status === 'published'" class="flex gap-2 shrink-0">
             <Button
               size="sm"
@@ -142,6 +143,18 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
               @click="emit('reject', offer.id)"
             >
               Отклонить
+            </Button>
+          </div>
+
+          <!-- Owner/Admin action for selected offer (unselect) -->
+          <div v-if="canManageOffers && offer.status === 'selected' && freightRequest.status === 'selected'" class="flex gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="actionLoading"
+              @click="emit('unselect', offer.id)"
+            >
+              Отменить выбор
             </Button>
           </div>
 

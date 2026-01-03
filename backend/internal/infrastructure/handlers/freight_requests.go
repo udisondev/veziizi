@@ -72,6 +72,10 @@ func (h *FreightRequestsHandler) handleEvent(ctx context.Context, evt eventstore
 		return h.onOfferConfirmed(ctx, e)
 	case events.OfferDeclined:
 		return h.onOfferDeclined(ctx, e)
+	case events.OfferUnselected:
+		return h.onOfferUnselected(ctx, e)
+	case events.OfferCancelledWithRequest:
+		return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
 	}
 	return nil
 }
@@ -117,19 +121,36 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 	routeCityIDs := extractRouteCityIDs(e.Route)
 	routeCountryIDs := extractRouteCountryIDs(e.Route)
 
+	// Extract payment info
+	var paymentMethod, paymentTerms, vatType *string
+	if e.Payment.Method != "" {
+		pm := e.Payment.Method.String()
+		paymentMethod = &pm
+	}
+	if e.Payment.Terms != "" {
+		pt := e.Payment.Terms.String()
+		paymentTerms = &pt
+	}
+	if e.Payment.VatType != "" {
+		vt := e.Payment.VatType.String()
+		vatType = &vt
+	}
+
 	query, args, err := h.psql.
 		Insert("freight_requests_lookup").
 		Columns(
 			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "route", "cargo_weight",
+			"origin_address", "destination_address", "route", "cargo_weight", "cargo_volume",
 			"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
+			"payment_method", "payment_terms", "vat_type",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 			"route_city_ids", "route_country_ids",
 		).
 		Values(
 			e.AggregateID(), e.RequestNumber, e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
-			originAddr, destAddr, routeJSON, e.Cargo.Weight,
+			originAddr, destAddr, routeJSON, e.Cargo.Weight, e.Cargo.Volume,
 			priceAmount, priceCurrency, e.VehicleRequirements.VehicleType.String(), e.VehicleRequirements.VehicleSubType.String(),
+			paymentMethod, paymentTerms, vatType,
 			orgName, orgINN, orgCountry, e.CustomerMemberID,
 			routeCityIDs, routeCountryIDs,
 		).
@@ -199,7 +220,7 @@ func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.Freight
 	}
 
 	if e.Cargo != nil {
-		builder = builder.Set("cargo_weight", e.Cargo.Weight)
+		builder = builder.Set("cargo_weight", e.Cargo.Weight).Set("cargo_volume", e.Cargo.Volume)
 		hasUpdates = true
 	}
 
@@ -210,9 +231,23 @@ func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.Freight
 		hasUpdates = true
 	}
 
-	if e.Payment != nil && e.Payment.Price != nil {
-		builder = builder.Set("price_amount", e.Payment.Price.Amount).Set("price_currency", e.Payment.Price.Currency.String())
-		hasUpdates = true
+	if e.Payment != nil {
+		if e.Payment.Price != nil {
+			builder = builder.Set("price_amount", e.Payment.Price.Amount).Set("price_currency", e.Payment.Price.Currency.String())
+			hasUpdates = true
+		}
+		if e.Payment.Method != "" {
+			builder = builder.Set("payment_method", e.Payment.Method.String())
+			hasUpdates = true
+		}
+		if e.Payment.Terms != "" {
+			builder = builder.Set("payment_terms", e.Payment.Terms.String())
+			hasUpdates = true
+		}
+		if e.Payment.VatType != "" {
+			builder = builder.Set("vat_type", e.Payment.VatType.String())
+			hasUpdates = true
+		}
 	}
 
 	if !hasUpdates {
@@ -303,6 +338,16 @@ func (h *FreightRequestsHandler) onOfferConfirmed(ctx context.Context, e events.
 func (h *FreightRequestsHandler) onOfferDeclined(ctx context.Context, e events.OfferDeclined) error {
 	// Update offer status
 	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusDeclined.String()); err != nil {
+		return err
+	}
+
+	// Update freight request - back to published
+	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusPublished.String())
+}
+
+func (h *FreightRequestsHandler) onOfferUnselected(ctx context.Context, e events.OfferUnselected) error {
+	// Update offer status - back to pending
+	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusPending.String()); err != nil {
 		return err
 	}
 

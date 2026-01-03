@@ -9,20 +9,17 @@ import { useToast } from '@/components/ui/toast/use-toast'
 import { freightRequestsApi } from '@/api/freightRequests'
 import type {
   FreightRequestListItem,
-  FreightRequestStatus,
-  FreightRequestStatusFilter,
   OwnershipFilter,
-  VehicleType,
   VehicleSubType,
+  PaymentMethod,
+  PaymentTerms,
+  VatType,
 } from '@/types/freightRequest'
 import {
   vehicleTypeLabels,
   vehicleSubTypeLabels,
-  vehicleTypeOptions,
   currencyLabels,
   countryLabels,
-  ownershipOptions,
-  statusOptions,
   type Country,
 } from '@/types/freightRequest'
 import { freightRequestStatusMap } from '@/constants/statusMaps'
@@ -32,15 +29,6 @@ import { logger } from '@/utils/logger'
 // UI Components
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 // Shared Components
 import {
@@ -51,12 +39,10 @@ import {
   ErrorBanner,
   FilterSheet,
 } from '@/components/shared'
-import { Separator } from '@/components/ui/separator'
 
 // Filter Components
-import { ChipButtonGroup, RangeInput } from '@/components/filters'
+import { FreightFiltersForm } from '@/components/filters'
 import QuickSubscribeDialog from '@/components/subscriptions/QuickSubscribeDialog.vue'
-import SubscriptionRouteStep from '@/components/subscriptions/SubscriptionRouteStep.vue'
 
 // Icons
 import { Plus, Clock, Building2, Package, Bell } from 'lucide-vue-next'
@@ -76,16 +62,18 @@ const showSubscribeDialog = ref(false)
 // Get reactive refs from store
 const {
   ownershipFilter,
-  statusFilter,
-  orgNameFilter,
   orgINNFilter,
   routePoints,
   minWeight,
   maxWeight,
   minPrice,
   maxPrice,
-  vehicleTypes,
+  minVolume,
+  maxVolume,
   vehicleSubTypes,
+  paymentMethods,
+  paymentTerms,
+  vatTypes,
   hasSubscriptionFilters,
   hasActiveFilters,
   activeFiltersCount,
@@ -93,63 +81,71 @@ const {
 
 // Temp filters for sheet
 const tempOwnership = ref<OwnershipFilter>('all')
-const tempStatus = ref<FreightRequestStatusFilter>('all')
-const tempOrgName = ref('')
 const tempOrgINN = ref('')
 const tempRoutePoints = ref<RoutePointFilter[]>([])
 const tempMinWeight = ref<number | undefined>()
 const tempMaxWeight = ref<number | undefined>()
 const tempMinPrice = ref<number | undefined>()
 const tempMaxPrice = ref<number | undefined>()
-const tempVehicleTypes = ref<VehicleType[]>([])
+const tempMinVolume = ref<number | undefined>()
+const tempMaxVolume = ref<number | undefined>()
 const tempVehicleSubTypes = ref<VehicleSubType[]>([])
+const tempPaymentMethods = ref<PaymentMethod[]>([])
+const tempPaymentTerms = ref<PaymentTerms[]>([])
+const tempVatTypes = ref<VatType[]>([])
 
 
 // Sheet functions
 function openFilters() {
   tempOwnership.value = ownershipFilter.value
-  tempStatus.value = statusFilter.value
-  tempOrgName.value = orgNameFilter.value
   tempOrgINN.value = orgINNFilter.value
   tempRoutePoints.value = routePoints.value.map(rp => ({ ...rp }))
   tempMinWeight.value = minWeight.value
   tempMaxWeight.value = maxWeight.value
   tempMinPrice.value = minPrice.value
   tempMaxPrice.value = maxPrice.value
-  tempVehicleTypes.value = [...vehicleTypes.value]
+  tempMinVolume.value = minVolume.value
+  tempMaxVolume.value = maxVolume.value
   tempVehicleSubTypes.value = [...vehicleSubTypes.value]
+  tempPaymentMethods.value = [...paymentMethods.value]
+  tempPaymentTerms.value = [...paymentTerms.value]
+  tempVatTypes.value = [...vatTypes.value]
   showFilters.value = true
 }
 
 function applyFilters() {
   filtersStore.setFilters({
     ownership: tempOwnership.value,
-    status: tempStatus.value,
-    orgName: tempOrgName.value,
     orgINN: tempOrgINN.value,
     routePoints: tempRoutePoints.value.map(rp => ({ ...rp })),
     minWeight: tempMinWeight.value,
     maxWeight: tempMaxWeight.value,
     minPrice: tempMinPrice.value,
     maxPrice: tempMaxPrice.value,
-    vehicleTypes: [...tempVehicleTypes.value],
+    minVolume: tempMinVolume.value,
+    maxVolume: tempMaxVolume.value,
     vehicleSubTypes: [...tempVehicleSubTypes.value],
+    paymentMethods: [...tempPaymentMethods.value],
+    paymentTerms: [...tempPaymentTerms.value],
+    vatTypes: [...tempVatTypes.value],
   })
   showFilters.value = false
 }
 
 function resetTempFilters() {
   tempOwnership.value = 'all'
-  tempStatus.value = 'all'
-  tempOrgName.value = ''
   tempOrgINN.value = ''
   tempRoutePoints.value = []
   tempMinWeight.value = undefined
   tempMaxWeight.value = undefined
   tempMinPrice.value = undefined
   tempMaxPrice.value = undefined
-  tempVehicleTypes.value = []
+  tempMinVolume.value = undefined
+  tempMaxVolume.value = undefined
   tempVehicleSubTypes.value = []
+  tempPaymentMethods.value = []
+  tempPaymentTerms.value = []
+  tempVatTypes.value = []
 }
 
 // Load data with filters
@@ -158,26 +154,35 @@ async function loadItems() {
   error.value = null
 
   try {
-    const params: Parameters<typeof freightRequestsApi.list>[0] = {}
+    const params: Parameters<typeof freightRequestsApi.list>[0] = {
+      // Always show only published requests
+      status: 'published',
+    }
 
-    // Basic filters
+    // Ownership filter
     if (ownershipFilter.value === 'my_org' && auth.organizationId) {
       params.customer_org_id = auth.organizationId
     } else if (ownershipFilter.value === 'my' && auth.memberId) {
       params.member_id = auth.memberId
     }
 
-    if (statusFilter.value !== 'all') params.status = statusFilter.value as FreightRequestStatus
-    if (orgNameFilter.value) params.org_name = orgNameFilter.value
     if (orgINNFilter.value) params.org_inn = orgINNFilter.value
 
-    // Extended filters
+    // Numeric filters
     if (minWeight.value !== undefined) params.min_weight = minWeight.value
     if (maxWeight.value !== undefined) params.max_weight = maxWeight.value
     if (minPrice.value !== undefined) params.min_price = minPrice.value
     if (maxPrice.value !== undefined) params.max_price = maxPrice.value
-    if (vehicleTypes.value.length > 0) params.vehicle_types = vehicleTypes.value.join(',')
+    if (minVolume.value !== undefined) params.min_volume = minVolume.value
+    if (maxVolume.value !== undefined) params.max_volume = maxVolume.value
+
+    // Vehicle filter
     if (vehicleSubTypes.value.length > 0) params.vehicle_subtypes = vehicleSubTypes.value.join(',')
+
+    // Payment filters
+    if (paymentMethods.value.length > 0) params.payment_methods = paymentMethods.value.join(',')
+    if (paymentTerms.value.length > 0) params.payment_terms = paymentTerms.value.join(',')
+    if (vatTypes.value.length > 0) params.vat_types = vatTypes.value.join(',')
 
     // Route filter - extract city IDs and country IDs from route points
     if (routePoints.value.length > 0) {
@@ -233,8 +238,12 @@ const currentSubscriptionFilters = computed(() => ({
   maxWeight: maxWeight.value,
   minPrice: minPrice.value,
   maxPrice: maxPrice.value,
-  vehicleTypes: vehicleTypes.value,
+  minVolume: minVolume.value,
+  maxVolume: maxVolume.value,
   vehicleSubTypes: vehicleSubTypes.value,
+  paymentMethods: paymentMethods.value,
+  paymentTerms: paymentTerms.value,
+  vatTypes: vatTypes.value,
 }))
 
 // Route point management functions for temp state
@@ -303,8 +312,11 @@ function isExpiringSoon(expiresAt: string): boolean {
 
 // Watch filters and reload
 watch(
-  [ownershipFilter, statusFilter, orgNameFilter, orgINNFilter, routePoints,
-   minWeight, maxWeight, minPrice, maxPrice, vehicleTypes, vehicleSubTypes],
+  [
+    ownershipFilter, orgINNFilter, routePoints,
+    minWeight, maxWeight, minPrice, maxPrice, minVolume, maxVolume,
+    vehicleSubTypes, paymentMethods, paymentTerms, vatTypes,
+  ],
   () => loadItems(),
   { deep: true }
 )
@@ -339,99 +351,38 @@ onMounted(() => {
           @apply="applyFilters"
           @reset="resetTempFilters"
         >
-          <!-- Ownership -->
-          <div class="space-y-2">
-            <Label>Принадлежность</Label>
-            <Select v-model="tempOwnership">
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="opt in ownershipOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- Status -->
-          <div class="space-y-2">
-            <Label>Статус</Label>
-            <Select v-model="tempStatus">
-              <SelectTrigger>
-                <SelectValue placeholder="Все статусы" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="opt in statusOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- Organization name -->
-          <div class="space-y-2">
-            <Label>Название организации</Label>
-            <Input
-              v-model="tempOrgName"
-              placeholder="Поиск по названию"
-            />
-          </div>
-
-          <!-- INN -->
-          <div class="space-y-2">
-            <Label>ИНН</Label>
-            <Input
-              v-model="tempOrgINN"
-              placeholder="Поиск по ИНН"
-            />
-          </div>
-
-          <!-- Route Points -->
-          <SubscriptionRouteStep
+          <FreightFiltersForm
             :route-points="tempRoutePoints"
-            @add-point="addTempRoutePoint"
-            @remove-point="removeTempRoutePoint"
-            @update-point="updateTempRoutePoint"
-            @reorder="reorderTempRoutePoints"
-          />
-
-          <Separator />
-
-          <!-- Weight Range -->
-          <RangeInput
-            :min-value="tempMinWeight"
-            :max-value="tempMaxWeight"
-            label="Вес груза, т"
-            :step="0.1"
-            @update:min-value="tempMinWeight = $event"
-            @update:max-value="tempMaxWeight = $event"
-          />
-
-          <!-- Price Range -->
-          <RangeInput
-            :min-value="tempMinPrice"
-            :max-value="tempMaxPrice"
-            label="Ставка, руб."
-            :step="1000"
-            @update:min-value="tempMinPrice = $event"
-            @update:max-value="tempMaxPrice = $event"
-          />
-
-          <!-- Vehicle Types -->
-          <ChipButtonGroup
-            v-model="tempVehicleTypes"
-            :options="vehicleTypeOptions"
-            label="Тип транспорта"
-            empty-text="Не выбрано — все типы транспорта"
+            :min-weight="tempMinWeight"
+            :max-weight="tempMaxWeight"
+            :min-price="tempMinPrice"
+            :max-price="tempMaxPrice"
+            :min-volume="tempMinVolume"
+            :max-volume="tempMaxVolume"
+            :vehicle-sub-types="tempVehicleSubTypes"
+            :payment-methods="tempPaymentMethods"
+            :payment-terms="tempPaymentTerms"
+            :vat-types="tempVatTypes"
+            show-ownership
+            :ownership="tempOwnership"
+            show-i-n-n
+            :org-i-n-n="tempOrgINN"
+            @add-route-point="addTempRoutePoint"
+            @remove-route-point="removeTempRoutePoint"
+            @update-route-point="updateTempRoutePoint"
+            @reorder-route-points="reorderTempRoutePoints"
+            @update:min-weight="tempMinWeight = $event"
+            @update:max-weight="tempMaxWeight = $event"
+            @update:min-price="tempMinPrice = $event"
+            @update:max-price="tempMaxPrice = $event"
+            @update:min-volume="tempMinVolume = $event"
+            @update:max-volume="tempMaxVolume = $event"
+            @update:vehicle-sub-types="tempVehicleSubTypes = $event"
+            @update:payment-methods="tempPaymentMethods = $event"
+            @update:payment-terms="tempPaymentTerms = $event"
+            @update:vat-types="tempVatTypes = $event"
+            @update:ownership="tempOwnership = $event"
+            @update:org-i-n-n="tempOrgINN = $event"
           />
         </FilterSheet>
 
@@ -445,26 +396,8 @@ onMounted(() => {
     <!-- Active filters indicator -->
     <Card v-if="hasActiveFilters" class="mb-6 border-primary/20 bg-primary/5">
       <CardContent class="flex items-center justify-between py-3">
-        <div class="text-sm text-primary flex flex-wrap gap-x-2 gap-y-1">
-          <span v-if="ownershipFilter !== 'all'">
-            {{ ownershipOptions.find(o => o.value === ownershipFilter)?.label }}
-          </span>
-          <span v-if="statusFilter !== 'all'">
-            <span v-if="ownershipFilter !== 'all'">, </span>
-            Статус: {{ statusOptions.find(o => o.value === statusFilter)?.label }}
-          </span>
-          <span v-if="orgNameFilter">
-            <span v-if="ownershipFilter !== 'all' || statusFilter !== 'all'">, </span>
-            Организация: "{{ orgNameFilter }}"
-          </span>
-          <span v-if="orgINNFilter">
-            <span v-if="ownershipFilter !== 'all' || statusFilter !== 'all' || orgNameFilter">, </span>
-            ИНН: "{{ orgINNFilter }}"
-          </span>
-          <span v-if="routePoints.length > 0">
-            <span v-if="ownershipFilter !== 'all' || statusFilter !== 'all' || orgNameFilter || orgINNFilter">, </span>
-            Точек маршрута: {{ routePoints.length }}
-          </span>
+        <div class="text-sm text-primary">
+          Активные фильтры: {{ activeFiltersCount }}
         </div>
         <Button variant="ghost" size="sm" @click="filtersStore.resetFilters">
           Сбросить
@@ -505,7 +438,7 @@ onMounted(() => {
             <!-- Route -->
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 mb-2">
-                <StatusBadge :status="item.status" :status-map="freightStatusMap" />
+                <StatusBadge :status="item.status" :status-map="freightRequestStatusMap" />
                 <span
                   v-if="item.status === 'published' && isExpiringSoon(item.expires_at)"
                   class="inline-flex items-center gap-1 text-xs text-warning"
