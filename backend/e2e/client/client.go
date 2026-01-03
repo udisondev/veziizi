@@ -280,6 +280,11 @@ func (c *Client) DeclineOffer(frID, offerID uuid.UUID, reason *string) (*Respons
 	return doRequest[struct{}](c, http.MethodPost, "/api/v1/freight-requests/"+frID.String()+"/offers/"+offerID.String()+"/decline", CancelRequest{Reason: reason}, nil)
 }
 
+// UnselectOffer cancels selection of an offer (returns it to pending).
+func (c *Client) UnselectOffer(frID, offerID uuid.UUID, reason *string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/freight-requests/"+frID.String()+"/offers/"+offerID.String()+"/unselect", CancelRequest{Reason: reason}, nil)
+}
+
 // GetMyOffers returns offers made by current organization.
 func (c *Client) GetMyOffers(status string, limit, offset int) (*Response[[]OfferResponse], error) {
 	path := fmt.Sprintf("/api/v1/offers?limit=%d&offset=%d", limit, offset)

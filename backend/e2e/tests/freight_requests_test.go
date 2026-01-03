@@ -422,6 +422,337 @@ func (s *FreightRequestsSuite) TestFR103_OrderCreated() {
 	}, 5*time.Second, 50*time.Millisecond, "order should be created")
 }
 
+// ==================== POST /api/v1/freight-requests/{id}/offers/{offerId}/unselect ====================
+
+func (s *FreightRequestsSuite) TestFR110_UnselectOffer_Success() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Select offer
+	selectResp, err := s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, selectResp.StatusCode)
+
+	// Unselect offer
+	resp, err := s.ctx.Customer.Client.UnselectOffer(fr.ID, offer.OfferID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+
+	// Verify FR status back to published
+	frResp, err := s.ctx.Customer.Client.GetFreightRequest(fr.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal("published", frResp.Body.Status)
+}
+
+func (s *FreightRequestsSuite) TestFR111_UnselectOffer_WithReason() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Select offer
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+
+	// Unselect with reason
+	reason := "Found better offer"
+	resp, err := s.ctx.Customer.Client.UnselectOffer(fr.ID, offer.OfferID, &reason)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *FreightRequestsSuite) TestFR112_UnselectOffer_Unauthorized() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Select offer
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+
+	// Try to unselect without auth
+	resp, err := s.ctx.AnonClient.UnselectOffer(fr.ID, offer.OfferID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *FreightRequestsSuite) TestFR113_UnselectOffer_NotOwner() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Select offer
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+
+	// Try to unselect by carrier (not owner)
+	resp, err := s.ctx.Carrier.Client.UnselectOffer(fr.ID, offer.OfferID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+func (s *FreightRequestsSuite) TestFR114_UnselectOffer_NotSelected() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Try to unselect without selecting first (FR is in published status)
+	resp, err := s.ctx.Customer.Client.UnselectOffer(fr.ID, offer.OfferID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusConflict, resp.StatusCode)
+}
+
+func (s *FreightRequestsSuite) TestFR115_UnselectOffer_WrongOffer() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+
+	// Create two offers from different carriers
+	offer1 := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+	carrier2 := s.ctx.QuickCarrier()
+	offer2 := fixtures.NewOffer(s.T(), carrier2.Client, fr.ID).Create()
+
+	// Select offer1
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
+
+	// Try to unselect offer2 (not the selected one)
+	resp, err := s.ctx.Customer.Client.UnselectOffer(fr.ID, offer2.OfferID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusConflict, resp.StatusCode)
+}
+
+func (s *FreightRequestsSuite) TestFR116_UnselectOffer_NonexistentFR() {
+	resp, err := s.ctx.Customer.Client.UnselectOffer(uuid.New(), uuid.New(), nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNotFound, resp.StatusCode)
+}
+
+func (s *FreightRequestsSuite) TestFR117_UnselectOffer_ThenSelectAnother() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+
+	// Create two offers
+	offer1 := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+	carrier2 := s.ctx.QuickCarrier()
+	offer2 := fixtures.NewOffer(s.T(), carrier2.Client, fr.ID).Create()
+
+	// Select offer1
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
+
+	// Unselect offer1
+	resp1, err := s.ctx.Customer.Client.UnselectOffer(fr.ID, offer1.OfferID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp1.StatusCode)
+
+	// Select offer2
+	resp2, err := s.ctx.Customer.Client.SelectOffer(fr.ID, offer2.OfferID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp2.StatusCode)
+
+	// Verify FR status is selected
+	frResp, _ := s.ctx.Customer.Client.GetFreightRequest(fr.ID)
+	s.Assert().Equal("selected", frResp.Body.Status)
+}
+
+// ==================== Cancel from selected status ====================
+
+func (s *FreightRequestsSuite) TestFR120_CancelSelected_Success() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Select offer
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+
+	// Cancel FR from selected status
+	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, helpers.StringPtr("Changed plans"))
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+
+	// Verify FR is cancelled
+	frResp, _ := s.ctx.Customer.Client.GetFreightRequest(fr.ID)
+	s.Assert().Equal("cancelled", frResp.Body.Status)
+}
+
+func (s *FreightRequestsSuite) TestFR121_CancelSelected_OfferRejected() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Select offer
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+
+	// Cancel FR
+	s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
+
+	// Verify offer is rejected
+	helpers.Wait(s.T(), func() bool {
+		offersResp, err := s.ctx.Customer.Client.GetOffers(fr.ID)
+		if err != nil || offersResp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, o := range offersResp.Body {
+			if o.ID == offer.OfferID {
+				return o.Status == "rejected"
+			}
+		}
+		return false
+	}, "offer should be rejected after FR cancellation")
+}
+
+func (s *FreightRequestsSuite) TestFR122_CancelSelected_PendingOffersRejected() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+
+	// Create multiple offers
+	offer1 := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+	carrier2 := s.ctx.QuickCarrier()
+	offer2 := fixtures.NewOffer(s.T(), carrier2.Client, fr.ID).Create()
+
+	// Select offer1
+	s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
+
+	// Cancel FR
+	s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
+
+	// Verify all offers are rejected
+	helpers.Wait(s.T(), func() bool {
+		offersResp, err := s.ctx.Customer.Client.GetOffers(fr.ID)
+		if err != nil || offersResp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, o := range offersResp.Body {
+			if o.ID == offer1.OfferID || o.ID == offer2.OfferID {
+				if o.Status != "rejected" {
+					return false
+				}
+			}
+		}
+		return true
+	}, "all offers should be rejected after FR cancellation")
+}
+
+// ==================== List filters ====================
+
+func (s *FreightRequestsSuite) TestFR130_FilterByMinVolume() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithVolume(15.0).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"min_volume": "10.0",
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, item := range resp.Body {
+			if item.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with volume 15 should appear in min_volume=10 filter")
+}
+
+func (s *FreightRequestsSuite) TestFR131_FilterByMaxVolume() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithVolume(5.0).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"max_volume": "10.0",
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, item := range resp.Body {
+			if item.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with volume 5 should appear in max_volume=10 filter")
+}
+
+func (s *FreightRequestsSuite) TestFR132_FilterByPaymentMethods() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithPayment(50000, values.CurrencyRUB.String(), values.VatTypeIncluded.String(),
+			values.PaymentMethodCash.String(), values.PaymentTermsPrepaid.String()).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"payment_methods": values.PaymentMethodCash.String(),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, item := range resp.Body {
+			if item.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with cash payment should appear in payment_methods filter")
+}
+
+func (s *FreightRequestsSuite) TestFR133_FilterByPaymentTerms() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithPayment(50000, values.CurrencyRUB.String(), values.VatTypeIncluded.String(),
+			values.PaymentMethodBankTransfer.String(), values.PaymentTermsDeferred.String()).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"payment_terms": values.PaymentTermsDeferred.String(),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, item := range resp.Body {
+			if item.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with deferred terms should appear in payment_terms filter")
+}
+
+func (s *FreightRequestsSuite) TestFR134_FilterByVatTypes() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithPayment(50000, values.CurrencyRUB.String(), values.VatTypeExcluded.String(),
+			values.PaymentMethodBankTransfer.String(), values.PaymentTermsPrepaid.String()).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"vat_types": values.VatTypeExcluded.String(),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, item := range resp.Body {
+			if item.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with excluded VAT should appear in vat_types filter")
+}
+
+func (s *FreightRequestsSuite) TestFR135_FilterCombined() {
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithVolume(20.0).
+		WithPayment(50000, values.CurrencyRUB.String(), values.VatTypeIncluded.String(),
+			values.PaymentMethodBankTransfer.String(), values.PaymentTermsPrepaid.String()).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"min_volume":      "15.0",
+			"payment_methods": values.PaymentMethodBankTransfer.String(),
+			"vat_types":       values.VatTypeIncluded.String(),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, item := range resp.Body {
+			if item.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR should appear with combined filters")
+}
+
 // Helper function
 func intPtr(i int) *int {
 	return &i
