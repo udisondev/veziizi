@@ -168,13 +168,14 @@ async function confirmUnblock() {
       <template #actions>
         <DropdownMenu v-if="member && hasAnyAction">
           <DropdownMenuTrigger as-child>
-            <Button variant="ghost" size="icon">
+            <Button data-tutorial="member-actions" variant="ghost" size="icon">
               <MoreVertical class="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               v-if="canBlock"
+              data-tutorial="block-member-btn"
               class="text-destructive focus:text-destructive"
               @click="openBlockModal"
             >
@@ -182,6 +183,7 @@ async function confirmUnblock() {
             </DropdownMenuItem>
             <DropdownMenuItem
               v-if="canUnblock"
+              data-tutorial="unblock-member-btn"
               class="text-success focus:text-success"
               @click="openUnblockModal"
             >

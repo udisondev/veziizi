@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useOnboardingStore } from '@/stores/onboarding'
 import { usePermissions } from '@/composables/usePermissions'
+import { tutorialBus } from '@/sandbox/events'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -43,9 +45,17 @@ import {
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const onboarding = useOnboardingStore()
 const { canManageMembers } = usePermissions()
 
 const isMenuOpen = ref(false)
+
+// Эмит события при открытии/закрытии мобильного меню для туториала
+watch(isMenuOpen, (newValue) => {
+  if (onboarding.isSandboxMode) {
+    tutorialBus.emit(newValue ? 'menu:opened' : 'menu:closed')
+  }
+})
 
 const menuItems = computed(() => {
   const items = [
@@ -91,7 +101,7 @@ const userInitial = computed(() => {
           <!-- Mobile menu (Sheet) -->
           <Sheet v-model:open="isMenuOpen">
             <SheetTrigger as-child>
-              <Button variant="ghost" size="icon" class="md:hidden">
+              <Button variant="ghost" size="icon" class="md:hidden" data-tutorial="mobile-menu-btn">
                 <Menu class="h-5 w-5" />
               </Button>
             </SheetTrigger>
@@ -104,6 +114,13 @@ const userInitial = computed(() => {
                   v-for="item in menuItems"
                   :key="item.to"
                   @click="navigate(item.to)"
+                  :data-tutorial="
+                    item.to === '/' ? 'mobile-nav-requests' :
+                    item.to === '/orders' ? 'mobile-nav-orders' :
+                    item.to === '/my-offers' ? 'mobile-nav-my-offers' :
+                    item.to === '/subscriptions' ? 'mobile-nav-subscriptions' :
+                    item.to === '/members' ? 'mobile-nav-members' : undefined
+                  "
                   :class="[
                     'w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-3 transition-colors',
                     route.path === item.to
@@ -134,6 +151,13 @@ const userInitial = computed(() => {
               v-for="item in menuItems.slice(0, 5)"
               :key="item.to"
               :to="item.to"
+              :data-tutorial="
+                item.to === '/' ? 'nav-requests' :
+                item.to === '/orders' ? 'nav-orders' :
+                item.to === '/my-offers' ? 'nav-my-offers' :
+                item.to === '/subscriptions' ? 'nav-subscriptions' :
+                item.to === '/members' ? 'nav-members' : undefined
+              "
               :class="[
                 'px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors',
                 route.path === item.to
@@ -161,7 +185,13 @@ const userInitial = computed(() => {
           </div>
 
           <!-- Support -->
-          <Button variant="ghost" size="icon" @click="router.push('/support')" title="Поддержка">
+          <Button
+            variant="ghost"
+            size="icon"
+            data-tutorial="help-btn"
+            @click="router.push('/support')"
+            title="Поддержка"
+          >
             <HelpCircle class="h-5 w-5" />
           </Button>
 

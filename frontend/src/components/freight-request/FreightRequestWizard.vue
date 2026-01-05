@@ -2,6 +2,8 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFreightRequestForm } from '@/composables/useFreightRequestForm'
+import { useTutorialEvent } from '@/composables/useTutorialEvent'
+import { useOnboardingStore } from '@/stores/onboarding'
 import { freightRequestsApi } from '@/api/freightRequests'
 import WizardStepIndicator from './WizardStepIndicator.vue'
 import RouteStep from './steps/RouteStep.vue'
@@ -23,6 +25,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 const router = useRouter()
 const form = useFreightRequestForm()
+const { emit: emitTutorial } = useTutorialEvent()
+const onboarding = useOnboardingStore()
 
 const isLoading = ref(false)
 const apiError = ref('')
@@ -44,6 +48,28 @@ watch(
 )
 
 async function handleSubmit() {
+  // В sandbox режиме не делаем реальный API вызов
+  if (onboarding.isSandboxMode) {
+    const routePoints = form.routePoints.value
+    const firstPoint = routePoints[0]
+    const lastPoint = routePoints[routePoints.length - 1]
+
+    onboarding.setSandboxCreatedRequest({
+      id: 'sandbox-request-' + Date.now(),
+      origin_address: firstPoint?.address || 'Не указан',
+      destination_address: lastPoint?.address || 'Не указан',
+      cargo_weight: form.cargo.weight || 0,
+      price_amount: form.payment.price?.amount,
+      price_currency: form.payment.price?.currency,
+      vehicle_type: form.vehicle.vehicle_type || 'truck',
+      vehicle_subtype: form.vehicle.vehicle_subtype || 'tilt',
+      created_at: new Date().toISOString(),
+    })
+    emitTutorial('freightRequest:created', { id: 'sandbox-request' })
+    router.push('/')
+    return
+  }
+
   isLoading.value = true
   apiError.value = ''
 
@@ -65,7 +91,10 @@ function handleNext() {
   if (form.currentStep.value === form.totalSteps) {
     handleSubmit()
   } else {
-    form.nextStep()
+    // Отправляем событие только если валидация прошла и переход выполнен
+    if (form.nextStep()) {
+      emitTutorial('wizard:next')
+    }
   }
 }
 </script>
@@ -92,6 +121,7 @@ function handleNext() {
       <!-- Step 1: Route -->
       <RouteStep
         v-if="form.currentStep.value === 1"
+        data-tutorial="route-step"
         :route-points="form.routePoints.value"
         :errors="form.errors"
         @add-point="form.addRoutePoint"
@@ -103,6 +133,7 @@ function handleNext() {
       <!-- Step 2: Cargo -->
       <CargoStep
         v-else-if="form.currentStep.value === 2"
+        data-tutorial="cargo-step"
         :cargo="form.cargo"
         :errors="form.errors"
         @update:cargo="Object.assign(form.cargo, $event)"
@@ -112,6 +143,7 @@ function handleNext() {
       <!-- Step 3: Vehicle -->
       <VehicleStep
         v-else-if="form.currentStep.value === 3"
+        data-tutorial="vehicle-step"
         :vehicle="form.vehicle"
         :errors="form.errors"
         @update:vehicle="Object.assign(form.vehicle, $event)"
@@ -121,6 +153,7 @@ function handleNext() {
       <!-- Step 4: Payment -->
       <PaymentStep
         v-else-if="form.currentStep.value === 4"
+        data-tutorial="payment-step"
         :payment="form.payment"
         :errors="form.errors"
         @update:payment="Object.assign(form.payment, $event)"
@@ -137,10 +170,11 @@ function handleNext() {
     </div>
 
     <!-- Navigation buttons -->
-    <div class="flex gap-4 mt-6">
+    <div class="flex gap-4 mt-6" data-tutorial="wizard-buttons">
       <button
         v-if="form.currentStep.value > 1"
         type="button"
+        data-tutorial="back-btn"
         class="flex-1 py-3 px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
         @click="form.prevStep"
       >
@@ -149,6 +183,7 @@ function handleNext() {
 
       <button
         type="button"
+        data-tutorial="submit-btn"
         :disabled="isLoading"
         :class="[
           'flex-1 py-3 px-4 border border-transparent rounded-md text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors',
@@ -167,7 +202,7 @@ function handleNext() {
           {{ editMode ? 'Сохранение...' : 'Публикация...' }}
         </template>
         <template v-else>
-          {{ form.currentStep.value === form.totalSteps ? (editMode ? 'Сохранить изменения' : 'Опубликовать заявку') : 'Далее' }}
+          {{ form.currentStep.value === form.totalSteps ? (editMode ? 'Сохранить изменения' : 'Опубликовать') : 'Далее' }}
         </template>
       </button>
     </div>

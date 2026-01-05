@@ -7,6 +7,7 @@ import { membersApi, type MemberProfile } from '@/api/members'
 import { historyApi } from '@/api/history'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
+import { useTutorialEvent } from '@/composables/useTutorialEvent'
 import type { OrderListItem } from '@/types/order'
 import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
 import EventHistory from '@/components/EventHistory.vue'
@@ -93,6 +94,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const permissions = usePermissions()
+const { emit: emitTutorial } = useTutorialEvent()
 
 // State
 const freightRequest = ref<FreightRequest | null>(null)
@@ -105,6 +107,11 @@ const actionLoading = ref(false)
 
 // Tabs
 const currentTab = ref('details')
+
+// Отправляем событие для туториала при смене таба
+watch(currentTab, (newTab) => {
+  if (newTab === 'offers') emitTutorial('tab:offers')
+})
 
 // History loader
 function loadFreightRequestHistory(limit: number, offset: number) {
@@ -471,6 +478,7 @@ onMounted(() => {
           <!-- Make Offer Button for carriers -->
           <Button
             v-if="canMakeOffer && !myActiveOffer"
+            data-tutorial="make-offer-btn"
             size="sm"
             @click="showMakeOfferModal = true"
           >
@@ -821,7 +829,7 @@ onMounted(() => {
           </TabsContent>
 
           <!-- Offers Tab -->
-          <TabsContent value="offers">
+          <TabsContent value="offers" data-tutorial="offers-tab">
             <FreightRequestOffersTab
               :freight-request="freightRequest"
               :offers="offers"

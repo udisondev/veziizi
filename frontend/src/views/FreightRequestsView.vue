@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { useOnboardingStore } from '@/stores/onboarding'
 import { useFreightFiltersStore, type RoutePointFilter } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
 import { useToast } from '@/components/ui/toast/use-toast'
@@ -49,6 +50,7 @@ import { Plus, Clock, Building2, Package, Bell } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
+const onboarding = useOnboardingStore()
 const filtersStore = useFreightFiltersStore()
 const { toast } = useToast()
 const { canCreateFreightRequest } = usePermissions()
@@ -310,6 +312,32 @@ function isExpiringSoon(expiresAt: string): boolean {
   return diffDays > 0 && diffDays <= 3
 }
 
+// Преобразование sandbox заявки в формат списка
+function sandboxRequestToListItem(req: NonNullable<typeof onboarding.sandboxCreatedRequest>): FreightRequestListItem {
+  return {
+    id: req.id,
+    status: req.status as 'published',
+    origin_address: req.origin_address,
+    destination_address: req.destination_address,
+    cargo_weight: req.cargo_weight / 1000, // кг в тонны
+    vehicle_type: req.vehicle_type,
+    vehicle_subtype: req.vehicle_subtype,
+    price_amount: req.price_amount,
+    price_currency: req.price_currency,
+    created_at: req.created_at,
+    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // +30 дней
+    customer_org_name: 'Моя организация',
+  }
+}
+
+// Computed для списка с учётом sandbox режима
+const displayItems = computed<FreightRequestListItem[]>(() => {
+  if (onboarding.isSandboxMode && onboarding.sandboxCreatedRequest) {
+    return [sandboxRequestToListItem(onboarding.sandboxCreatedRequest)]
+  }
+  return items.value
+})
+
 // Watch filters and reload
 watch(
   [
@@ -347,6 +375,7 @@ onMounted(() => {
           v-model:open="showFilters"
           :active-filters-count="activeFiltersCount"
           description="Настройте параметры поиска заявок"
+          data-tutorial="filters-btn"
           @open="openFilters"
           @apply="applyFilters"
           @reset="resetTempFilters"
@@ -386,7 +415,11 @@ onMounted(() => {
           />
         </FilterSheet>
 
-        <Button v-if="canCreateFreightRequest" @click="goToCreate">
+        <Button
+          v-if="canCreateFreightRequest"
+          data-tutorial="create-request-btn"
+          @click="goToCreate"
+        >
           <Plus class="mr-2 h-4 w-4" />
           Новая заявка
         </Button>
@@ -417,7 +450,7 @@ onMounted(() => {
 
     <!-- Empty state -->
     <EmptyState
-      v-else-if="items.length === 0"
+      v-else-if="displayItems.length === 0"
       :icon="Package"
       title="Заявок пока нет"
       :description="hasActiveFilters ? 'Нет заявок по заданным фильтрам' : 'Создайте первую заявку на перевозку'"
@@ -428,8 +461,9 @@ onMounted(() => {
     <!-- List -->
     <div v-else class="space-y-4">
       <Card
-        v-for="item in items"
+        v-for="item in displayItems"
         :key="item.id"
+        data-tutorial="freight-request-card"
         class="hover:shadow-md transition-shadow cursor-pointer"
         @click="goToDetail(item.id)"
       >

@@ -146,7 +146,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
 <template>
   <div class="space-y-6">
     <!-- Vehicle type -->
-    <div>
+    <div data-tutorial="vehicle-type">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Тип транспорта <span class="text-red-500">*</span>
       </label>
@@ -169,7 +169,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
     </div>
 
     <!-- Vehicle subtype (тип кузова) -->
-    <div>
+    <div data-tutorial="vehicle-subtype">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Тип кузова <span class="text-red-500">*</span>
       </label>
@@ -192,7 +192,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
     </div>
 
     <!-- Loading types -->
-    <div>
+    <div data-tutorial="vehicle-loading">
       <label class="block text-sm font-medium text-gray-700 mb-2">
         Тип погрузки
       </label>
@@ -218,7 +218,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
     </div>
 
     <!-- Capacity -->
-    <div>
+    <div data-tutorial="vehicle-capacity">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Грузоподъёмность, кг
       </label>
@@ -234,7 +234,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
     </div>
 
     <!-- Volume -->
-    <div>
+    <div data-tutorial="vehicle-volume">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Объём кузова, м³
       </label>
@@ -250,7 +250,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
     </div>
 
     <!-- Dimensions -->
-    <div>
+    <div data-tutorial="vehicle-dimensions">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Размеры кузова (Д × Ш × В), м
       </label>
@@ -292,7 +292,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
     </div>
 
     <!-- Temperature checkbox (только для изотермического/рефрижератора) -->
-    <div v-if="isTemperatureSubType" class="space-y-3">
+    <div v-if="isTemperatureSubType" class="space-y-3" data-tutorial="vehicle-temperature">
       <div class="flex items-center gap-3">
         <input
           id="show_temperature"
@@ -306,7 +306,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       </div>
 
       <!-- Temperature fields (показываются по галочке) -->
-      <div v-if="showTemperature" class="pl-7">
+      <div v-if="showTemperature" class="pl-7" data-tutorial="vehicle-temperature-range">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Диапазон температуры, °C <span class="text-red-500">*</span>
         </label>
@@ -352,7 +352,7 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
     </div>
 
     <!-- Thermograph checkbox (только для изотермического/рефрижератора) -->
-    <div v-if="isTemperatureSubType" class="flex items-center gap-3">
+    <div v-if="isTemperatureSubType" class="flex items-center gap-3" data-tutorial="vehicle-thermograph">
       <input
         id="thermograph"
         :checked="vehicle.thermograph"

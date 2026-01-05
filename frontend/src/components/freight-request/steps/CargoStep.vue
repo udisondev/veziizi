@@ -71,7 +71,7 @@ const inputClass = (field: string) => [
 <template>
   <div class="space-y-6">
     <!-- Description -->
-    <div>
+    <div data-tutorial="cargo-description">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Описание груза <span class="text-red-500">*</span>
       </label>
@@ -90,7 +90,7 @@ const inputClass = (field: string) => [
 
     <!-- Weight and Volume -->
     <div class="grid grid-cols-2 gap-4">
-      <div>
+      <div data-tutorial="cargo-weight">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Вес, кг <span class="text-red-500">*</span>
         </label>
@@ -109,7 +109,7 @@ const inputClass = (field: string) => [
         </p>
       </div>
 
-      <div>
+      <div data-tutorial="cargo-volume">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Объём, м³
         </label>
@@ -126,7 +126,7 @@ const inputClass = (field: string) => [
     </div>
 
     <!-- Dimensions -->
-    <div>
+    <div data-tutorial="cargo-dimensions">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Габариты (Д × Ш × В), м
       </label>
@@ -168,7 +168,7 @@ const inputClass = (field: string) => [
     </div>
 
     <!-- Quantity -->
-    <div>
+    <div data-tutorial="cargo-quantity">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Количество мест <span class="text-red-500">*</span>
       </label>
@@ -188,7 +188,7 @@ const inputClass = (field: string) => [
     </div>
 
     <!-- ADR Class -->
-    <div>
+    <div data-tutorial="cargo-adr">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Класс опасности груза
       </label>

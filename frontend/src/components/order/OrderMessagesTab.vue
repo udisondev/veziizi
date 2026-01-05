@@ -113,6 +113,7 @@ onMounted(() => {
     <div v-if="canSendMessage" class="flex flex-col gap-2 sm:flex-row">
       <Input
         v-model="messageInput"
+        data-tutorial="message-input"
         @keyup.enter="handleSendMessage"
         placeholder="Введите сообщение..."
         :disabled="actionLoading"
