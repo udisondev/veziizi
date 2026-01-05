@@ -272,7 +272,7 @@ onMounted(() => {
         </div>
       </FilterSheet>
 
-      <Button @click="showForm = true">
+      <Button data-tutorial="invite-btn" @click="showForm = true">
         <Plus class="mr-2 h-4 w-4" />
         Пригласить
       </Button>

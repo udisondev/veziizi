@@ -129,6 +129,7 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
           <!-- Owner/Admin actions for pending offers -->
           <div v-if="canManageOffers && offer.status === 'pending' && freightRequest.status === 'published'" class="flex gap-2 shrink-0">
             <Button
+              data-tutorial="select-offer-btn"
               size="sm"
               :disabled="actionLoading"
               @click="emit('select', offer.id)"
@@ -137,6 +138,7 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
               Выбрать
             </Button>
             <Button
+              data-tutorial="reject-offer-btn"
               variant="outline"
               size="sm"
               :disabled="actionLoading"
@@ -149,6 +151,7 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
           <!-- Owner/Admin action for selected offer (unselect) -->
           <div v-if="canManageOffers && offer.status === 'selected' && freightRequest.status === 'selected'" class="flex gap-2 shrink-0">
             <Button
+              data-tutorial="unselect-offer-btn"
               variant="outline"
               size="sm"
               :disabled="actionLoading"
@@ -162,6 +165,7 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
           <div v-if="!isOwner && offer.carrier_org_id === auth.organizationId" class="flex gap-2 shrink-0">
             <template v-if="offer.status === 'pending' && permissions.canWithdrawOffer(offer.carrier_org_id, offer.carrier_member_id)">
               <Button
+                data-tutorial="withdraw-offer-btn"
                 variant="outline"
                 size="sm"
                 :disabled="actionLoading"
@@ -172,6 +176,7 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
             </template>
             <template v-if="offer.status === 'selected' && permissions.canConfirmOffer(offer.carrier_org_id, offer.carrier_member_id)">
               <Button
+                data-tutorial="confirm-offer-btn"
                 size="sm"
                 :disabled="actionLoading"
                 @click="emit('confirm', offer.id)"
@@ -180,6 +185,7 @@ function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
                 Подтвердить
               </Button>
               <Button
+                data-tutorial="decline-offer-btn"
                 variant="outline"
                 size="sm"
                 :disabled="actionLoading"

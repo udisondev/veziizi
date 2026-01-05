@@ -103,7 +103,7 @@ const inputClass = (field: string) => [
 <template>
   <div class="space-y-6">
     <!-- Галочка "Не указывать цену" -->
-    <div class="flex items-center gap-3">
+    <div data-tutorial="payment-no-price" class="flex items-center gap-3">
       <input
         id="no-price"
         type="checkbox"
@@ -118,7 +118,7 @@ const inputClass = (field: string) => [
     </div>
 
     <!-- Price (показываем только если галочка не отмечена) -->
-    <div v-if="!payment.no_price">
+    <div v-if="!payment.no_price" data-tutorial="payment-price">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Стоимость перевозки <span class="text-red-500">*</span>
       </label>
@@ -143,7 +143,7 @@ const inputClass = (field: string) => [
     </div>
 
     <!-- Currency -->
-    <div v-if="!payment.no_price">
+    <div v-if="!payment.no_price" data-tutorial="payment-currency">
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Валюта
       </label>
@@ -165,7 +165,7 @@ const inputClass = (field: string) => [
     <!-- Все остальные поля оплаты показываем только если цена указывается -->
     <template v-if="!payment.no_price">
       <!-- VAT type -->
-      <div>
+      <div data-tutorial="payment-vat">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           НДС
         </label>
@@ -185,7 +185,7 @@ const inputClass = (field: string) => [
       </div>
 
       <!-- Payment method -->
-      <div>
+      <div data-tutorial="payment-method">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Способ оплаты
         </label>
@@ -205,7 +205,7 @@ const inputClass = (field: string) => [
       </div>
 
       <!-- Payment terms -->
-      <div>
+      <div data-tutorial="payment-terms">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Условия оплаты
         </label>

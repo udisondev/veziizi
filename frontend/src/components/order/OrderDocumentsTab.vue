@@ -79,6 +79,7 @@ defineExpose({
         class="hidden"
       />
       <Button
+        data-tutorial="upload-doc-btn"
         :disabled="uploadingFile || actionLoading"
         @click="triggerFileUpload"
       >

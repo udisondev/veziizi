@@ -231,8 +231,9 @@ onMounted(() => {
     <!-- List -->
     <div v-else class="space-y-4">
       <Card
-        v-for="item in items"
+        v-for="(item, idx) in items"
         :key="item.id"
+        :data-tutorial="idx === 0 ? 'order-card' : undefined"
         class="hover:shadow-md transition-shadow cursor-pointer"
         @click="goToDetail(item.id)"
       >

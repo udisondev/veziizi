@@ -2,8 +2,10 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { devApi, type DevUser } from '@/api/dev'
 import { useAuthStore } from '@/stores/auth'
+import { useOnboardingStore } from '@/stores/onboarding'
 
 const auth = useAuthStore()
+const onboarding = useOnboardingStore()
 
 const isOpen = ref(false)
 const isLoading = ref(false)
@@ -90,6 +92,11 @@ onUnmounted(() => {
 })
 
 const currentUserId = computed(() => auth.memberId)
+
+function resetTutorial() {
+  onboarding.resetProgress()
+  window.location.reload()
+}
 
 const groupedUsers = computed(() => {
   const groups: Record<string, { orgName: string; orgStatus: string; users: DevUser[] }> = {}
@@ -260,6 +267,19 @@ function getRoleBadgeClass(role: string) {
             Пользователи не найдены
           </div>
         </div>
+      </div>
+
+      <!-- Tutorial Reset -->
+      <div class="p-3 border-t bg-gray-50">
+        <button
+          @click="resetTutorial"
+          class="w-full px-3 py-2 text-sm bg-purple-500 hover:bg-purple-600 text-white rounded-md transition-colors flex items-center justify-center gap-2"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Сбросить туториал
+        </button>
       </div>
 
       <!-- Footer -->

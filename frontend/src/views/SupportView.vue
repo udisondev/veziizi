@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getFAQ, createTicket, getMyTickets, type FAQItem, type TicketListItem } from '@/api/support'
+import { useOnboardingStore } from '@/stores/onboarding'
+import { usePermissions } from '@/composables/usePermissions'
+import { storeToRefs } from 'pinia'
+import { createTicket, getMyTickets, type TicketListItem } from '@/api/support'
+import type { ScenarioType } from '@/types/tutorial'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -10,24 +14,31 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
 
 // Shared Components
 import { PageHeader } from '@/components/shared'
 
 // Icons
-import { HelpCircle, MessageSquare, Send, ChevronRight, Ticket, Clock } from 'lucide-vue-next'
+import {
+  GraduationCap,
+  MessageSquare,
+  Send,
+  ChevronRight,
+  Ticket,
+  Clock,
+  Package,
+  Truck,
+  ClipboardList,
+  Users,
+  Play,
+  CheckCircle,
+  HandCoins,
+} from 'lucide-vue-next'
 
 const router = useRouter()
-
-// FAQ
-const faq = ref<FAQItem[]>([])
-const faqLoading = ref(false)
+const onboarding = useOnboardingStore()
+const { progress } = storeToRefs(onboarding)
+const { canManageMembers } = usePermissions()
 
 // Recent tickets
 const recentTickets = ref<TicketListItem[]>([])
@@ -40,27 +51,74 @@ const submitting = ref(false)
 const error = ref('')
 const success = ref(false)
 
-// Group FAQ by category
-const faqByCategory = computed(() => {
-  const grouped: Record<string, FAQItem[]> = {}
-  for (const item of faq.value) {
-    if (!grouped[item.category]) {
-      grouped[item.category] = []
-    }
-    grouped[item.category].push(item)
-  }
-  return grouped
-})
+// Курсы обучения
+interface CourseInfo {
+  id: ScenarioType
+  title: string
+  description: string
+  icon: typeof Package
+  color: string
+  duration: string
+  requiresRole?: ('owner' | 'administrator')[]
+}
 
-async function loadFAQ() {
-  faqLoading.value = true
-  try {
-    faq.value = await getFAQ()
-  } catch (e) {
-    console.error('Failed to load FAQ:', e)
-  } finally {
-    faqLoading.value = false
-  }
+const allCourses: CourseInfo[] = [
+  {
+    id: 'customer_flow',
+    title: 'Создание заявки',
+    description: 'Научитесь создавать заявки на перевозку',
+    icon: Package,
+    color: 'bg-blue-100 text-blue-600',
+    duration: '~5 мин',
+  },
+  {
+    id: 'offers_receive_flow',
+    title: 'Выбор предложения',
+    description: 'Как выбирать предложения перевозчиков',
+    icon: Truck,
+    color: 'bg-green-100 text-green-600',
+    duration: '~2 мин',
+  },
+  {
+    id: 'carrier_flow',
+    title: 'Создание предложения',
+    description: 'Как делать предложения на заявки',
+    icon: HandCoins,
+    color: 'bg-amber-100 text-amber-600',
+    duration: '~3 мин',
+  },
+  {
+    id: 'orders_flow',
+    title: 'Управление заказами',
+    description: 'Освойте работу с заказами: сообщения, документы',
+    icon: ClipboardList,
+    color: 'bg-orange-100 text-orange-600',
+    duration: '~2 мин',
+  },
+  {
+    id: 'admin_flow',
+    title: 'Управление командой',
+    description: 'Приглашение сотрудников и управление ролями',
+    icon: Users,
+    color: 'bg-purple-100 text-purple-600',
+    duration: '~2 мин',
+    requiresRole: ['owner', 'administrator'],
+  },
+]
+
+const courses = computed(() =>
+  allCourses.filter(course => {
+    if (!course.requiresRole) return true
+    return canManageMembers.value
+  })
+)
+
+function isCompleted(courseId: ScenarioType): boolean {
+  return progress.value.completedScenarios.includes(courseId)
+}
+
+async function startCourse(courseId: ScenarioType) {
+  await onboarding.enterSandbox(courseId)
 }
 
 async function loadRecentTickets() {
@@ -125,7 +183,6 @@ function formatDate(dateStr: string): string {
 }
 
 onMounted(() => {
-  loadFAQ()
   loadRecentTickets()
 })
 </script>
@@ -142,43 +199,45 @@ onMounted(() => {
     </PageHeader>
 
     <div class="grid gap-6 lg:grid-cols-3">
-      <!-- Left column: FAQ -->
+      <!-- Left column: Мини-курсы -->
       <div class="lg:col-span-2 space-y-6">
         <Card>
           <CardHeader>
             <div class="flex items-center gap-3">
               <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <HelpCircle class="h-5 w-5 text-primary" />
+                <GraduationCap class="h-5 w-5 text-primary" />
               </div>
               <div>
-                <CardTitle>Часто задаваемые вопросы</CardTitle>
-                <CardDescription>Ответы на популярные вопросы</CardDescription>
+                <CardTitle>Мини-курсы</CardTitle>
+                <CardDescription>Интерактивное обучение работе с платформой</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div v-if="faqLoading" class="text-center py-8 text-muted-foreground">
-              Загрузка...
-            </div>
-
-            <div v-else-if="Object.keys(faqByCategory).length === 0" class="text-center py-8 text-muted-foreground">
-              FAQ пока пуст
-            </div>
-
-            <div v-else class="space-y-6">
-              <div v-for="(items, category) in faqByCategory" :key="category">
-                <h3 class="text-sm font-medium text-muted-foreground mb-3">{{ category }}</h3>
-                <Accordion type="single" collapsible class="w-full">
-                  <AccordionItem v-for="(item, idx) in items" :key="idx" :value="`${category}-${idx}`">
-                    <AccordionTrigger class="text-left">
-                      {{ item.question }}
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <p class="text-muted-foreground">{{ item.answer }}</p>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <Card
+                v-for="course in courses"
+                :key="course.id"
+                class="cursor-pointer transition-all hover:border-primary hover:shadow-md"
+                @click="startCourse(course.id)"
+              >
+                <CardHeader class="flex-row items-start gap-4 p-4">
+                  <div :class="['flex h-12 w-12 shrink-0 items-center justify-center rounded-lg', course.color]">
+                    <component :is="course.icon" class="h-6 w-6" />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <CardTitle class="text-base">{{ course.title }}</CardTitle>
+                      <CheckCircle v-if="isCompleted(course.id)" class="h-4 w-4 text-green-500 shrink-0" />
+                    </div>
+                    <CardDescription class="mt-1 line-clamp-2">{{ course.description }}</CardDescription>
+                    <div class="mt-2 flex items-center gap-2">
+                      <Badge variant="outline" class="text-xs">{{ course.duration }}</Badge>
+                      <Play v-if="!isCompleted(course.id)" class="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
             </div>
           </CardContent>
         </Card>

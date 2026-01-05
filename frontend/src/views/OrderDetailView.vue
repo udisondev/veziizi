@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ordersApi } from '@/api/orders'
 import { historyApi } from '@/api/history'
 import { membersApi } from '@/api/members'
 import type { MemberListItem } from '@/types/member'
 import { useAuthStore } from '@/stores/auth'
+import { useTutorialEvent } from '@/composables/useTutorialEvent'
 import type { Order, OrderDocument, LeaveReviewRequest } from '@/types/order'
 import { isOrderFinished, isOrderCancelled, isOrderActive } from '@/types/order'
 import { orderStatusMap } from '@/constants/statusMaps'
@@ -64,6 +65,7 @@ import {
 
 const route = useRoute()
 const auth = useAuthStore()
+const { emit: emitTutorial } = useTutorialEvent()
 
 // State
 const order = ref<Order | null>(null)
@@ -73,6 +75,13 @@ const actionLoading = ref(false)
 
 // Tabs
 const activeTab = ref('info')
+
+// Отправляем событие для туториала при смене таба
+watch(activeTab, (newTab) => {
+  if (newTab === 'messages') emitTutorial('tab:messages')
+  if (newTab === 'documents') emitTutorial('tab:documents')
+  if (newTab === 'reviews') emitTutorial('tab:reviews')
+})
 
 // Component refs
 const messagesTabRef = ref<InstanceType<typeof OrderMessagesTab> | null>(null)
@@ -351,6 +360,7 @@ onMounted(() => {
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               v-if="canComplete"
+              data-tutorial="complete-order-btn"
               :disabled="actionLoading"
               class="text-success focus:text-success"
               @click="handleComplete"
@@ -368,6 +378,7 @@ onMounted(() => {
             </DropdownMenuItem>
             <DropdownMenuItem
               v-if="canLeaveReview"
+              data-tutorial="leave-review-btn"
               @click="showReviewModal = true"
             >
               <Star class="mr-2 h-4 w-4" />
@@ -500,7 +511,7 @@ onMounted(() => {
               </TabsContent>
 
               <!-- Messages Tab -->
-              <TabsContent value="messages" class="mt-0">
+              <TabsContent value="messages" data-tutorial="messages-tab" class="mt-0">
                 <OrderMessagesTab
                   ref="messagesTabRef"
                   :order="order"
@@ -510,7 +521,7 @@ onMounted(() => {
               </TabsContent>
 
               <!-- Documents Tab -->
-              <TabsContent value="documents" class="mt-0">
+              <TabsContent value="documents" data-tutorial="documents-tab" class="mt-0">
                 <OrderDocumentsTab
                   ref="documentsTabRef"
                   :order="order"

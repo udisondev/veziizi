@@ -4,6 +4,9 @@ import draggable from 'vuedraggable'
 import type { RoutePoint } from '@/types/freightRequest'
 import RoutePointCard from '../shared/RoutePointCard.vue'
 import LeafletMap from '../shared/LeafletMap.vue'
+import { useTutorialEvent } from '@/composables/useTutorialEvent'
+
+const { emit: emitTutorial } = useTutorialEvent()
 
 interface Props {
   routePoints: RoutePoint[]
@@ -25,8 +28,14 @@ const localPoints = computed({
   set: (value) => {
     // При drag-n-drop уведомляем родителя о новом порядке
     emit('reorder', value)
+    emitTutorial('route:pointsReordered')
   },
 })
+
+function handleAddPoint() {
+  emitTutorial('route:pointAdded', { newIndex: props.routePoints.length })
+  emit('addPoint')
+}
 
 const hasValidCoordinates = computed(() =>
   props.routePoints.some((p) => p.coordinates)
@@ -55,6 +64,7 @@ const hasValidCoordinates = computed(() =>
       ghost-class="opacity-50"
       animation="200"
       class="space-y-4"
+      data-tutorial="route-points-list"
     >
       <template #item="{ element, index }">
         <RoutePointCard
@@ -74,7 +84,8 @@ const hasValidCoordinates = computed(() =>
     <button
       type="button"
       class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-lg hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-      @click="emit('addPoint')"
+      data-tutorial="route-add-point-btn"
+      @click="handleAddPoint"
     >
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
         <path

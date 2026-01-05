@@ -2,6 +2,9 @@
 import { ref, computed, watch } from 'vue'
 import type { RoutePoint, Coordinates } from '@/types/freightRequest'
 import CountryCitySelect from './CountryCitySelect.vue'
+import { useTutorialEvent } from '@/composables/useTutorialEvent'
+
+const { emit: emitTutorial } = useTutorialEvent()
 
 interface Props {
   point: RoutePoint
@@ -97,6 +100,9 @@ function handleCountryIdUpdate(value: number | undefined) {
 
 function handleCityIdUpdate(value: number | undefined) {
   emit('update', { city_id: value })
+  if (value) {
+    emitTutorial('route:citySelected', { pointIndex: props.index })
+  }
 }
 
 function handleCoordinatesUpdate(coordinates: Coordinates | undefined) {
@@ -111,6 +117,9 @@ function handleDisplayAddressUpdate(value: string) {
 function handleDateFromChange(event: Event) {
   const value = (event.target as HTMLInputElement).value
   emit('update', { date_from: value })
+  if (value) {
+    emitTutorial('route:dateSet', { pointIndex: props.index })
+  }
 }
 
 function handleDateToChange(event: Event) {
@@ -184,20 +193,39 @@ function handleCommentChange(event: Event) {
   emit('update', { comment: value || undefined })
 }
 
+// Функции показа/скрытия полей
+function toggleShowTime() {
+  showTime.value = true
+  emitTutorial('route:timeToggled', { pointIndex: props.index, shown: true })
+}
+
+function toggleShowContact() {
+  showContact.value = true
+  emitTutorial('route:contactToggled', { pointIndex: props.index, shown: true })
+}
+
+function toggleShowComment() {
+  showComment.value = true
+  emitTutorial('route:commentToggled', { pointIndex: props.index, shown: true })
+}
+
 // Функции скрытия полей (очищают данные)
 function hideTime() {
   showTime.value = false
   emit('update', { time_from: undefined, time_to: undefined })
+  emitTutorial('route:timeToggled', { pointIndex: props.index, shown: false })
 }
 
 function hideContact() {
   showContact.value = false
   emit('update', { contact_name: undefined, contact_phone: undefined })
+  emitTutorial('route:contactToggled', { pointIndex: props.index, shown: false })
 }
 
 function hideComment() {
   showComment.value = false
   emit('update', { comment: undefined })
+  emitTutorial('route:commentToggled', { pointIndex: props.index, shown: false })
 }
 
 // Показ отформатированного телефона
@@ -237,6 +265,7 @@ watch(() => [props.index, props.totalPoints], () => {
       'bg-white border rounded-lg p-4 shadow-sm',
       borderColor,
     ]"
+    :data-tutorial="index <= 2 ? `route-point-${index}` : undefined"
   >
     <div class="flex items-start justify-between mb-3">
       <div class="flex items-center gap-3">
@@ -244,6 +273,7 @@ watch(() => [props.index, props.totalPoints], () => {
         <div
           v-if="canMove"
           class="drag-handle cursor-move text-gray-400 hover:text-gray-600"
+          data-tutorial="route-drag-handle"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
@@ -320,7 +350,7 @@ watch(() => [props.index, props.totalPoints], () => {
       />
 
       <!-- Date (обязательное) -->
-      <div>
+      <div :data-tutorial="index === 0 ? 'route-date-fields' : (index === 2 ? 'route-date-fields-2' : undefined)">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Дата <span class="text-red-500">*</span>
         </label>
@@ -352,7 +382,7 @@ watch(() => [props.index, props.totalPoints], () => {
       </div>
 
       <!-- Время (раскрывается по кнопке) -->
-      <div v-if="showTime">
+      <div v-if="showTime" :data-tutorial="index === 0 ? 'route-time-section' : undefined">
         <div class="flex items-center justify-between mb-1">
           <label class="block text-sm font-medium text-gray-700">
             Время
@@ -360,6 +390,7 @@ watch(() => [props.index, props.totalPoints], () => {
           <button
             type="button"
             class="text-gray-400 hover:text-red-500 text-xs"
+            :data-tutorial="index === 0 ? 'route-hide-time' : undefined"
             @click="hideTime"
           >
             Убрать
@@ -388,7 +419,7 @@ watch(() => [props.index, props.totalPoints], () => {
       </div>
 
       <!-- Контакт (раскрывается по кнопке) -->
-      <div v-if="showContact">
+      <div v-if="showContact" :data-tutorial="index === 0 ? 'route-contact-section' : undefined">
         <div class="flex items-center justify-between mb-1">
           <label class="block text-sm font-medium text-gray-700">
             Контакт
@@ -396,6 +427,7 @@ watch(() => [props.index, props.totalPoints], () => {
           <button
             type="button"
             class="text-gray-400 hover:text-red-500 text-xs"
+            :data-tutorial="index === 0 ? 'route-hide-contact' : undefined"
             @click="hideContact"
           >
             Убрать
@@ -430,7 +462,7 @@ watch(() => [props.index, props.totalPoints], () => {
       </div>
 
       <!-- Комментарий (раскрывается по кнопке) -->
-      <div v-if="showComment">
+      <div v-if="showComment" :data-tutorial="index === 0 ? 'route-comment-section' : undefined">
         <div class="flex items-center justify-between mb-1">
           <label class="block text-sm font-medium text-gray-700">
             Примечание
@@ -438,6 +470,7 @@ watch(() => [props.index, props.totalPoints], () => {
           <button
             type="button"
             class="text-gray-400 hover:text-red-500 text-xs"
+            :data-tutorial="index === 0 ? 'route-hide-comment' : undefined"
             @click="hideComment"
           >
             Убрать
@@ -458,7 +491,8 @@ watch(() => [props.index, props.totalPoints], () => {
           v-if="!showTime"
           type="button"
           class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-          @click="showTime = true"
+          :data-tutorial="index === 0 ? 'route-add-time' : undefined"
+          @click="toggleShowTime"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
@@ -469,7 +503,8 @@ watch(() => [props.index, props.totalPoints], () => {
           v-if="!showContact"
           type="button"
           class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-          @click="showContact = true"
+          :data-tutorial="index === 0 ? 'route-add-contact' : undefined"
+          @click="toggleShowContact"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
@@ -480,7 +515,8 @@ watch(() => [props.index, props.totalPoints], () => {
           v-if="!showComment"
           type="button"
           class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-          @click="showComment = true"
+          :data-tutorial="index === 0 ? 'route-add-comment' : undefined"
+          @click="toggleShowComment"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />

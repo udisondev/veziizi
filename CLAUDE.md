@@ -46,8 +46,10 @@ make db-shell                        # Connect to PostgreSQL
 make build            # Build all binaries to bin/ (api, workers, telegram-notifier, migrator)
 make build-api        # Build API only
 make build-workers    # Build all workers
-make test             # Run tests
+make test             # Run unit tests
 make test-cover       # Run tests with coverage
+make test-e2e         # Run E2E tests (setup + sequential)
+make test-e2e-parallel # Run E2E tests in parallel
 make lint             # Run golangci-lint
 make tidy             # Tidy go modules
 go build ./...        # Quick compilation check
@@ -89,6 +91,7 @@ APP_ENV=development                # development | production
 - **Order** — заказ (после подтверждения оффера). Содержит Messages, Documents, Reviews. Создаётся автоматически через order-creator worker при OfferConfirmed
 - **Review** — отдельный агрегат для защиты рейтингов от накрутки. Создаётся из Order.ReviewLeft через review-receiver worker. Проходит анализ на фрод и модерацию
 - **Notification** — уведомления с настройками предпочтений (in-app, telegram). notification-dispatcher роутит доменные события на каналы, telegram-sender отправляет в Telegram. Не имеет aggregate.go, только events/ и values/
+- **Support** — тикеты поддержки. Агрегат SupportTicket для обращений пользователей
 
 ### Key Patterns
 
@@ -101,8 +104,8 @@ APP_ENV=development                # development | production
 
 **Factory** (`backend/internal/pkg/factory/`):
 - Lazy-initialized, thread-safe dependency container (sync.Once)
-- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`, `ReviewService()`, `HistoryService()`, `NotificationService()`
-- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `OrganizationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`, `GeoProjection()`, `NotificationPreferencesProjection()`, `InAppNotificationsProjection()`, `DeliveryLogProjection()`
+- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`, `ReviewService()`, `HistoryService()`, `NotificationService()`, `SupportService()`
+- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `OrganizationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`, `GeoProjection()`, `NotificationPreferencesProjection()`, `InAppNotificationsProjection()`, `DeliveryLogProjection()`, `TelegramLinkProjection()`, `FreightSubscriptionsProjection()`, `SupportTicketsProjection()`
 - Creates analyzers: `ReviewAnalyzer()`, `SessionAnalyzer()`
 - Used by both API and workers
 
@@ -141,6 +144,8 @@ APP_ENV=development                # development | production
 | order-fraud-analyzer | order.events | order_fraud_analyzer | Detect order fraud: cancel patterns, ghost deliveries, circular orders |
 | notification-dispatcher | *.events | notification_dispatcher | Route domain events to notification channels via rules |
 | telegram-sender | notification.send | telegram_sender | Send notifications via Telegram |
+| support-tickets | support.events | support_tickets | Update support_tickets_lookup |
+| rate-limiter-cleanup | scheduled (5 min) | - | Clean up expired rate limiter entries |
 
 **Notification Rules** (`backend/internal/domain/notification/rules/`):
 - Rules convert domain events to notifications (in-app, telegram)
@@ -220,6 +225,7 @@ import (
     _ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
+    _ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"
 )
 ```
 Без этого `eventstore.EventEnvelope.UnmarshalEvent()` вернёт ошибку "unknown event type".
@@ -247,5 +253,5 @@ npm run build         # Production build
 
 ## Project Status
 
-Current: Phase 7 (Notifications) — Completed. Phase 8 (Frontend) — In Progress.
+Current: Phase 8 (Frontend) — In Progress. Phases 1-7 completed.
 See `ROADMAP.md` for details.
