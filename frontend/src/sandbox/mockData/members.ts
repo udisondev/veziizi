@@ -153,4 +153,15 @@ class MockMembersStore {
   }
 }
 
-export const mockMembers = new MockMembersStore()
+// Глобальный singleton для корректной работы при HMR
+declare global {
+  interface Window {
+    __mockMembers?: MockMembersStore
+  }
+}
+
+if (!window.__mockMembers) {
+  window.__mockMembers = new MockMembersStore()
+}
+
+export const mockMembers = window.__mockMembers

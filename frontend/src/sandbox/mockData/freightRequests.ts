@@ -18,10 +18,12 @@ import {
   PHONE_NUMBERS,
 } from './generators'
 import { mockOffers } from './offers'
+import { mockNotifications } from './notifications'
 
 class MockFreightRequestStore {
   private items: Map<string, FreightRequest> = new Map()
   private seeded = false
+  private frCounter = 0
 
   /**
    * Заполнить mock данными
@@ -39,19 +41,26 @@ class MockFreightRequestStore {
   /**
    * Создать заявку с офферами для tutorial
    */
-  async seedWithOffers(frId: string, offersCount: number = 4): Promise<void> {
+  async seedWithOffers(
+    frId: string,
+    offersCount: number = 4,
+    owner?: { customer_org_id: string; customer_org_name: string; customer_member_id: string }
+  ): Promise<void> {
     // Создаём заявку с указанным ID
     const fr = this.generateMockRequest()
     fr.id = frId
-    fr.customer_org_id = 'sandbox-org-1'
-    fr.customer_org_name = 'Моя организация (Sandbox)'
-    fr.customer_member_id = 'sandbox-member-1'
+    fr.customer_org_id = owner?.customer_org_id || 'sandbox-org-1'
+    fr.customer_org_name = owner?.customer_org_name || 'Моя организация (Sandbox)'
+    fr.customer_member_id = owner?.customer_member_id || 'sandbox-member-1'
     fr.status = 'published'
 
     this.items.set(frId, fr)
 
     // Генерируем офферы для этой заявки (без задержки для tutorial)
     await mockOffers.simulateIncomingOffers(frId, offersCount, 0)
+
+    // Генерируем уведомления о новых предложениях
+    mockNotifications.seedOffersNotifications(frId, offersCount)
   }
 
   /**
@@ -89,7 +98,8 @@ class MockFreightRequestStore {
    * Создать заявку
    */
   create(data: CreateFreightRequestRequest): { id: string; request_number: number } {
-    const id = 'sandbox-fr-1' // Фиксированный ID для tutorial
+    this.frCounter++
+    const id = `sandbox-fr-${this.frCounter}`
     const requestNumber = generateRequestNumber()
 
     const fr: FreightRequest = {
@@ -213,7 +223,19 @@ class MockFreightRequestStore {
   clear(): void {
     this.items.clear()
     this.seeded = false
+    this.frCounter = 0
   }
 }
 
-export const mockFreightRequests = new MockFreightRequestStore()
+// Глобальный singleton для корректной работы при HMR
+declare global {
+  interface Window {
+    __mockFreightRequests?: MockFreightRequestStore
+  }
+}
+
+if (!window.__mockFreightRequests) {
+  window.__mockFreightRequests = new MockFreightRequestStore()
+}
+
+export const mockFreightRequests = window.__mockFreightRequests

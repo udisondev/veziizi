@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
+import { useOnboardingStore } from '@/stores/onboarding'
+import { tutorialBus } from '@/sandbox/events'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -18,8 +20,16 @@ import { Bell } from 'lucide-vue-next'
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
 const authStore = useAuthStore()
+const onboarding = useOnboardingStore()
 
 const isOpen = ref(false)
+
+// Отслеживаем открытие dropdown для tutorial
+watch(isOpen, (newValue) => {
+  if (newValue && onboarding.isSandboxMode) {
+    tutorialBus.emit('notification:bellOpened')
+  }
+})
 
 const recentNotifications = computed(() => notificationsStore.recentNotifications)
 const unreadCount = computed(() => notificationsStore.unreadCount)
@@ -28,6 +38,15 @@ const hasUnread = computed(() => notificationsStore.hasUnread)
 function handleNotificationClick(notification: { id: string; link?: string }) {
   isOpen.value = false
   notificationsStore.markAsRead(notification.id)
+
+  // Эмитим событие для tutorial
+  if (onboarding.isSandboxMode) {
+    tutorialBus.emit('notification:clicked', {
+      id: notification.id,
+      link: notification.link,
+    })
+  }
+
   if (notification.link) {
     router.push(notification.link)
   }
@@ -56,7 +75,7 @@ onUnmounted(() => {
 <template>
   <DropdownMenu v-model:open="isOpen">
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" size="icon" class="relative">
+      <Button variant="ghost" size="icon" class="relative" data-tutorial="notification-bell">
         <Bell class="h-5 w-5" />
         <!-- Badge с количеством -->
         <span
@@ -70,7 +89,7 @@ onUnmounted(() => {
 
     <DropdownMenuContent align="end" class="w-80 p-0">
       <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b">
+      <div class="flex items-center justify-between px-4 py-3 border-b" data-tutorial="notification-dropdown">
         <span class="font-semibold">Уведомления</span>
         <Button
           v-if="hasUnread"
@@ -91,6 +110,7 @@ onUnmounted(() => {
             :key="notification.id"
             :notification="notification"
             compact
+            data-tutorial="notification-item"
             @click="handleNotificationClick(notification)"
           />
         </template>

@@ -105,4 +105,15 @@ class MockBot {
   }
 }
 
-export const mockBot = new MockBot()
+// Глобальный singleton для корректной работы при HMR
+declare global {
+  interface Window {
+    __mockBot?: MockBot
+  }
+}
+
+if (!window.__mockBot) {
+  window.__mockBot = new MockBot()
+}
+
+export const mockBot = window.__mockBot

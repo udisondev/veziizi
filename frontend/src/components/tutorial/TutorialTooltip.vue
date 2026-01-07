@@ -5,14 +5,20 @@
  */
 
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { storeToRefs } from 'pinia'
 import { Button } from '@/components/ui/button'
-import { ChevronRight, SkipForward } from 'lucide-vue-next'
-import { useTutorialPopupTracker } from '@/composables/useTutorialPopupTracker'
+import { ChevronRight, ChevronLeft, SkipForward } from 'lucide-vue-next'
+import { useTutorialPopupTracker, onPopupChange } from '@/composables/useTutorialPopupTracker'
+import { tutorialBus } from '@/sandbox/events'
+import { mockFreightRequests } from '@/sandbox/mockData/freightRequests'
+import { mockNotifications } from '@/sandbox/mockData/notifications'
+import { throttle, SCROLL_THROTTLE_DELAY } from '@/utils/debounce'
 
+const router = useRouter()
 const onboarding = useOnboardingStore()
-const { currentStep, currentStepIndex, scenarioSteps, popupDirection } = storeToRefs(onboarding)
+const { currentStep, currentStepIndex, scenarioSteps, popupDirection, scrollPaused, validationErrorMode } = storeToRefs(onboarding)
 const popupTracker = useTutorialPopupTracker()
 
 const tooltipRef = ref<HTMLDivElement | null>(null)
@@ -20,7 +26,11 @@ const position = ref({ top: 0, left: 0 })
 const placement = ref<'top' | 'bottom' | 'left' | 'right'>('bottom')
 
 // Прокручиваем к элементу если он не виден
+// НЕ прокручиваем если scrollPaused (идёт scroll к ошибке валидации)
 async function scrollToTargetIfNeeded(target: Element): Promise<void> {
+  // Не прокручиваем во время паузы (scroll к ошибке валидации)
+  if (scrollPaused.value) return
+
   const rect = target.getBoundingClientRect()
   const viewportHeight = window.innerHeight
 
@@ -44,7 +54,19 @@ async function updatePosition() {
     ? `[data-tutorial="${currentStep.value.target}"]`
     : currentStep.value?.highlightSelector
 
-  if (!targetSelector) return
+  const tooltip = tooltipRef.value
+  if (!tooltip) return
+
+  // Если нет target — центрируем tooltip на экране
+  if (!targetSelector) {
+    const tooltipRect = tooltip.getBoundingClientRect()
+    position.value = {
+      top: Math.max(100, (window.innerHeight - tooltipRect.height) / 2),
+      left: Math.max(20, (window.innerWidth - tooltipRect.width) / 2),
+    }
+    placement.value = 'bottom' // скрываем стрелку через стили
+    return
+  }
 
   const target = document.querySelector(targetSelector)
   if (!target) {
@@ -56,8 +78,6 @@ async function updatePosition() {
   await scrollToTargetIfNeeded(target)
 
   const targetRect = target.getBoundingClientRect()
-  const tooltip = tooltipRef.value
-  if (!tooltip) return
 
   // Анализируем popup рядом с target
   const analysis = popupTracker.analyzeTarget(targetRect)
@@ -68,9 +88,11 @@ async function updatePosition() {
   const bottomPadding = 100 // Отступ снизу для кнопок tooltip
 
   // Выбираем rect для позиционирования:
-  // - Если есть popup, используем TARGET rect но с учётом направления popup
-  // - Это держит tooltip близко к полю ввода, а не к огромному combined rect
-  const rect = targetRect
+  // - Если popup открыт вниз, используем combined rect чтобы tooltip был под popup
+  // - Иначе используем target rect
+  const rect = (analysis.hasPopups && analysis.primaryDirection === 'down')
+    ? analysis.combinedRect as DOMRect
+    : targetRect
 
   // Определяем лучшую позицию
   let spaceTop = rect.top
@@ -80,8 +102,12 @@ async function updatePosition() {
 
   let preferredPlacement = currentStep.value.tooltipPosition || 'bottom'
 
-  // Если есть открытый popup — позиционируем tooltip на противоположной стороне от popup
-  if (analysis.hasPopups && analysis.primaryDirection) {
+  // Если popup открыт вниз — tooltip тоже идёт вниз (под popup)
+  // Мы уже используем combined rect, так что tooltip будет под выпадающим списком
+  if (analysis.hasPopups && analysis.primaryDirection === 'down') {
+    preferredPlacement = 'bottom'
+  } else if (analysis.hasPopups && analysis.primaryDirection) {
+    // Для других направлений используем стандартную логику
     preferredPlacement = popupTracker.getOptimalTooltipPosition(
       analysis.primaryDirection,
       preferredPlacement as 'top' | 'bottom' | 'left' | 'right'
@@ -201,76 +227,37 @@ watch(
   }
 )
 
-// MutationObserver для отслеживания появления/исчезновения popup
-let popupObserver: MutationObserver | null = null
+// Используем shared MutationObserver из popupTracker
+let popupUnsubscribe: (() => void) | null = null
 
 function setupPopupObserver() {
-  if (popupObserver) return
+  if (popupUnsubscribe) return
 
-  popupObserver = new MutationObserver((mutations) => {
-    // Проверяем, появился или исчез popup
-    for (const mutation of mutations) {
-      if (mutation.type === 'childList') {
-        // Проверяем добавленные узлы на наличие popup
-        for (const node of mutation.addedNodes) {
-          if (node instanceof Element) {
-            const isPopup =
-              node.matches('[data-reka-popper-content-wrapper]') ||
-              node.matches('[data-state="open"][role="listbox"]') ||
-              node.querySelector('[data-reka-popper-content-wrapper]') ||
-              node.querySelector('[data-state="open"][role="listbox"]')
-            if (isPopup) {
-              // Даём время на позиционирование popup
-              setTimeout(updatePosition, 50)
-              return
-            }
-          }
-        }
-        // Проверяем удалённые узлы
-        for (const node of mutation.removedNodes) {
-          if (node instanceof Element) {
-            const wasPopup =
-              node.matches?.('[data-reka-popper-content-wrapper]') ||
-              node.matches?.('[data-state][role="listbox"]')
-            if (wasPopup) {
-              setTimeout(updatePosition, 50)
-              return
-            }
-          }
-        }
-      }
-      // Проверяем изменение атрибута data-state
-      if (mutation.type === 'attributes' && mutation.attributeName === 'data-state') {
-        setTimeout(updatePosition, 50)
-        return
-      }
-    }
-  })
-
-  popupObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['data-state'],
+  // Подписываемся на shared observer
+  popupUnsubscribe = onPopupChange(() => {
+    updatePosition()
   })
 }
 
 function cleanupPopupObserver() {
-  if (popupObserver) {
-    popupObserver.disconnect()
-    popupObserver = null
+  if (popupUnsubscribe) {
+    popupUnsubscribe()
+    popupUnsubscribe = null
   }
 }
 
+// Throttled версия для scroll (много событий при прокрутке)
+const throttledUpdatePosition = throttle(updatePosition, SCROLL_THROTTLE_DELAY)
+
 // Обновляем позицию при скролле и ресайзе
 onMounted(() => {
-  window.addEventListener('scroll', updatePosition, true)
+  window.addEventListener('scroll', throttledUpdatePosition, true)
   window.addEventListener('resize', updatePosition)
   setupPopupObserver()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('scroll', updatePosition, true)
+  window.removeEventListener('scroll', throttledUpdatePosition, true)
   window.removeEventListener('resize', updatePosition)
   cleanupPopupObserver()
 })
@@ -283,10 +270,36 @@ function handleSkip() {
   onboarding.skipStep()
 }
 
-function startOffersTraining() {
-  // Завершаем текущий сценарий и переключаемся на offers_receive_flow
+function handleBack() {
+  onboarding.prevStep()
+}
+
+async function startOffersTraining() {
+  // Завершаем текущий сценарий (customer_flow)
   onboarding.completeScenario()
-  onboarding.enterSandbox('offers_receive_flow')
+
+  // Используем фиксированный ID для совместимости с offersReceiveFlow.ts
+  const frId = 'sandbox-fr-offers'
+
+  // Очищаем предыдущие уведомления
+  mockNotifications.clear()
+
+  // Подготавливаем данные для offers сценария (офферы + уведомления)
+  await mockFreightRequests.seedWithOffers(frId, 4)
+
+  // НЕ переходим сразу на страницу заявки
+  // Пользователь должен кликнуть на уведомление чтобы попасть туда
+  // Возвращаемся на главную если не там
+  if (router.currentRoute.value.path !== '/') {
+    await router.push('/')
+  }
+
+  // Ждём загрузки страницы
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 100))
+
+  // Входим в сценарий с шага 0 (начинаем с уведомлений)
+  await onboarding.enterSandbox('offers_receive_flow', 0)
 }
 
 const arrowClasses = computed(() => {
@@ -305,7 +318,30 @@ const arrowClasses = computed(() => {
   }
 })
 
-const isManualStep = computed(() => currentStep.value?.completionType === 'manual')
+// Есть ли target у текущего шага (для скрытия стрелки)
+const hasTarget = computed(() => {
+  return !!(currentStep.value?.target || currentStep.value?.highlightSelector)
+})
+
+// Показываем кнопку "Далее" для manual шагов, но НЕ если есть кнопка обучения по предложениям
+const isManualStep = computed(() => {
+  if (!currentStep.value) return false
+  if (currentStep.value.showOffersTrainingButton) return false
+  return currentStep.value.completionType === 'manual'
+})
+
+// Показываем кнопку "Пропустить" только для manual шагов или если шаг явно skippable
+// НЕ показываем если есть кнопка обучения по предложениям
+const showSkipButton = computed(() => {
+  if (!currentStep.value) return false
+  if (currentStep.value.showOffersTrainingButton) return false
+  return currentStep.value.completionType === 'manual' || currentStep.value.skippable === true
+})
+
+// Показываем кнопку "Назад" если не на первом шаге
+const showBackButton = computed(() => {
+  return currentStepIndex.value > 0
+})
 </script>
 
 <template>
@@ -317,7 +353,7 @@ const isManualStep = computed(() => currentStep.value?.completionType === 'manua
       leave-to-class="opacity-0 scale-95"
     >
       <div
-        v-if="currentStep"
+        v-if="currentStep && !validationErrorMode"
         ref="tooltipRef"
         class="fixed z-[70] max-w-sm max-h-[calc(100vh-200px)] overflow-y-auto rounded-lg border bg-white p-4 shadow-xl pointer-events-none"
         :style="{
@@ -325,8 +361,8 @@ const isManualStep = computed(() => currentStep.value?.completionType === 'manua
           left: `${position.left}px`,
         }"
       >
-        <!-- Arrow -->
-        <div :class="arrowClasses" />
+        <!-- Arrow (скрываем если нет target) -->
+        <div v-if="hasTarget" :class="arrowClasses" />
 
         <!-- Content -->
         <div class="relative">
@@ -351,11 +387,17 @@ const isManualStep = computed(() => currentStep.value?.completionType === 'manua
           </p>
 
           <!-- Actions -->
-          <div class="flex items-center justify-between pointer-events-auto">
-            <Button variant="ghost" size="sm" @click="handleSkip">
-              <SkipForward class="mr-1 h-4 w-4" />
-              Пропустить
-            </Button>
+          <div v-if="showBackButton || showSkipButton || isManualStep" class="flex items-center justify-between pointer-events-auto">
+            <div class="flex gap-1">
+              <Button v-if="showBackButton" variant="ghost" size="sm" @click="handleBack">
+                <ChevronLeft class="mr-1 h-4 w-4" />
+                Назад
+              </Button>
+              <Button v-if="showSkipButton" variant="ghost" size="sm" @click="handleSkip">
+                <SkipForward class="mr-1 h-4 w-4" />
+                Пропустить
+              </Button>
+            </div>
 
             <Button
               v-if="isManualStep"

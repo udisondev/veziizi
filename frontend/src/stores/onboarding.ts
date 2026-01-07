@@ -4,7 +4,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { tutorialBus } from '@/sandbox/events'
 import type {
@@ -13,8 +13,12 @@ import type {
   TutorialProgress,
   STORAGE_KEYS,
   TutorialEventKey,
+  StepPlatform,
 } from '@/types/tutorial'
 import type { PopupDirection } from '@/composables/useTutorialPopupTracker'
+
+// Breakpoint для desktop (md в Tailwind)
+const DESKTOP_BREAKPOINT = 768
 
 // localStorage ключи
 const STORAGE_KEYS = {
@@ -24,8 +28,14 @@ const STORAGE_KEYS = {
   SANDBOX_STATE: 'veziizi_sandbox_state',
 } as const
 
+// Тип модуля сценария
+interface ScenarioModule {
+  steps: TutorialStep[]
+  initialize?: () => Promise<void> | void
+}
+
 // Ленивая загрузка сценариев (чтобы не грузить если не нужно)
-const scenarioLoaders: Record<ScenarioType, () => Promise<{ default: { steps: TutorialStep[] } }>> = {
+const scenarioLoaders: Record<ScenarioType, () => Promise<{ default: ScenarioModule }>> = {
   customer_flow: () => import('@/sandbox/scenarios/customerFlow'),
   carrier_flow: () => import('@/sandbox/scenarios/carrierFlow'),
   offers_receive_flow: () => import('@/sandbox/scenarios/offersReceiveFlow'),
@@ -41,12 +51,35 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   // === State ===
 
   // Режим песочницы
-  const isSandboxMode = ref(false)
+  // ВАЖНО: Синхронно проверяем localStorage при создании store,
+  // чтобы API interceptor работал с первого запроса
+  const savedState = localStorage.getItem(STORAGE_KEYS.SANDBOX_STATE)
+  const initialSandboxMode = savedState ? JSON.parse(savedState).isSandboxMode === true : false
+  const isSandboxMode = ref(initialSandboxMode)
+
+  // Desktop или mobile (реактивно отслеживается)
+  const isDesktop = ref(window.innerWidth >= DESKTOP_BREAKPOINT)
+
+  // Все шаги сценария (без фильтрации)
+  const allSteps = ref<TutorialStep[]>([])
 
   // Текущий сценарий и шаги
   const activeScenario = ref<ScenarioType | null>(null)
-  const currentSteps = ref<TutorialStep[]>([])
   const currentStepIndex = ref(0)
+
+  // Фильтрация шагов по платформе
+  function filterStepsByPlatform(steps: TutorialStep[], desktop: boolean): TutorialStep[] {
+    return steps.filter(step => {
+      const platform = step.platform || 'all'
+      if (platform === 'all') return true
+      if (platform === 'desktop') return desktop
+      if (platform === 'mobile') return !desktop
+      return true
+    })
+  }
+
+  // Отфильтрованные шаги для текущей платформы
+  const currentSteps = computed(() => filterStepsByPlatform(allSteps.value, isDesktop.value))
 
   // UI состояние
   const isTooltipVisible = ref(false)
@@ -54,6 +87,12 @@ export const useOnboardingStore = defineStore('onboarding', () => {
 
   // Направление открытого popup (для умного позиционирования tooltip)
   const popupDirection = ref<PopupDirection | null>(null)
+
+  // Пауза автоскролла (когда скроллим к ошибке валидации)
+  const scrollPaused = ref(false)
+
+  // Режим исправления ошибки валидации - overlay полностью скрыт
+  const validationErrorMode = ref(false)
 
   // Прогресс
   const progress = ref<TutorialProgress>({
@@ -66,6 +105,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   const hasSeenWelcome = ref(false)
   const hasSeenHelpHint = ref(false)
   const hasCompletedOnboarding = ref(false)
+
+  // Готовность sandbox (true если НЕ в sandbox или sandbox полностью инициализирован)
+  const sandboxReady = ref(true)
 
   // Обработчик текущего события
   let currentEventUnsubscribe: (() => void) | null = null
@@ -174,23 +216,78 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   }
 
   /**
+   * Обработчик resize для обновления isDesktop
+   */
+  function handleResize() {
+    const wasDesktop = isDesktop.value
+    isDesktop.value = window.innerWidth >= DESKTOP_BREAKPOINT
+
+    // Если платформа изменилась во время туториала, обновляем индекс
+    if (wasDesktop !== isDesktop.value && isSandboxMode.value) {
+      // Корректируем индекс чтобы остаться на аналогичном шаге
+      const currentId = currentStep.value?.id
+      if (currentId) {
+        const newIndex = currentSteps.value.findIndex(s => s.id === currentId)
+        if (newIndex >= 0) {
+          currentStepIndex.value = newIndex
+        } else {
+          // Если текущий шаг скрылся, переходим к первому доступному
+          currentStepIndex.value = 0
+        }
+      }
+    }
+  }
+
+  // Подписка на resize при инициализации store
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', handleResize)
+  }
+
+  /**
    * Войти в режим песочницы
    */
   async function enterSandbox(scenario: ScenarioType, resumeFromStep = 0) {
+    console.log('[onboarding] enterSandbox called:', { scenario, resumeFromStep })
+
+    // Помечаем sandbox как не готовый пока не завершится initialize()
+    sandboxReady.value = false
+
     try {
       // Загружаем сценарий
       const module = await scenarioLoaders[scenario]()
-      currentSteps.value = module.default.steps
+      console.log('[onboarding] module loaded:', {
+        hasSteps: !!module.default.steps,
+        stepsCount: module.default.steps?.length,
+        hasInitialize: typeof module.default.initialize === 'function',
+      })
+      allSteps.value = module.default.steps
 
+      // ВАЖНО: включаем sandbox mode ДО initialize(),
+      // чтобы API interceptor перехватывал запросы
       activeScenario.value = scenario
       currentStepIndex.value = resumeFromStep
       isSandboxMode.value = true
+
+      // Инициализация сценария (создание mock данных и т.д.)
+      // Выполняется при ЛЮБОМ старте/возобновлении
+      if (module.default.initialize) {
+        console.log('[onboarding] calling initialize...')
+        await module.default.initialize()
+        console.log('[onboarding] initialize done')
+      } else {
+        console.log('[onboarding] no initialize function')
+      }
+
+      // Sandbox готов — mock данные созданы
+      sandboxReady.value = true
 
       // Показываем первый шаг
       await showCurrentStep()
 
       saveProgress()
     } catch (e) {
+      // При ошибке помечаем sandbox как готовый, чтобы не блокировать компоненты
+      sandboxReady.value = true
       console.error('Failed to enter sandbox:', e)
     }
   }
@@ -217,7 +314,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   function cleanup() {
     isSandboxMode.value = false
     activeScenario.value = null
-    currentSteps.value = []
+    allSteps.value = []
     currentStepIndex.value = 0
     isTooltipVisible.value = false
     highlightedElement.value = null
@@ -509,20 +606,51 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     popupDirection.value = direction
   }
 
+  /**
+   * Пауза автоскролла overlay (для скролла к ошибкам валидации)
+   */
+  function pauseAutoScroll(durationMs: number = 1000) {
+    scrollPaused.value = true
+    setTimeout(() => {
+      scrollPaused.value = false
+    }, durationMs)
+  }
+
+  /**
+   * Войти в режим исправления ошибки валидации
+   * Overlay и tooltip полностью скрываются, пользователь может редактировать форму
+   */
+  function enterValidationErrorMode() {
+    validationErrorMode.value = true
+    scrollPaused.value = true
+  }
+
+  /**
+   * Выйти из режима исправления ошибки валидации
+   */
+  function exitValidationErrorMode() {
+    validationErrorMode.value = false
+    scrollPaused.value = false
+  }
+
   return {
     // State
     isSandboxMode,
+    sandboxReady,
     activeScenario,
     currentSteps,
     currentStepIndex,
     isTooltipVisible,
     highlightedElement,
     popupDirection,
+    scrollPaused,
+    validationErrorMode,
     progress,
     hasSeenWelcome,
     hasSeenHelpHint,
     hasCompletedOnboarding,
     sandboxCreatedRequest,
+    isDesktop,
 
     // Computed
     currentStep,
@@ -552,6 +680,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     showTooltip,
     hideTooltip,
     setPopupDirection,
+    pauseAutoScroll,
+    enterValidationErrorMode,
+    exitValidationErrorMode,
     setSandboxCreatedRequest,
     clearSandboxCreatedRequest,
   }

@@ -7,6 +7,7 @@ import { freightRequestsHandlers } from './freightRequests'
 import { offersHandlers } from './offers'
 import { ordersHandlers } from './orders'
 import { membersHandlers } from './members'
+import { notificationsHandlers } from './notifications'
 
 export interface MockResponse {
   status?: number
@@ -34,13 +35,25 @@ interface RouteMap {
   DELETE: RoutePattern[]
 }
 
-const routes: RouteMap = {
-  GET: [],
-  POST: [],
-  PUT: [],
-  PATCH: [],
-  DELETE: [],
+// Глобальные singletons для избежания проблем с HMR
+declare global {
+  interface Window {
+    __sandboxRoutes?: RouteMap
+    __sandboxHandlersRegistered?: boolean
+  }
 }
+
+if (!window.__sandboxRoutes) {
+  window.__sandboxRoutes = {
+    GET: [],
+    POST: [],
+    PUT: [],
+    PATCH: [],
+    DELETE: [],
+  }
+}
+
+const routes = window.__sandboxRoutes
 
 /**
  * Зарегистрировать handler
@@ -61,12 +74,14 @@ export function registerHandler(
 function pathToRegex(path: string): { pattern: RegExp; paramNames: string[] } {
   const paramNames: string[] = []
 
+  // ВАЖНО: сначала извлекаем параметры, потом escape слешей!
+  // Иначе :frId/ станет :frId\/ и regex захватит лишний backslash
   const regexStr = path
-    .replace(/\//g, '\\/')
     .replace(/:([^/]+)/g, (_, name) => {
       paramNames.push(name)
       return '([^/]+)'
     })
+    .replace(/\//g, '\\/')
 
   return {
     pattern: new RegExp(`^${regexStr}(?:\\?.*)?$`),
@@ -113,10 +128,13 @@ export async function handleSandboxRequest(
   return null
 }
 
-// Регистрируем все handlers
-freightRequestsHandlers()
-offersHandlers()
-ordersHandlers()
-membersHandlers()
-
-console.log('[Sandbox] Mock handlers registered')
+// Регистрируем handlers только один раз
+if (!window.__sandboxHandlersRegistered) {
+  freightRequestsHandlers()
+  offersHandlers()
+  ordersHandlers()
+  membersHandlers()
+  notificationsHandlers()
+  window.__sandboxHandlersRegistered = true
+  console.log('[Sandbox] Mock handlers registered')
+}

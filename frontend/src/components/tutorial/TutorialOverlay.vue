@@ -13,10 +13,16 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { storeToRefs } from 'pinia'
-import { useTutorialPopupTracker } from '@/composables/useTutorialPopupTracker'
+import { useTutorialPopupTracker, onPopupChange } from '@/composables/useTutorialPopupTracker'
+import {
+  TUTORIAL_OVERLAY_PADDING,
+  TUTORIAL_OVERLAY_BORDER_RADIUS,
+  TUTORIAL_RAF_THROTTLE_FRAMES,
+} from '@/sandbox/constants'
+import { throttle, SCROLL_THROTTLE_DELAY } from '@/utils/debounce'
 
 const onboarding = useOnboardingStore()
-const { isSandboxMode, currentStep } = storeToRefs(onboarding)
+const { isSandboxMode, currentStep, scrollPaused, validationErrorMode } = storeToRefs(onboarding)
 const popupTracker = useTutorialPopupTracker()
 
 // Позиция и размеры "дырки"
@@ -24,8 +30,8 @@ const holeRect = ref({ top: 0, left: 0, width: 0, height: 0 })
 const isVisible = ref(false)
 
 // Отступ вокруг целевого элемента
-const padding = 8
-const borderRadius = 8
+const padding = TUTORIAL_OVERLAY_PADDING
+const borderRadius = TUTORIAL_OVERLAY_BORDER_RADIUS
 
 // Размеры экрана
 const screenWidth = ref(window.innerWidth)
@@ -120,56 +126,78 @@ function updateHolePosition() {
   // Прокручиваем элемент в область видимости если нужно
   // Но только если элемент маленький (меньше половины viewport)
   // Для больших элементов (списки, формы) не скроллим — пользователь сам прокрутит
-  const elementHeight = rect.height
-  const isSmallElement = elementHeight < window.innerHeight * 0.5
+  // НЕ скроллим если scrollPaused (скроллим к ошибке валидации)
+  if (!scrollPaused.value) {
+    const elementHeight = rect.height
+    const isSmallElement = elementHeight < window.innerHeight * 0.5
 
-  if (isSmallElement && (rect.top < 0 || rect.bottom > window.innerHeight)) {
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    // Обновляем позицию после прокрутки
-    setTimeout(updateHolePosition, 300)
+    if (isSmallElement && (rect.top < 0 || rect.bottom > window.innerHeight)) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Обновляем позицию после прокрутки
+      setTimeout(updateHolePosition, 300)
+    }
   }
 }
 
-// MutationObserver для отслеживания появления/исчезновения popup
-let mutationObserver: MutationObserver | null = null
+// Отписка от shared observer
+let popupUnsubscribe: (() => void) | null = null
 let rafId: number | null = null
+let rafActive = false
 
 function startPopupTracking() {
-  // MutationObserver для отслеживания изменений DOM (появление popup)
-  mutationObserver = new MutationObserver(() => {
-    // Обновляем позицию при изменениях DOM
+  // Используем shared MutationObserver вместо собственного
+  popupUnsubscribe = onPopupChange(() => {
     updateHolePosition()
+    // Запускаем короткий RAF loop при появлении popup для отслеживания анимации
+    startRAFLoop()
   })
+}
 
-  // Наблюдаем за всем body — popup могут появляться через Teleport/Portal
-  mutationObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['data-state', 'class', 'style'],
-  })
+function stopPopupTracking() {
+  if (popupUnsubscribe) {
+    popupUnsubscribe()
+    popupUnsubscribe = null
+  }
+  stopRAFLoop()
+  popupTracker.reset()
+  onboarding.setPopupDirection(null)
+}
 
-  // RAF loop для плавного обновления (особенно при анимациях)
+// RAF loop — запускается только при появлении popup для отслеживания анимации
+function startRAFLoop() {
+  if (rafActive) return
+  rafActive = true
+
+  let frameCount = 0
   function rafLoop() {
-    if (isSandboxMode.value && currentStep.value) {
-      updateHolePosition()
-      rafId = requestAnimationFrame(rafLoop)
+    if (!rafActive || !isSandboxMode.value || !currentStep.value) {
+      rafActive = false
+      return
     }
+
+    frameCount++
+    // Обновляем каждые N кадров (~20fps вместо 60fps)
+    if (frameCount % TUTORIAL_RAF_THROTTLE_FRAMES === 0 && !scrollPaused.value) {
+      updateHolePosition()
+    }
+
+    // Останавливаем через ~500ms (30 кадров при ~60fps)
+    if (frameCount > 30) {
+      rafActive = false
+      return
+    }
+
+    rafId = requestAnimationFrame(rafLoop)
   }
   rafId = requestAnimationFrame(rafLoop)
 }
 
-function stopPopupTracking() {
-  if (mutationObserver) {
-    mutationObserver.disconnect()
-    mutationObserver = null
-  }
+function stopRAFLoop() {
+  rafActive = false
   if (rafId !== null) {
     cancelAnimationFrame(rafId)
     rafId = null
   }
-  popupTracker.reset()
-  onboarding.setPopupDirection(null)
 }
 
 // Следим за изменениями шага
@@ -190,14 +218,17 @@ watch(
   { immediate: true }
 )
 
+// Throttled версия для scroll (много событий при прокрутке)
+const throttledUpdateHolePosition = throttle(updateHolePosition, SCROLL_THROTTLE_DELAY)
+
 // Обновляем при скролле и ресайзе
 onMounted(() => {
-  window.addEventListener('scroll', updateHolePosition, true)
+  window.addEventListener('scroll', throttledUpdateHolePosition, true)
   window.addEventListener('resize', updateHolePosition)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('scroll', updateHolePosition, true)
+  window.removeEventListener('scroll', throttledUpdateHolePosition, true)
   window.removeEventListener('resize', updateHolePosition)
   stopPopupTracking()
 })
@@ -217,7 +248,7 @@ function blockClick(e: MouseEvent) {
       enter-from-class="opacity-0"
       leave-to-class="opacity-0"
     >
-      <div v-if="isSandboxMode && isVisible" class="fixed inset-0 z-[55] pointer-events-none">
+      <div v-if="isSandboxMode && isVisible && !validationErrorMode" class="fixed inset-0 z-[55] pointer-events-none">
         <!-- 4 div вокруг "дырки" - они блокируют клики, но разрешают скролл -->
         <!-- Верхняя полоса -->
         <div

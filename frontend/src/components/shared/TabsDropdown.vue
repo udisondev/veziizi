@@ -23,6 +23,7 @@ export interface TabItem {
 const props = defineProps<{
   items: TabItem[]
   modelValue: string
+  triggerTutorialId?: string
 }>()
 
 const emit = defineEmits<{
@@ -43,7 +44,7 @@ function selectTab(value: string) {
 <template>
   <DropdownMenu v-model:open="open">
     <DropdownMenuTrigger as-child>
-      <Button variant="outline" class="w-full sm:w-auto justify-between gap-2">
+      <Button variant="outline" class="w-full sm:w-auto justify-between gap-2" :data-tutorial="triggerTutorialId">
         <span class="flex items-center">
           <component
             v-if="activeItem?.icon"
@@ -61,7 +62,7 @@ function selectTab(value: string) {
         />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" class="w-56">
+    <DropdownMenuContent align="start" class="w-56 z-[80]">
       <template v-for="(item, index) in items" :key="item.value">
         <DropdownMenuSeparator v-if="item.separator && index > 0" />
         <DropdownMenuItem @click="selectTab(item.value)">

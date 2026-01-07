@@ -312,6 +312,7 @@ onMounted(async () => {
         <div
           v-if="isCityDropdownOpen && cities.length > 0"
           ref="cityDropdownRef"
+          data-tutorial-popup
           :class="[
             'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto',
             dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
@@ -340,6 +341,7 @@ onMounted(async () => {
         <!-- No results -->
         <div
           v-if="isCityDropdownOpen && cities.length === 0 && !isLoadingCities && citySearch.length > 0"
+          data-tutorial-popup
           :class="[
             'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg p-3 text-sm text-gray-500 text-center',
             dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'

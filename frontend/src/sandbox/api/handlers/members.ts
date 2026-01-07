@@ -142,12 +142,14 @@ export function membersHandlers(): void {
     return {
       data: {
         member_id: 'sandbox-member-1',
-        member_name: 'Я (Sandbox)',
+        name: 'Я (Sandbox)',
+        email: 'me@sandbox.local',
         organization_id: 'sandbox-org-1',
-        organization_name: 'Моя организация (Sandbox)',
-        organization_status: 'active',
         role: 'owner',
-        permissions: ['owner', 'administrator', 'employee'],
+        organization: {
+          name: 'Моя организация (Sandbox)',
+          status: 'active',
+        },
       },
     }
   })

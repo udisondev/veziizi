@@ -1,43 +1,93 @@
 /**
- * Offers Receive Flow Scenario
- * Сценарий обучения: выбор предложений на свою заявку
+ * Offers Receive Flow Scenario (Updated)
+ * Сценарий обучения: выбор предложений на свою заявку через уведомления
  */
 
 import type { TutorialStep } from './types'
 import { mockFreightRequests } from '@/sandbox/mockData/freightRequests'
 import { mockOffers } from '@/sandbox/mockData/offers'
+import { mockNotifications } from '@/sandbox/mockData/notifications'
+import { useNotificationsStore } from '@/stores/notifications'
+import { useAuthStore } from '@/stores/auth'
+
+// ID заявки для этого сценария
+const FR_ID = 'sandbox-fr-offers'
+
+/**
+ * Инициализация сценария — создаёт mock данные при любом старте/возобновлении
+ * Эта функция вызывается ВСЕГДА, даже если сценарий возобновляется с середины
+ */
+async function initialize() {
+  const auth = useAuthStore()
+
+  // Очищаем предыдущие данные
+  mockNotifications.clear()
+
+  // Создаём заявку с офферами и уведомлениями
+  // Используем текущую организацию пользователя как владельца заявки
+  await mockFreightRequests.seedWithOffers(FR_ID, 4, {
+    customer_org_id: auth.organizationId!,
+    customer_org_name: auth.organizationName || 'Моя организация',
+    customer_member_id: auth.memberId!,
+  })
+
+  // Принудительно обновить Pinia store чтобы badge появился сразу
+  const notificationsStore = useNotificationsStore()
+  await Promise.all([
+    notificationsStore.fetchUnreadCount(),
+    notificationsStore.fetchRecentNotifications()
+  ])
+}
 
 export const steps: TutorialStep[] = [
-  // === Навигация к заявке ===
+  // === Уведомления ===
   {
-    id: 'offers_select_request',
-    title: 'Выберите заявку',
-    description: 'Нажмите на заявку с предложениями чтобы увидеть детали.',
-    route: '/',  // Автоматически перенаправляем на страницу заявок
-    target: 'freight-request-card',
+    id: 'notifications_intro',
+    title: 'Новые предложения!',
+    description:
+      'Перевозчики откликнулись на вашу заявку. Нажмите на колокольчик чтобы посмотреть уведомления.',
+    target: 'notification-bell',
     tooltipPosition: 'bottom',
-    completionType: 'navigate',
-    completionAction: '/freight-requests/',
-    async beforeStep() {
-      // Создаём заявку с офферами
-      await mockFreightRequests.seedWithOffers('sandbox-fr-offers', 4)
-    },
+    completionType: 'action',
+    completionAction: 'notification:bellOpened',
+    hint: 'Красный индикатор показывает количество непрочитанных уведомлений',
+    // beforeStep убран — логика перенесена в initialize()
   },
+  {
+    id: 'notifications_click',
+    title: 'Перейдите к заявке',
+    description: 'Нажмите на любое уведомление о предложении чтобы перейти к заявке.',
+    // Без target — tooltip не перекрывает уведомления
+    completionType: 'navigate',
+    completionAction: `/freight-requests/${FR_ID}`,
+  },
+
+  // === Вкладка предложений ===
   {
     id: 'offers_view_tab',
     title: 'Вкладка Предложения',
-    description: 'Перейдите на вкладку "Предложения" чтобы увидеть поступившие офферы от перевозчиков.',
-    target: 'offers-tab',
-    tooltipPosition: 'bottom',
+    description: 'Откройте выпадающий список и выберите "Предложения" чтобы увидеть все офферы.',
+    target: 'tabs-dropdown',
+    tooltipPosition: 'right', // Справа, чтобы не перекрывать dropdown
     completionType: 'action',
     completionAction: 'tab:offers',
   },
+
   // === Работа с офферами ===
   {
-    id: 'offers_reject',
+    id: 'offers_reject_click',
     title: 'Отклонение',
     description: 'Отклоните неподходящее предложение. Нажмите "Отклонить" на любом оффере.',
     target: 'reject-offer-btn',
+    tooltipPosition: 'left',
+    completionType: 'action',
+    completionAction: 'rejectModal:opened',
+  },
+  {
+    id: 'offers_reject_confirm',
+    title: 'Подтверждение отклонения',
+    description: 'Можно указать причину отклонения (опционально). Нажмите "Отклонить" для подтверждения или "Отменить" чтобы вернуться.',
+    target: 'reject-offer-modal',
     tooltipPosition: 'left',
     completionType: 'action',
     completionAction: 'offer:rejected',
@@ -63,25 +113,29 @@ export const steps: TutorialStep[] = [
   {
     id: 'offers_select_confirm',
     title: 'Выбор с подтверждением',
-    description: 'Теперь выберите другое предложение. Перевозчик автоматически подтвердит — и создастся заказ.',
+    description:
+      'Теперь выберите другое предложение. Перевозчик автоматически подтвердит — и создастся заказ.',
     target: 'select-offer-btn',
     tooltipPosition: 'left',
     completionType: 'action',
     completionAction: 'order:created',
     async beforeStep() {
-      // Настраиваем автоподтверждение для следующего оффера
-      mockOffers.setAutoConfirm('sandbox-offer-2', true)
-      mockOffers.setAutoConfirm('sandbox-offer-3', true)
-      mockOffers.setAutoConfirm('sandbox-offer-4', true)
+      // Настраиваем автоподтверждение для всех оставшихся pending офферов
+      const offers = mockOffers.listByFreightRequest(FR_ID)
+      offers
+        .filter(o => o.status === 'pending')
+        .forEach(offer => mockOffers.setAutoConfirm(offer.id, true))
     },
   },
+
   // === Завершение ===
   {
     id: 'offers_complete',
     title: 'Готово!',
-    description: 'Заказ создан. Теперь можно общаться с перевозчиком и отслеживать выполнение заказа.',
+    description:
+      'Заказ создан. Теперь можно общаться с перевозчиком и отслеживать выполнение заказа.',
     completionType: 'manual',
   },
 ]
 
-export default { steps }
+export default { steps, initialize }

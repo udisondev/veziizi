@@ -164,6 +164,7 @@ const userInitial = computed(() => {
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               ]"
+              @click="item.to === '/' && onboarding.isSandboxMode && tutorialBus.emit('nav:requestsClicked')"
             >
               <component :is="item.icon" class="h-4 w-4" />
               <span>{{ item.label }}</span>
