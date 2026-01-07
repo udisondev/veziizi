@@ -1,45 +1,70 @@
 /**
- * Customer Flow Scenario
+ * Customer Flow Scenario (Оптимизированная версия)
  * Сценарий обучения: создание заявки на перевозку
+ *
+ * Сокращено с 47 до ~23 шагов для лучшего UX
  */
 
 import type { TutorialStep } from './types'
 
 export const steps: TutorialStep[] = [
-  // === Навигация через меню ===
+  // ========================================
+  // НАВИГАЦИЯ (2 шага)
+  // ========================================
+
+  // Мобильная навигация
   {
     id: 'open_menu',
     title: 'Откройте меню',
-    description: 'Нажмите на кнопку меню в левом верхнем углу, чтобы открыть навигацию.',
+    description: 'Нажмите на кнопку меню в левом верхнем углу.',
     target: 'mobile-menu-btn',
     tooltipPosition: 'right',
     completionType: 'action',
     completionAction: 'menu:opened',
+    platform: 'mobile',
   },
   {
     id: 'select_requests',
     title: 'Выберите "Заявки"',
-    description: 'В открывшемся меню нажмите на пункт "Заявки", чтобы перейти к списку заявок на перевозку.',
+    description: 'В меню нажмите "Заявки" для перехода к списку заявок.',
     target: 'mobile-nav-requests',
     tooltipPosition: 'right',
     completionType: 'navigate',
     completionAction: '/',
+    platform: 'mobile',
   },
-  // === Создание заявки ===
+
+  // Desktop навигация
+  {
+    id: 'desktop_nav_intro',
+    title: 'Раздел "Заявки"',
+    description: 'Нажмите на "Заявки" для перехода к списку заявок.',
+    target: 'nav-requests',
+    tooltipPosition: 'bottom',
+    completionType: 'action',
+    completionAction: 'nav:requestsClicked',
+    platform: 'desktop',
+  },
+
+  // Создание заявки
   {
     id: 'customer_start',
     title: 'Создание заявки',
-    description: 'Теперь вы в разделе "Заявки". Нажмите кнопку "Новая заявка" чтобы создать заявку на перевозку.',
+    description: 'Нажмите "Новая заявка" чтобы создать заявку на перевозку груза.',
     target: 'create-request-btn',
     tooltipPosition: 'bottom',
     completionType: 'navigate',
     completionAction: '/freight-requests/new',
   },
-  // === Детальный туториал маршрута (7 шагов) ===
+
+  // ========================================
+  // МАРШРУТ (5 шагов)
+  // ========================================
+
   {
     id: 'route_loading_point',
     title: 'Точка погрузки',
-    description: 'Первая точка маршрута — это всегда место погрузки. Выберите страну и город откуда нужно забрать груз.',
+    description: 'Выберите страну и город откуда нужно забрать груз.',
     hint: 'Синяя полоска слева означает погрузку',
     target: 'route-point-0',
     tooltipPosition: 'top',
@@ -47,108 +72,28 @@ export const steps: TutorialStep[] = [
     completionAction: 'route:citySelected',
   },
   {
-    id: 'route_date_range',
+    id: 'route_loading_date',
     title: 'Дата погрузки',
-    description: 'Укажите дату погрузки. Можно указать промежуток дат (с ... по ...) если точная дата неизвестна. Второе поле опционально.',
+    description: 'Укажите дату погрузки. Можно указать диапазон дат если точная дата неизвестна.',
     target: 'route-date-fields',
     tooltipPosition: 'bottom',
     completionType: 'action',
     completionAction: 'route:dateSet',
   },
-  // --- Опциональные поля: Время ---
   {
-    id: 'route_add_time',
-    title: 'Добавить время',
-    description: 'Можно указать время погрузки. Нажмите "+ Время".',
-    target: 'route-add-time',
-    tooltipPosition: 'top',
-    completionType: 'action',
-    completionAction: 'route:timeToggled',
-    skippable: true,
-  },
-  {
-    id: 'route_time_added',
-    title: 'Поле времени добавлено',
-    description: 'Появилось поле для указания времени (с ... по ...). Справа есть кнопка "Убрать" — она удалит это поле.',
-    target: 'route-time-section',
+    id: 'route_optional_fields',
+    title: 'Дополнительные поля',
+    description: 'Можно добавить время, контакт на погрузке и примечание. Это опционально — пропустите если не нужно.',
+    hint: 'Нажмите "+ Время", "+ Контакт" или "+ Примечание" чтобы добавить поле',
+    target: 'route-optional-buttons',
     tooltipPosition: 'top',
     completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'route_hide_time',
-    title: 'Убрать время',
-    description: 'Попробуйте убрать поле времени. Нажмите "Убрать".',
-    target: 'route-hide-time',
-    tooltipPosition: 'left',
-    completionType: 'action',
-    completionAction: 'route:timeToggled',
-    skippable: true,
-  },
-  // --- Опциональные поля: Контакт ---
-  {
-    id: 'route_add_contact',
-    title: 'Добавить контакт',
-    description: 'Можно указать контактное лицо на погрузке. Нажмите "+ Контакт".',
-    target: 'route-add-contact',
-    tooltipPosition: 'top',
-    completionType: 'action',
-    completionAction: 'route:contactToggled',
-    skippable: true,
-  },
-  {
-    id: 'route_contact_added',
-    title: 'Поле контакта добавлено',
-    description: 'Появились поля для имени и телефона. Кнопка "Убрать" удалит эти поля.',
-    target: 'route-contact-section',
-    tooltipPosition: 'top',
-    completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'route_hide_contact',
-    title: 'Убрать контакт',
-    description: 'Попробуйте убрать контакт. Нажмите "Убрать".',
-    target: 'route-hide-contact',
-    tooltipPosition: 'left',
-    completionType: 'action',
-    completionAction: 'route:contactToggled',
-    skippable: true,
-  },
-  // --- Опциональные поля: Примечание ---
-  {
-    id: 'route_add_comment',
-    title: 'Добавить примечание',
-    description: 'Можно добавить дополнительную информацию. Нажмите "+ Примечание".',
-    target: 'route-add-comment',
-    tooltipPosition: 'top',
-    completionType: 'action',
-    completionAction: 'route:commentToggled',
-    skippable: true,
-  },
-  {
-    id: 'route_comment_added',
-    title: 'Примечание добавлено',
-    description: 'Появилось поле для текста. Здесь можно указать особенности погрузки, пожелания и т.д.',
-    target: 'route-comment-section',
-    tooltipPosition: 'top',
-    completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'route_hide_comment',
-    title: 'Убрать примечание',
-    description: 'Попробуйте убрать примечание. Нажмите "Убрать".',
-    target: 'route-hide-comment',
-    tooltipPosition: 'left',
-    completionType: 'action',
-    completionAction: 'route:commentToggled',
     skippable: true,
   },
   {
     id: 'route_unloading_point',
     title: 'Точка разгрузки',
-    description: 'Последняя точка — место разгрузки. Заполните страну и город доставки.',
+    description: 'Выберите страну и город куда нужно доставить груз.',
     hint: 'Зелёная полоска слева означает разгрузку',
     target: 'route-point-1',
     tooltipPosition: 'top',
@@ -158,134 +103,88 @@ export const steps: TutorialStep[] = [
   {
     id: 'route_unloading_date',
     title: 'Дата разгрузки',
-    description: 'Укажите планируемую дату доставки.',
-    target: 'route-point-1',
-    tooltipPosition: 'top',
+    description: 'Укажите дату разгрузки. Можно указать диапазон дат если точная дата неизвестна.',
+    target: 'route-date-fields-1',
+    tooltipPosition: 'bottom',
     completionType: 'action',
     completionAction: 'route:dateSet',
   },
   {
-    id: 'route_add_intermediate',
-    title: 'Добавить промежуточную точку',
-    description: 'Если нужна дозагрузка или частичная выгрузка по пути — добавьте промежуточную точку. Нажмите "Добавить точку".',
-    hint: 'Для промежуточных точек можно выбрать тип: погрузка, разгрузка или оба',
+    id: 'route_add_point_demo',
+    title: 'Кнопка "Добавить точку"',
+    description: 'Эта кнопка позволяет добавить промежуточные точки маршрута — для транзитной погрузки или разгрузки.',
+    hint: 'Нажмите на кнопку чтобы добавить промежуточную точку, или пропустите этот шаг',
     target: 'route-add-point-btn',
-    tooltipPosition: 'top',
-    completionType: 'action',
-    completionAction: 'route:pointAdded',
-    skippable: true,
-  },
-  {
-    id: 'route_intermediate_city',
-    title: 'Заполните новую точку',
-    description: 'Выберите страну и город для новой точки разгрузки.',
-    hint: 'Эта точка станет конечной точкой маршрута',
-    target: 'route-point-2',
-    tooltipPosition: 'top',
-    completionType: 'action',
-    completionAction: 'route:citySelected',
-    skippable: true,
-  },
-  {
-    id: 'route_intermediate_date',
-    title: 'Дата разгрузки',
-    description: 'Укажите планируемую дату доставки в новую точку.',
-    target: 'route-date-fields-2',
-    tooltipPosition: 'top',
-    completionType: 'action',
-    completionAction: 'route:dateSet',
-    skippable: true,
-  },
-  {
-    id: 'route_reorder',
-    title: 'Изменение порядка',
-    description: 'Вы можете перетащить точку за иконку слева, чтобы изменить порядок маршрута. Это опционально — продолжайте когда будете готовы.',
-    hint: 'Первая точка всегда останется погрузкой, последняя — разгрузкой',
-    target: 'route-points-list',
     tooltipPosition: 'top',
     completionType: 'manual',
     skippable: true,
   },
-  // === Переход к следующему шагу wizard'а ===
   {
     id: 'route_continue',
     title: 'Маршрут готов!',
-    description: 'Отлично! Маршрут заполнен. Нажмите "Далее" чтобы перейти к описанию груза.',
+    description: 'Нажмите "Далее" для перехода к описанию груза.',
     target: 'submit-btn',
     tooltipPosition: 'top',
     completionType: 'action',
     completionAction: 'wizard:next',
   },
-  // === Детальный туториал груза (6 шагов) ===
+
+  // ========================================
+  // ГРУЗ (5 шагов)
+  // ========================================
+
   {
     id: 'cargo_description',
     title: 'Описание груза',
-    description: 'Опишите что перевозите. Например: мебель, стройматериалы, продукты питания.',
+    description: 'Опишите что перевозите: мебель, стройматериалы, продукты и т.д.',
     hint: 'Чем подробнее описание, тем точнее будут предложения перевозчиков',
     target: 'cargo-description',
     tooltipPosition: 'bottom',
     completionType: 'manual',
   },
   {
-    id: 'cargo_weight',
-    title: 'Вес груза',
-    description: 'Укажите общий вес груза в килограммах. Это обязательное поле.',
+    id: 'cargo_weight_volume',
+    title: 'Вес и объём',
+    description: 'Укажите вес груза (обязательно). Объём и габариты — опционально.',
     hint: 'Если точный вес неизвестен — укажите примерный',
     target: 'cargo-weight',
     tooltipPosition: 'bottom',
     completionType: 'manual',
   },
   {
-    id: 'cargo_volume',
-    title: 'Объём груза',
-    description: 'Укажите объём груза в кубических метрах. Поле опциональное.',
-    target: 'cargo-volume',
-    tooltipPosition: 'bottom',
-    completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'cargo_dimensions',
-    title: 'Габариты',
-    description: 'Укажите размеры груза: длину, ширину и высоту в метрах. Поля опциональные.',
-    hint: 'Важно для негабаритных грузов',
-    target: 'cargo-dimensions',
-    tooltipPosition: 'bottom',
-    completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'cargo_quantity',
-    title: 'Количество мест',
-    description: 'Укажите количество грузовых мест (палет, коробок, единиц).',
+    id: 'cargo_quantity_adr',
+    title: 'Количество и класс опасности',
+    description: 'Укажите количество мест. Для опасных грузов выберите класс ADR.',
     target: 'cargo-quantity',
     tooltipPosition: 'bottom',
     completionType: 'manual',
   },
   {
-    id: 'cargo_adr',
-    title: 'Класс опасности',
-    description: 'Если груз относится к опасным — выберите класс ADR. Для обычных грузов оставьте "Не требуется".',
-    target: 'cargo-adr',
-    tooltipPosition: 'top',
+    id: 'cargo_optional_fields',
+    title: 'Дополнительные поля',
+    description: 'На этой странице также можно указать объём груза, габариты (длина, ширина, высота) и класс опасности ADR. Эти поля опциональны.',
     completionType: 'manual',
     skippable: true,
   },
   {
     id: 'cargo_continue',
     title: 'Груз описан!',
-    description: 'Отлично! Информация о грузе заполнена. Нажмите "Далее" для перехода к требованиям к транспорту.',
+    description: 'Нажмите "Далее" для перехода к требованиям к транспорту.',
     target: 'submit-btn',
     tooltipPosition: 'top',
     completionType: 'action',
     completionAction: 'wizard:next',
   },
-  // === Детальный туториал транспорта ===
+
+  // ========================================
+  // ТРАНСПОРТ (5 шагов)
+  // ========================================
+
   {
     id: 'vehicle_type',
     title: 'Тип транспорта',
-    description: 'Выберите тип транспорта (фура, тягач и т.д.). После выбора в "Тип кузова" останутся только подходящие варианты.',
-    hint: 'Можно пропустить и сразу выбрать тип кузова — тип транспорта определится автоматически',
+    description: 'Выберите тип транспорта: фургон, платформа, цистерна и т.д.',
+    hint: 'Этот шаг можно пропустить — выберите сразу тип кузова и тип транспорта определится автоматически',
     target: 'vehicle-type',
     tooltipPosition: 'bottom',
     completionType: 'manual',
@@ -294,82 +193,46 @@ export const steps: TutorialStep[] = [
   {
     id: 'vehicle_subtype',
     title: 'Тип кузова',
-    description: 'Выберите тип кузова: тент, рефрижератор, контейнер и т.д. Если тип транспорта не выбран — он определится автоматически.',
+    description: 'Выберите тип кузова: тент, рефрижератор, изотерма, цельнометалл и т.д.',
+    hint: 'Это обязательное поле. При выборе тип транспорта определится автоматически',
     target: 'vehicle-subtype',
     tooltipPosition: 'bottom',
     completionType: 'manual',
   },
   {
-    id: 'vehicle_loading',
-    title: 'Тип погрузки',
-    description: 'Укажите способ погрузки: задняя, боковая, верхняя. Можно выбрать несколько вариантов.',
+    id: 'vehicle_loading_capacity',
+    title: 'Погрузка и грузоподъёмность',
+    description: 'Укажите способ погрузки (задняя, боковая, верхняя) и минимальную грузоподъёмность.',
     target: 'vehicle-loading',
     tooltipPosition: 'bottom',
     completionType: 'manual',
-    skippable: true,
   },
   {
-    id: 'vehicle_capacity',
-    title: 'Грузоподъёмность',
-    description: 'Укажите минимальную грузоподъёмность транспорта в килограммах.',
-    target: 'vehicle-capacity',
-    tooltipPosition: 'bottom',
-    completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'vehicle_volume',
-    title: 'Объём кузова',
-    description: 'Укажите минимальный объём кузова в кубических метрах.',
-    target: 'vehicle-volume',
-    tooltipPosition: 'bottom',
-    completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'vehicle_dimensions',
-    title: 'Размеры кузова',
-    description: 'Укажите минимальные внутренние размеры кузова: длину, ширину и высоту в метрах.',
-    target: 'vehicle-dimensions',
-    tooltipPosition: 'top',
-    completionType: 'manual',
-    skippable: true,
-  },
-  // === Поля для изотерма/рефрижератора (условные) ===
-  {
-    id: 'vehicle_temperature',
-    title: 'Температурный режим',
-    description: 'Для изотерма или рефрижератора можно указать требуемый температурный режим. Поставьте галочку чтобы открыть поля.',
-    hint: 'Появляется только при выборе изотермического кузова или рефрижератора',
-    target: 'vehicle-temperature',
-    tooltipPosition: 'top',
-    completionType: 'manual',
-    skippable: true,
-  },
-  {
-    id: 'vehicle_thermograph',
-    title: 'Термописец',
-    description: 'Термописец — устройство для записи температуры в пути. Отметьте если требуется.',
-    hint: 'Появляется только при выборе изотермического кузова или рефрижератора',
-    target: 'vehicle-thermograph',
-    tooltipPosition: 'top',
+    id: 'vehicle_optional',
+    title: 'Дополнительные требования',
+    description: 'Можно указать объём и размеры кузова. Для изотермы и рефрижератора — температурный режим и термописец.',
+    hint: 'Все поля опциональны — заполните если важно',
     completionType: 'manual',
     skippable: true,
   },
   {
     id: 'vehicle_continue',
     title: 'Транспорт выбран!',
-    description: 'Требования к транспорту заполнены. Нажмите "Далее" для перехода к условиям оплаты.',
+    description: 'Нажмите "Далее" для перехода к условиям оплаты.',
     target: 'submit-btn',
     tooltipPosition: 'top',
     completionType: 'action',
     completionAction: 'wizard:next',
   },
-  // === Условия оплаты (пошагово) ===
+
+  // ========================================
+  // ОПЛАТА (7 шагов)
+  // ========================================
+
   {
     id: 'payment_price',
     title: 'Стоимость перевозки',
-    description: 'Укажите желаемую стоимость перевозки.',
+    description: 'Укажите желаемую сумму за перевозку.',
     target: 'payment-price',
     tooltipPosition: 'top',
     completionType: 'manual',
@@ -377,7 +240,7 @@ export const steps: TutorialStep[] = [
   {
     id: 'payment_currency',
     title: 'Валюта',
-    description: 'Выберите валюту для расчётов.',
+    description: 'Выберите валюту оплаты: рубли, доллары, евро и т.д.',
     target: 'payment-currency',
     tooltipPosition: 'top',
     completionType: 'manual',
@@ -385,7 +248,7 @@ export const steps: TutorialStep[] = [
   {
     id: 'payment_vat',
     title: 'НДС',
-    description: 'Укажите, включён ли НДС в стоимость.',
+    description: 'Укажите включён ли НДС в стоимость: с НДС, без НДС, или НДС сверху.',
     target: 'payment-vat',
     tooltipPosition: 'top',
     completionType: 'manual',
@@ -393,7 +256,7 @@ export const steps: TutorialStep[] = [
   {
     id: 'payment_method',
     title: 'Способ оплаты',
-    description: 'Выберите удобный способ оплаты.',
+    description: 'Выберите как будет производиться оплата: банковский перевод, наличные или карта.',
     target: 'payment-method',
     tooltipPosition: 'top',
     completionType: 'manual',
@@ -401,15 +264,16 @@ export const steps: TutorialStep[] = [
   {
     id: 'payment_terms',
     title: 'Условия оплаты',
-    description: 'Укажите, когда будет производиться оплата.',
+    description: 'Выберите когда производится оплата: при погрузке, на разгрузке или с отсрочкой.',
     target: 'payment-terms',
     tooltipPosition: 'top',
     completionType: 'manual',
   },
   {
     id: 'payment_no_price',
-    title: 'Можно не указывать цену',
-    description: 'Если не знаете точную стоимость — отметьте галочку, и перевозчики сами предложат цену.',
+    title: 'Без указания цены',
+    description: 'Если не знаете цену — отметьте галочку. Перевозчики сами предложат свою стоимость.',
+    hint: 'Это опционально — пропустите если цена уже указана',
     target: 'payment-no-price',
     tooltipPosition: 'bottom',
     completionType: 'manual',
@@ -418,13 +282,17 @@ export const steps: TutorialStep[] = [
   {
     id: 'payment_continue',
     title: 'Оплата готова!',
-    description: 'Условия оплаты заполнены. Нажмите "Далее" для перехода к проверке данных.',
+    description: 'Нажмите "Далее" для проверки данных перед публикацией.',
     target: 'submit-btn',
     tooltipPosition: 'top',
     completionType: 'action',
     completionAction: 'wizard:next',
   },
-  // === Итоговый экран ===
+
+  // ========================================
+  // ПОДТВЕРЖДЕНИЕ (2 шага)
+  // ========================================
+
   {
     id: 'summary_overview',
     title: 'Проверка данных',
@@ -435,23 +303,19 @@ export const steps: TutorialStep[] = [
     completionType: 'manual',
   },
   {
-    id: 'submit_buttons',
-    title: 'Кнопки навигации',
-    description: 'Нажмите "Опубликовать" чтобы разместить заявку. Кнопка "Назад" позволяет вернуться к редактированию.',
-    target: 'wizard-buttons',
-    tooltipPosition: 'top',
-    completionType: 'manual',
-  },
-  {
     id: 'customer_submit_request',
     title: 'Опубликовать заявку',
-    description: 'Нажмите "Опубликовать" для размещения заявки.',
-    target: 'submit-btn',
+    description: 'Проверьте данные и нажмите "Опубликовать". Кнопка "Назад" позволяет вернуться к редактированию.',
+    target: 'wizard-buttons',
     tooltipPosition: 'top',
     completionType: 'action',
     completionAction: 'freightRequest:created',
   },
-  // === Заявка опубликована ===
+
+  // ========================================
+  // ЗАВЕРШЕНИЕ (2 шага)
+  // ========================================
+
   {
     id: 'request_published',
     title: 'Заявка опубликована!',
@@ -462,7 +326,6 @@ export const steps: TutorialStep[] = [
     route: '/',
     completionType: 'manual',
   },
-  // === Завершение с предложением обучения ===
   {
     id: 'customer_complete',
     title: 'Что дальше?',
