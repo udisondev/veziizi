@@ -5,6 +5,7 @@
  */
 
 import { ref, type Ref } from 'vue'
+import { TUTORIAL_POPUP_MAX_DISTANCE } from '@/sandbox/constants'
 
 // Универсальные селекторы для определения открытых popup
 const POPUP_SELECTORS = [
@@ -17,10 +18,8 @@ const POPUP_SELECTORS = [
   '[data-reka-popper-content-wrapper]',
   '[data-radix-popper-content-wrapper]',
 
-  // Кастомные dropdown (абсолютное позиционирование + z-index)
-  // City autocomplete dropdown pattern
-  '.absolute.z-50.bg-white.border.rounded-md.shadow-lg',
-  '.absolute.z-50.bg-popover',
+  // Универсальный атрибут для кастомных dropdown
+  '[data-tutorial-popup]',
 ]
 
 export type PopupDirection = 'up' | 'down' | 'left' | 'right'
@@ -69,7 +68,7 @@ export function useTutorialPopupTracker() {
    */
   function findPopupsNear(targetRect: DOMRect): PopupInfo[] {
     const popups: PopupInfo[] = []
-    const maxDistance = 100 // px - максимальное расстояние до popup
+    const maxDistance = TUTORIAL_POPUP_MAX_DISTANCE
 
     for (const selector of POPUP_SELECTORS) {
       try {
@@ -143,7 +142,17 @@ export function useTutorialPopupTracker() {
   }
 
   /**
-   * Получает оптимальную позицию tooltip (противоположную от popup)
+   * Получает оптимальную позицию tooltip, учитывая popup и preferredPosition
+   *
+   * Логика:
+   * - Если preferredPosition НЕ конфликтует с popup, оставляем её
+   * - Если конфликтует (tooltip и popup в одном месте), выбираем противоположную
+   *
+   * Конфликты:
+   * - popup down + tooltip bottom → конфликт
+   * - popup up + tooltip top → конфликт
+   * - popup left + tooltip left → конфликт
+   * - popup right + tooltip right → конфликт
    */
   function getOptimalTooltipPosition(
     popupDirection: PopupDirection | null,
@@ -153,6 +162,22 @@ export function useTutorialPopupTracker() {
       return preferredPosition
     }
 
+    // Маппинг: какая позиция tooltip конфликтует с каким направлением popup
+    const conflictMap: Record<PopupDirection, 'top' | 'bottom' | 'left' | 'right'> = {
+      'down': 'bottom',  // popup вниз конфликтует с tooltip снизу
+      'up': 'top',       // popup вверх конфликтует с tooltip сверху
+      'left': 'left',    // popup влево конфликтует с tooltip слева
+      'right': 'right',  // popup вправо конфликтует с tooltip справа
+    }
+
+    const conflictingPosition = conflictMap[popupDirection]
+
+    // Если preferredPosition не конфликтует, оставляем её
+    if (preferredPosition !== conflictingPosition) {
+      return preferredPosition
+    }
+
+    // Иначе возвращаем противоположную
     const oppositePositions: Record<PopupDirection, 'top' | 'bottom' | 'left' | 'right'> = {
       'up': 'bottom',
       'down': 'top',
@@ -218,5 +243,105 @@ export function useTutorialPopupTracker() {
     getOptimalTooltipPosition,
     analyzeTarget,
     reset,
+  }
+}
+
+// ============================================
+// Shared MutationObserver для popup изменений
+// ============================================
+
+// Singleton MutationObserver для отслеживания изменений popup
+let sharedObserver: MutationObserver | null = null
+const popupChangeListeners = new Set<() => void>()
+
+/**
+ * Подписаться на изменения popup (появление/исчезновение)
+ * Возвращает функцию отписки
+ *
+ * @example
+ * ```ts
+ * onMounted(() => {
+ *   const unsubscribe = onPopupChange(() => updatePosition())
+ *   onUnmounted(() => unsubscribe())
+ * })
+ * ```
+ */
+export function onPopupChange(callback: () => void): () => void {
+  popupChangeListeners.add(callback)
+  ensureSharedObserver()
+
+  return () => {
+    popupChangeListeners.delete(callback)
+    // Если нет подписчиков, останавливаем observer
+    if (popupChangeListeners.size === 0) {
+      stopSharedObserver()
+    }
+  }
+}
+
+/**
+ * Создаёт shared observer если его нет
+ */
+function ensureSharedObserver(): void {
+  if (sharedObserver) return
+
+  sharedObserver = new MutationObserver((mutations) => {
+    // Проверяем, затрагивают ли мутации popup элементы
+    let hasPopupChange = false
+
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'data-state') {
+        hasPopupChange = true
+        break
+      }
+
+      if (mutation.type === 'childList') {
+        // Проверяем добавленные/удалённые узлы
+        for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+          if (node instanceof Element) {
+            const isPopup =
+              node.matches?.('[data-reka-popper-content-wrapper]') ||
+              node.matches?.('[data-radix-popper-content-wrapper]') ||
+              node.matches?.('[data-state][role="listbox"]') ||
+              node.matches?.('[data-state][role="dialog"]') ||
+              node.matches?.('[data-state][role="menu"]') ||
+              node.matches?.('[data-tutorial-popup]') ||
+              node.querySelector?.('[data-reka-popper-content-wrapper]') ||
+              node.querySelector?.('[data-state="open"]') ||
+              node.querySelector?.('[data-tutorial-popup]')
+
+            if (isPopup) {
+              hasPopupChange = true
+              break
+            }
+          }
+        }
+        if (hasPopupChange) break
+      }
+    }
+
+    if (hasPopupChange) {
+      // Небольшая задержка для завершения анимации popup
+      setTimeout(() => {
+        popupChangeListeners.forEach(cb => cb())
+      }, 50)
+    }
+  })
+
+  sharedObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['data-state'],
+  })
+}
+
+/**
+ * Останавливает shared observer
+ */
+function stopSharedObserver(): void {
+  if (sharedObserver) {
+    sharedObserver.disconnect()
+    sharedObserver = null
   }
 }

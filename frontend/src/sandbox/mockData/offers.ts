@@ -7,6 +7,12 @@ import type { Offer, MakeOfferRequest } from '@/types/freightRequest'
 import { generateId, randomInt } from './generators'
 import { tutorialBus } from '@/sandbox/events'
 import { mockOrders } from './orders'
+import { AUTO_CONFIRM_DELAY_MS } from '@/sandbox/constants'
+
+// Ленивый импорт для избежания циклических зависимостей
+function getMockFreightRequests() {
+  return window.__mockFreightRequests!
+}
 
 // Контрагенты для симуляции
 const CARRIERS = [
@@ -19,6 +25,7 @@ class MockOfferStore {
   private offersByFr: Map<string, Offer[]> = new Map()
   private myOffers: Map<string, Offer> = new Map()
   private autoConfirmOffers: Set<string> = new Set()
+  private offerCounter = 0
 
   /**
    * Получить офферы для заявки
@@ -85,11 +92,12 @@ class MockOfferStore {
     for (let i = 0; i < count; i++) {
       await new Promise((resolve) => setTimeout(resolve, delayMs * (i + 1)))
 
+      this.offerCounter++
       const carrier = CARRIERS[i % CARRIERS.length]
       const basePrice = randomInt(30000, 80000) * 100 // 30k-80k рублей в копейках
 
       const offer: Offer = {
-        id: `sandbox-offer-${i + 1}`,
+        id: `sandbox-offer-${this.offerCounter}`,
         carrier_org_id: carrier.id,
         carrier_org_name: carrier.name,
         carrier_member_id: `${carrier.id}-member`,
@@ -124,22 +132,31 @@ class MockOfferStore {
    */
   select(frId: string, offerId: string): void {
     const offers = this.offersByFr.get(frId) || []
+    const offer = offers.find((o) => o.id === offerId)
+
+    if (!offer) {
+      console.warn(`[mockOffers] Offer not found: ${offerId}`)
+      return
+    }
 
     // Сбрасываем предыдущий selected
     offers.forEach((o) => {
       if (o.status === 'selected') o.status = 'pending'
     })
 
-    const offer = offers.find((o) => o.id === offerId)
-    if (!offer) throw new Error('Offer not found')
-
     offer.status = 'selected'
 
-    // Если autoconfirm — сразу confirm
+    // Обновляем статус заявки
+    const fr = getMockFreightRequests()?.get(frId)
+    if (fr) {
+      fr.status = 'selected'
+    }
+
+    // Если autoconfirm — сразу confirm (с минимальной задержкой для UI)
     if (this.autoConfirmOffers.has(offerId)) {
       setTimeout(() => {
         this.confirm(frId, offerId)
-      }, 1000)
+      }, AUTO_CONFIRM_DELAY_MS)
     }
   }
 
@@ -149,9 +166,13 @@ class MockOfferStore {
   reject(frId: string, offerId: string): void {
     const offers = this.offersByFr.get(frId) || []
     const offer = offers.find((o) => o.id === offerId)
-    if (offer) {
-      offer.status = 'rejected'
+
+    if (!offer) {
+      console.warn(`[mockOffers] Offer not found for reject: ${offerId}`)
+      return
     }
+
+    offer.status = 'rejected'
   }
 
   /**
@@ -160,8 +181,23 @@ class MockOfferStore {
   unselect(frId: string, offerId: string): void {
     const offers = this.offersByFr.get(frId) || []
     const offer = offers.find((o) => o.id === offerId)
-    if (offer && offer.status === 'selected') {
-      offer.status = 'pending'
+
+    if (!offer) {
+      console.warn(`[mockOffers] Offer not found for unselect: ${offerId}`)
+      return
+    }
+
+    if (offer.status !== 'selected') {
+      console.warn(`[mockOffers] Cannot unselect offer with status: ${offer.status}`)
+      return
+    }
+
+    offer.status = 'pending'
+
+    // Возвращаем статус заявки на published
+    const fr = getMockFreightRequests()?.get(frId)
+    if (fr) {
+      fr.status = 'published'
     }
   }
 
@@ -171,9 +207,19 @@ class MockOfferStore {
   confirm(frId: string, offerId: string): void {
     const offers = this.offersByFr.get(frId) || []
     const offer = offers.find((o) => o.id === offerId)
-    if (!offer) return
+
+    if (!offer) {
+      console.warn(`[mockOffers] Offer not found for confirm: ${offerId}`)
+      return
+    }
 
     offer.status = 'confirmed'
+
+    // Обновляем статус заявки
+    const fr = getMockFreightRequests()?.get(frId)
+    if (fr) {
+      fr.status = 'confirmed'
+    }
 
     // Создаём заказ
     const orderId = mockOrders.createFromOffer(frId, offer)
@@ -183,14 +229,44 @@ class MockOfferStore {
   }
 
   /**
+   * Отклонить выбранный оффер (перевозчик отказывается)
+   */
+  decline(frId: string, offerId: string): void {
+    const offers = this.offersByFr.get(frId) || []
+    const offer = offers.find((o) => o.id === offerId)
+
+    if (!offer) {
+      console.warn(`[mockOffers] Offer not found for decline: ${offerId}`)
+      return
+    }
+
+    if (offer.status !== 'selected') {
+      console.warn(`[mockOffers] Cannot decline offer with status: ${offer.status}`)
+      return
+    }
+
+    offer.status = 'declined'
+
+    // Возвращаем статус заявки на published
+    const fr = getMockFreightRequests()?.get(frId)
+    if (fr) {
+      fr.status = 'published'
+    }
+  }
+
+  /**
    * Отозвать оффер
    */
   withdraw(frId: string, offerId: string): void {
     const offers = this.offersByFr.get(frId) || []
     const offer = offers.find((o) => o.id === offerId)
-    if (offer) {
-      offer.status = 'withdrawn'
+
+    if (!offer) {
+      console.warn(`[mockOffers] Offer not found for withdraw: ${offerId}`)
+      return
     }
+
+    offer.status = 'withdrawn'
 
     // Удаляем из моих офферов
     this.myOffers.delete(offerId)
@@ -223,7 +299,19 @@ class MockOfferStore {
     this.offersByFr.clear()
     this.myOffers.clear()
     this.autoConfirmOffers.clear()
+    this.offerCounter = 0
   }
 }
 
-export const mockOffers = new MockOfferStore()
+// Глобальный singleton для корректной работы при HMR
+declare global {
+  interface Window {
+    __mockOffers?: MockOfferStore
+  }
+}
+
+if (!window.__mockOffers) {
+  window.__mockOffers = new MockOfferStore()
+}
+
+export const mockOffers = window.__mockOffers

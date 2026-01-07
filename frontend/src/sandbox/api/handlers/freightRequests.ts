@@ -3,14 +3,18 @@
  */
 
 import { registerHandler } from './index'
-import { mockFreightRequests } from '@/sandbox/mockData'
 import type { CreateFreightRequestRequest } from '@/types/freightRequest'
 import { tutorialBus } from '@/sandbox/events'
+
+// Используем глобальный singleton напрямую для избежания проблем с HMR
+function getMockFreightRequests() {
+  return window.__mockFreightRequests!
+}
 
 export function freightRequestsHandlers(): void {
   // List freight requests
   registerHandler('GET', '/freight-requests', (params, body, query) => {
-    const items = mockFreightRequests.list()
+    const items = getMockFreightRequests().list()
 
     // Применяем фильтры из query
     let filtered = items
@@ -35,7 +39,7 @@ export function freightRequestsHandlers(): void {
 
   // Get freight request by ID
   registerHandler('GET', '/freight-requests/:id', (params) => {
-    const fr = mockFreightRequests.get(params.id)
+    const fr = getMockFreightRequests().get(params.id)
     if (!fr) {
       return {
         status: 404,
@@ -48,7 +52,7 @@ export function freightRequestsHandlers(): void {
   // Create freight request
   registerHandler('POST', '/freight-requests', async (params, body) => {
     const data = body as CreateFreightRequestRequest
-    const result = mockFreightRequests.create(data)
+    const result = getMockFreightRequests().create(data)
 
     // Эмитим событие для tutorial
     tutorialBus.emit('freightRequest:created', { id: result.id })
@@ -58,7 +62,7 @@ export function freightRequestsHandlers(): void {
 
   // Update freight request
   registerHandler('PATCH', '/freight-requests/:id', (params, body) => {
-    const fr = mockFreightRequests.get(params.id)
+    const fr = getMockFreightRequests().get(params.id)
     if (!fr) {
       return {
         status: 404,
@@ -72,7 +76,7 @@ export function freightRequestsHandlers(): void {
   // Cancel freight request
   registerHandler('DELETE', '/freight-requests/:id', (params, body) => {
     const reason = (body as { reason?: string })?.reason
-    mockFreightRequests.cancel(params.id, reason)
+    getMockFreightRequests().cancel(params.id, reason)
 
     // Эмитим событие
     tutorialBus.emit('freightRequest:cancelled', { id: params.id })

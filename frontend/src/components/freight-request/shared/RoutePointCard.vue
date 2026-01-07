@@ -350,7 +350,7 @@ watch(() => [props.index, props.totalPoints], () => {
       />
 
       <!-- Date (обязательное) -->
-      <div :data-tutorial="index === 0 ? 'route-date-fields' : (index === 2 ? 'route-date-fields-2' : undefined)">
+      <div :data-tutorial="index === 0 ? 'route-date-fields' : (index === 1 ? 'route-date-fields-1' : (index === 2 ? 'route-date-fields-2' : undefined))">
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Дата <span class="text-red-500">*</span>
         </label>

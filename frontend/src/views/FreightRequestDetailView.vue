@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { ordersApi } from '@/api/orders'
@@ -8,6 +8,8 @@ import { historyApi } from '@/api/history'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import { useTutorialEvent } from '@/composables/useTutorialEvent'
+import { useSandboxReady } from '@/composables/useSandboxReady'
+import { tutorialBus } from '@/sandbox/events'
 import type { OrderListItem } from '@/types/order'
 import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
 import EventHistory from '@/components/EventHistory.vue'
@@ -95,6 +97,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const permissions = usePermissions()
 const { emit: emitTutorial } = useTutorialEvent()
+const { waitForReady } = useSandboxReady()
 
 // State
 const freightRequest = ref<FreightRequest | null>(null)
@@ -271,6 +274,11 @@ async function loadData() {
   error.value = ''
   creatorProfile.value = null
   linkedOrder.value = null
+
+  // Ждём готовности sandbox перед загрузкой данных
+  // (решает race condition при восстановлении сессии из localStorage)
+  await waitForReady()
+
   try {
     const id = route.params.id as string
     const [fr, offersList] = await Promise.all([
@@ -362,6 +370,7 @@ async function handleSelectOffer(offerId: string) {
   actionLoading.value = true
   try {
     await freightRequestsApi.selectOffer(freightRequest.value.id, offerId)
+    emitTutorial('offer:selected', { frId: freightRequest.value.id, offerId })
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -374,13 +383,16 @@ function openRejectModal(offerId: string) {
   rejectOfferId.value = offerId
   rejectReason.value = ''
   showRejectModal.value = true
+  emitTutorial('rejectModal:opened')
 }
 
 async function confirmRejectOffer() {
   if (!freightRequest.value || !rejectOfferId.value) return
   actionLoading.value = true
+  const offerId = rejectOfferId.value
   try {
-    await freightRequestsApi.rejectOffer(freightRequest.value.id, rejectOfferId.value, rejectReason.value || undefined)
+    await freightRequestsApi.rejectOffer(freightRequest.value.id, offerId, rejectReason.value || undefined)
+    emitTutorial('offer:rejected', { frId: freightRequest.value.id, offerId })
     showRejectModal.value = false
     rejectOfferId.value = null
     rejectReason.value = ''
@@ -430,6 +442,7 @@ async function handleConfirmOffer(offerId: string) {
   actionLoading.value = true
   try {
     await freightRequestsApi.confirmOffer(freightRequest.value.id, offerId)
+    emitTutorial('offer:confirmed', { frId: freightRequest.value.id, offerId })
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -456,6 +469,7 @@ async function handleUnselectOffer(offerId: string) {
   actionLoading.value = true
   try {
     await freightRequestsApi.unselectOffer(freightRequest.value.id, offerId)
+    emitTutorial('offer:unselected', { frId: freightRequest.value.id, offerId })
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -464,8 +478,26 @@ async function handleUnselectOffer(offerId: string) {
   }
 }
 
+// Слушатель переключения вкладки из туториала
+function handleTutorialTabSwitch() {
+  currentTab.value = 'offers'
+}
+
+// Слушатель создания заказа (для обновления данных после auto-confirm)
+function handleOrderCreated() {
+  loadData()
+}
+
 onMounted(() => {
   loadData()
+  // Подписываемся на события из туториала
+  tutorialBus.on('tab:offers', handleTutorialTabSwitch)
+  tutorialBus.on('order:created', handleOrderCreated)
+})
+
+onUnmounted(() => {
+  tutorialBus.off('tab:offers', handleTutorialTabSwitch)
+  tutorialBus.off('order:created', handleOrderCreated)
 })
 </script>
 
@@ -542,7 +574,7 @@ onMounted(() => {
         <Tabs v-model="currentTab" class="w-full">
           <!-- Tab selector dropdown -->
           <div v-if="tabItems.length > 1" class="mb-6">
-            <TabsDropdown v-model="currentTab" :items="tabItems" />
+            <TabsDropdown v-model="currentTab" :items="tabItems" trigger-tutorial-id="tabs-dropdown" />
           </div>
 
           <!-- Details Tab -->
@@ -998,10 +1030,10 @@ onMounted(() => {
     <!-- Reject Offer Dialog -->
     <Dialog v-model:open="showRejectModal">
       <DialogContent class="sm:max-w-md">
-        <DialogHeader>
+        <DialogHeader data-tutorial="reject-offer-modal">
           <DialogTitle>Отклонить предложение</DialogTitle>
           <DialogDescription>
-            Вы уверены, что хотите отклонить это предложение?
+            Укажите причину отклонения (опционально) и подтвердите действие.
           </DialogDescription>
         </DialogHeader>
 
@@ -1016,9 +1048,10 @@ onMounted(() => {
 
         <DialogFooter>
           <Button variant="outline" @click="showRejectModal = false">
-            Отмена
+            Отменить
           </Button>
           <Button
+            data-tutorial="confirm-reject-btn"
             variant="destructive"
             :disabled="actionLoading"
             @click="confirmRejectOffer"

@@ -5,6 +5,7 @@ import { useFreightRequestForm } from '@/composables/useFreightRequestForm'
 import { useTutorialEvent } from '@/composables/useTutorialEvent'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { freightRequestsApi } from '@/api/freightRequests'
+import { scrollToFirstError } from '@/utils/scrollToError'
 import WizardStepIndicator from './WizardStepIndicator.vue'
 import RouteStep from './steps/RouteStep.vue'
 import CargoStep from './steps/CargoStep.vue'
@@ -93,7 +94,15 @@ function handleNext() {
   } else {
     // Отправляем событие только если валидация прошла и переход выполнен
     if (form.nextStep()) {
+      // Выходим из режима ошибки валидации если были в нём
+      if (onboarding.validationErrorMode) {
+        onboarding.exitValidationErrorMode()
+      }
       emitTutorial('wizard:next')
+    } else {
+      // Валидация не прошла - скроллим к первой ошибке
+      console.log('[handleNext] validation failed, errors:', JSON.stringify(form.errors))
+      scrollToFirstError(form.errors)
     }
   }
 }

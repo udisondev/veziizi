@@ -10,6 +10,7 @@ import { mockFreightRequests } from './freightRequests'
 
 class MockOrderStore {
   private items: Map<string, Order> = new Map()
+  private orderCounter = 0
 
   /**
    * Получить список заказов
@@ -40,7 +41,8 @@ class MockOrderStore {
    */
   createFromOffer(frId: string, offer: Offer): string {
     const fr = mockFreightRequests.get(frId)
-    const id = 'sandbox-order-1' // Фиксированный ID для tutorial
+    this.orderCounter++
+    const id = `sandbox-order-${this.orderCounter}`
 
     const order: Order = {
       id,
@@ -192,7 +194,8 @@ class MockOrderStore {
     this.clear()
 
     for (let i = 0; i < count; i++) {
-      const id = i === 0 ? 'sandbox-order-1' : `sandbox-order-${i + 1}`
+      this.orderCounter++
+      const id = `sandbox-order-${this.orderCounter}`
       const order: Order = {
         id,
         order_number: generateOrderNumber(),
@@ -221,7 +224,19 @@ class MockOrderStore {
    */
   clear(): void {
     this.items.clear()
+    this.orderCounter = 0
   }
 }
 
-export const mockOrders = new MockOrderStore()
+// Глобальный singleton для корректной работы при HMR
+declare global {
+  interface Window {
+    __mockOrders?: MockOrderStore
+  }
+}
+
+if (!window.__mockOrders) {
+  window.__mockOrders = new MockOrderStore()
+}
+
+export const mockOrders = window.__mockOrders

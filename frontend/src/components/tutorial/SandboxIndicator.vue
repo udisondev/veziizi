@@ -30,7 +30,7 @@ function handleSkipStep() {
       leave-to-class="translate-y-full opacity-0"
     >
       <div
-        v-if="isSandboxMode"
+        v-if="isSandboxMode && !currentStep?.showOffersTrainingButton"
         class="fixed bottom-4 left-4 z-[60] flex items-center gap-3 rounded-lg bg-amber-500 px-4 py-2 text-white shadow-lg"
       >
         <GraduationCap class="h-5 w-5" />

@@ -3,21 +3,25 @@
  */
 
 import { registerHandler } from './index'
-import { mockOffers, mockFreightRequests } from '@/sandbox/mockData'
 import type { MakeOfferRequest } from '@/types/freightRequest'
 import { tutorialBus } from '@/sandbox/events'
+
+// Используем глобальный singleton напрямую для избежания проблем с HMR
+function getMockOffers() {
+  return window.__mockOffers!
+}
 
 export function offersHandlers(): void {
   // List offers for freight request
   registerHandler('GET', '/freight-requests/:frId/offers', (params) => {
-    const offers = mockOffers.listByFreightRequest(params.frId)
+    const offers = getMockOffers().listByFreightRequest(params.frId)
     return { data: offers }
   })
 
   // Make offer (как перевозчик)
   registerHandler('POST', '/freight-requests/:frId/offers', (params, body) => {
     const data = body as MakeOfferRequest
-    const result = mockOffers.create(params.frId, data)
+    const result = getMockOffers().create(params.frId, data)
 
     // Эмитим событие
     tutorialBus.emit('offer:created', {
@@ -30,13 +34,8 @@ export function offersHandlers(): void {
 
   // Select offer
   registerHandler('POST', '/freight-requests/:frId/offers/:offerId/select', (params) => {
-    mockOffers.select(params.frId, params.offerId)
-
-    // Обновляем статус заявки
-    const fr = mockFreightRequests.get(params.frId)
-    if (fr) {
-      fr.status = 'selected'
-    }
+    // Статус FR обновляется внутри mockOffers.select()
+    getMockOffers().select(params.frId, params.offerId)
 
     // Эмитим событие
     tutorialBus.emit('offer:selected', {
@@ -49,7 +48,7 @@ export function offersHandlers(): void {
 
   // Reject offer
   registerHandler('POST', '/freight-requests/:frId/offers/:offerId/reject', (params, body) => {
-    mockOffers.reject(params.frId, params.offerId)
+    getMockOffers().reject(params.frId, params.offerId)
 
     // Эмитим событие
     tutorialBus.emit('offer:rejected', {
@@ -61,14 +60,9 @@ export function offersHandlers(): void {
   })
 
   // Unselect offer
-  registerHandler('POST', '/freight-requests/:frId/offers/:offerId/unselect', (params, body) => {
-    mockOffers.unselect(params.frId, params.offerId)
-
-    // Возвращаем статус заявки на published
-    const fr = mockFreightRequests.get(params.frId)
-    if (fr) {
-      fr.status = 'published'
-    }
+  registerHandler('POST', '/freight-requests/:frId/offers/:offerId/unselect', (params) => {
+    // Статус FR обновляется внутри mockOffers.unselect()
+    getMockOffers().unselect(params.frId, params.offerId)
 
     // Эмитим событие
     tutorialBus.emit('offer:unselected', {
@@ -81,40 +75,29 @@ export function offersHandlers(): void {
 
   // Confirm offer (создаёт заказ)
   registerHandler('POST', '/freight-requests/:frId/offers/:offerId/confirm', (params) => {
-    mockOffers.confirm(params.frId, params.offerId)
-
-    // Обновляем статус заявки
-    const fr = mockFreightRequests.get(params.frId)
-    if (fr) {
-      fr.status = 'confirmed'
-    }
-
-    // Событие order:created эмитится внутри mockOffers.confirm()
-    // через mockOrders.createFromOffer()
+    // Статус FR обновляется и order:created эмитится внутри mockOffers.confirm()
+    getMockOffers().confirm(params.frId, params.offerId)
 
     return { status: 204 }
   })
 
   // Decline offer (перевозчик отказывается от выбранного оффера)
-  registerHandler('POST', '/freight-requests/:frId/offers/:offerId/decline', (params, body) => {
-    const offers = mockOffers.listByFreightRequest(params.frId)
-    const offer = offers.find((o) => o.id === params.offerId)
-    if (offer) {
-      offer.status = 'declined'
-    }
+  registerHandler('POST', '/freight-requests/:frId/offers/:offerId/decline', (params) => {
+    // Статус FR обновляется внутри mockOffers.decline()
+    getMockOffers().decline(params.frId, params.offerId)
 
-    // Возвращаем статус заявки на published
-    const fr = mockFreightRequests.get(params.frId)
-    if (fr) {
-      fr.status = 'published'
-    }
+    // Эмитим событие
+    tutorialBus.emit('offer:declined', {
+      frId: params.frId,
+      offerId: params.offerId
+    })
 
     return { status: 204 }
   })
 
   // Withdraw offer (отзыв своего предложения)
   registerHandler('DELETE', '/freight-requests/:frId/offers/:offerId', (params, body) => {
-    mockOffers.withdraw(params.frId, params.offerId)
+    getMockOffers().withdraw(params.frId, params.offerId)
 
     // Эмитим событие
     tutorialBus.emit('offer:withdrawn', {
@@ -127,7 +110,7 @@ export function offersHandlers(): void {
 
   // List my offers (для перевозчика)
   registerHandler('GET', '/offers', () => {
-    const offers = mockOffers.listMyOffers()
+    const offers = getMockOffers().listMyOffers()
     return { data: offers }
   })
 }

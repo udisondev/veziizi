@@ -22,6 +22,9 @@ export type StepCompletionType =
 // Позиция tooltip относительно элемента
 export type TooltipPosition = 'top' | 'bottom' | 'left' | 'right'
 
+// Платформа для отображения шага
+export type StepPlatform = 'all' | 'mobile' | 'desktop'
+
 // Шаг обучения
 export interface TutorialStep {
   id: string
@@ -55,6 +58,10 @@ export interface TutorialStep {
 
   // Показать кнопку перехода к обучению по предложениям
   showOffersTrainingButton?: boolean
+
+  // Платформа: 'all' (по умолчанию), 'mobile', 'desktop'
+  // Шаги с platform: 'mobile' скрываются на desktop и наоборот
+  platform?: StepPlatform
 }
 
 // Сценарий обучения
@@ -129,6 +136,9 @@ export interface TutorialEvents {
   'offer:declined': { frId: string; offerId: string }
   'offer:withdrawn': { frId: string; offerId: string }
 
+  // Modal events
+  'rejectModal:opened': void
+
   // Order events
   'order:created': { id: string }
   'order:completed': { orderId: string }
@@ -168,12 +178,19 @@ export interface TutorialEvents {
   'telegram:linkRequested': void
   'telegram:connected': void
 
+  // Notification events
+  'notification:bellOpened': void
+  'notification:clicked': { id: string; link?: string }
+
   // Navigation
   'navigate': { path: string }
 
   // Menu events
   'menu:opened': void
   'menu:closed': void
+
+  // Navigation clicks (desktop sidebar)
+  'nav:requestsClicked': void
 
   // Route step events (детальный туториал маршрута)
   'route:citySelected': { pointIndex: number }
@@ -187,6 +204,12 @@ export interface TutorialEvents {
 
 // Ключи событий
 export type TutorialEventKey = keyof TutorialEvents
+
+// Модуль сценария (экспорт из файла сценария)
+export interface ScenarioModule {
+  steps: TutorialStep[]
+  initialize?: () => Promise<void> | void
+}
 
 // localStorage ключи
 export const STORAGE_KEYS = {
