@@ -87,9 +87,8 @@ APP_ENV=development                # development | production
 ### Domain Aggregates
 
 - **Organization** — организация с Members и Invitations. Любая организация может быть заказчиком и делать офферы
-- **FreightRequest** — заявка на перевозку с Offers внутри. Два версионирования: `version` (aggregate) и `freightVersion` (только при изменении данных заявки)
-- **Order** — заказ (после подтверждения оффера). Содержит Messages, Documents, Reviews. Создаётся автоматически через order-creator worker при OfferConfirmed
-- **Review** — отдельный агрегат для защиты рейтингов от накрутки. Создаётся из Order.ReviewLeft через review-receiver worker. Проходит анализ на фрод и модерацию
+- **FreightRequest** — заявка на перевозку с Offers внутри. После OfferConfirmed переходит в статус confirmed и содержит carrier info. Обе стороны могут явно завершить (Complete) и оставить отзыв (LeaveReview). Статусы: `published → selected → confirmed → partially_completed → completed`
+- **Review** — отдельный агрегат для защиты рейтингов от накрутки. Создаётся из FreightRequest.ReviewLeft через review-receiver worker. Проходит анализ на фрод и модерацию
 - **Notification** — уведомления с настройками предпочтений (in-app, telegram). notification-dispatcher роутит доменные события на каналы, telegram-sender отправляет в Telegram. Не имеет aggregate.go, только events/ и values/
 - **Support** — тикеты поддержки. Агрегат SupportTicket для обращений пользователей
 
@@ -104,8 +103,8 @@ APP_ENV=development                # development | production
 
 **Factory** (`backend/internal/pkg/factory/`):
 - Lazy-initialized, thread-safe dependency container (sync.Once)
-- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `OrderService()`, `ReviewService()`, `HistoryService()`, `NotificationService()`, `SupportService()`
-- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `OrganizationsProjection()`, `FreightRequestsProjection()`, `OrdersProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `OrderFraudProjection()`, `SessionFraudProjection()`, `GeoProjection()`, `NotificationPreferencesProjection()`, `InAppNotificationsProjection()`, `DeliveryLogProjection()`, `TelegramLinkProjection()`, `FreightSubscriptionsProjection()`, `SupportTicketsProjection()`
+- Creates services: `OrganizationService()`, `AdminService()`, `FreightRequestService()`, `ReviewService()`, `HistoryService()`, `NotificationService()`, `SupportService()`
+- Creates projections: `MembersProjection()`, `InvitationsProjection()`, `OrganizationsProjection()`, `FreightRequestsProjection()`, `OrganizationRatingsProjection()`, `FraudDataProjection()`, `ReviewsProjection()`, `SessionFraudProjection()`, `GeoProjection()`, `NotificationPreferencesProjection()`, `InAppNotificationsProjection()`, `DeliveryLogProjection()`, `TelegramLinkProjection()`, `FreightSubscriptionsProjection()`, `SupportTicketsProjection()`
 - Creates analyzers: `ReviewAnalyzer()`, `SessionAnalyzer()`
 - Used by both API and workers
 
@@ -134,15 +133,12 @@ APP_ENV=development                # development | production
 | pending-organizations | organization.events | pending_organizations | Update pending_organizations |
 | organizations | organization.events | organizations_projection | Update organizations_lookup |
 | freight-requests | freightrequest.events | freight_requests | Update freight_requests_lookup, offers_lookup |
-| orders | order.events | orders | Update orders_lookup |
-| order-creator | freightrequest.events | order_creator | Create Order on OfferConfirmed |
-| review-receiver | order.events | review_receiver | Create Review on ReviewLeft |
+| review-receiver | freightrequest.events | review_receiver | Create Review on ReviewLeft |
 | review-analyzer | review.events | review_analyzer | Fraud detection, weight calculation |
 | reviews-projection | review.events | reviews_projection | Update reviews_lookup, fraud_signals, interaction_stats, ratings |
 | review-activator | scheduled (1 min) | - | Activate approved reviews after activation_date |
 | fraudster-handler | organization.events | fraudster_handler | Deactivate reviews when org marked as fraudster |
-| order-fraud-analyzer | order.events | order_fraud_analyzer | Detect order fraud: cancel patterns, ghost deliveries, circular orders |
-| notification-dispatcher | *.events | notification_dispatcher | Route domain events to notification channels via rules |
+| notification-dispatcher | freightrequest.events | notification_dispatcher | Route domain events to notification channels via rules |
 | telegram-sender | notification.send | telegram_sender | Send notifications via Telegram |
 | support-tickets | support.events | support_tickets | Update support_tickets_lookup |
 | rate-limiter-cleanup | scheduled (5 min) | - | Clean up expired rate limiter entries |
@@ -156,7 +152,7 @@ APP_ENV=development                # development | production
 **Lookup Tables (Projections)**:
 - Store only ID + filter columns (status, org_id, etc.), no JSONB
 - Full data loaded from event store via service.Get() when needed
-- Examples: `freight_requests_lookup`, `offers_lookup`, `orders_lookup`
+- Examples: `freight_requests_lookup`, `offers_lookup`
 
 ### Code Style
 
@@ -222,7 +218,6 @@ Workers **должны** импортировать events packages через b
 import (
     _ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
-    _ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
     _ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"

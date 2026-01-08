@@ -44,6 +44,16 @@ func newActivatorHandler(f *factory.Factory) func(ctx context.Context) error {
 
 		var activated, failed int
 		for _, id := range ids {
+			// Проверяем отмену контекста перед обработкой каждого review
+			select {
+			case <-ctx.Done():
+				slog.Info("activation cancelled",
+					slog.Int("processed", activated+failed),
+					slog.Int("remaining", len(ids)-activated-failed))
+				return ctx.Err()
+			default:
+			}
+
 			if err := reviewService.Activate(ctx, id); err != nil {
 				if errors.Is(err, review.ErrActivationDateNotPassed) ||
 					errors.Is(err, review.ErrReviewNotApproved) ||

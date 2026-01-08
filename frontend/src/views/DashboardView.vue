@@ -42,17 +42,6 @@ const { canManageMembers, canCreateFreightRequest } = usePermissions()
           </router-link>
         </PermissionGuard>
 
-        <!-- Orders -->
-        <router-link
-          to="/orders"
-          class="bg-white overflow-hidden shadow rounded-lg p-6 hover:shadow-md transition-shadow"
-        >
-          <h3 class="text-lg font-medium text-gray-900">Заказы</h3>
-          <p class="mt-1 text-sm text-gray-500">
-            Активные и завершённые заказы
-          </p>
-        </router-link>
-
         <!-- My Offers -->
         <router-link
           to="/my-offers"

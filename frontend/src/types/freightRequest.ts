@@ -83,7 +83,10 @@ export type FreightRequestStatus =
   | 'published'
   | 'selected'
   | 'confirmed'
+  | 'partially_completed'
+  | 'completed'
   | 'cancelled'
+  | 'cancelled_after_confirmed'
   | 'expired'
 
 // Interfaces
@@ -181,12 +184,22 @@ export interface CreateFreightRequestResponse {
   id: string
 }
 
+export interface FreightReview {
+  id: string
+  rating: number
+  comment?: string
+  created_at: string
+  can_edit: boolean
+  edit_expires_at?: string
+}
+
 export interface FreightRequest {
   id: string
   request_number: number
   customer_org_id: string
   customer_org_name: string
   customer_member_id: string
+  customer_member_name?: string
   route: Route
   cargo: CargoInfo
   vehicle_requirements: VehicleRequirements
@@ -196,6 +209,20 @@ export interface FreightRequest {
   freight_version: number
   expires_at: string
   created_at: string
+  // Carrier info (видно при confirmed или перевозчику)
+  carrier_org_id?: string
+  carrier_org_name?: string
+  carrier_member_id?: string
+  carrier_member_name?: string
+  // Completion status
+  customer_completed: boolean
+  customer_completed_at?: string
+  carrier_completed: boolean
+  carrier_completed_at?: string
+  completed_at?: string
+  // Reviews
+  customer_review?: FreightReview
+  carrier_review?: FreightReview
 }
 
 // List item with display data (from projection)
@@ -253,7 +280,10 @@ export const statusOptions: { value: FreightRequestStatusFilter; label: string }
   { value: 'published', label: 'Опубликованы' },
   { value: 'selected', label: 'Выбран перевозчик' },
   { value: 'confirmed', label: 'Подтверждены' },
+  { value: 'partially_completed', label: 'Частично завершены' },
+  { value: 'completed', label: 'Завершены' },
   { value: 'cancelled', label: 'Отменены' },
+  { value: 'cancelled_after_confirmed', label: 'Отменены после подтверждения' },
   { value: 'expired', label: 'Истекли' },
 ]
 
@@ -445,7 +475,10 @@ export const freightRequestStatusLabels: Record<FreightRequestStatus, string> = 
   published: 'Опубликована',
   selected: 'Выбран перевозчик',
   confirmed: 'Подтверждена',
+  partially_completed: 'Частично завершена',
+  completed: 'Завершена',
   cancelled: 'Отменена',
+  cancelled_after_confirmed: 'Отменена после подтверждения',
   expired: 'Истекла',
 }
 

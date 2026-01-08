@@ -119,4 +119,25 @@ export const freightRequestsApi = {
   reassign(frId: string, newMemberId: string): Promise<void> {
     return api.post(`/freight-requests/${frId}/reassign`, { new_member_id: newMemberId })
   },
+
+  reassignCarrier(frId: string, newMemberId: string): Promise<void> {
+    return api.post(`/freight-requests/${frId}/reassign-carrier`, { new_member_id: newMemberId })
+  },
+
+  // Completion & Reviews
+  complete(frId: string): Promise<void> {
+    return api.post(`/freight-requests/${frId}/complete`)
+  },
+
+  leaveReview(frId: string, data: { rating: number; comment?: string }): Promise<{ review_id: string }> {
+    return api.post(`/freight-requests/${frId}/review`, data)
+  },
+
+  editReview(frId: string, data: { rating: number; comment?: string }): Promise<void> {
+    return api.patch(`/freight-requests/${frId}/review`, data)
+  },
+
+  cancelAfterConfirmed(frId: string, reason?: string): Promise<void> {
+    return api.post(`/freight-requests/${frId}/cancel-confirmed`, reason ? { reason } : undefined)
+  },
 }

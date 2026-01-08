@@ -107,24 +107,13 @@ func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.Revi
 		slog.Error("failed to increment pending reviews", slog.String("error", err.Error()))
 	}
 
-	// Update interaction stats
-	if err := h.fraudData.UpsertInteractionStats(ctx, e.ReviewerOrgID, e.ReviewedOrgID, func(stats *projections.OrgInteractionStats) {
-		// Determine which direction the review is going
-		if stats.OrgA == e.ReviewerOrgID {
-			stats.ReviewsAToB++
-			stats.SumRatingAToB += e.Rating
-		} else {
-			stats.ReviewsBToA++
-			stats.SumRatingBToA += e.Rating
-		}
-	}); err != nil {
+	// Update interaction stats (атомарный INSERT/UPDATE)
+	if err := h.fraudData.IncrementReviewStats(ctx, e.ReviewerOrgID, e.ReviewedOrgID, e.Rating); err != nil {
 		slog.Error("failed to update interaction stats", slog.String("error", err.Error()))
 	}
 
-	// Increment total reviews left by reviewer
-	if err := h.fraudData.UpsertReviewerReputation(ctx, e.ReviewerOrgID, func(rep *projections.ReviewerReputation) {
-		rep.TotalReviewsLeft++
-	}); err != nil {
+	// Increment total reviews left by reviewer (атомарный INSERT/UPDATE)
+	if err := h.fraudData.IncrementTotalReviewsLeft(ctx, e.ReviewerOrgID); err != nil {
 		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
 	}
 
@@ -165,19 +154,22 @@ func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.Revi
 		return fmt.Errorf("update review lookup: %w", err)
 	}
 
-	// Insert fraud signals
-	for _, signal := range e.FraudSignals {
-		if err := h.fraudData.InsertFraudSignal(ctx,
-			e.AggregateID(),
-			signal.Type,
-			signal.Severity,
-			signal.Description,
-			signal.ScoreImpact,
-			signal.Evidence,
-		); err != nil {
-			slog.Error("failed to insert fraud signal",
+	// Insert fraud signals (batch INSERT)
+	if len(e.FraudSignals) > 0 {
+		signals := make([]projections.FraudSignalInput, 0, len(e.FraudSignals))
+		for _, s := range e.FraudSignals {
+			signals = append(signals, projections.FraudSignalInput{
+				SignalType:  s.Type,
+				Severity:    s.Severity,
+				Description: s.Description,
+				ScoreImpact: s.ScoreImpact,
+				Evidence:    s.Evidence,
+			})
+		}
+		if err := h.fraudData.InsertFraudSignalsBatch(ctx, e.AggregateID(), signals); err != nil {
+			slog.Error("failed to batch insert fraud signals",
 				slog.String("review_id", e.AggregateID().String()),
-				slog.String("signal_type", signal.Type),
+				slog.Int("count", len(signals)),
 				slog.String("error", err.Error()),
 			)
 		}
@@ -261,12 +253,8 @@ func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.Revi
 		slog.Error("failed to increment rejected reviews", slog.String("error", err.Error()))
 	}
 
-	// Update reviewer reputation
-	if err := h.fraudData.UpsertReviewerReputation(ctx, reviewData.ReviewerOrgID, func(rep *projections.ReviewerReputation) {
-		rep.RejectedReviews++
-		// Decrease reputation score for rejected reviews
-		rep.ReputationScore = max(0, rep.ReputationScore-0.1)
-	}); err != nil {
+	// Update reviewer reputation (атомарный INSERT/UPDATE)
+	if err := h.fraudData.IncrementRejectedReviews(ctx, reviewData.ReviewerOrgID, 0.1); err != nil {
 		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
 	}
 
@@ -306,10 +294,8 @@ func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.Rev
 		return fmt.Errorf("add weighted rating: %w", err)
 	}
 
-	// Update reviewer reputation
-	if err := h.fraudData.UpsertReviewerReputation(ctx, reviewData.ReviewerOrgID, func(rep *projections.ReviewerReputation) {
-		rep.ActiveReviewsLeft++
-	}); err != nil {
+	// Update reviewer reputation (атомарный инкремент)
+	if err := h.fraudData.IncrementActiveReviewsLeft(ctx, reviewData.ReviewerOrgID); err != nil {
 		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
 	}
 
@@ -348,13 +334,8 @@ func (h *ReviewsProjectionHandler) onDeactivated(ctx context.Context, e events.R
 		}
 	}
 
-	// Update reviewer reputation
-	if err := h.fraudData.UpsertReviewerReputation(ctx, reviewData.ReviewerOrgID, func(rep *projections.ReviewerReputation) {
-		rep.DeactivatedReviews++
-		if wasActive {
-			rep.ActiveReviewsLeft = max(0, rep.ActiveReviewsLeft-1)
-		}
-	}); err != nil {
+	// Update reviewer reputation (атомарный инкремент)
+	if err := h.fraudData.IncrementDeactivatedReviews(ctx, reviewData.ReviewerOrgID, wasActive); err != nil {
 		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
 	}
 

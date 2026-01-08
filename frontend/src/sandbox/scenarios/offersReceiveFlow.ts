@@ -114,11 +114,11 @@ export const steps: TutorialStep[] = [
     id: 'offers_select_confirm',
     title: 'Выбор с подтверждением',
     description:
-      'Теперь выберите другое предложение. Перевозчик автоматически подтвердит — и создастся заказ.',
+      'Теперь выберите другое предложение. Перевозчик автоматически подтвердит.',
     target: 'select-offer-btn',
     tooltipPosition: 'left',
     completionType: 'action',
-    completionAction: 'order:created',
+    completionAction: 'offer:confirmed',
     async beforeStep() {
       // Настраиваем автоподтверждение для всех оставшихся pending офферов
       const offers = mockOffers.listByFreightRequest(FR_ID)
@@ -133,7 +133,7 @@ export const steps: TutorialStep[] = [
     id: 'offers_complete',
     title: 'Готово!',
     description:
-      'Заказ создан. Теперь можно общаться с перевозчиком и отслеживать выполнение заказа.',
+      'Перевозчик подтверждён. Перевозка готова к выполнению.',
     completionType: 'manual',
   },
 ]

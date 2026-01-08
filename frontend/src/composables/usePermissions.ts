@@ -47,16 +47,6 @@ export function usePermissions() {
     return carrierOrgId === auth.organizationId
   }
 
-  const isOrderParticipant = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return (
-      customerOrgId === auth.organizationId ||
-      carrierOrgId === auth.organizationId
-    )
-  }
-
   // FreightRequest action permissions
   const canEditFreightRequest = (customerOrgId: string, customerMemberId?: string): boolean => {
     if (!isOrgActive.value || !isFreightRequestOwner(customerOrgId)) {
@@ -102,6 +92,13 @@ export function usePermissions() {
     return auth.role === 'owner' || auth.role === 'administrator'
   }
 
+  // Переназначить ответственного перевозчика может только owner/admin организации-перевозчика
+  const canReassignCarrierMember = (carrierOrgId: string | undefined): boolean => {
+    if (!carrierOrgId) return false
+    if (!isOrgActive.value || carrierOrgId !== auth.organizationId) return false
+    return auth.role === 'owner' || auth.role === 'administrator'
+  }
+
   // Offer action permissions
   const canCreateOffer = (customerOrgId: string): boolean => {
     return (
@@ -129,56 +126,6 @@ export function usePermissions() {
     return isOwnerOrAdmin || isCreator
   }
 
-  // Order action permissions
-  const canViewOrder = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return isOrderParticipant(customerOrgId, carrierOrgId)
-  }
-
-  const canAddOrderMessage = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
-  }
-
-  const canUploadOrderDocument = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
-  }
-
-  const canCompleteOrder = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
-  }
-
-  const canCancelOrder = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
-  }
-
-  const canLeaveOrderReview = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
-  }
-
-  const canRemoveOrderDocument = (
-    customerOrgId: string,
-    carrierOrgId: string
-  ): boolean => {
-    return isOrgActive.value && isOrderParticipant(customerOrgId, carrierOrgId)
-  }
-
   return {
     // Role-based
     canManageMembers,
@@ -199,7 +146,6 @@ export function usePermissions() {
     // Resource ownership
     isFreightRequestOwner,
     isOfferOwner,
-    isOrderParticipant,
 
     // FreightRequest actions
     canEditFreightRequest,
@@ -207,19 +153,11 @@ export function usePermissions() {
     canSelectOffer,
     canRejectOffer,
     canReassignFreightRequest,
+    canReassignCarrierMember,
 
     // Offer actions
     canCreateOffer,
     canWithdrawOffer,
     canConfirmOffer,
-
-    // Order actions
-    canViewOrder,
-    canAddOrderMessage,
-    canUploadOrderDocument,
-    canCompleteOrder,
-    canCancelOrder,
-    canLeaveOrderReview,
-    canRemoveOrderDocument,
   }
 }

@@ -10,8 +10,8 @@ import (
 
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events" // register events
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"   // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"          // register events
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"   // register events
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"         // register events
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"        // register events
 
 	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
@@ -69,6 +69,9 @@ func main() {
 		}
 	}()
 
+	// Инициализация rate limiter'а (до middleware)
+	middleware.InitRateLimiter()
+
 	sessionManager := session.NewManager(cfg)
 	adminSessionManager := session.NewAdminManager(cfg)
 
@@ -89,7 +92,7 @@ func main() {
 	orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), sessionManager)
 	orgHandler.RegisterRoutes(server.Router())
 
-	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.OrdersProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
+	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.FreightRequestsProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
 	authHandler.RegisterRoutes(server.Router())
 
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
@@ -98,10 +101,7 @@ func main() {
 	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), sessionManager)
 	frHandler.RegisterRoutes(server.Router())
 
-	orderHandler := handlers.NewOrderHandler(f.OrderService(), f.OrganizationService(), f.MembersProjection(), f.OrdersProjection(), sessionManager)
-	orderHandler.RegisterRoutes(server.Router())
-
-	historyHandler := handlers.NewHistoryHandler(f.HistoryService(), f.FreightRequestService(), f.OrderService(), sessionManager)
+	historyHandler := handlers.NewHistoryHandler(f.HistoryService(), f.FreightRequestService(), sessionManager)
 	historyHandler.RegisterRoutes(server.Router())
 
 	geoHandler := handlers.NewGeoHandler(f.GeoProjection())

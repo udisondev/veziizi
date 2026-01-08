@@ -15,7 +15,6 @@ import (
 
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"
@@ -272,22 +271,6 @@ func (s *Suite) startEventHandlers() error {
 	freightRequestsHandler := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore())
 	router.AddNoPublisherHandler("freight_requests", "freightrequest.events", frSub, freightRequestsHandler.Handle)
 
-	// Order creator (creates orders from confirmed offers)
-	orderCreatorSub, err := createSubscriber("e2e_order_creator", "freightrequest.events")
-	if err != nil {
-		return err
-	}
-	orderCreatorHandler := eventHandlers.NewOrderCreatorHandler(s.Factory.OrderService(), s.Factory.FreightRequestsProjection())
-	router.AddNoPublisherHandler("order_creator", "freightrequest.events", orderCreatorSub, orderCreatorHandler.Handle)
-
-	// Order event handlers
-	orderSub, err := createSubscriber("e2e_orders", "order.events")
-	if err != nil {
-		return err
-	}
-	ordersHandler := eventHandlers.NewOrdersHandler(db)
-	router.AddNoPublisherHandler("orders", "order.events", orderSub, ordersHandler.Handle)
-
 	// Support event handlers
 	supportSub, err := createSubscriber("e2e_support_tickets", "support.events")
 	if err != nil {
@@ -341,7 +324,7 @@ func (s *Suite) startServer() {
 	orgHandler := handlers.NewOrganizationHandler(s.Factory.OrganizationService(), s.Factory.OrganizationRatingsProjection(), sessionManager)
 	orgHandler.RegisterRoutes(server.Router())
 
-	authHandler := handlers.NewAuthHandler(s.Factory.MembersProjection(), s.Factory.OrdersProjection(), s.Factory.OrganizationService(), sessionManager, s.Factory.SessionAnalyzer(), geoIPService)
+	authHandler := handlers.NewAuthHandler(s.Factory.MembersProjection(), s.Factory.FreightRequestsProjection(), s.Factory.OrganizationService(), sessionManager, s.Factory.SessionAnalyzer(), geoIPService)
 	authHandler.RegisterRoutes(server.Router())
 
 	adminHandler := handlers.NewAdminHandler(s.Factory.AdminService(), adminRepository, adminSessionManager, s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
@@ -350,10 +333,7 @@ func (s *Suite) startServer() {
 	frHandler := handlers.NewFreightRequestHandler(s.Factory.FreightRequestService(), s.Factory.OrganizationService(), s.Factory.FreightRequestsProjection(), s.Factory.MembersProjection(), sessionManager)
 	frHandler.RegisterRoutes(server.Router())
 
-	orderHandler := handlers.NewOrderHandler(s.Factory.OrderService(), s.Factory.OrganizationService(), s.Factory.MembersProjection(), s.Factory.OrdersProjection(), sessionManager)
-	orderHandler.RegisterRoutes(server.Router())
-
-	historyHandler := handlers.NewHistoryHandler(s.Factory.HistoryService(), s.Factory.FreightRequestService(), s.Factory.OrderService(), sessionManager)
+	historyHandler := handlers.NewHistoryHandler(s.Factory.HistoryService(), s.Factory.FreightRequestService(), sessionManager)
 	historyHandler.RegisterRoutes(server.Router())
 
 	geoHandler := handlers.NewGeoHandler(s.Factory.GeoProjection())

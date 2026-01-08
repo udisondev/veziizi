@@ -2,18 +2,16 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
-import { ordersApi } from '@/api/orders'
-import { membersApi, type MemberProfile } from '@/api/members'
 import { historyApi } from '@/api/history'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import { useTutorialEvent } from '@/composables/useTutorialEvent'
 import { useSandboxReady } from '@/composables/useSandboxReady'
 import { tutorialBus } from '@/sandbox/events'
-import type { OrderListItem } from '@/types/order'
 import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
 import EventHistory from '@/components/EventHistory.vue'
 import FreightRequestOffersTab from '@/components/freight-request/FreightRequestOffersTab.vue'
+import StarRating from '@/components/freight-request/StarRating.vue'
 import type {
   FreightRequest,
   Offer,
@@ -102,8 +100,6 @@ const { waitForReady } = useSandboxReady()
 // State
 const freightRequest = ref<FreightRequest | null>(null)
 const offers = ref<Offer[]>([])
-const creatorProfile = ref<MemberProfile | null>(null)
-const linkedOrder = ref<OrderListItem | null>(null)
 const isLoading = ref(true)
 const error = ref('')
 const actionLoading = ref(false)
@@ -155,6 +151,12 @@ const showWithdrawModal = ref(false)
 const withdrawOfferId = ref<string | null>(null)
 const withdrawReason = ref('')
 
+// Completion & Review modals
+const showCompleteConfirm = ref(false)
+const showReviewModal = ref(false)
+const reviewRating = ref(5)
+const reviewComment = ref('')
+
 // Make offer form
 const offerForm = ref<MakeOfferRequest>({
   price: { amount: 0, currency: 'RUB' as Currency },
@@ -171,6 +173,30 @@ const hasRequestRate = computed(() => {
 const isOwner = computed(() => {
   if (!freightRequest.value) return false
   return permissions.isFreightRequestOwner(freightRequest.value.customer_org_id)
+})
+
+// Является ли текущая организация перевозчиком
+const isCarrier = computed(() => {
+  if (!freightRequest.value?.carrier_org_id) return false
+  return freightRequest.value.carrier_org_id === auth.organizationId
+})
+
+// Показывать ли carrier info (перевозчику всегда, заказчику при confirmed+, другим — никогда)
+const showCarrierInfo = computed(() => {
+  if (!freightRequest.value?.carrier_org_id) return false
+  const confirmedStatuses = ['confirmed', 'partially_completed', 'completed', 'cancelled_after_confirmed']
+  // Перевозчик видит всегда, заказчик только при confirmed
+  return isCarrier.value || (isOwner.value && confirmedStatuses.includes(freightRequest.value.status))
+})
+
+// Может ли переназначить ответственного перевозчика
+const canReassignCarrier = computed(() => {
+  if (!freightRequest.value) return false
+  const confirmedStatuses = ['confirmed', 'partially_completed']
+  return (
+    permissions.canReassignCarrierMember(freightRequest.value.carrier_org_id) &&
+    confirmedStatuses.includes(freightRequest.value.status)
+  )
 })
 
 const canMakeOffer = computed(() => {
@@ -205,20 +231,11 @@ const canEdit = computed(() => {
 
 const canReassign = computed(() => {
   if (!freightRequest.value) return false
+  const allowedStatuses = ['published', 'selected', 'confirmed', 'partially_completed']
   return (
     permissions.canReassignFreightRequest(freightRequest.value.customer_org_id) &&
-    ['published', 'selected'].includes(freightRequest.value.status)
+    allowedStatuses.includes(freightRequest.value.status)
   )
-})
-
-const canViewOrderLink = computed(() => {
-  if (!freightRequest.value || !linkedOrder.value) return false
-
-  const fr = freightRequest.value
-  const order = linkedOrder.value
-
-  // Любой член организации-заказчика или организации-перевозчика может видеть ссылку
-  return fr.customer_org_id === auth.organizationId || order.carrier_org_id === auth.organizationId
 })
 
 const myActiveOffer = computed(() => {
@@ -227,6 +244,47 @@ const myActiveOffer = computed(() => {
       o.carrier_org_id === auth.organizationId &&
       ['pending', 'selected'].includes(o.status)
   )
+})
+
+// Может ли текущий пользователь завершить заявку (только ответственный)
+const canComplete = computed(() => {
+  if (!freightRequest.value) return false
+  const status = freightRequest.value.status
+  if (!['confirmed', 'partially_completed'].includes(status)) return false
+
+  // Проверка что это ответственный
+  if (isOwner.value) {
+    return freightRequest.value.customer_member_id === auth.memberId &&
+           !freightRequest.value.customer_completed
+  }
+  if (isCarrier.value) {
+    return freightRequest.value.carrier_member_id === auth.memberId &&
+           !freightRequest.value.carrier_completed
+  }
+  return false
+})
+
+// Завершил ли текущий пользователь свою часть
+const hasCompleted = computed(() => {
+  if (!freightRequest.value) return false
+  if (isOwner.value) return freightRequest.value.customer_completed
+  if (isCarrier.value) return freightRequest.value.carrier_completed
+  return false
+})
+
+// Мой отзыв
+const myReview = computed(() => {
+  if (!freightRequest.value) return null
+  if (isOwner.value) return freightRequest.value.customer_review
+  if (isCarrier.value) return freightRequest.value.carrier_review
+  return null
+})
+
+// Можно ли оставить/редактировать отзыв
+const canInteractWithReview = computed(() => {
+  if (!hasCompleted.value) return false
+  if (!myReview.value) return true // Можно оставить
+  return myReview.value.can_edit // Можно редактировать (24ч)
 })
 
 const visibleOffers = computed(() => {
@@ -272,8 +330,6 @@ watch(showMakeOfferModal, (open) => {
 async function loadData() {
   isLoading.value = true
   error.value = ''
-  creatorProfile.value = null
-  linkedOrder.value = null
 
   // Ждём готовности sandbox перед загрузкой данных
   // (решает race condition при восстановлении сессии из localStorage)
@@ -287,25 +343,6 @@ async function loadData() {
     ])
     freightRequest.value = fr
     offers.value = offersList
-
-    if (fr.customer_org_id === auth.organizationId) {
-      try {
-        creatorProfile.value = await membersApi.getProfile(fr.customer_member_id)
-      } catch (e) {
-        logger.warn('Failed to load creator profile', e)
-      }
-    }
-
-    if (fr.status === 'confirmed') {
-      try {
-        const orders = await ordersApi.list({ freight_request_id: fr.id })
-        if (orders.length > 0 && orders[0]) {
-          linkedOrder.value = orders[0]
-        }
-      } catch (e) {
-        logger.warn('Failed to load linked order', e)
-      }
-    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка загрузки'
   } finally {
@@ -437,6 +474,17 @@ function goToReassign() {
   })
 }
 
+function goToReassignCarrier() {
+  if (!freightRequest.value) return
+  router.push({
+    path: '/members',
+    query: {
+      selectFor: 'carrierMember',
+      frId: freightRequest.value.id,
+    },
+  })
+}
+
 async function handleConfirmOffer(offerId: string) {
   if (!freightRequest.value) return
   actionLoading.value = true
@@ -478,13 +526,61 @@ async function handleUnselectOffer(offerId: string) {
   }
 }
 
+// Completion & Reviews
+async function handleComplete() {
+  if (!freightRequest.value) return
+  actionLoading.value = true
+  try {
+    await freightRequestsApi.complete(freightRequest.value.id)
+    showCompleteConfirm.value = false
+    // Показываем модал для отзыва
+    reviewRating.value = 5
+    reviewComment.value = ''
+    showReviewModal.value = true
+    await loadData()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Ошибка'
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+function openReviewModal(rating: number) {
+  reviewRating.value = rating
+  reviewComment.value = myReview.value?.comment ?? ''
+  showReviewModal.value = true
+}
+
+async function submitReview() {
+  if (!freightRequest.value) return
+  actionLoading.value = true
+  try {
+    const data = { rating: reviewRating.value, comment: reviewComment.value || undefined }
+    if (myReview.value) {
+      await freightRequestsApi.editReview(freightRequest.value.id, data)
+    } else {
+      await freightRequestsApi.leaveReview(freightRequest.value.id, data)
+    }
+    showReviewModal.value = false
+    await loadData()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Ошибка'
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+function skipReview() {
+  showReviewModal.value = false
+}
+
 // Слушатель переключения вкладки из туториала
 function handleTutorialTabSwitch() {
   currentTab.value = 'offers'
 }
 
-// Слушатель создания заказа (для обновления данных после auto-confirm)
-function handleOrderCreated() {
+// Обработчик autoconfirm из sandbox — перезагружает данные
+function handleAutoConfirm() {
   loadData()
 }
 
@@ -492,12 +588,12 @@ onMounted(() => {
   loadData()
   // Подписываемся на события из туториала
   tutorialBus.on('tab:offers', handleTutorialTabSwitch)
-  tutorialBus.on('order:created', handleOrderCreated)
+  tutorialBus.on('offer:confirmed', handleAutoConfirm)
 })
 
 onUnmounted(() => {
   tutorialBus.off('tab:offers', handleTutorialTabSwitch)
-  tutorialBus.off('order:created', handleOrderCreated)
+  tutorialBus.off('offer:confirmed', handleAutoConfirm)
 })
 </script>
 
@@ -507,6 +603,28 @@ onUnmounted(() => {
     <DetailPageHeader back-to="/" back-label="К списку заявок">
       <template #actions>
         <div class="flex items-center gap-2">
+          <!-- Завершение заявки и отзывы -->
+          <template v-if="isOwner || isCarrier">
+            <!-- Кнопка Завершить (до завершения) -->
+            <Button
+              v-if="canComplete"
+              size="sm"
+              @click="showCompleteConfirm = true"
+            >
+              <Check class="mr-2 h-4 w-4" />
+              Завершить заявку
+            </Button>
+
+            <!-- Звёздочки (после завершения) -->
+            <StarRating
+              v-else-if="hasCompleted"
+              :model-value="myReview?.rating ?? 0"
+              :readonly="!canInteractWithReview"
+              size="sm"
+              @click="openReviewModal"
+            />
+          </template>
+
           <!-- Make Offer Button for carriers -->
           <Button
             v-if="canMakeOffer && !myActiveOffer"
@@ -589,7 +707,7 @@ onUnmounted(() => {
                         <h1 class="text-xl sm:text-2xl font-bold text-foreground">
                           Заявка #{{ requestNumber }}
                         </h1>
-                        <StatusBadge :status="freightRequest.status" :status-map="freightStatusMap" />
+                        <StatusBadge :status="freightRequest.status" :status-map="freightRequestStatusMap" />
                       </div>
                       <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-2">
                         <!-- Заказчик -->
@@ -602,15 +720,15 @@ onUnmounted(() => {
                           <span class="truncate">{{ freightRequest.customer_org_name || 'Организация' }}</span>
                         </router-link>
 
-                        <!-- Ответственный -->
-                        <div v-if="creatorProfile" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
+                        <!-- Ответственный заказчика -->
+                        <div v-if="freightRequest.customer_member_name" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
                           <Users class="h-4 w-4 shrink-0 text-muted-foreground" />
                           <router-link
                             :to="`/members/${freightRequest.customer_member_id}`"
                             class="text-primary hover:underline truncate"
-                            :title="creatorProfile.name"
+                            :title="freightRequest.customer_member_name"
                           >
-                            {{ creatorProfile.name }}
+                            {{ freightRequest.customer_member_name }}
                           </router-link>
                           <Button
                             v-if="canReassign"
@@ -629,17 +747,44 @@ onUnmounted(() => {
                           {{ formatDateTime(freightRequest.created_at) }}
                         </span>
                       </div>
+
+                      <!-- Carrier Info (когда confirmed или для перевозчика) -->
+                      <div v-if="showCarrierInfo" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-2">
+                        <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">Перевозчик:</span>
+                        <!-- Организация перевозчика -->
+                        <router-link
+                          v-if="freightRequest.carrier_org_id"
+                          :to="`/organizations/${freightRequest.carrier_org_id}`"
+                          class="inline-flex items-center gap-1 text-primary hover:underline max-w-[200px] sm:max-w-[280px]"
+                          :title="freightRequest.carrier_org_name || 'Организация'"
+                        >
+                          <Building2 class="h-4 w-4 shrink-0" />
+                          <span class="truncate">{{ freightRequest.carrier_org_name || 'Организация' }}</span>
+                        </router-link>
+
+                        <!-- Ответственный перевозчика -->
+                        <div v-if="freightRequest.carrier_member_id && freightRequest.carrier_member_name" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
+                          <Users class="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <router-link
+                            :to="`/members/${freightRequest.carrier_member_id}`"
+                            class="text-primary hover:underline truncate"
+                            :title="freightRequest.carrier_member_name"
+                          >
+                            {{ freightRequest.carrier_member_name }}
+                          </router-link>
+                          <Button
+                            v-if="canReassignCarrier"
+                            variant="ghost"
+                            size="sm"
+                            class="h-auto p-0.5 shrink-0"
+                            @click="goToReassignCarrier"
+                          >
+                            <Pencil class="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
 
-                    <!-- Order link -->
-                    <router-link
-                      v-if="canViewOrderLink && linkedOrder"
-                      :to="`/orders/${linkedOrder.id}`"
-                      class="text-primary hover:underline text-sm flex items-center gap-1"
-                    >
-                      <FileText class="h-3 w-3" />
-                      Перейти к заказу
-                    </router-link>
                   </div>
                 </div>
               </CardContent>
@@ -1091,6 +1236,68 @@ onUnmounted(() => {
             @click="confirmWithdrawOffer"
           >
             {{ actionLoading ? 'Отзыв...' : 'Отозвать' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Complete Confirmation Dialog -->
+    <Dialog v-model:open="showCompleteConfirm">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Завершить заявку?</DialogTitle>
+          <DialogDescription>
+            Вы подтверждаете, что заявка выполнена.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="showCompleteConfirm = false">
+            Отмена
+          </Button>
+          <Button :disabled="actionLoading" @click="handleComplete">
+            {{ actionLoading ? 'Завершение...' : 'Завершить' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Review Modal -->
+    <Dialog v-model:open="showReviewModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {{ myReview ? 'Редактировать отзыв' : 'Оставить отзыв' }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ myReview ? 'Изменить можно в течение 24 часов после создания' : 'Оцените работу с контрагентом' }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-4 py-4">
+          <div class="space-y-2">
+            <Label>Оценка</Label>
+            <StarRating v-model="reviewRating" size="lg" />
+          </div>
+
+          <div class="space-y-2">
+            <Label for="review-comment">Комментарий (необязательно)</Label>
+            <Textarea
+              id="review-comment"
+              v-model="reviewComment"
+              placeholder="Опишите ваш опыт работы..."
+              rows="3"
+            />
+          </div>
+
+          <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+        </div>
+
+        <DialogFooter class="gap-2 sm:gap-0">
+          <Button v-if="!myReview" variant="outline" @click="skipReview">
+            Пропустить
+          </Button>
+          <Button :disabled="actionLoading || reviewRating < 1" @click="submitReview">
+            {{ actionLoading ? 'Сохранение...' : (myReview ? 'Сохранить' : 'Отправить отзыв') }}
           </Button>
         </DialogFooter>
       </DialogContent>

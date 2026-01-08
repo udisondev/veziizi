@@ -9,7 +9,6 @@ export type ScenarioType =
   | 'carrier_flow'
   | 'offers_receive_flow'
   | 'admin_flow'
-  | 'orders_flow'
   | 'subscriptions_flow'
   | 'telegram_flow'
 
@@ -139,26 +138,8 @@ export interface TutorialEvents {
   // Modal events
   'rejectModal:opened': void
 
-  // Order events
-  'order:created': { id: string }
-  'order:completed': { orderId: string }
-  'order:cancelled': { orderId: string }
-
-  // Message events
-  'message:sent': { orderId: string }
-
-  // Document events
-  'document:uploaded': { orderId: string; docId: string }
-  'document:deleted': { orderId: string; docId: string }
-
-  // Review events
-  'review:left': { orderId: string }
-
   // Tab navigation
   'tab:offers': void
-  'tab:messages': void
-  'tab:documents': void
-  'tab:reviews': void
 
   // Filters
   'filters:applied': void

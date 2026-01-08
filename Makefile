@@ -21,9 +21,9 @@ DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST
 
 # Workers list
 WORKERS := members invitations pending-organizations organizations \
-           freight-requests orders order-creator review-receiver \
+           freight-requests review-receiver \
            review-analyzer reviews-projection review-activator \
-           fraudster-handler order-fraud-analyzer notification-dispatcher \
+           fraudster-handler notification-dispatcher \
            telegram-sender support-tickets rate-limiter-cleanup
 
 help: ## Show this help

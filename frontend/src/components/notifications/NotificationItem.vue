@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils'
 import {
   Truck,
   Package,
-  ClipboardCheck,
   Star,
   Users,
   Bell,
@@ -30,7 +29,6 @@ const icon = computed(() => {
   const categoryIconMap: Record<string, any> = {
     freight_requests: Truck,
     offers: Package,
-    orders: ClipboardCheck,
     reviews: Star,
     organization: Users,
   }
@@ -43,7 +41,6 @@ const iconBgClass = computed(() => {
   const categoryColorMap: Record<string, string> = {
     freight_requests: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400',
     offers: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400',
-    orders: 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400',
     reviews: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400',
     organization: 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-400',
   }

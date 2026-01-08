@@ -87,25 +87,23 @@ func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.Fr
 		return fmt.Errorf("list active reviews: %w", err)
 	}
 
-	// 3. Deactivate each review
+	// 3. Batch deactivate reviews (параллельно с ограниченной конкурентностью)
 	reason := fmt.Sprintf("reviewer marked as fraudster: %s", e.Reason)
-	deactivatedCount := 0
-	for _, reviewID := range activeReviewIDs {
-		if err := h.reviewService.Deactivate(ctx, reviewID, reason); err != nil {
-			slog.Error("failed to deactivate review",
-				slog.String("review_id", reviewID.String()),
-				slog.String("error", err.Error()),
-			)
-			// Continue with other reviews - don't fail the whole batch
-			continue
-		}
-		deactivatedCount++
+	result := h.reviewService.BatchDeactivate(ctx, activeReviewIDs, reason)
+
+	// Логируем ошибки если есть
+	for i, failedID := range result.FailedIDs {
+		slog.Error("failed to deactivate review",
+			slog.String("review_id", failedID.String()),
+			slog.String("error", result.Errors[i].Error()),
+		)
 	}
 
 	slog.Info("fraudster reviews deactivated",
 		slog.String("org_id", orgID.String()),
 		slog.Int("total_active", len(activeReviewIDs)),
-		slog.Int("deactivated", deactivatedCount),
+		slog.Int("deactivated", result.SuccessCount),
+		slog.Int("failed", len(result.FailedIDs)),
 	)
 
 	return nil

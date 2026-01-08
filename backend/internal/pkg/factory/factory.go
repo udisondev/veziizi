@@ -12,14 +12,12 @@ import (
 	historyApp "codeberg.org/udison/veziizi/backend/internal/application/history"
 	"codeberg.org/udison/veziizi/backend/internal/application/history/display"
 	notifApp "codeberg.org/udison/veziizi/backend/internal/application/notification"
-	orderApp "codeberg.org/udison/veziizi/backend/internal/application/order"
 	orgApp "codeberg.org/udison/veziizi/backend/internal/application/organization"
-	supportApp "codeberg.org/udison/veziizi/backend/internal/application/support"
 	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
 	sessionApp "codeberg.org/udison/veziizi/backend/internal/application/session"
+	supportApp "codeberg.org/udison/veziizi/backend/internal/application/support"
 	"codeberg.org/udison/veziizi/backend/internal/domain/notification/rules"
 	frRules "codeberg.org/udison/veziizi/backend/internal/domain/notification/rules/freightrequest"
-	orderRules "codeberg.org/udison/veziizi/backend/internal/domain/notification/rules/order"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/notifications"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
@@ -69,9 +67,6 @@ type Factory struct {
 	frService *frApp.Service
 	frOnce    sync.Once
 
-	orderService *orderApp.Service
-	orderOnce    sync.Once
-
 	historyService *historyApp.Service
 	historyOnce    sync.Once
 
@@ -97,9 +92,6 @@ type Factory struct {
 	frProjection *projections.FreightRequestsProjection
 	frProjOnce   sync.Once
 
-	ordersProjection *projections.OrdersProjection
-	ordersOnce       sync.Once
-
 	ratingsProjection *projections.OrganizationRatingsProjection
 	ratingsOnce       sync.Once
 
@@ -108,9 +100,6 @@ type Factory struct {
 
 	reviewsProjection *projections.ReviewsProjection
 	reviewsOnce       sync.Once
-
-	orderFraudProjection *projections.OrderFraudProjection
-	orderFraudOnce       sync.Once
 
 	sessionFraudProjection *projections.SessionFraudProjection
 	sessionFraudOnce       sync.Once
@@ -316,13 +305,6 @@ func (f *Factory) FreightRequestService() *frApp.Service {
 	return f.frService
 }
 
-func (f *Factory) OrderService() *orderApp.Service {
-	f.orderOnce.Do(func() {
-		f.orderService = orderApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.FileStorage(), f.SequenceGenerator())
-	})
-	return f.orderService
-}
-
 func (f *Factory) HistoryService() *historyApp.Service {
 	f.historyOnce.Do(func() {
 		f.historyService = historyApp.NewService(
@@ -396,13 +378,6 @@ func (f *Factory) FreightRequestsProjection() *projections.FreightRequestsProjec
 	return f.frProjection
 }
 
-func (f *Factory) OrdersProjection() *projections.OrdersProjection {
-	f.ordersOnce.Do(func() {
-		f.ordersProjection = projections.NewOrdersProjection(f.DB())
-	})
-	return f.ordersProjection
-}
-
 func (f *Factory) OrganizationRatingsProjection() *projections.OrganizationRatingsProjection {
 	f.ratingsOnce.Do(func() {
 		f.ratingsProjection = projections.NewOrganizationRatingsProjection(f.DB())
@@ -422,13 +397,6 @@ func (f *Factory) ReviewsProjection() *projections.ReviewsProjection {
 		f.reviewsProjection = projections.NewReviewsProjection(f.DB())
 	})
 	return f.reviewsProjection
-}
-
-func (f *Factory) OrderFraudProjection() *projections.OrderFraudProjection {
-	f.orderFraudOnce.Do(func() {
-		f.orderFraudProjection = projections.NewOrderFraudProjection(f.DB())
-	})
-	return f.orderFraudProjection
 }
 
 func (f *Factory) SessionFraudProjection() *projections.SessionFraudProjection {
@@ -542,7 +510,6 @@ func (f *Factory) NotificationRulesRegistry() *rules.Registry {
 		// Создаем зависимости для правил через адаптеры
 		deps := rules.Dependencies{
 			FreightRequests: rules.NewFreightRequestsAdapter(f.FreightRequestsProjection()),
-			Orders:          rules.NewOrdersAdapter(f.OrdersProjection()),
 			Members:         rules.NewMembersAdapter(f.MembersProjection()),
 		}
 
@@ -557,12 +524,8 @@ func (f *Factory) NotificationRulesRegistry() *rules.Registry {
 		f.notificationRulesRegistry.Register(frRules.NewOfferDeclinedRule(deps))
 		f.notificationRulesRegistry.Register(frRules.NewOfferWithdrawnRule(deps))
 		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCreatedRule(deps, subscriptionMatcher))
-
-		// Регистрируем правила Order
-		f.notificationRulesRegistry.Register(orderRules.NewOrderCreatedRule())
-		f.notificationRulesRegistry.Register(orderRules.NewMessageSentRule(deps))
-		f.notificationRulesRegistry.Register(orderRules.NewOrderCompletedRule(deps))
-		f.notificationRulesRegistry.Register(orderRules.NewOrderCancelledRule(deps))
+		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCompletedRule(deps))
+		f.notificationRulesRegistry.Register(frRules.NewCancelledAfterConfirmedRule(deps))
 	})
 	return f.notificationRulesRegistry
 }

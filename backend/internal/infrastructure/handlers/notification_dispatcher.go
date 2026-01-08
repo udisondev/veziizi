@@ -80,6 +80,15 @@ func (h *NotificationDispatcherHandler) processEvent(ctx context.Context, evt ev
 
 	// Отправляем каждое уведомление
 	for _, req := range requests {
+		// Проверяем отмену контекста
+		select {
+		case <-ctx.Done():
+			slog.Info("notification dispatch cancelled",
+				slog.String("event_type", evt.EventType()))
+			return ctx.Err()
+		default:
+		}
+
 		if err := h.sendNotification(ctx, req); err != nil {
 			slog.Warn("failed to send notification",
 				slog.String("member_id", req.RecipientMemberID.String()),

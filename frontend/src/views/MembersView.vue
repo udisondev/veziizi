@@ -74,8 +74,10 @@ function loadOrganizationHistory(limit: number, offset: number) {
   return historyApi.getOrganizationHistory(auth.organizationId, { limit, offset })
 }
 
-// Selection mode (for reassigning freight request responsible)
-const isSelectionMode = computed(() => route.query.selectFor === 'freightRequest')
+// Selection mode (for reassigning freight request responsible or carrier member)
+const isSelectionMode = computed(() =>
+  route.query.selectFor === 'freightRequest' || route.query.selectFor === 'carrierMember'
+)
 const freightRequestId = computed(() => route.query.frId as string | undefined)
 const selectLoading = ref(false)
 
@@ -212,7 +214,12 @@ async function selectMember(member: MemberListItem) {
   error.value = null
 
   try {
-    await freightRequestsApi.reassign(freightRequestId.value, member.id)
+    const selectFor = route.query.selectFor
+    if (selectFor === 'carrierMember') {
+      await freightRequestsApi.reassignCarrier(freightRequestId.value, member.id)
+    } else {
+      await freightRequestsApi.reassign(freightRequestId.value, member.id)
+    }
     router.push(`/freight-requests/${freightRequestId.value}`)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Не удалось назначить ответственного'

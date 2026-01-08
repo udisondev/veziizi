@@ -392,6 +392,146 @@ func (s *Service) UnselectOffer(ctx context.Context, input UnselectOfferInput) e
 	return s.saveAndPublish(ctx, fr)
 }
 
+// CompleteInput represents input for completing a freight request by one party
+type CompleteInput struct {
+	FreightRequestID uuid.UUID
+	OrgID            uuid.UUID
+	MemberID         uuid.UUID
+}
+
+// Complete marks the freight as completed by one party (customer or carrier)
+func (s *Service) Complete(ctx context.Context, input CompleteInput) error {
+	fr, err := s.Get(ctx, input.FreightRequestID)
+	if err != nil {
+		return err
+	}
+
+	if err := fr.Complete(input.OrgID, input.MemberID); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, fr)
+}
+
+// LeaveReviewInput represents input for leaving a review
+type LeaveReviewInput struct {
+	FreightRequestID uuid.UUID
+	ReviewerOrgID    uuid.UUID
+	ReviewerMemberID uuid.UUID
+	Rating           int
+	Comment          string
+}
+
+// LeaveReview leaves a review for the other party
+func (s *Service) LeaveReview(ctx context.Context, input LeaveReviewInput) (uuid.UUID, error) {
+	fr, err := s.Get(ctx, input.FreightRequestID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	reviewID := uuid.New()
+	if err := fr.LeaveReview(reviewID, input.ReviewerOrgID, input.ReviewerMemberID, input.Rating, input.Comment); err != nil {
+		return uuid.Nil, err
+	}
+
+	if err := s.saveAndPublish(ctx, fr); err != nil {
+		return uuid.Nil, err
+	}
+
+	return reviewID, nil
+}
+
+// EditReviewInput represents input for editing a review
+type EditReviewInput struct {
+	FreightRequestID uuid.UUID
+	ReviewerOrgID    uuid.UUID
+	ReviewerMemberID uuid.UUID
+	Rating           int
+	Comment          string
+}
+
+// EditReview edits an existing review (within 24h window)
+func (s *Service) EditReview(ctx context.Context, input EditReviewInput) error {
+	fr, err := s.Get(ctx, input.FreightRequestID)
+	if err != nil {
+		return err
+	}
+
+	if err := fr.EditReview(input.ReviewerOrgID, input.ReviewerMemberID, input.Rating, input.Comment); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, fr)
+}
+
+// CancelAfterConfirmedInput represents input for cancelling after confirmed
+type CancelAfterConfirmedInput struct {
+	FreightRequestID uuid.UUID
+	OrgID            uuid.UUID
+	MemberID         uuid.UUID
+	Reason           string
+}
+
+// CancelAfterConfirmed cancels freight after offer was confirmed
+func (s *Service) CancelAfterConfirmed(ctx context.Context, input CancelAfterConfirmedInput) error {
+	fr, err := s.Get(ctx, input.FreightRequestID)
+	if err != nil {
+		return err
+	}
+
+	if err := fr.CancelAfterConfirmed(input.OrgID, input.MemberID, input.Reason); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, fr)
+}
+
+// ReassignCarrierMemberInput represents input for reassigning carrier's responsible member
+type ReassignCarrierMemberInput struct {
+	FreightRequestID uuid.UUID
+	ActorID          uuid.UUID
+	ActorOrgID       uuid.UUID
+	NewMemberID      uuid.UUID
+}
+
+// ReassignCarrierMember reassigns the carrier's responsible member
+func (s *Service) ReassignCarrierMember(ctx context.Context, input ReassignCarrierMemberInput) error {
+	// Check actor has permission (admin or owner)
+	org, err := s.getOrganization(ctx, input.ActorOrgID)
+	if err != nil {
+		return err
+	}
+
+	actor, ok := org.GetMember(input.ActorID)
+	if !ok {
+		return organization.ErrMemberNotFound
+	}
+	if !actor.CanManageMembers() {
+		return organization.ErrInsufficientPermissions
+	}
+
+	// Check new member exists in organization
+	if _, ok := org.GetMember(input.NewMemberID); !ok {
+		return organization.ErrMemberNotFound
+	}
+
+	fr, err := s.Get(ctx, input.FreightRequestID)
+	if err != nil {
+		return err
+	}
+
+	// Verify freight request has carrier assigned and actor is from carrier org
+	if fr.CarrierOrgID() == nil || *fr.CarrierOrgID() != input.ActorOrgID {
+		return freightrequest.ErrNotConfirmed
+	}
+
+	if err := fr.ReassignCarrierMember(input.ActorID, input.NewMemberID, string(actor.Role())); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, fr)
+}
+
 func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.FreightRequest) error {
 	changes := fr.Changes()
 	if len(changes) == 0 {

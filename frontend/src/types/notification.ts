@@ -7,18 +7,15 @@ export type NotificationType =
   | 'offer_confirmed'
   | 'offer_declined'
   | 'offer_withdrawn'
-  | 'order_created'
-  | 'order_message'
-  | 'order_document'
-  | 'order_completed'
-  | 'order_cancelled'
+  | 'freight_completed'
+  | 'freight_cancelled'
   | 'review_received'
   | 'member_invited'
   | 'member_joined'
   | 'org_status_changed'
 
 // Категории для фильтрации и настроек
-export type NotificationCategory = 'freight_requests' | 'offers' | 'orders' | 'reviews' | 'organization'
+export type NotificationCategory = 'freight_requests' | 'offers' | 'reviews' | 'organization'
 
 // Каналы доставки
 export type NotificationChannel = 'in_app' | 'telegram'
@@ -32,7 +29,7 @@ export interface Notification {
   title: string
   body?: string
   link?: string
-  entity_type?: 'freight_request' | 'order' | 'organization' | 'member'
+  entity_type?: 'freight_request' | 'organization' | 'member'
   entity_id?: string
   is_read: boolean
   read_at?: string
@@ -85,14 +82,11 @@ export const notificationTypeLabels: Record<NotificationType, string> = {
   new_offer: 'Новое предложение',
   offer_selected: 'Предложение выбрано',
   offer_rejected: 'Предложение отклонено',
-  offer_confirmed: 'Заказ создан',
+  offer_confirmed: 'Перевозка подтверждена',
   offer_declined: 'Предложение отклонено перевозчиком',
   offer_withdrawn: 'Предложение отозвано',
-  order_created: 'Заказ создан',
-  order_message: 'Сообщение в заказе',
-  order_document: 'Документ в заказе',
-  order_completed: 'Заказ завершён',
-  order_cancelled: 'Заказ отменён',
+  freight_completed: 'Перевозка завершена',
+  freight_cancelled: 'Перевозка отменена',
   review_received: 'Новый отзыв',
   member_invited: 'Приглашение',
   member_joined: 'Новый сотрудник',
@@ -102,7 +96,6 @@ export const notificationTypeLabels: Record<NotificationType, string> = {
 export const categoryLabels: Record<NotificationCategory, string> = {
   freight_requests: 'Заявки',
   offers: 'Предложения',
-  orders: 'Заказы',
   reviews: 'Отзывы',
   organization: 'Организация',
 }
@@ -110,17 +103,18 @@ export const categoryLabels: Record<NotificationCategory, string> = {
 export const categoryDescriptions: Record<NotificationCategory, string> = {
   freight_requests: 'Новые заявки на перевозку грузов',
   offers: 'Предложения на ваши заявки и статусы ваших предложений',
-  orders: 'Сообщения, документы и изменения статусов заказов',
   reviews: 'Новые отзывы о вашей организации',
   organization: 'Изменения в организации: сотрудники, статус',
 }
 
-export const allCategories: NotificationCategory[] = ['freight_requests', 'offers', 'orders', 'reviews', 'organization']
+export const allCategories: NotificationCategory[] = ['freight_requests', 'offers', 'reviews', 'organization']
 
 // Получить категорию по типу уведомления
 export function getCategoryByType(type: NotificationType): NotificationCategory {
   switch (type) {
     case 'new_freight_request':
+    case 'freight_completed':
+    case 'freight_cancelled':
       return 'freight_requests'
     case 'new_offer':
     case 'offer_selected':
@@ -129,12 +123,6 @@ export function getCategoryByType(type: NotificationType): NotificationCategory 
     case 'offer_declined':
     case 'offer_withdrawn':
       return 'offers'
-    case 'order_created':
-    case 'order_message':
-    case 'order_document':
-    case 'order_completed':
-    case 'order_cancelled':
-      return 'orders'
     case 'review_received':
       return 'reviews'
     case 'member_invited':

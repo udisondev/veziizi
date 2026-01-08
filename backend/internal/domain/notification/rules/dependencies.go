@@ -10,7 +10,6 @@ import (
 // Использует интерфейсы для IoC - не прямые зависимости от projections
 type Dependencies struct {
 	FreightRequests FreightRequestGetter
-	Orders          OrderGetter
 	Members         MemberGetter
 }
 
@@ -18,11 +17,6 @@ type Dependencies struct {
 type FreightRequestGetter interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*FreightRequestInfo, error)
 	GetOfferByID(ctx context.Context, id uuid.UUID) (*OfferInfo, error)
-}
-
-// OrderGetter интерфейс для получения данных о заказах
-type OrderGetter interface {
-	GetByID(ctx context.Context, id uuid.UUID) (*OrderInfo, error)
 }
 
 // MemberGetter интерфейс для получения данных о членах
@@ -36,6 +30,9 @@ type FreightRequestInfo struct {
 	RequestNumber    int64
 	CustomerMemberID *uuid.UUID
 	CustomerOrgID    uuid.UUID
+	// Carrier fields (populated after offer confirmed)
+	CarrierMemberID *uuid.UUID
+	CarrierOrgID    *uuid.UUID
 }
 
 // OfferInfo минимальные данные оффера для уведомлений
@@ -43,16 +40,6 @@ type OfferInfo struct {
 	ID               uuid.UUID
 	FreightRequestID uuid.UUID
 	CarrierMemberID  *uuid.UUID
-	CarrierOrgID     uuid.UUID
-}
-
-// OrderInfo минимальные данные заказа для уведомлений
-type OrderInfo struct {
-	ID               uuid.UUID
-	OrderNumber      int64
-	CustomerMemberID uuid.UUID
-	CustomerOrgID    uuid.UUID
-	CarrierMemberID  uuid.UUID
 	CarrierOrgID     uuid.UUID
 }
 

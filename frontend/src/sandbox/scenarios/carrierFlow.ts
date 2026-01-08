@@ -1,13 +1,11 @@
 /**
  * Carrier Flow Scenario
- * Сценарий обучения для перевозчика (поиск заявок, предложения, заказ)
+ * Сценарий обучения для перевозчика (поиск заявок, предложения)
  */
 
 import type { TutorialStep } from './types'
 import { mockFreightRequests } from '@/sandbox/mockData/freightRequests'
 import { mockOffers } from '@/sandbox/mockData/offers'
-import { mockOrders } from '@/sandbox/mockData/orders'
-import { mockBot } from '@/sandbox/mockData/bot'
 
 export const steps: TutorialStep[] = [
   // === Поиск заявок ===
@@ -49,7 +47,7 @@ export const steps: TutorialStep[] = [
   {
     id: 'carrier_view_my_offers',
     title: 'Мои предложения',
-    description: 'Перейдите в раздел "Мои предложения" чтобы отслеживать статусы.',
+    description: 'Перейдите в раздел "Предложения" чтобы отслеживать статусы.',
     highlightSelector: '[data-tutorial="my-offers-link"]',
     tooltipPosition: 'bottom',
     completionType: 'navigate',
@@ -83,7 +81,7 @@ export const steps: TutorialStep[] = [
   {
     id: 'carrier_receive_selection',
     title: 'Вас выбрали!',
-    description: 'Заказчик выбрал ваше предложение. Подтвердите, чтобы создать заказ.',
+    description: 'Заказчик выбрал ваше предложение. Подтвердите готовность.',
     completionType: 'manual',
     simulationDelay: 2000,
     async beforeStep() {
@@ -93,48 +91,11 @@ export const steps: TutorialStep[] = [
   {
     id: 'carrier_confirm_offer',
     title: 'Подтверждение',
-    description: 'Нажмите "Подтвердить" чтобы начать выполнение заказа.',
+    description: 'Нажмите "Подтвердить" чтобы начать выполнение перевозки.',
     highlightSelector: '[data-tutorial="confirm-offer-btn"]',
     tooltipPosition: 'left',
     completionType: 'action',
     completionAction: 'offer:confirmed',
-  },
-
-  // === Работа с заказом ===
-  {
-    id: 'carrier_order_chat',
-    title: 'Связь с заказчиком',
-    description: 'Напишите заказчику, что готовы к работе.',
-    route: '/orders/sandbox-order-carrier-1',
-    highlightSelector: '[data-tutorial="message-input"]',
-    tooltipPosition: 'top',
-    completionType: 'action',
-    completionAction: 'message:sent',
-    async afterStep() {
-      await mockBot.scheduleReply('sandbox-order-carrier-1', 1500)
-    },
-  },
-  {
-    id: 'carrier_complete_order',
-    title: 'Завершение',
-    description: 'После доставки груза нажмите "Завершить".',
-    highlightSelector: '[data-tutorial="complete-order-btn"]',
-    tooltipPosition: 'bottom',
-    completionType: 'action',
-    completionAction: 'order:completed',
-    async beforeStep() {
-      // Заказчик уже завершил со своей стороны
-      mockOrders.simulateCustomerComplete('sandbox-order-carrier-1')
-    },
-  },
-  {
-    id: 'carrier_leave_review',
-    title: 'Отзыв',
-    description: 'Оставьте отзыв о заказчике.',
-    highlightSelector: '[data-tutorial="leave-review-btn"]',
-    tooltipPosition: 'bottom',
-    completionType: 'action',
-    completionAction: 'review:left',
   },
 ]
 

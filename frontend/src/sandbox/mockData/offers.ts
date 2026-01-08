@@ -6,7 +6,6 @@
 import type { Offer, MakeOfferRequest } from '@/types/freightRequest'
 import { generateId, randomInt } from './generators'
 import { tutorialBus } from '@/sandbox/events'
-import { mockOrders } from './orders'
 import { AUTO_CONFIRM_DELAY_MS } from '@/sandbox/constants'
 
 // Ленивый импорт для избежания циклических зависимостей
@@ -202,7 +201,7 @@ class MockOfferStore {
   }
 
   /**
-   * Подтвердить оффер (создаёт заказ)
+   * Подтвердить оффер
    */
   confirm(frId: string, offerId: string): void {
     const offers = this.offersByFr.get(frId) || []
@@ -215,17 +214,21 @@ class MockOfferStore {
 
     offer.status = 'confirmed'
 
+    // Отклоняем все другие pending офферы
+    offers.forEach((o) => {
+      if (o.id !== offerId && o.status === 'pending') {
+        o.status = 'rejected'
+      }
+    })
+
     // Обновляем статус заявки
     const fr = getMockFreightRequests()?.get(frId)
     if (fr) {
       fr.status = 'confirmed'
     }
 
-    // Создаём заказ
-    const orderId = mockOrders.createFromOffer(frId, offer)
-
     // Отправляем событие
-    tutorialBus.emit('order:created', { id: orderId })
+    tutorialBus.emit('offer:confirmed', { frId, offerId })
   }
 
   /**

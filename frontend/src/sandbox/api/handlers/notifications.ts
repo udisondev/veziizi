@@ -42,7 +42,6 @@ export function notificationsHandlers(): void {
         enabled_categories: {
           freight_requests: { in_app: true, telegram: false },
           offers: { in_app: true, telegram: false },
-          orders: { in_app: true, telegram: false },
           reviews: { in_app: true, telegram: false },
           organization: { in_app: true, telegram: false },
         },

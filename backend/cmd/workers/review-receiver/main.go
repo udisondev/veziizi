@@ -2,7 +2,7 @@ package main
 
 import (
 	// Event registration - CRITICAL for deserialization
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
+	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
@@ -13,7 +13,7 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "review-receiver",
-		Topic:         "order.events",
+		Topic:         "freightrequest.events",
 		ConsumerGroup: "review_receiver",
 		LogFile:       "review-receiver-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {

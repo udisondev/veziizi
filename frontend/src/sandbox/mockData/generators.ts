@@ -28,14 +28,6 @@ export function generateRequestNumber(): number {
 }
 
 /**
- * Генерация номера заказа
- */
-let orderNumberCounter = 100
-export function generateOrderNumber(): number {
-  return ++orderNumberCounter
-}
-
-/**
  * Случайное число в диапазоне
  */
 export function randomInt(min: number, max: number): number {
