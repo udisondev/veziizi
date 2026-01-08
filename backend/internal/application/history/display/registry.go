@@ -30,7 +30,6 @@ func NewRegistry(
 	r.formatters = []EventFormatter{
 		NewOrganizationFormatter(),
 		NewFreightRequestFormatter(),
-		NewOrderFormatter(),
 		NewReviewFormatter(),
 	}
 
@@ -111,11 +110,17 @@ func humanizeEventType(eventType string) string {
 		"fraudster.marked":   "Отмечен как мошенник",
 		"fraudster.unmarked": "Снята метка мошенника",
 
-		"freight_request.created":    "Заявка создана",
-		"freight_request.updated":    "Заявка обновлена",
-		"freight_request.reassigned": "Заявка переназначена",
-		"freight_request.cancelled":  "Заявка отменена",
-		"freight_request.expired":    "Заявка истекла",
+		"freight_request.created":                  "Заявка создана",
+		"freight_request.updated":                  "Заявка обновлена",
+		"freight_request.reassigned":               "Заявка переназначена",
+		"freight_request.cancelled":                "Заявка отменена",
+		"freight_request.expired":                  "Заявка истекла",
+		"freight_request.customer_completed":       "Заказчик завершил перевозку",
+		"freight_request.carrier_completed":        "Перевозчик завершил перевозку",
+		"freight_request.completed":                "Перевозка завершена",
+		"freight_request.review_left":              "Отзыв оставлен",
+		"freight_request.cancelled_after_confirmed": "Отменено после подтверждения",
+		"freight_request.carrier_member_reassigned": "Ответственный перевозчика изменён",
 
 		"offer.made":      "Оффер сделан",
 		"offer.withdrawn": "Оффер отозван",
@@ -123,16 +128,6 @@ func humanizeEventType(eventType string) string {
 		"offer.rejected":  "Оффер отклонён",
 		"offer.confirmed": "Оффер подтверждён",
 		"offer.declined":  "Оффер отклонён перевозчиком",
-
-		"order.created":            "Заказ создан",
-		"order.cancelled":          "Заказ отменён",
-		"order.customer_completed": "Заказчик завершил заказ",
-		"order.carrier_completed":  "Перевозчик завершил заказ",
-		"order.completed":          "Заказ завершён",
-		"order.message_sent":       "Сообщение отправлено",
-		"order.document_attached":  "Документ прикреплён",
-		"order.document_removed":   "Документ удалён",
-		"order.review_left":        "Отзыв оставлен",
 
 		"review.received":    "Отзыв получен",
 		"review.analyzed":    "Отзыв проанализирован",

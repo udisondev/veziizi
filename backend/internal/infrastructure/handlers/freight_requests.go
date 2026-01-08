@@ -76,6 +76,21 @@ func (h *FreightRequestsHandler) handleEvent(ctx context.Context, evt eventstore
 		return h.onOfferUnselected(ctx, e)
 	case events.OfferCancelledWithRequest:
 		return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
+	// New completion events
+	case events.CustomerCompleted:
+		return h.onCustomerCompleted(ctx, e)
+	case events.CarrierCompleted:
+		return h.onCarrierCompleted(ctx, e)
+	case events.FreightRequestCompleted:
+		return h.onFreightRequestCompleted(ctx, e)
+	case events.ReviewLeft:
+		// ReviewLeft is handled by review-receiver worker to create Review aggregate
+		slog.Debug("review left", slog.String("id", e.AggregateID().String()), slog.String("review_id", e.ReviewID.String()))
+		return nil
+	case events.CancelledAfterConfirmed:
+		return h.onCancelledAfterConfirmed(ctx, e)
+	case events.CarrierMemberReassigned:
+		return h.onCarrierMemberReassigned(ctx, e)
 	}
 	return nil
 }
@@ -331,8 +346,44 @@ func (h *FreightRequestsHandler) onOfferConfirmed(ctx context.Context, e events.
 		return err
 	}
 
-	// Update freight request status
-	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusConfirmed.String())
+	// Get carrier info from offer
+	var carrierOrgID, carrierMemberID uuid.UUID
+	query, args, err := h.psql.
+		Select("carrier_org_id", "carrier_member_id").
+		From("offers_lookup").
+		Where(squirrel.Eq{"id": e.OfferID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build select query: %w", err)
+	}
+
+	if err := h.db.QueryRow(ctx, query, args...).Scan(&carrierOrgID, &carrierMemberID); err != nil {
+		return fmt.Errorf("get carrier info from offer: %w", err)
+	}
+
+	// Update freight request with carrier info and confirmed status
+	confirmedAt := e.OccurredAt()
+	query, args, err = h.psql.
+		Update("freight_requests_lookup").
+		Set("status", values.FreightRequestStatusConfirmed.String()).
+		Set("carrier_org_id", carrierOrgID).
+		Set("carrier_member_id", carrierMemberID).
+		Set("confirmed_at", confirmedAt).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update freight request with carrier info: %w", err)
+	}
+
+	slog.Debug("offer confirmed",
+		slog.String("freight_request_id", e.AggregateID().String()),
+		slog.String("offer_id", e.OfferID.String()),
+		slog.String("carrier_org_id", carrierOrgID.String()))
+	return nil
 }
 
 func (h *FreightRequestsHandler) onOfferDeclined(ctx context.Context, e events.OfferDeclined) error {
@@ -386,5 +437,113 @@ func (h *FreightRequestsHandler) updateOfferStatus(ctx context.Context, id uuid.
 		return fmt.Errorf("update offer status: %w", err)
 	}
 
+	return nil
+}
+
+func (h *FreightRequestsHandler) onCustomerCompleted(ctx context.Context, e events.CustomerCompleted) error {
+	query, args, err := h.psql.
+		Update("freight_requests_lookup").
+		Set("customer_completed", true).
+		Set("status", values.FreightRequestStatusPartiallyCompleted.String()).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update customer completed: %w", err)
+	}
+
+	slog.Debug("customer completed freight request",
+		slog.String("id", e.AggregateID().String()),
+		slog.String("completed_by", e.CompletedBy.String()))
+	return nil
+}
+
+func (h *FreightRequestsHandler) onCarrierCompleted(ctx context.Context, e events.CarrierCompleted) error {
+	query, args, err := h.psql.
+		Update("freight_requests_lookup").
+		Set("carrier_completed", true).
+		Set("status", values.FreightRequestStatusPartiallyCompleted.String()).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update carrier completed: %w", err)
+	}
+
+	slog.Debug("carrier completed freight request",
+		slog.String("id", e.AggregateID().String()),
+		slog.String("completed_by", e.CompletedBy.String()))
+	return nil
+}
+
+func (h *FreightRequestsHandler) onFreightRequestCompleted(ctx context.Context, e events.FreightRequestCompleted) error {
+	completedAt := e.OccurredAt()
+
+	query, args, err := h.psql.
+		Update("freight_requests_lookup").
+		Set("status", values.FreightRequestStatusCompleted.String()).
+		Set("completed_at", completedAt).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update freight request completed: %w", err)
+	}
+
+	slog.Debug("freight request fully completed",
+		slog.String("id", e.AggregateID().String()),
+		slog.Time("completed_at", completedAt))
+	return nil
+}
+
+func (h *FreightRequestsHandler) onCancelledAfterConfirmed(ctx context.Context, e events.CancelledAfterConfirmed) error {
+	cancelledAt := e.OccurredAt()
+
+	query, args, err := h.psql.
+		Update("freight_requests_lookup").
+		Set("status", values.FreightRequestStatusCancelledAfterConfirmed.String()).
+		Set("cancelled_after_confirmed_at", cancelledAt).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update cancelled after confirmed: %w", err)
+	}
+
+	slog.Debug("freight request cancelled after confirmed",
+		slog.String("id", e.AggregateID().String()),
+		slog.String("cancelled_by", e.CancelledBy.String()))
+	return nil
+}
+
+func (h *FreightRequestsHandler) onCarrierMemberReassigned(ctx context.Context, e events.CarrierMemberReassigned) error {
+	query, args, err := h.psql.
+		Update("freight_requests_lookup").
+		Set("carrier_member_id", e.NewMemberID).
+		Where(squirrel.Eq{"id": e.AggregateID()}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build reassign carrier query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update carrier_member_id: %w", err)
+	}
+
+	slog.Debug("carrier member reassigned",
+		slog.String("id", e.AggregateID().String()),
+		slog.String("new_member_id", e.NewMemberID.String()))
 	return nil
 }

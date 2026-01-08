@@ -11,6 +11,10 @@ import {
 } from '@/components/ui/sheet'
 import { Filter, X } from 'lucide-vue-next'
 
+defineOptions({
+  inheritAttrs: false,
+})
+
 const props = withDefaults(
   defineProps<{
     title?: string
@@ -50,7 +54,7 @@ function handleReset() {
 <template>
   <Sheet v-model:open="open">
     <SheetTrigger as-child>
-      <Button variant="outline" class="relative" @click="handleOpen">
+      <Button variant="outline" class="relative" v-bind="$attrs" @click="handleOpen">
         <Filter class="mr-2 h-4 w-4" />
         Фильтры
         <span

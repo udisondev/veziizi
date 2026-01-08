@@ -21,29 +21,29 @@ import (
 )
 
 type AuthHandler struct {
-	members          *projections.MembersProjection
-	ordersProjection *projections.OrdersProjection
-	orgService       *organization.Service
-	session          *session.Manager
-	sessionAnalyzer  *sessionApp.SessionAnalyzer
-	geoIP            *geoip.Service
+	members             *projections.MembersProjection
+	freightRequestsProj *projections.FreightRequestsProjection
+	orgService          *organization.Service
+	session             *session.Manager
+	sessionAnalyzer     *sessionApp.SessionAnalyzer
+	geoIP               *geoip.Service
 }
 
 func NewAuthHandler(
 	members *projections.MembersProjection,
-	ordersProjection *projections.OrdersProjection,
+	freightRequestsProj *projections.FreightRequestsProjection,
 	orgService *organization.Service,
 	session *session.Manager,
 	sessionAnalyzer *sessionApp.SessionAnalyzer,
 	geoIP *geoip.Service,
 ) *AuthHandler {
 	return &AuthHandler{
-		members:          members,
-		ordersProjection: ordersProjection,
-		orgService:       orgService,
-		session:          session,
-		sessionAnalyzer:  sessionAnalyzer,
-		geoIP:            geoIP,
+		members:             members,
+		freightRequestsProj: freightRequestsProj,
+		orgService:          orgService,
+		session:             session,
+		sessionAnalyzer:     sessionAnalyzer,
+		geoIP:               geoIP,
 	}
 }
 
@@ -290,11 +290,11 @@ func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SEC-017: Разрешаем доступ к членам своей организации или контрагентам по заказам
+	// SEC-017: Разрешаем доступ к членам своей организации или контрагентам по перевозкам
 	if member.OrganizationID != sessionOrgID {
-		hasShared, err := h.ordersProjection.HaveSharedOrder(r.Context(), sessionOrgID, member.OrganizationID)
+		hasShared, err := h.freightRequestsProj.HaveSharedConfirmedFreight(r.Context(), sessionOrgID, member.OrganizationID)
 		if err != nil {
-			slog.Error("failed to check shared orders",
+			slog.Error("failed to check shared freight requests",
 				slog.String("error", err.Error()),
 				slog.String("session_org_id", sessionOrgID.String()),
 				slog.String("member_org_id", member.OrganizationID.String()),

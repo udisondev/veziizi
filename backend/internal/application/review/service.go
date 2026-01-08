@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/order"
-	orderEvents "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
 	"codeberg.org/udison/veziizi/backend/internal/domain/review"
 	"codeberg.org/udison/veziizi/backend/internal/domain/review/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
@@ -42,59 +40,35 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*review.Review, error)
 	return review.NewFromEvents(id, evts), nil
 }
 
-// getOrder loads Order aggregate by ID (helper for getting order data)
-func (s *Service) getOrder(ctx context.Context, id uuid.UUID) (*order.Order, error) {
-	evts, err := s.eventStore.Load(ctx, id, orderEvents.AggregateType)
-	if err != nil {
-		return nil, fmt.Errorf("load order: %w", err)
-	}
-	return order.NewFromEvents(id, evts), nil
+// CreateFromFreightReviewInput contains data for creating a Review from FreightRequest.ReviewLeft
+type CreateFromFreightReviewInput struct {
+	ReviewID         uuid.UUID
+	FreightRequestID uuid.UUID
+	ReviewerOrgID    uuid.UUID
+	ReviewedOrgID    uuid.UUID
+	Rating           int
+	Comment          string
+	FreightAmount    int64
+	FreightCurrency  string
+	FreightCreatedAt time.Time
+	CompletedAt      time.Time
 }
 
-// CreateFromOrderReviewInput contains data for creating a Review from Order.ReviewLeft
-type CreateFromOrderReviewInput struct {
-	ReviewID      uuid.UUID
-	OrderID       uuid.UUID
-	ReviewerOrgID uuid.UUID
-	Rating        int
-	Comment       string
-}
-
-// CreateFromOrderReview creates a new Review aggregate from Order.ReviewLeft event
-func (s *Service) CreateFromOrderReview(ctx context.Context, input CreateFromOrderReviewInput) error {
+// CreateFromFreightReview creates a new Review aggregate from FreightRequest.ReviewLeft event
+func (s *Service) CreateFromFreightReview(ctx context.Context, input CreateFromFreightReviewInput) error {
 	return s.db.InTx(ctx, func(ctx context.Context) error {
-		// Load Order to get metadata
-		o, err := s.getOrder(ctx, input.OrderID)
-		if err != nil {
-			return fmt.Errorf("load order: %w", err)
-		}
-
-		// Determine reviewed org (counterparty of reviewer)
-		reviewedOrgID := o.CustomerOrgID()
-		if input.ReviewerOrgID == o.CustomerOrgID() {
-			reviewedOrgID = o.CarrierOrgID()
-		}
-
-		// Get order amount
-		var orderAmount int64
-		var orderCurrency string
-		if o.Payment().Price != nil {
-			orderAmount = o.Payment().Price.Amount
-			orderCurrency = string(o.Payment().Price.Currency)
-		}
-
-		// Create Review aggregate
+		// Create Review aggregate - all data comes from the event
 		r := review.New(
 			input.ReviewID,
-			input.OrderID,
+			input.FreightRequestID,
 			input.ReviewerOrgID,
-			reviewedOrgID,
+			input.ReviewedOrgID,
 			input.Rating,
 			input.Comment,
-			orderAmount,
-			orderCurrency,
-			o.CreatedAt(),
-			*o.CompletedAt(),
+			input.FreightAmount,
+			input.FreightCurrency,
+			input.FreightCreatedAt,
+			input.CompletedAt,
 		)
 
 		return s.saveAndPublish(ctx, r)
@@ -195,6 +169,64 @@ func (s *Service) Deactivate(ctx context.Context, reviewID uuid.UUID, reason str
 
 		return s.saveAndPublish(ctx, r)
 	})
+}
+
+// BatchDeactivateResult содержит результат batch деактивации
+type BatchDeactivateResult struct {
+	SuccessCount int
+	FailedIDs    []uuid.UUID
+	Errors       []error
+}
+
+// BatchDeactivate деактивирует несколько отзывов параллельно с ограниченной конкурентностью
+func (s *Service) BatchDeactivate(ctx context.Context, reviewIDs []uuid.UUID, reason string) BatchDeactivateResult {
+	if len(reviewIDs) == 0 {
+		return BatchDeactivateResult{}
+	}
+
+	const maxConcurrency = 10
+
+	type deactivateResult struct {
+		id  uuid.UUID
+		err error
+	}
+
+	results := make(chan deactivateResult, len(reviewIDs))
+	sem := make(chan struct{}, maxConcurrency)
+
+	// Запускаем горутины для параллельной деактивации
+	for _, id := range reviewIDs {
+		go func(reviewID uuid.UUID) {
+			// Захватываем семафор
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Проверяем отмену контекста
+			select {
+			case <-ctx.Done():
+				results <- deactivateResult{id: reviewID, err: ctx.Err()}
+				return
+			default:
+			}
+
+			err := s.Deactivate(ctx, reviewID, reason)
+			results <- deactivateResult{id: reviewID, err: err}
+		}(id)
+	}
+
+	// Собираем результаты
+	result := BatchDeactivateResult{}
+	for range reviewIDs {
+		r := <-results
+		if r.err != nil {
+			result.FailedIDs = append(result.FailedIDs, r.id)
+			result.Errors = append(result.Errors, r.err)
+		} else {
+			result.SuccessCount++
+		}
+	}
+
+	return result
 }
 
 func (s *Service) saveAndPublish(ctx context.Context, r *review.Review) error {

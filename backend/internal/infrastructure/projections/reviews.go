@@ -53,60 +53,44 @@ type FraudSignalInfo struct {
 }
 
 // ListPendingModeration returns reviews pending moderation with pagination
+// Использует COUNT(*) OVER() для получения total в одном запросе
 func (p *ReviewsProjection) ListPendingModeration(ctx context.Context, limit, offset int) ([]ReviewForModeration, int, error) {
-	// Count total
-	countQuery, countArgs, err := p.psql.
-		Select("COUNT(*)").
-		From("reviews_lookup").
-		Where(squirrel.Eq{"status": values.StatusPendingModeration.String()}).
-		ToSql()
-	if err != nil {
-		return nil, 0, fmt.Errorf("build count query: %w", err)
-	}
+	// Один запрос с COUNT(*) OVER() вместо двух отдельных
+	query := `
+		SELECT
+			id, order_id, reviewer_org_id, reviewed_org_id,
+			rating, comment, order_amount, order_currency,
+			raw_weight, fraud_score, activation_date, created_at, analyzed_at,
+			COUNT(*) OVER() as total_count
+		FROM reviews_lookup
+		WHERE status = $1
+		ORDER BY fraud_score DESC, created_at ASC
+		LIMIT $2 OFFSET $3
+	`
 
-	var total int
-	if err := p.db.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count pending reviews: %w", err)
-	}
-
-	if total == 0 {
-		return []ReviewForModeration{}, 0, nil
-	}
-
-	// Get reviews ordered by fraud_score DESC (most suspicious first)
-	query, args, err := p.psql.
-		Select(
-			"id", "order_id", "reviewer_org_id", "reviewed_org_id",
-			"rating", "comment", "order_amount", "order_currency",
-			"raw_weight", "fraud_score", "activation_date", "created_at", "analyzed_at",
-		).
-		From("reviews_lookup").
-		Where(squirrel.Eq{"status": values.StatusPendingModeration.String()}).
-		OrderBy("fraud_score DESC", "created_at ASC").
-		Limit(uint64(limit)).
-		Offset(uint64(offset)).
-		ToSql()
-	if err != nil {
-		return nil, 0, fmt.Errorf("build select query: %w", err)
-	}
-
-	rows, err := p.db.Query(ctx, query, args...)
+	rows, err := p.db.Query(ctx, query, values.StatusPendingModeration.String(), limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query pending reviews: %w", err)
 	}
 	defer rows.Close()
 
-	result := make([]ReviewForModeration, 0)
+	var total int
+	result := make([]ReviewForModeration, 0, limit)
 	for rows.Next() {
 		var r ReviewForModeration
 		if err := rows.Scan(
 			&r.ID, &r.OrderID, &r.ReviewerOrgID, &r.ReviewedOrgID,
 			&r.Rating, &r.Comment, &r.OrderAmount, &r.OrderCurrency,
 			&r.RawWeight, &r.FraudScore, &r.ActivationDate, &r.CreatedAt, &r.AnalyzedAt,
+			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan row: %w", err)
 		}
 		result = append(result, r)
+	}
+
+	if len(result) == 0 {
+		return []ReviewForModeration{}, 0, nil
 	}
 
 	// Load fraud signals for each review
@@ -232,42 +216,30 @@ type ReviewsByReviewerFilter struct {
 }
 
 func (p *ReviewsProjection) ListByReviewer(ctx context.Context, filter ReviewsByReviewerFilter) ([]ReviewListItem, int, error) {
-	where := squirrel.And{squirrel.Eq{"reviewer_org_id": filter.ReviewerOrgID}}
+	// Строим запрос с COUNT(*) OVER() для получения total в одном запросе
+	var statusFilter string
+	args := []any{filter.ReviewerOrgID}
+	argNum := 2
+
 	if filter.Status != nil {
-		where = append(where, squirrel.Eq{"status": filter.Status.String()})
+		statusFilter = fmt.Sprintf(" AND status = $%d", argNum)
+		args = append(args, filter.Status.String())
+		argNum++
 	}
 
-	// Count
-	countQuery, countArgs, err := p.psql.
-		Select("COUNT(*)").
-		From("reviews_lookup").
-		Where(where).
-		ToSql()
-	if err != nil {
-		return nil, 0, fmt.Errorf("build count query: %w", err)
-	}
+	query := fmt.Sprintf(`
+		SELECT
+			id, order_id, reviewer_org_id, reviewed_org_id,
+			rating, comment, status, raw_weight, final_weight,
+			fraud_score, activation_date, created_at,
+			COUNT(*) OVER() as total_count
+		FROM reviews_lookup
+		WHERE reviewer_org_id = $1%s
+		ORDER BY created_at DESC
+		LIMIT $%d OFFSET $%d
+	`, statusFilter, argNum, argNum+1)
 
-	var total int
-	if err := p.db.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count reviews: %w", err)
-	}
-
-	if total == 0 {
-		return []ReviewListItem{}, 0, nil
-	}
-
-	// Select
-	query, args, err := p.psql.
-		Select("id", "order_id", "reviewer_org_id", "reviewed_org_id", "rating", "comment", "status", "raw_weight", "final_weight", "fraud_score", "activation_date", "created_at").
-		From("reviews_lookup").
-		Where(where).
-		OrderBy("created_at DESC").
-		Limit(uint64(filter.Limit)).
-		Offset(uint64(filter.Offset)).
-		ToSql()
-	if err != nil {
-		return nil, 0, fmt.Errorf("build select query: %w", err)
-	}
+	args = append(args, filter.Limit, filter.Offset)
 
 	rows, err := p.db.Query(ctx, query, args...)
 	if err != nil {
@@ -275,17 +247,23 @@ func (p *ReviewsProjection) ListByReviewer(ctx context.Context, filter ReviewsBy
 	}
 	defer rows.Close()
 
-	result := make([]ReviewListItem, 0)
+	var total int
+	result := make([]ReviewListItem, 0, filter.Limit)
 	for rows.Next() {
 		var item ReviewListItem
 		if err := rows.Scan(
 			&item.ID, &item.OrderID, &item.ReviewerOrgID, &item.ReviewedOrgID,
 			&item.Rating, &item.Comment, &item.Status, &item.RawWeight,
 			&item.FinalWeight, &item.FraudScore, &item.ActivationDate, &item.CreatedAt,
+			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan row: %w", err)
 		}
 		result = append(result, item)
+	}
+
+	if len(result) == 0 {
+		return []ReviewListItem{}, 0, nil
 	}
 
 	return result, total, nil

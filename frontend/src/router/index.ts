@@ -95,20 +95,6 @@ const router = createRouter({
       meta: { title: 'Профиль сотрудника' },
     },
 
-    // Orders
-    {
-      path: '/orders',
-      name: 'orders',
-      component: () => import('@/views/OrdersView.vue'),
-      meta: { title: 'Заказы' },
-    },
-    {
-      path: '/orders/:id',
-      name: 'order-detail',
-      component: () => import('@/views/OrderDetailView.vue'),
-      meta: { title: 'Заказ' },
-    },
-
     // Organization members (доступно всем сотрудникам)
     {
       path: '/members',

@@ -332,8 +332,6 @@ function isActive(path: string): boolean {
             <!-- IDs -->
             <div class="mt-4 pt-4 border-t border-slate-700 text-xs text-slate-600 font-mono">
               Review: {{ review.id.slice(0, 8) }}...
-              <span class="mx-2">|</span>
-              Order: {{ review.order_id.slice(0, 8) }}...
             </div>
           </CardContent>
         </Card>

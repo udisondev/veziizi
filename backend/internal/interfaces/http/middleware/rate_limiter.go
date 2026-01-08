@@ -2,10 +2,12 @@ package middleware
 
 import (
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sessionApp "codeberg.org/udison/veziizi/backend/internal/application/session"
@@ -14,29 +16,45 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	// Количество шардов для снижения contention
+	numShards = 32
+)
+
 // SEC-003: IP-based rate limiting для public endpoints
-// Простой in-memory rate limiter для защиты от брутфорса
-type ipRateLimiter struct {
+// Sharded rate limiter для снижения mutex contention
+type shardedRateLimiter struct {
+	shards [numShards]*rateLimiterShard
+}
+
+type rateLimiterShard struct {
 	mu       sync.RWMutex
 	requests map[string]*ipRequestInfo
 }
 
 type ipRequestInfo struct {
-	count     int
-	firstSeen time.Time
-	blocked   bool
+	count      int
+	firstSeen  time.Time
+	blocked    bool
 	blockUntil time.Time
 }
 
+// rateLimitResult содержит результат проверки для логирования вне lock
+type rateLimitResult struct {
+	allowed    bool
+	reason     string
+	shouldLog  bool
+	ip         string
+	endpoint   string
+	count      int
+	maxRequest int
+}
+
 var (
-	// Глобальный rate limiter для public endpoints
-	publicRateLimiter = &ipRateLimiter{
-		requests: make(map[string]*ipRequestInfo),
-	}
-	// Rate limiter для geo endpoints (более высокий лимит)
-	geoRateLimiter = &ipRateLimiter{
-		requests: make(map[string]*ipRequestInfo),
-	}
+	// Глобальные rate limiter'ы (sharded)
+	publicRateLimiter *shardedRateLimiter
+	geoRateLimiter    *shardedRateLimiter
+
 	// Конфигурация rate limiting
 	maxRequestsPerWindow      = 10               // Максимум запросов за окно (public)
 	maxGeoRequestsPerWindow   = 200              // Максимум запросов за окно (geo)
@@ -44,88 +62,122 @@ var (
 	windowDuration            = 1 * time.Minute  // Окно в 1 минуту
 	blockDuration             = 15 * time.Minute // Блокировка на 15 минут
 
-	// Канал для graceful shutdown cleanup горутины
+	// Управление cleanup горутиной
 	cleanupStop     chan struct{}
 	cleanupStopOnce sync.Once
+	cleanupStarted  atomic.Bool
 )
 
+// newShardedRateLimiter создаёт новый sharded rate limiter
+func newShardedRateLimiter() *shardedRateLimiter {
+	l := &shardedRateLimiter{}
+	for i := range numShards {
+		l.shards[i] = &rateLimiterShard{
+			requests: make(map[string]*ipRequestInfo),
+		}
+	}
+	return l
+}
+
+// getShard возвращает шард для данного ключа
+func (l *shardedRateLimiter) getShard(key string) *rateLimiterShard {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return l.shards[h.Sum32()%numShards]
+}
+
 // checkIPRateLimitWithMax проверяет rate limit по IP с настраиваемым лимитом
-// Возвращает true если запрос разрешён, false если заблокирован
-func (l *ipRateLimiter) checkIPRateLimitWithMax(ip, endpoint string, maxRequests int) (bool, string) {
-	key := fmt.Sprintf("%s:%s", ip, endpoint)
+// Возвращает результат для логирования вне lock
+func (l *shardedRateLimiter) checkIPRateLimitWithMax(ip, endpoint string, maxRequests int) rateLimitResult {
+	// Используем IP как ключ шарда для равномерного распределения
+	shard := l.getShard(ip)
+	key := ip + ":" + endpoint // Простая конкатенация вместо fmt.Sprintf
 	now := time.Now()
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	info, exists := l.requests[key]
+	shard.mu.Lock()
+	info, exists := shard.requests[key]
 	if !exists {
-		l.requests[key] = &ipRequestInfo{
+		shard.requests[key] = &ipRequestInfo{
 			count:     1,
 			firstSeen: now,
 		}
-		return true, ""
+		shard.mu.Unlock()
+		return rateLimitResult{allowed: true}
 	}
 
 	// Проверить блокировку
 	if info.blocked {
 		if now.Before(info.blockUntil) {
 			remaining := info.blockUntil.Sub(now).Round(time.Second)
-			return false, fmt.Sprintf("too many requests, try again in %s", remaining)
+			shard.mu.Unlock()
+			return rateLimitResult{
+				allowed: false,
+				reason:  fmt.Sprintf("too many requests, try again in %s", remaining),
+			}
 		}
 		// Блокировка истекла — сбросить счётчик
 		info.blocked = false
 		info.count = 1
 		info.firstSeen = now
-		return true, ""
+		shard.mu.Unlock()
+		return rateLimitResult{allowed: true}
 	}
 
 	// Сбросить счётчик если окно истекло
 	if now.Sub(info.firstSeen) > windowDuration {
 		info.count = 1
 		info.firstSeen = now
-		return true, ""
+		shard.mu.Unlock()
+		return rateLimitResult{allowed: true}
 	}
 
 	// Увеличить счётчик
 	info.count++
+	currentCount := info.count
 
 	// Проверить лимит
-	if info.count > maxRequests {
+	if currentCount > maxRequests {
 		info.blocked = true
 		info.blockUntil = now.Add(blockDuration)
-		slog.Warn("SEC-003: IP rate limited",
-			slog.String("ip", ip),
-			slog.String("endpoint", endpoint),
-			slog.Int("count", info.count),
-			slog.Int("max", maxRequests),
-		)
-		return false, fmt.Sprintf("too many requests, try again in %s", blockDuration)
+		shard.mu.Unlock()
+		// Возвращаем данные для логирования ВНЕ lock
+		return rateLimitResult{
+			allowed:    false,
+			reason:     fmt.Sprintf("too many requests, try again in %s", blockDuration),
+			shouldLog:  true,
+			ip:         ip,
+			endpoint:   endpoint,
+			count:      currentCount,
+			maxRequest: maxRequests,
+		}
 	}
 
-	return true, ""
+	shard.mu.Unlock()
+	return rateLimitResult{allowed: true}
 }
 
 // checkIPRateLimit проверяет rate limit по IP для public endpoints (лимит по умолчанию)
-func (l *ipRateLimiter) checkIPRateLimit(ip, endpoint string) (bool, string) {
+func (l *shardedRateLimiter) checkIPRateLimit(ip, endpoint string) rateLimitResult {
 	return l.checkIPRateLimitWithMax(ip, endpoint, maxRequestsPerWindow)
 }
 
-// cleanupOldEntries периодически очищает старые записи (вызывать в фоне)
-func (l *ipRateLimiter) cleanupOldEntries() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
+// cleanupOldEntries периодически очищает старые записи
+func (l *shardedRateLimiter) cleanupOldEntries() {
 	now := time.Now()
-	for key, info := range l.requests {
-		// Удалить записи старше 1 часа
-		if now.Sub(info.firstSeen) > time.Hour && !info.blocked {
-			delete(l.requests, key)
+	for _, shard := range l.shards {
+		shard.mu.Lock()
+		for key, info := range shard.requests {
+			// Удалить записи старше 1 часа
+			if now.Sub(info.firstSeen) > time.Hour && !info.blocked {
+				delete(shard.requests, key)
+				continue
+			}
+			// Удалить истёкшие блокировки старше 1 часа
+			if info.blocked && now.Sub(info.blockUntil) > time.Hour {
+				delete(shard.requests, key)
+			}
 		}
-		// Удалить истёкшие блокировки старше 1 часа
-		if info.blocked && now.Sub(info.blockUntil) > time.Hour {
-			delete(l.requests, key)
-		}
+		shard.mu.Unlock()
 	}
 }
 
@@ -136,9 +188,18 @@ func SetRateLimits(maxPublic, maxGeo int) {
 	maxAdminRequestsPerWindow = maxPublic // Use same limit for admin in tests
 }
 
-func init() {
+// InitRateLimiter инициализирует rate limiter'ы и запускает cleanup горутину.
+// Должен вызываться из main() перед использованием middleware.
+func InitRateLimiter() {
+	if cleanupStarted.Swap(true) {
+		// Уже инициализирован
+		return
+	}
+
+	publicRateLimiter = newShardedRateLimiter()
+	geoRateLimiter = newShardedRateLimiter()
 	cleanupStop = make(chan struct{})
-	// Запустить периодическую очистку с поддержкой graceful shutdown
+
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
@@ -159,7 +220,9 @@ func init() {
 // Вызывается при graceful shutdown сервера.
 func StopRateLimiterCleanup() {
 	cleanupStopOnce.Do(func() {
-		close(cleanupStop)
+		if cleanupStop != nil {
+			close(cleanupStop)
+		}
 	})
 }
 
@@ -170,14 +233,19 @@ func RateLimiter(
 	sessionManager *session.Manager,
 	sessionAnalyzer *sessionApp.SessionAnalyzer,
 ) func(http.Handler) http.Handler {
+	// Убеждаемся что rate limiter инициализирован
+	if !cleanupStarted.Load() {
+		InitRateLimiter()
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Geo endpoints: higher rate limit (200/min) for autocomplete
 			if strings.HasPrefix(r.URL.Path, "/api/v1/geo/") {
 				clientIP := httputil.GetClientIP(r)
-				allowed, reason := geoRateLimiter.checkIPRateLimitWithMax(clientIP, "geo", maxGeoRequestsPerWindow)
-				if !allowed {
-					writeError(w, http.StatusTooManyRequests, reason)
+				result := geoRateLimiter.checkIPRateLimitWithMax(clientIP, "geo", maxGeoRequestsPerWindow)
+				if !result.allowed {
+					writeError(w, http.StatusTooManyRequests, result.reason)
 					return
 				}
 				next.ServeHTTP(w, r)
@@ -189,9 +257,18 @@ func RateLimiter(
 				clientIP := httputil.GetClientIP(r)
 				endpoint := r.URL.Path
 
-				allowed, reason := publicRateLimiter.checkIPRateLimit(clientIP, endpoint)
-				if !allowed {
-					writeError(w, http.StatusTooManyRequests, reason)
+				result := publicRateLimiter.checkIPRateLimit(clientIP, endpoint)
+				// Логируем ВНЕ lock
+				if result.shouldLog {
+					slog.Warn("SEC-003: IP rate limited",
+						slog.String("ip", result.ip),
+						slog.String("endpoint", result.endpoint),
+						slog.Int("count", result.count),
+						slog.Int("max", result.maxRequest),
+					)
+				}
+				if !result.allowed {
+					writeError(w, http.StatusTooManyRequests, result.reason)
 					return
 				}
 
@@ -202,14 +279,16 @@ func RateLimiter(
 			// SEC-003: Admin paths rate limiting (более высокий лимит, но всё равно ограничен)
 			if strings.HasPrefix(r.URL.Path, "/api/v1/admin/") {
 				clientIP := httputil.GetClientIP(r)
-				// maxAdminRequestsPerWindow requests per minute для admin - защита от brute force
-				allowed, reason := publicRateLimiter.checkIPRateLimitWithMax(clientIP, "admin", maxAdminRequestsPerWindow)
-				if !allowed {
+				result := publicRateLimiter.checkIPRateLimitWithMax(clientIP, "admin", maxAdminRequestsPerWindow)
+				// Логируем ВНЕ lock
+				if result.shouldLog {
 					slog.Warn("SEC-003: Admin endpoint rate limited",
-						slog.String("ip", clientIP),
+						slog.String("ip", result.ip),
 						slog.String("path", r.URL.Path),
 					)
-					writeError(w, http.StatusTooManyRequests, reason)
+				}
+				if !result.allowed {
+					writeError(w, http.StatusTooManyRequests, result.reason)
 					return
 				}
 				next.ServeHTTP(w, r)
@@ -230,8 +309,8 @@ func RateLimiter(
 				orgID = memberID // fallback
 			}
 
-			// Build endpoint key for tracking
-			endpoint := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
+			// Build endpoint key for tracking (простая конкатенация)
+			endpoint := r.Method + " " + r.URL.Path
 
 			// Check for API abuse
 			result, err := sessionAnalyzer.CheckAPIAbuse(r.Context(), memberID, orgID, endpoint)

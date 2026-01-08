@@ -50,6 +50,8 @@ func (a *FreightRequestsAdapter) GetByID(ctx context.Context, id uuid.UUID) (*Fr
 		RequestNumber:    item.RequestNumber,
 		CustomerMemberID: item.CustomerMemberID,
 		CustomerOrgID:    item.CustomerOrgID,
+		CarrierMemberID:  item.CarrierMemberID,
+		CarrierOrgID:     item.CarrierOrgID,
 	}, nil
 }
 
@@ -64,34 +66,6 @@ func (a *FreightRequestsAdapter) GetOfferByID(ctx context.Context, id uuid.UUID)
 	return &OfferInfo{
 		ID:               item.ID,
 		FreightRequestID: item.FreightRequestID,
-		CarrierMemberID:  item.CarrierMemberID,
-		CarrierOrgID:     item.CarrierOrgID,
-	}, nil
-}
-
-// OrdersAdapter адаптирует OrdersProjection к OrderGetter
-type OrdersAdapter struct {
-	projection *projections.OrdersProjection
-}
-
-// NewOrdersAdapter создает адаптер
-func NewOrdersAdapter(projection *projections.OrdersProjection) *OrdersAdapter {
-	return &OrdersAdapter{projection: projection}
-}
-
-func (a *OrdersAdapter) GetByID(ctx context.Context, id uuid.UUID) (*OrderInfo, error) {
-	item, err := a.projection.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if item == nil {
-		return nil, nil
-	}
-	return &OrderInfo{
-		ID:               item.ID,
-		OrderNumber:      item.OrderNumber,
-		CustomerMemberID: item.CustomerMemberID,
-		CustomerOrgID:    item.CustomerOrgID,
 		CarrierMemberID:  item.CarrierMemberID,
 		CarrierOrgID:     item.CarrierOrgID,
 	}, nil

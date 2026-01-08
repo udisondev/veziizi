@@ -31,7 +31,6 @@ import {
 import {
   Menu,
   Package,
-  ClipboardList,
   HandCoins,
   Bell,
   Users,
@@ -60,7 +59,6 @@ watch(isMenuOpen, (newValue) => {
 const menuItems = computed(() => {
   const items = [
     { to: '/', label: 'Заявки', icon: Package },
-    { to: '/orders', label: 'Заказы', icon: ClipboardList },
     { to: '/my-offers', label: 'Предложения', icon: HandCoins },
     { to: '/subscriptions', label: 'Рассылка', icon: Bell },
     { to: '/members', label: 'Штат', icon: Users },
@@ -116,7 +114,6 @@ const userInitial = computed(() => {
                   @click="navigate(item.to)"
                   :data-tutorial="
                     item.to === '/' ? 'mobile-nav-requests' :
-                    item.to === '/orders' ? 'mobile-nav-orders' :
                     item.to === '/my-offers' ? 'mobile-nav-my-offers' :
                     item.to === '/subscriptions' ? 'mobile-nav-subscriptions' :
                     item.to === '/members' ? 'mobile-nav-members' : undefined
@@ -148,12 +145,11 @@ const userInitial = computed(() => {
           <!-- Desktop navigation -->
           <nav class="hidden md:flex items-center gap-1">
             <router-link
-              v-for="item in menuItems.slice(0, 5)"
+              v-for="item in menuItems.slice(0, 4)"
               :key="item.to"
               :to="item.to"
               :data-tutorial="
                 item.to === '/' ? 'nav-requests' :
-                item.to === '/orders' ? 'nav-orders' :
                 item.to === '/my-offers' ? 'nav-my-offers' :
                 item.to === '/subscriptions' ? 'nav-subscriptions' :
                 item.to === '/members' ? 'nav-members' : undefined

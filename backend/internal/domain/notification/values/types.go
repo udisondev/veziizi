@@ -11,11 +11,15 @@ const (
 	TypeNewOffer       NotificationType = "new_offer"        // Получено новое предложение на заявку
 	TypeOfferSelected  NotificationType = "offer_selected"   // Ваше предложение выбрано
 	TypeOfferRejected  NotificationType = "offer_rejected"   // Ваше предложение отклонено
-	TypeOfferConfirmed NotificationType = "offer_confirmed"  // Предложение подтверждено (заказ создан)
+	TypeOfferConfirmed NotificationType = "offer_confirmed"  // Предложение подтверждено
 	TypeOfferDeclined  NotificationType = "offer_declined"   // Выбранное предложение отклонено перевозчиком
 	TypeOfferWithdrawn NotificationType = "offer_withdrawn"  // Предложение отозвано
 
-	// Orders (заказы)
+	// Freight completion (завершение перевозки)
+	TypeFreightCompleted          NotificationType = "freight_completed"           // Перевозка завершена
+	TypeFreightCancelledConfirmed NotificationType = "freight_cancelled_confirmed" // Перевозка отменена после подтверждения
+
+	// Orders (заказы) - deprecated, kept for backwards compatibility
 	TypeOrderCreated   NotificationType = "order_created"   // Заказ создан
 	TypeOrderMessage   NotificationType = "order_message"   // Новое сообщение в заказе
 	TypeOrderDocument  NotificationType = "order_document"  // Новый документ в заказе
@@ -34,7 +38,7 @@ const (
 // Category возвращает категорию для типа уведомления
 func (t NotificationType) Category() NotificationCategory {
 	switch t {
-	case TypeNewFreightRequest:
+	case TypeNewFreightRequest, TypeFreightCompleted, TypeFreightCancelledConfirmed:
 		return CategoryFreightRequests
 	case TypeNewOffer, TypeOfferSelected, TypeOfferRejected, TypeOfferConfirmed, TypeOfferDeclined, TypeOfferWithdrawn:
 		return CategoryOffers

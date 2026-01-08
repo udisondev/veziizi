@@ -49,6 +49,18 @@ func (f *FreightRequestFormatter) Format(ctx context.Context, event eventstore.E
 		return f.formatOfferConfirmed(ctx, e, resolver), nil
 	case events.OfferDeclined:
 		return f.formatOfferDeclined(ctx, e, resolver), nil
+	case events.CustomerCompleted:
+		return f.formatCustomerCompleted(ctx, e, resolver), nil
+	case events.CarrierCompleted:
+		return f.formatCarrierCompleted(ctx, e, resolver), nil
+	case events.FreightRequestCompleted:
+		return f.formatFreightRequestCompleted(), nil
+	case events.ReviewLeft:
+		return f.formatReviewLeft(ctx, e, resolver), nil
+	case events.CancelledAfterConfirmed:
+		return f.formatCancelledAfterConfirmed(ctx, e, resolver), nil
+	case events.CarrierMemberReassigned:
+		return f.formatCarrierMemberReassigned(ctx, e, resolver), nil
 	default:
 		return DisplayView{
 			Title:       "Событие заявки",
@@ -211,6 +223,110 @@ func (f *FreightRequestFormatter) formatOfferDeclined(_ context.Context, e event
 	}
 
 	return view
+}
+
+func (f *FreightRequestFormatter) formatCustomerCompleted(ctx context.Context, e events.CustomerCompleted, resolver EntityResolver) DisplayView {
+	view := NewDisplayView("Заказчик завершил", "Заказчик подтвердил выполнение перевозки").
+		WithIcon("check").
+		WithSeverity("success")
+
+	member := resolver.ResolveMember(ctx, e.CompletedBy)
+	if member != "" {
+		view.AddField("Сотрудник", member)
+	}
+
+	return view
+}
+
+func (f *FreightRequestFormatter) formatCarrierCompleted(ctx context.Context, e events.CarrierCompleted, resolver EntityResolver) DisplayView {
+	view := NewDisplayView("Перевозчик завершил", "Перевозчик подтвердил выполнение перевозки").
+		WithIcon("check").
+		WithSeverity("success")
+
+	member := resolver.ResolveMember(ctx, e.CompletedBy)
+	if member != "" {
+		view.AddField("Сотрудник", member)
+	}
+
+	return view
+}
+
+func (f *FreightRequestFormatter) formatFreightRequestCompleted() DisplayView {
+	return NewDisplayView("Перевозка завершена", "Обе стороны подтвердили выполнение перевозки").
+		WithIcon("check-circle").
+		WithSeverity("success")
+}
+
+func (f *FreightRequestFormatter) formatReviewLeft(ctx context.Context, e events.ReviewLeft, resolver EntityResolver) DisplayView {
+	view := NewDisplayView("Отзыв оставлен", "Оставлен отзыв о работе").
+		WithIcon("star").
+		WithSeverity("info")
+
+	reviewerOrg := resolver.ResolveOrganization(ctx, e.ReviewerOrgID)
+	if reviewerOrg != "" {
+		view.AddField("Автор отзыва", reviewerOrg)
+	}
+
+	view.AddField("Оценка", formatStarRating(e.Rating))
+
+	if e.Comment != "" {
+		view.AddField("Комментарий", e.Comment)
+	}
+
+	return view
+}
+
+func (f *FreightRequestFormatter) formatCancelledAfterConfirmed(ctx context.Context, e events.CancelledAfterConfirmed, resolver EntityResolver) DisplayView {
+	view := NewDisplayView("Отменено после подтверждения", "Перевозка отменена после подтверждения оффера").
+		WithIcon("x-circle").
+		WithSeverity("error")
+
+	member := resolver.ResolveMember(ctx, e.CancelledBy)
+	if member != "" {
+		view.AddField("Инициатор", member)
+	}
+
+	roleLabel := "перевозчиком"
+	if e.CancelledRole == "customer" {
+		roleLabel = "заказчиком"
+	}
+	view.AddField("Отменено", roleLabel)
+
+	if e.Reason != "" {
+		view.AddField("Причина", e.Reason)
+	}
+
+	return view
+}
+
+func (f *FreightRequestFormatter) formatCarrierMemberReassigned(ctx context.Context, e events.CarrierMemberReassigned, resolver EntityResolver) DisplayView {
+	view := NewDisplayView("Ответственный перевозчика изменён", "Назначен новый ответственный со стороны перевозчика").
+		WithIcon("user-switch").
+		WithSeverity("info")
+
+	oldMember := resolver.ResolveMember(ctx, e.OldMemberID)
+	newMember := resolver.ResolveMember(ctx, e.NewMemberID)
+
+	if oldMember != "" && newMember != "" {
+		view.AddDiff("Ответственный", oldMember, newMember)
+	} else {
+		if oldMember != "" {
+			view.AddField("Был", oldMember)
+		}
+		if newMember != "" {
+			view.AddField("Стал", newMember)
+		}
+	}
+
+	return view
+}
+
+// formatStarRating форматирует рейтинг звёздами
+func formatStarRating(rating int) string {
+	if rating < 1 || rating > 5 {
+		return fmt.Sprintf("%d", rating)
+	}
+	return strings.Repeat("★", rating) + strings.Repeat("☆", 5-rating)
 }
 
 // formatRoute форматирует маршрут в читаемую строку

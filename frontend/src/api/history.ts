@@ -63,8 +63,4 @@ export const historyApi = {
   async getFreightRequestHistory(frId: string, params?: HistoryParams): Promise<DisplayableHistoryPage> {
     return api.get<DisplayableHistoryPage>(`/freight-requests/${frId}/history${buildQuery(params)}`)
   },
-
-  async getOrderHistory(orderId: string, params?: HistoryParams): Promise<DisplayableHistoryPage> {
-    return api.get<DisplayableHistoryPage>(`/orders/${orderId}/history${buildQuery(params)}`)
-  },
 }

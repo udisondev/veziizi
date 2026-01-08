@@ -5,34 +5,21 @@
 import { registerHandler } from './index'
 import { mockMembers } from '@/sandbox/mockData'
 import { tutorialBus } from '@/sandbox/events'
+import { useAuthStore } from '@/stores/auth'
 import type { MemberRole } from '@/types/member'
 
 export function membersHandlers(): void {
   // Get member profile
   registerHandler('GET', '/members/:id', (params) => {
+    const auth = useAuthStore()
     const member = mockMembers.get(params.id)
+
     if (!member) {
-      // Для sandbox возвращаем mock профиль текущего пользователя
-      if (params.id === 'sandbox-member-1') {
-        return {
-          data: {
-            id: 'sandbox-member-1',
-            name: 'Я (Sandbox)',
-            email: 'me@sandbox.local',
-            phone: '+7 (999) 123-45-67',
-            role: 'owner',
-            status: 'active',
-            organization_id: 'sandbox-org-1',
-            organization_name: 'Моя организация (Sandbox)',
-            created_at: new Date().toISOString(),
-          },
-        }
-      }
-      return {
-        status: 404,
-        data: { error: 'Сотрудник не найден', error_code: 'NOT_FOUND' },
-      }
+      // Если member не найден в mock store — пропускаем к реальному API
+      return null
     }
+
+    // Используем реальные данные организации из auth store
     return {
       data: {
         id: member.id,
@@ -41,8 +28,8 @@ export function membersHandlers(): void {
         phone: member.phone,
         role: member.role,
         status: member.status,
-        organization_id: 'sandbox-org-1',
-        organization_name: 'Моя организация (Sandbox)',
+        organization_id: auth.organizationId,
+        organization_name: auth.organization?.name || 'Моя организация',
         created_at: member.created_at,
       },
     }
@@ -50,6 +37,8 @@ export function membersHandlers(): void {
 
   // Get organization with members (для listByOrganization)
   registerHandler('GET', '/organizations/:orgId/full', async (params) => {
+    const auth = useAuthStore()
+
     // Сидим members если ещё не засеяны
     await mockMembers.seed(5)
 
@@ -58,7 +47,8 @@ export function membersHandlers(): void {
     return {
       data: {
         id: params.orgId,
-        name: 'Моя организация (Sandbox)',
+        // Используем реальное название организации из auth store
+        name: auth.organization?.name || 'Моя организация',
         members: members.map((m) => ({
           id: m.id,
           name: m.name,
@@ -137,25 +127,7 @@ export function membersHandlers(): void {
     return { data: invitations }
   })
 
-  // Get current user session (auth/me)
-  registerHandler('GET', '/auth/me', () => {
-    return {
-      data: {
-        member_id: 'sandbox-member-1',
-        name: 'Я (Sandbox)',
-        email: 'me@sandbox.local',
-        organization_id: 'sandbox-org-1',
-        role: 'owner',
-        organization: {
-          name: 'Моя организация (Sandbox)',
-          status: 'active',
-        },
-      },
-    }
-  })
-
-  // Logout (just return success in sandbox)
-  registerHandler('POST', '/auth/logout', () => {
-    return { status: 204 }
-  })
+  // ВАЖНО: НЕ перехватываем /auth/me и /auth/logout
+  // Эти запросы должны идти к реальному API, чтобы сохранить
+  // данные реального пользователя в sandbox режиме
 }

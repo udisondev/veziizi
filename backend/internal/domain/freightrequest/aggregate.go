@@ -28,8 +28,30 @@ type FreightRequest struct {
 	createdAt           time.Time
 	cancelledAt         *time.Time
 
-	offers         map[uuid.UUID]*entities.Offer
-	selectedOffer  *uuid.UUID
+	offers        map[uuid.UUID]*entities.Offer
+	selectedOffer *uuid.UUID
+
+	// After offer confirmed
+	confirmedAt      *time.Time
+	confirmedOfferID *uuid.UUID
+	carrierOrgID     *uuid.UUID
+	carrierMemberID  *uuid.UUID
+
+	// Completion
+	customerCompleted   bool
+	customerCompletedAt *time.Time
+	carrierCompleted    bool
+	carrierCompletedAt  *time.Time
+	completedAt         *time.Time
+
+	// Cancellation after confirmed
+	cancelledAfterConfirmedAt     *time.Time
+	cancelledAfterConfirmedBy     *uuid.UUID
+	cancelledAfterConfirmedReason string
+
+	// Reviews
+	customerReview *entities.Review
+	carrierReview  *entities.Review
 }
 
 // New creates a new FreightRequest (published immediately)
@@ -97,6 +119,18 @@ func (f *FreightRequest) CreatedAt() time.Time                      { return f.c
 func (f *FreightRequest) CancelledAt() *time.Time                   { return f.cancelledAt }
 func (f *FreightRequest) Offers() map[uuid.UUID]*entities.Offer     { return f.offers }
 func (f *FreightRequest) SelectedOfferID() *uuid.UUID               { return f.selectedOffer }
+func (f *FreightRequest) ConfirmedAt() *time.Time                   { return f.confirmedAt }
+func (f *FreightRequest) ConfirmedOfferID() *uuid.UUID              { return f.confirmedOfferID }
+func (f *FreightRequest) CarrierOrgID() *uuid.UUID                  { return f.carrierOrgID }
+func (f *FreightRequest) CarrierMemberID() *uuid.UUID               { return f.carrierMemberID }
+func (f *FreightRequest) CustomerCompleted() bool                   { return f.customerCompleted }
+func (f *FreightRequest) CustomerCompletedAt() *time.Time           { return f.customerCompletedAt }
+func (f *FreightRequest) CarrierCompleted() bool                    { return f.carrierCompleted }
+func (f *FreightRequest) CarrierCompletedAt() *time.Time            { return f.carrierCompletedAt }
+func (f *FreightRequest) CompletedAt() *time.Time                   { return f.completedAt }
+func (f *FreightRequest) CancelledAfterConfirmedAt() *time.Time     { return f.cancelledAfterConfirmedAt }
+func (f *FreightRequest) CustomerReview() *entities.Review          { return f.customerReview }
+func (f *FreightRequest) CarrierReview() *entities.Review           { return f.carrierReview }
 
 func (f *FreightRequest) GetOffer(id uuid.UUID) (*entities.Offer, bool) {
 	o, ok := f.offers[id]
@@ -118,6 +152,31 @@ func (f *FreightRequest) CanAcceptOffers() bool {
 
 func (f *FreightRequest) HasSelectedOffer() bool {
 	return f.selectedOffer != nil
+}
+
+func (f *FreightRequest) IsConfirmed() bool {
+	return f.status == values.FreightRequestStatusConfirmed
+}
+
+func (f *FreightRequest) IsPartiallyCompleted() bool {
+	return f.status == values.FreightRequestStatusPartiallyCompleted
+}
+
+func (f *FreightRequest) IsCompleted() bool {
+	return f.status == values.FreightRequestStatusCompleted
+}
+
+func (f *FreightRequest) IsCancelledAfterConfirmed() bool {
+	return f.status == values.FreightRequestStatusCancelledAfterConfirmed
+}
+
+func (f *FreightRequest) IsFinished() bool {
+	return f.IsCompleted() || f.IsCancelledAfterConfirmed() ||
+		f.status == values.FreightRequestStatusCancelled
+}
+
+func (f *FreightRequest) CanComplete() bool {
+	return f.IsConfirmed() || f.IsPartiallyCompleted()
 }
 
 // Commands
@@ -193,11 +252,11 @@ func (f *FreightRequest) Cancel(actorID uuid.UUID, reason string) error {
 }
 
 func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID) error {
-	if f.status == values.FreightRequestStatusCancelled {
+	// Запрещаем переназначение только для терминальных статусов
+	if f.status == values.FreightRequestStatusCancelled ||
+		f.status == values.FreightRequestStatusCancelledAfterConfirmed ||
+		f.status == values.FreightRequestStatusCompleted {
 		return ErrFreightRequestCancelled
-	}
-	if f.status == values.FreightRequestStatusConfirmed {
-		return ErrFreightRequestConfirmed
 	}
 	if f.customerMemberID == newMemberID {
 		return nil // no-op
@@ -376,6 +435,18 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 		ConfirmedBy: actorOrgID,
 	})
 
+	// Отклоняем все другие pending офферы
+	for otherOfferID, otherOffer := range f.offers {
+		if otherOfferID != offerID && otherOffer.IsPending() {
+			f.Apply(events.OfferRejected{
+				BaseEvent:  eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+				OfferID:    otherOfferID,
+				RejectedBy: actorOrgID,
+				Reason:     "another offer was confirmed",
+			})
+		}
+	}
+
 	return nil
 }
 
@@ -442,6 +513,219 @@ func (f *FreightRequest) UnselectOffer(offerID uuid.UUID, actorID uuid.UUID, act
 		OfferID:      offerID,
 		UnselectedBy: actorID,
 		Reason:       reason,
+	})
+
+	return nil
+}
+
+// Complete marks freight as completed by one party
+func (f *FreightRequest) Complete(orgID, memberID uuid.UUID) error {
+	if !f.CanComplete() {
+		return ErrNotConfirmed
+	}
+
+	isCustomer := f.customerOrgID == orgID
+	isCarrier := f.carrierOrgID != nil && *f.carrierOrgID == orgID
+
+	if !isCustomer && !isCarrier {
+		return ErrCannotCompleteNotParticipant
+	}
+
+	if isCustomer {
+		// Проверка что это ответственный заказчика
+		if f.customerMemberID != memberID {
+			return ErrNotResponsibleMember
+		}
+		if f.customerCompleted {
+			return ErrAlreadyCompleted
+		}
+		f.Apply(events.CustomerCompleted{
+			BaseEvent:   eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+			CompletedBy: memberID,
+		})
+	} else {
+		// Проверка что это ответственный перевозчика
+		if f.carrierMemberID == nil || *f.carrierMemberID != memberID {
+			return ErrNotResponsibleMember
+		}
+		if f.carrierCompleted {
+			return ErrAlreadyCompleted
+		}
+		f.Apply(events.CarrierCompleted{
+			BaseEvent:   eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+			CompletedBy: memberID,
+		})
+	}
+
+	// Check if both parties have completed
+	if f.customerCompleted && f.carrierCompleted {
+		f.Apply(events.FreightRequestCompleted{
+			BaseEvent:           eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+			CustomerCompletedAt: f.customerCompletedAt.Unix(),
+			CarrierCompletedAt:  f.carrierCompletedAt.Unix(),
+		})
+	}
+
+	return nil
+}
+
+// LeaveReview leaves a review for the other party
+func (f *FreightRequest) LeaveReview(reviewID uuid.UUID, reviewerOrgID uuid.UUID, memberID uuid.UUID, rating int, comment string) error {
+	if rating < 1 || rating > 5 {
+		return ErrInvalidRating
+	}
+
+	isCustomer := f.customerOrgID == reviewerOrgID
+	isCarrier := f.carrierOrgID != nil && *f.carrierOrgID == reviewerOrgID
+
+	if !isCustomer && !isCarrier {
+		return ErrCannotLeaveReview
+	}
+
+	// Customer can leave review only after completing their part
+	if isCustomer {
+		if !f.customerCompleted {
+			return ErrCannotLeaveReview
+		}
+		if f.customerReview != nil {
+			return ErrAlreadyLeftReview
+		}
+	}
+
+	// Carrier can leave review only after completing their part
+	if isCarrier {
+		if !f.carrierCompleted {
+			return ErrCannotLeaveReview
+		}
+		if f.carrierReview != nil {
+			return ErrAlreadyLeftReview
+		}
+	}
+
+	var reviewedOrgID uuid.UUID
+	if isCustomer {
+		reviewedOrgID = *f.carrierOrgID
+	} else {
+		reviewedOrgID = f.customerOrgID
+	}
+
+	// Безопасное получение цены (может быть nil если заявка без ставки)
+	var freightAmount int64
+	var freightCurrency string
+	if f.payment.Price != nil {
+		freightAmount = f.payment.Price.Amount
+		freightCurrency = string(f.payment.Price.Currency)
+	}
+
+	f.Apply(events.ReviewLeft{
+		BaseEvent:        eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+		ReviewID:         reviewID,
+		ReviewerOrgID:    reviewerOrgID,
+		ReviewedOrgID:    reviewedOrgID,
+		Rating:           rating,
+		Comment:          comment,
+		FreightAmount:    freightAmount,
+		FreightCurrency:  freightCurrency,
+		FreightCreatedAt: f.createdAt.Unix(),
+		CompletedAt:      time.Now().Unix(),
+	})
+
+	return nil
+}
+
+// EditReview edits a previously left review (only within 24h window)
+func (f *FreightRequest) EditReview(reviewerOrgID uuid.UUID, memberID uuid.UUID, rating int, comment string) error {
+	if rating < 1 || rating > 5 {
+		return ErrInvalidRating
+	}
+
+	isCustomer := f.customerOrgID == reviewerOrgID
+	isCarrier := f.carrierOrgID != nil && *f.carrierOrgID == reviewerOrgID
+
+	if !isCustomer && !isCarrier {
+		return ErrCannotEditReview
+	}
+
+	var existingReview *entities.Review
+	if isCustomer {
+		existingReview = f.customerReview
+	} else {
+		existingReview = f.carrierReview
+	}
+
+	if existingReview == nil {
+		return ErrReviewNotFound
+	}
+
+	if !existingReview.CanEdit() {
+		return ErrReviewEditWindowExpired
+	}
+
+	f.Apply(events.ReviewEdited{
+		BaseEvent:     eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+		ReviewID:      existingReview.ID(),
+		ReviewerOrgID: reviewerOrgID,
+		OldRating:     existingReview.Rating(),
+		NewRating:     rating,
+		OldComment:    existingReview.Comment(),
+		NewComment:    comment,
+		EditedBy:      memberID,
+	})
+
+	return nil
+}
+
+// CancelAfterConfirmed cancels freight after offer was confirmed
+func (f *FreightRequest) CancelAfterConfirmed(orgID, memberID uuid.UUID, reason string) error {
+	if !f.CanComplete() {
+		return ErrCannotCancelAfterConfirmed
+	}
+
+	isCustomer := f.customerOrgID == orgID
+	isCarrier := f.carrierOrgID != nil && *f.carrierOrgID == orgID
+
+	if !isCustomer && !isCarrier {
+		return ErrCannotCompleteNotParticipant
+	}
+
+	role := "customer"
+	if isCarrier {
+		role = "carrier"
+	}
+
+	f.Apply(events.CancelledAfterConfirmed{
+		BaseEvent:     eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+		CancelledBy:   memberID,
+		CancelledRole: role,
+		Reason:        reason,
+	})
+
+	return nil
+}
+
+// ReassignCarrierMember reassigns the carrier's responsible member
+func (f *FreightRequest) ReassignCarrierMember(actorID uuid.UUID, newMemberID uuid.UUID, actorRole string) error {
+	if !f.CanComplete() {
+		return ErrNotConfirmed
+	}
+	if f.carrierMemberID == nil {
+		return ErrNotConfirmed
+	}
+	if *f.carrierMemberID == newMemberID {
+		return nil // no-op
+	}
+
+	// Only owner/admin of carrier org can reassign
+	isOwnerOrAdmin := actorRole == "owner" || actorRole == "administrator"
+	if !isOwnerOrAdmin {
+		return ErrNotResponsibleMember
+	}
+
+	f.Apply(events.CarrierMemberReassigned{
+		BaseEvent:    eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+		OldMemberID:  *f.carrierMemberID,
+		NewMemberID:  newMemberID,
+		ReassignedBy: actorID,
 	})
 
 	return nil
@@ -535,6 +819,13 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 		if offer, ok := f.offers[e.OfferID]; ok {
 			_ = offer.Confirm()
 			f.status = values.FreightRequestStatusConfirmed
+			f.confirmedOfferID = &e.OfferID
+			carrierOrgID := offer.CarrierOrgID()
+			f.carrierOrgID = &carrierOrgID
+			carrierMemberID := offer.CarrierMemberID()
+			f.carrierMemberID = &carrierMemberID
+			now := e.OccurredAt()
+			f.confirmedAt = &now
 		}
 
 	case events.OfferDeclined:
@@ -556,5 +847,59 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 			_ = offer.CancelWithRequest()
 		}
 		f.selectedOffer = nil
+
+	case events.CustomerCompleted:
+		f.customerCompleted = true
+		now := e.OccurredAt()
+		f.customerCompletedAt = &now
+		if !f.carrierCompleted {
+			f.status = values.FreightRequestStatusPartiallyCompleted
+		}
+
+	case events.CarrierCompleted:
+		f.carrierCompleted = true
+		now := e.OccurredAt()
+		f.carrierCompletedAt = &now
+		if !f.customerCompleted {
+			f.status = values.FreightRequestStatusPartiallyCompleted
+		}
+
+	case events.FreightRequestCompleted:
+		f.status = values.FreightRequestStatusCompleted
+		now := e.OccurredAt()
+		f.completedAt = &now
+
+	case events.ReviewLeft:
+		review := entities.NewReview(
+			e.ReviewID,
+			e.ReviewerOrgID,
+			e.Rating,
+			e.Comment,
+			e.OccurredAt(),
+		)
+		if e.ReviewerOrgID == f.customerOrgID {
+			f.customerReview = &review
+		} else {
+			f.carrierReview = &review
+		}
+
+	case events.ReviewEdited:
+		if e.ReviewerOrgID == f.customerOrgID && f.customerReview != nil {
+			updated := f.customerReview.WithUpdatedRatingAndComment(e.NewRating, e.NewComment)
+			f.customerReview = &updated
+		} else if f.carrierReview != nil {
+			updated := f.carrierReview.WithUpdatedRatingAndComment(e.NewRating, e.NewComment)
+			f.carrierReview = &updated
+		}
+
+	case events.CancelledAfterConfirmed:
+		f.status = values.FreightRequestStatusCancelledAfterConfirmed
+		now := e.OccurredAt()
+		f.cancelledAfterConfirmedAt = &now
+		f.cancelledAfterConfirmedBy = &e.CancelledBy
+		f.cancelledAfterConfirmedReason = e.Reason
+
+	case events.CarrierMemberReassigned:
+		f.carrierMemberID = &e.NewMemberID
 	}
 }

@@ -7,7 +7,6 @@ import type {
   FreightRequestStatus,
   OfferStatus,
 } from '@/types/freightRequest'
-import type { OrderStatus } from '@/types/order'
 import type { MemberStatus } from '@/types/member'
 import type { InvitationStatus } from '@/types/invitation'
 import type { OrganizationStatus } from '@/types/api'
@@ -31,7 +30,10 @@ export const freightRequestStatusMap: Record<FreightRequestStatus, StatusMapEntr
   published: { label: 'Опубликована', variant: 'success' },
   selected: { label: 'Выбран исполнитель', variant: 'warning' },
   confirmed: { label: 'Подтверждена', variant: 'info' },
+  partially_completed: { label: 'Частично завершена', variant: 'info' },
+  completed: { label: 'Завершена', variant: 'success' },
   cancelled: { label: 'Отменена', variant: 'destructive' },
+  cancelled_after_confirmed: { label: 'Отменена после подтверждения', variant: 'destructive' },
   expired: { label: 'Истекла', variant: 'secondary' },
 }
 
@@ -46,29 +48,6 @@ export const offerStatusMap: Record<OfferStatus, StatusMapEntry> = {
   rejected: { label: 'Отклонён', variant: 'destructive' },
   withdrawn: { label: 'Отозван', variant: 'secondary' },
   declined: { label: 'Отказ', variant: 'destructive' },
-}
-
-// ============================================================================
-// Order Status Map
-// ============================================================================
-
-export const orderStatusMap: Record<OrderStatus, StatusMapEntry> = {
-  active: { label: 'Активен', variant: 'info' },
-  customer_completed: { label: 'Завершён заказчиком', variant: 'warning' },
-  carrier_completed: { label: 'Завершён перевозчиком', variant: 'warning' },
-  completed: { label: 'Завершён', variant: 'success' },
-  cancelled_by_customer: { label: 'Отменён заказчиком', variant: 'destructive' },
-  cancelled_by_carrier: { label: 'Отменён перевозчиком', variant: 'destructive' },
-}
-
-// Упрощённый map для списков (cancelled объединён)
-export const orderStatusMapSimple: Record<string, StatusMapEntry> = {
-  active: { label: 'Активный', variant: 'success' },
-  customer_completed: { label: 'Ожидает перевозчика', variant: 'warning' },
-  carrier_completed: { label: 'Ожидает заказчика', variant: 'warning' },
-  completed: { label: 'Завершён', variant: 'info' },
-  cancelled_by_customer: { label: 'Отменён заказчиком', variant: 'destructive' },
-  cancelled_by_carrier: { label: 'Отменён перевозчиком', variant: 'destructive' },
 }
 
 // ============================================================================
@@ -131,8 +110,6 @@ export const universalStatusMap: Record<string, StatusMapEntry> = {
   ...freightRequestStatusMap,
   // Offer (перезаписывает некоторые)
   ...offerStatusMap,
-  // Order
-  ...orderStatusMap,
   // Member
   ...memberStatusMapExtended,
   // Invitation

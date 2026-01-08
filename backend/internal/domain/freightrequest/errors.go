@@ -20,4 +20,20 @@ var (
 	ErrHasSelectedOffer            = errors.New("freight request already has selected offer")
 	ErrFreightRequestNotSelected   = errors.New("freight request has no selected offer")
 	ErrFreightVersionMismatch      = errors.New("freight version mismatch")
+
+	// Completion errors
+	ErrNotConfirmed                = errors.New("freight request is not confirmed")
+	ErrAlreadyCompleted            = errors.New("already completed by this party")
+	ErrCannotCompleteNotParticipant = errors.New("not a participant of this freight request")
+
+	// Review errors
+	ErrCannotLeaveReview           = errors.New("cannot leave review in current state")
+	ErrAlreadyLeftReview           = errors.New("already left a review")
+	ErrInvalidRating               = errors.New("rating must be between 1 and 5")
+	ErrCannotEditReview            = errors.New("cannot edit review")
+	ErrReviewNotFound              = errors.New("review not found")
+	ErrReviewEditWindowExpired     = errors.New("review edit window has expired (24 hours)")
+
+	// Cancellation errors
+	ErrCannotCancelAfterConfirmed  = errors.New("cannot cancel in current status")
 )

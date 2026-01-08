@@ -5,14 +5,11 @@ invitations: ./bin/worker-invitations
 pending-orgs: ./bin/worker-pending-organizations
 organizations: ./bin/worker-organizations
 freight-reqs: ./bin/worker-freight-requests
-orders: ./bin/worker-orders
-order-creator: ./bin/worker-order-creator
 review-receiver: ./bin/worker-review-receiver
 review-analyzer: ./bin/worker-review-analyzer
 reviews-proj: ./bin/worker-reviews-projection
 review-activator: ./bin/worker-review-activator
 fraudster: ./bin/worker-fraudster-handler
-order-fraud: ./bin/worker-order-fraud-analyzer
 notif-dispatch: ./bin/worker-notification-dispatcher
 telegram-sender: ./bin/worker-telegram-sender
 telegram-bot: ./bin/telegram-bot

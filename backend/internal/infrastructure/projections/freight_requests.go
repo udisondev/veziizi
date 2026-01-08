@@ -46,7 +46,10 @@ type FreightRequestListItem struct {
 	CustomerOrgINN     *string         `json:"customer_org_inn,omitempty"`
 	CustomerOrgCountry *string         `json:"customer_org_country,omitempty"`
 	CustomerMemberID   *uuid.UUID      `json:"customer_member_id,omitempty"`
-	OrderID            *uuid.UUID      `json:"order_id,omitempty"`
+	// Carrier fields (populated after offer confirmed)
+	CarrierOrgID    *uuid.UUID `json:"carrier_org_id,omitempty"`
+	CarrierMemberID *uuid.UUID `json:"carrier_member_id,omitempty"`
+	ConfirmedAt     *time.Time `json:"confirmed_at,omitempty"`
 }
 
 type FilterOption func(squirrel.SelectBuilder) squirrel.SelectBuilder
@@ -250,7 +253,7 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 			"origin_address", "destination_address", "route", "cargo_weight",
 			"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
-			"order_id",
+			"carrier_org_id", "carrier_member_id", "confirmed_at",
 		).
 		From("freight_requests_lookup").
 		Where(squirrel.Eq{"id": id}).
@@ -279,7 +282,9 @@ func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (
 		&item.CustomerOrgINN,
 		&item.CustomerOrgCountry,
 		&item.CustomerMemberID,
-		&item.OrderID,
+		&item.CarrierOrgID,
+		&item.CarrierMemberID,
+		&item.ConfirmedAt,
 	); err != nil {
 		return nil, fmt.Errorf("get freight request: %w", err)
 	}
@@ -294,7 +299,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			"origin_address", "destination_address", "route", "cargo_weight",
 			"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
-			"order_id",
+			"carrier_org_id", "carrier_member_id", "confirmed_at",
 		).
 		From("freight_requests_lookup").
 		OrderBy("created_at DESC")
@@ -336,7 +341,9 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			&item.CustomerOrgINN,
 			&item.CustomerOrgCountry,
 			&item.CustomerMemberID,
-			&item.OrderID,
+			&item.CarrierOrgID,
+			&item.CarrierMemberID,
+			&item.ConfirmedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
@@ -486,23 +493,6 @@ type OfferWithFreightData struct {
 	PriceCurrency      *string   `json:"price_currency,omitempty"`
 }
 
-func (p *FreightRequestsProjection) UpdateOrderID(ctx context.Context, freightRequestID, orderID uuid.UUID) error {
-	query, args, err := p.psql.
-		Update("freight_requests_lookup").
-		Set("order_id", orderID).
-		Where(squirrel.Eq{"id": freightRequestID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update order_id query: %w", err)
-	}
-
-	if _, err := p.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update freight request order_id: %w", err)
-	}
-
-	return nil
-}
-
 func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Context, opts ...OfferFilterOption) ([]OfferWithFreightData, error) {
 	builder := p.psql.
 		Select(
@@ -550,4 +540,41 @@ func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Contex
 	}
 
 	return result, nil
+}
+
+// HaveSharedConfirmedFreight проверяет есть ли подтверждённая перевозка между двумя организациями
+// (одна как заказчик, другая как перевозчик)
+func (p *FreightRequestsProjection) HaveSharedConfirmedFreight(ctx context.Context, orgID1, orgID2 uuid.UUID) (bool, error) {
+	// Проверяем есть ли freight request где одна организация - заказчик, другая - перевозчик
+	// и статус confirmed или выше (partially_completed, completed)
+	query, args, err := p.psql.
+		Select("1").
+		From("freight_requests_lookup").
+		Where(squirrel.Or{
+			squirrel.And{
+				squirrel.Eq{"customer_org_id": orgID1},
+				squirrel.Eq{"carrier_org_id": orgID2},
+			},
+			squirrel.And{
+				squirrel.Eq{"customer_org_id": orgID2},
+				squirrel.Eq{"carrier_org_id": orgID1},
+			},
+		}).
+		Where(squirrel.Eq{"status": []string{"confirmed", "partially_completed", "completed"}}).
+		Limit(1).
+		ToSql()
+	if err != nil {
+		return false, fmt.Errorf("build query: %w", err)
+	}
+
+	var exists int
+	err = p.db.QueryRow(ctx, query, args...).Scan(&exists)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check shared freight: %w", err)
+	}
+
+	return true, nil
 }

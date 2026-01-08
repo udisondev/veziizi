@@ -13,14 +13,11 @@ go build -o ./tmp/worker-invitations ./backend/cmd/workers/invitations && \
 go build -o ./tmp/worker-pending-organizations ./backend/cmd/workers/pending-organizations && \
 go build -o ./tmp/worker-organizations ./backend/cmd/workers/organizations && \
 go build -o ./tmp/worker-freight-requests ./backend/cmd/workers/freight-requests && \
-go build -o ./tmp/worker-orders ./backend/cmd/workers/orders && \
-go build -o ./tmp/worker-order-creator ./backend/cmd/workers/order-creator && \
 go build -o ./tmp/worker-review-receiver ./backend/cmd/workers/review-receiver && \
 go build -o ./tmp/worker-review-analyzer ./backend/cmd/workers/review-analyzer && \
 go build -o ./tmp/worker-reviews-projection ./backend/cmd/workers/reviews-projection && \
 go build -o ./tmp/worker-review-activator ./backend/cmd/workers/review-activator && \
 go build -o ./tmp/worker-fraudster-handler ./backend/cmd/workers/fraudster-handler && \
-go build -o ./tmp/worker-order-fraud-analyzer ./backend/cmd/workers/order-fraud-analyzer && \
 go build -o ./tmp/worker-notification-dispatcher ./backend/cmd/workers/notification-dispatcher && \
 go build -o ./tmp/worker-telegram-sender ./backend/cmd/workers/telegram-sender && \
 go build -o ./tmp/telegram-bot ./backend/cmd/telegram-bot

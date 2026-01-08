@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
-	orderEvents "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
+	freightEvents "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// ReviewReceiverHandler listens for Order.ReviewLeft events
+// ReviewReceiverHandler listens for FreightRequest.ReviewLeft events
 // and creates Review aggregates for fraud analysis pipeline
 type ReviewReceiverHandler struct {
 	reviewService *reviewApp.Service
@@ -38,34 +39,39 @@ func (h *ReviewReceiverHandler) Handle(msg *message.Message) error {
 	}
 
 	// Only process ReviewLeft events
-	reviewLeft, ok := evt.(orderEvents.ReviewLeft)
+	reviewLeft, ok := evt.(freightEvents.ReviewLeft)
 	if !ok {
-		// Ignore other order events
+		// Ignore other freight request events
 		return nil
 	}
 
 	return h.onReviewLeft(msg.Context(), reviewLeft)
 }
 
-func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e orderEvents.ReviewLeft) error {
+func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvents.ReviewLeft) error {
 	slog.Info("processing review left event",
-		slog.String("order_id", e.AggregateID().String()),
+		slog.String("freight_request_id", e.AggregateID().String()),
 		slog.String("review_id", e.ReviewID.String()),
 		slog.String("reviewer_org_id", e.ReviewerOrgID.String()),
 		slog.Int("rating", e.Rating),
 	)
 
-	// Create Review aggregate from Order.ReviewLeft event
-	err := h.reviewService.CreateFromOrderReview(ctx, reviewApp.CreateFromOrderReviewInput{
-		ReviewID:      e.ReviewID,
-		OrderID:       e.AggregateID(),
-		ReviewerOrgID: e.ReviewerOrgID,
-		Rating:        e.Rating,
-		Comment:       e.Comment,
+	// Create Review aggregate from FreightRequest.ReviewLeft event
+	err := h.reviewService.CreateFromFreightReview(ctx, reviewApp.CreateFromFreightReviewInput{
+		ReviewID:         e.ReviewID,
+		FreightRequestID: e.AggregateID(),
+		ReviewerOrgID:    e.ReviewerOrgID,
+		ReviewedOrgID:    e.ReviewedOrgID,
+		Rating:           e.Rating,
+		Comment:          e.Comment,
+		FreightAmount:    e.FreightAmount,
+		FreightCurrency:  e.FreightCurrency,
+		FreightCreatedAt: time.Unix(e.FreightCreatedAt, 0),
+		CompletedAt:      time.Unix(e.CompletedAt, 0),
 	})
 	if err != nil {
-		slog.Error("failed to create review from order event",
-			slog.String("order_id", e.AggregateID().String()),
+		slog.Error("failed to create review from freight request event",
+			slog.String("freight_request_id", e.AggregateID().String()),
 			slog.String("review_id", e.ReviewID.String()),
 			slog.String("error", err.Error()),
 		)

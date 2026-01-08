@@ -11,7 +11,6 @@ import (
 	// Event registration - CRITICAL
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/order/events"
 	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
 
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
@@ -30,7 +29,6 @@ const (
 
 var topics = []string{
 	"freightrequest.events",
-	"order.events",
 }
 
 func main() {

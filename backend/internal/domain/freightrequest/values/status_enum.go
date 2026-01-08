@@ -19,8 +19,14 @@ const (
 	FreightRequestStatusSelected FreightRequestStatus = "selected"
 	// FreightRequestStatusConfirmed is a FreightRequestStatus of type confirmed.
 	FreightRequestStatusConfirmed FreightRequestStatus = "confirmed"
+	// FreightRequestStatusPartiallyCompleted is a FreightRequestStatus of type partially_completed.
+	FreightRequestStatusPartiallyCompleted FreightRequestStatus = "partially_completed"
+	// FreightRequestStatusCompleted is a FreightRequestStatus of type completed.
+	FreightRequestStatusCompleted FreightRequestStatus = "completed"
 	// FreightRequestStatusCancelled is a FreightRequestStatus of type cancelled.
 	FreightRequestStatusCancelled FreightRequestStatus = "cancelled"
+	// FreightRequestStatusCancelledAfterConfirmed is a FreightRequestStatus of type cancelled_after_confirmed.
+	FreightRequestStatusCancelledAfterConfirmed FreightRequestStatus = "cancelled_after_confirmed"
 	// FreightRequestStatusExpired is a FreightRequestStatus of type expired.
 	FreightRequestStatusExpired FreightRequestStatus = "expired"
 )
@@ -31,7 +37,10 @@ var _FreightRequestStatusNames = []string{
 	string(FreightRequestStatusPublished),
 	string(FreightRequestStatusSelected),
 	string(FreightRequestStatusConfirmed),
+	string(FreightRequestStatusPartiallyCompleted),
+	string(FreightRequestStatusCompleted),
 	string(FreightRequestStatusCancelled),
+	string(FreightRequestStatusCancelledAfterConfirmed),
 	string(FreightRequestStatusExpired),
 }
 
@@ -55,11 +64,14 @@ func (x FreightRequestStatus) IsValid() bool {
 }
 
 var _FreightRequestStatusValue = map[string]FreightRequestStatus{
-	"published": FreightRequestStatusPublished,
-	"selected":  FreightRequestStatusSelected,
-	"confirmed": FreightRequestStatusConfirmed,
-	"cancelled": FreightRequestStatusCancelled,
-	"expired":   FreightRequestStatusExpired,
+	"published":                 FreightRequestStatusPublished,
+	"selected":                  FreightRequestStatusSelected,
+	"confirmed":                 FreightRequestStatusConfirmed,
+	"partially_completed":       FreightRequestStatusPartiallyCompleted,
+	"completed":                 FreightRequestStatusCompleted,
+	"cancelled":                 FreightRequestStatusCancelled,
+	"cancelled_after_confirmed": FreightRequestStatusCancelledAfterConfirmed,
+	"expired":                   FreightRequestStatusExpired,
 }
 
 // ParseFreightRequestStatus attempts to convert a string to a FreightRequestStatus.

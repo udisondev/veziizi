@@ -28,7 +28,6 @@ import {
   Clock,
   Package,
   Truck,
-  ClipboardList,
   Users,
   Play,
   CheckCircle,
@@ -86,14 +85,6 @@ const allCourses: CourseInfo[] = [
     icon: HandCoins,
     color: 'bg-amber-100 text-amber-600',
     duration: '~3 мин',
-  },
-  {
-    id: 'orders_flow',
-    title: 'Управление заказами',
-    description: 'Освойте работу с заказами: сообщения, документы',
-    icon: ClipboardList,
-    color: 'bg-orange-100 text-orange-600',
-    duration: '~2 мин',
   },
   {
     id: 'admin_flow',

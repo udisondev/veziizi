@@ -78,6 +78,7 @@ func (p *FraudDataProjection) GetInteractionStats(ctx context.Context, orgA, org
 }
 
 // UpsertInteractionStats creates or updates interaction statistics
+// DEPRECATED: Use IncrementReviewStats for atomic operations
 func (p *FraudDataProjection) UpsertInteractionStats(ctx context.Context, orgA, orgB uuid.UUID, update func(stats *OrgInteractionStats)) error {
 	// Ensure consistent ordering
 	if orgA.String() > orgB.String() {
@@ -114,6 +115,46 @@ func (p *FraudDataProjection) UpsertInteractionStats(ctx context.Context, orgA, 
 		return fmt.Errorf("upsert interaction stats: %w", err)
 	}
 
+	return nil
+}
+
+// IncrementReviewStats атомарно увеличивает счётчик отзывов и сумму рейтингов
+// reviewerOrgID - кто оставил отзыв, reviewedOrgID - кому оставлен отзыв, rating - рейтинг
+func (p *FraudDataProjection) IncrementReviewStats(ctx context.Context, reviewerOrgID, reviewedOrgID uuid.UUID, rating int) error {
+	// Ensure consistent ordering (orgA < orgB)
+	orgA, orgB := reviewerOrgID, reviewedOrgID
+	isAToB := true
+	if orgA.String() > orgB.String() {
+		orgA, orgB = orgB, orgA
+		isAToB = false
+	}
+
+	var query string
+	if isAToB {
+		query = `
+			INSERT INTO org_interaction_stats (
+				org_a, org_b, reviews_a_to_b, sum_rating_a_to_b, last_interaction_at
+			) VALUES ($1, $2, 1, $3, NOW())
+			ON CONFLICT (org_a, org_b) DO UPDATE SET
+				reviews_a_to_b = org_interaction_stats.reviews_a_to_b + 1,
+				sum_rating_a_to_b = org_interaction_stats.sum_rating_a_to_b + $3,
+				last_interaction_at = NOW()
+		`
+	} else {
+		query = `
+			INSERT INTO org_interaction_stats (
+				org_a, org_b, reviews_b_to_a, sum_rating_b_to_a, last_interaction_at
+			) VALUES ($1, $2, 1, $3, NOW())
+			ON CONFLICT (org_a, org_b) DO UPDATE SET
+				reviews_b_to_a = org_interaction_stats.reviews_b_to_a + 1,
+				sum_rating_b_to_a = org_interaction_stats.sum_rating_b_to_a + $3,
+				last_interaction_at = NOW()
+		`
+	}
+
+	if _, err := p.db.Exec(ctx, query, orgA, orgB, rating); err != nil {
+		return fmt.Errorf("increment review stats: %w", err)
+	}
 	return nil
 }
 
@@ -164,6 +205,7 @@ func (p *FraudDataProjection) GetReviewerReputation(ctx context.Context, orgID u
 }
 
 // UpsertReviewerReputation creates or updates reviewer reputation
+// DEPRECATED: Use atomic methods (IncrementTotalReviewsLeft, etc.) for better performance
 func (p *FraudDataProjection) UpsertReviewerReputation(ctx context.Context, orgID uuid.UUID, update func(rep *ReviewerReputation)) error {
 	rep, err := p.GetReviewerReputation(ctx, orgID)
 	if err != nil {
@@ -197,6 +239,79 @@ func (p *FraudDataProjection) UpsertReviewerReputation(ctx context.Context, orgI
 		return fmt.Errorf("upsert reviewer reputation: %w", err)
 	}
 
+	return nil
+}
+
+// IncrementTotalReviewsLeft атомарно увеличивает total_reviews_left на 1
+func (p *FraudDataProjection) IncrementTotalReviewsLeft(ctx context.Context, orgID uuid.UUID) error {
+	query := `
+		INSERT INTO org_reviewer_reputation (org_id, total_reviews_left, reputation_score, updated_at)
+		VALUES ($1, 1, 1.0, NOW())
+		ON CONFLICT (org_id) DO UPDATE SET
+			total_reviews_left = org_reviewer_reputation.total_reviews_left + 1,
+			updated_at = NOW()
+	`
+	if _, err := p.db.Exec(ctx, query, orgID); err != nil {
+		return fmt.Errorf("increment total reviews left: %w", err)
+	}
+	return nil
+}
+
+// IncrementActiveReviewsLeft атомарно увеличивает active_reviews_left на 1
+func (p *FraudDataProjection) IncrementActiveReviewsLeft(ctx context.Context, orgID uuid.UUID) error {
+	query := `
+		INSERT INTO org_reviewer_reputation (org_id, active_reviews_left, reputation_score, updated_at)
+		VALUES ($1, 1, 1.0, NOW())
+		ON CONFLICT (org_id) DO UPDATE SET
+			active_reviews_left = org_reviewer_reputation.active_reviews_left + 1,
+			updated_at = NOW()
+	`
+	if _, err := p.db.Exec(ctx, query, orgID); err != nil {
+		return fmt.Errorf("increment active reviews left: %w", err)
+	}
+	return nil
+}
+
+// IncrementRejectedReviews атомарно увеличивает rejected_reviews и уменьшает reputation_score
+func (p *FraudDataProjection) IncrementRejectedReviews(ctx context.Context, orgID uuid.UUID, reputationPenalty float64) error {
+	query := `
+		INSERT INTO org_reviewer_reputation (org_id, rejected_reviews, reputation_score, updated_at)
+		VALUES ($1, 1, GREATEST(0, 1.0 - $2), NOW())
+		ON CONFLICT (org_id) DO UPDATE SET
+			rejected_reviews = org_reviewer_reputation.rejected_reviews + 1,
+			reputation_score = GREATEST(0, org_reviewer_reputation.reputation_score - $2),
+			updated_at = NOW()
+	`
+	if _, err := p.db.Exec(ctx, query, orgID, reputationPenalty); err != nil {
+		return fmt.Errorf("increment rejected reviews: %w", err)
+	}
+	return nil
+}
+
+// IncrementDeactivatedReviews атомарно увеличивает deactivated_reviews и уменьшает active_reviews_left если wasActive
+func (p *FraudDataProjection) IncrementDeactivatedReviews(ctx context.Context, orgID uuid.UUID, wasActive bool) error {
+	var query string
+	if wasActive {
+		query = `
+			INSERT INTO org_reviewer_reputation (org_id, deactivated_reviews, reputation_score, updated_at)
+			VALUES ($1, 1, 1.0, NOW())
+			ON CONFLICT (org_id) DO UPDATE SET
+				deactivated_reviews = org_reviewer_reputation.deactivated_reviews + 1,
+				active_reviews_left = GREATEST(0, org_reviewer_reputation.active_reviews_left - 1),
+				updated_at = NOW()
+		`
+	} else {
+		query = `
+			INSERT INTO org_reviewer_reputation (org_id, deactivated_reviews, reputation_score, updated_at)
+			VALUES ($1, 1, 1.0, NOW())
+			ON CONFLICT (org_id) DO UPDATE SET
+				deactivated_reviews = org_reviewer_reputation.deactivated_reviews + 1,
+				updated_at = NOW()
+		`
+	}
+	if _, err := p.db.Exec(ctx, query, orgID); err != nil {
+		return fmt.Errorf("increment deactivated reviews: %w", err)
+	}
 	return nil
 }
 
@@ -361,6 +476,15 @@ func (p *FraudDataProjection) UpsertReviewLookup(ctx context.Context, row *Revie
 	return nil
 }
 
+// FraudSignalInput represents input data for a fraud signal
+type FraudSignalInput struct {
+	SignalType  string
+	Severity    string
+	Description string
+	ScoreImpact float64
+	Evidence    string
+}
+
 // InsertFraudSignal inserts a fraud signal for a review
 func (p *FraudDataProjection) InsertFraudSignal(ctx context.Context, reviewID uuid.UUID, signalType, severity, description string, scoreImpact float64, evidence string) error {
 	query := `
@@ -375,6 +499,36 @@ func (p *FraudDataProjection) InsertFraudSignal(ctx context.Context, reviewID uu
 
 	if _, err := p.db.Exec(ctx, query, reviewID, signalType, severity, description, scoreImpact, evidenceJSON); err != nil {
 		return fmt.Errorf("insert fraud signal: %w", err)
+	}
+
+	return nil
+}
+
+// InsertFraudSignalsBatch inserts multiple fraud signals in a single query
+func (p *FraudDataProjection) InsertFraudSignalsBatch(ctx context.Context, reviewID uuid.UUID, signals []FraudSignalInput) error {
+	if len(signals) == 0 {
+		return nil
+	}
+
+	// Строим batch INSERT с помощью squirrel
+	builder := p.psql.Insert("review_fraud_signals").
+		Columns("review_id", "signal_type", "severity", "description", "score_impact", "evidence")
+
+	for _, s := range signals {
+		var evidenceJSON any = nil
+		if s.Evidence != "" {
+			evidenceJSON = s.Evidence
+		}
+		builder = builder.Values(reviewID, s.SignalType, s.Severity, s.Description, s.ScoreImpact, evidenceJSON)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return fmt.Errorf("build batch insert query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("batch insert fraud signals: %w", err)
 	}
 
 	return nil

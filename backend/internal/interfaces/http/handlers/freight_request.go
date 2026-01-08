@@ -54,6 +54,7 @@ type FreightRequestResponse struct {
 	CustomerOrgID       uuid.UUID                  `json:"customer_org_id"`
 	CustomerOrgName     string                     `json:"customer_org_name"`
 	CustomerMemberID    uuid.UUID                  `json:"customer_member_id"`
+	CustomerMemberName  string                     `json:"customer_member_name,omitempty"`
 	Route               values.Route               `json:"route"`
 	Cargo               values.CargoInfo           `json:"cargo"`
 	VehicleRequirements values.VehicleRequirements `json:"vehicle_requirements"`
@@ -65,6 +66,20 @@ type FreightRequestResponse struct {
 	CreatedAt           time.Time                  `json:"created_at"`
 	CancelledAt         *time.Time                 `json:"cancelled_at,omitempty"`
 	SelectedOfferID     *uuid.UUID                 `json:"selected_offer_id,omitempty"`
+	// Carrier info (видно при confirmed или перевозчику)
+	CarrierOrgID      *uuid.UUID `json:"carrier_org_id,omitempty"`
+	CarrierOrgName    string     `json:"carrier_org_name,omitempty"`
+	CarrierMemberID   *uuid.UUID `json:"carrier_member_id,omitempty"`
+	CarrierMemberName string     `json:"carrier_member_name,omitempty"`
+	// Completion status
+	CustomerCompleted   bool       `json:"customer_completed"`
+	CustomerCompletedAt *time.Time `json:"customer_completed_at,omitempty"`
+	CarrierCompleted    bool       `json:"carrier_completed"`
+	CarrierCompletedAt  *time.Time `json:"carrier_completed_at,omitempty"`
+	CompletedAt         *time.Time `json:"completed_at,omitempty"`
+	// Reviews
+	CustomerReview *ReviewResponse `json:"customer_review,omitempty"`
+	CarrierReview  *ReviewResponse `json:"carrier_review,omitempty"`
 }
 
 type OfferResponse struct {
@@ -82,8 +97,17 @@ type OfferResponse struct {
 	CreatedAt         time.Time    `json:"created_at"`
 }
 
+type ReviewResponse struct {
+	ID            uuid.UUID  `json:"id"`
+	Rating        int        `json:"rating"`
+	Comment       string     `json:"comment,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	CanEdit       bool       `json:"can_edit"`
+	EditExpiresAt *time.Time `json:"edit_expires_at,omitempty"`
+}
+
 func (h *FreightRequestHandler) toFreightRequestResponse(fr *frDomain.FreightRequest) FreightRequestResponse {
-	return FreightRequestResponse{
+	resp := FreightRequestResponse{
 		ID:                  fr.ID(),
 		RequestNumber:       fr.RequestNumber(),
 		CustomerOrgID:       fr.CustomerOrgID(),
@@ -99,7 +123,41 @@ func (h *FreightRequestHandler) toFreightRequestResponse(fr *frDomain.FreightReq
 		CreatedAt:           fr.CreatedAt(),
 		CancelledAt:         fr.CancelledAt(),
 		SelectedOfferID:     fr.SelectedOfferID(),
+		// Completion
+		CustomerCompleted:   fr.CustomerCompleted(),
+		CustomerCompletedAt: fr.CustomerCompletedAt(),
+		CarrierCompleted:    fr.CarrierCompleted(),
+		CarrierCompletedAt:  fr.CarrierCompletedAt(),
+		CompletedAt:         fr.CompletedAt(),
 	}
+
+	// Customer review
+	if cr := fr.CustomerReview(); cr != nil {
+		expiresAt := cr.EditExpiresAt()
+		resp.CustomerReview = &ReviewResponse{
+			ID:            cr.ID(),
+			Rating:        cr.Rating(),
+			Comment:       cr.Comment(),
+			CreatedAt:     cr.CreatedAt(),
+			CanEdit:       cr.CanEdit(),
+			EditExpiresAt: &expiresAt,
+		}
+	}
+
+	// Carrier review
+	if crr := fr.CarrierReview(); crr != nil {
+		expiresAt := crr.EditExpiresAt()
+		resp.CarrierReview = &ReviewResponse{
+			ID:            crr.ID(),
+			Rating:        crr.Rating(),
+			Comment:       crr.Comment(),
+			CreatedAt:     crr.CreatedAt(),
+			CanEdit:       crr.CanEdit(),
+			EditExpiresAt: &expiresAt,
+		}
+	}
+
+	return resp
 }
 
 // toOfferResponse преобразует оффер в ответ API.
@@ -149,6 +207,12 @@ func (h *FreightRequestHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/confirm", h.ConfirmOffer).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/decline", h.DeclineOffer).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/unselect", h.UnselectOffer).Methods(http.MethodPost)
+	// Completion & reviews (after offer is confirmed)
+	r.HandleFunc("/api/v1/freight-requests/{id}/complete", h.Complete).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/freight-requests/{id}/review", h.LeaveReview).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/freight-requests/{id}/review", h.EditReview).Methods(http.MethodPatch)
+	r.HandleFunc("/api/v1/freight-requests/{id}/cancel-confirmed", h.CancelAfterConfirmed).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/freight-requests/{id}/reassign-carrier", h.ReassignCarrierMember).Methods(http.MethodPost)
 	// My offers (for current organization)
 	r.HandleFunc("/api/v1/offers", h.ListMyOffers).Methods(http.MethodGet)
 }
@@ -222,7 +286,8 @@ func (h *FreightRequestHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
-	var opts []projections.FilterOption
+	// Преаллокация: ~22 возможных фильтров + pagination
+	opts := make([]projections.FilterOption, 0, 25)
 
 	// Опциональный фильтр по customer_org_id
 	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
@@ -379,6 +444,9 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Получаем текущую организацию пользователя
+	currentOrgID, _ := h.session.GetOrganizationID(r)
+
 	fr, err := h.service.Get(r.Context(), id)
 	if err != nil {
 		slog.Error("failed to get freight request", slog.String("error", err.Error()))
@@ -392,14 +460,54 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := h.toFreightRequestResponse(fr)
+	// Определяем контекст видимости
+	isCustomer := fr.CustomerOrgID() == currentOrgID
+	isCarrier := fr.CarrierOrgID() != nil && *fr.CarrierOrgID() == currentOrgID
+	isConfirmedState := fr.IsConfirmed() || fr.IsPartiallyCompleted() ||
+		fr.IsCompleted() || fr.IsCancelledAfterConfirmed()
 
-	// Загружаем название организации-заказчика
-	orgNames, err := h.orgService.GetNames(r.Context(), []uuid.UUID{fr.CustomerOrgID()})
+	// Собираем ID для загрузки данных
+	memberIDs := []uuid.UUID{fr.CustomerMemberID()}
+	orgIDs := []uuid.UUID{fr.CustomerOrgID()}
+
+	if fr.CarrierOrgID() != nil {
+		orgIDs = append(orgIDs, *fr.CarrierOrgID())
+	}
+	if fr.CarrierMemberID() != nil {
+		memberIDs = append(memberIDs, *fr.CarrierMemberID())
+	}
+
+	// Загружаем названия организаций
+	orgNames, err := h.orgService.GetNames(r.Context(), orgIDs)
 	if err != nil {
-		slog.Error("failed to get organization name", slog.String("error", err.Error()))
-	} else {
-		resp.CustomerOrgName = orgNames[fr.CustomerOrgID()]
+		slog.Error("failed to get organization names", slog.String("error", err.Error()))
+		orgNames = make(map[uuid.UUID]string)
+	}
+
+	// Загружаем имена участников
+	memberNames, err := h.membersProjection.GetNames(r.Context(), memberIDs)
+	if err != nil {
+		slog.Error("failed to get member names", slog.String("error", err.Error()))
+		memberNames = make(map[uuid.UUID]string)
+	}
+
+	// Формируем базовый ответ
+	resp := h.toFreightRequestResponse(fr)
+	resp.CustomerOrgName = orgNames[fr.CustomerOrgID()]
+
+	// CustomerMemberName: заказчику всегда, перевозчику при confirmed (другим — никогда)
+	if isCustomer || (isCarrier && isConfirmedState) {
+		resp.CustomerMemberName = memberNames[fr.CustomerMemberID()]
+	}
+
+	// Carrier info: перевозчику всегда, заказчику при confirmed (другим — никогда)
+	if (isCarrier || (isCustomer && isConfirmedState)) && fr.CarrierOrgID() != nil {
+		resp.CarrierOrgID = fr.CarrierOrgID()
+		resp.CarrierOrgName = orgNames[*fr.CarrierOrgID()]
+		resp.CarrierMemberID = fr.CarrierMemberID()
+		if fr.CarrierMemberID() != nil {
+			resp.CarrierMemberName = memberNames[*fr.CarrierMemberID()]
+		}
 	}
 
 	// Fallback: load request_number from lookup for old events without it
@@ -976,6 +1084,222 @@ func (h *FreightRequestHandler) UnselectOffer(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Complete marks the freight request as completed from the caller's side (customer or carrier)
+func (h *FreightRequestHandler) Complete(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	frID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.service.Complete(r.Context(), freightrequest.CompleteInput{
+		FreightRequestID: frID,
+		OrgID:            orgID,
+		MemberID:         memberID,
+	}); err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type FreightLeaveReviewRequest struct {
+	Rating  int    `json:"rating"`
+	Comment string `json:"comment,omitempty"`
+}
+
+type FreightLeaveReviewResponse struct {
+	ReviewID string `json:"review_id"`
+}
+
+// LeaveReview leaves a review for the counterparty after completion
+func (h *FreightRequestHandler) LeaveReview(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	frID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req FreightLeaveReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	reviewID, err := h.service.LeaveReview(r.Context(), freightrequest.LeaveReviewInput{
+		FreightRequestID: frID,
+		ReviewerOrgID:    orgID,
+		ReviewerMemberID: memberID,
+		Rating:           req.Rating,
+		Comment:          req.Comment,
+	})
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, FreightLeaveReviewResponse{ReviewID: reviewID.String()})
+}
+
+type EditReviewRequest struct {
+	Rating  int    `json:"rating"`
+	Comment string `json:"comment,omitempty"`
+}
+
+// EditReview edits an existing review (only within 24h window)
+func (h *FreightRequestHandler) EditReview(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	frID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req EditReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.EditReview(r.Context(), freightrequest.EditReviewInput{
+		FreightRequestID: frID,
+		ReviewerOrgID:    orgID,
+		ReviewerMemberID: memberID,
+		Rating:           req.Rating,
+		Comment:          req.Comment,
+	}); err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type CancelAfterConfirmedRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// CancelAfterConfirmed cancels the freight request after offer was confirmed
+func (h *FreightRequestHandler) CancelAfterConfirmed(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	frID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req CancelAfterConfirmedRequest
+	_ = json.NewDecoder(r.Body).Decode(&req) // reason is optional
+
+	if err := h.service.CancelAfterConfirmed(r.Context(), freightrequest.CancelAfterConfirmedInput{
+		FreightRequestID: frID,
+		OrgID:            orgID,
+		MemberID:         memberID,
+		Reason:           req.Reason,
+	}); err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type ReassignCarrierMemberRequest struct {
+	NewMemberID string `json:"new_member_id"`
+}
+
+// ReassignCarrierMember reassigns the responsible member for the carrier organization
+func (h *FreightRequestHandler) ReassignCarrierMember(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	frID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req ReassignCarrierMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	newMemberID, err := uuid.Parse(req.NewMemberID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid new_member_id")
+		return
+	}
+
+	if err := h.service.ReassignCarrierMember(r.Context(), freightrequest.ReassignCarrierMemberInput{
+		FreightRequestID: frID,
+		ActorID:          memberID,
+		ActorOrgID:       orgID,
+		NewMemberID:      newMemberID,
+	}); err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, frDomain.ErrFreightRequestNotFound):
@@ -1010,6 +1334,29 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 		writeError(w, http.StatusConflict, "already has selected offer")
 	case errors.Is(err, frDomain.ErrFreightRequestNotSelected):
 		writeError(w, http.StatusConflict, "freight request has no selected offer")
+	// Completion errors
+	case errors.Is(err, frDomain.ErrNotConfirmed):
+		writeError(w, http.StatusConflict, "freight request is not confirmed")
+	case errors.Is(err, frDomain.ErrAlreadyCompleted):
+		writeError(w, http.StatusConflict, "already completed by this party")
+	case errors.Is(err, frDomain.ErrCannotCompleteNotParticipant):
+		writeError(w, http.StatusForbidden, "not a participant of this freight request")
+	// Review errors
+	case errors.Is(err, frDomain.ErrCannotLeaveReview):
+		writeError(w, http.StatusConflict, "cannot leave review in current state")
+	case errors.Is(err, frDomain.ErrAlreadyLeftReview):
+		writeError(w, http.StatusConflict, "already left a review")
+	case errors.Is(err, frDomain.ErrInvalidRating):
+		writeError(w, http.StatusBadRequest, "rating must be between 1 and 5")
+	case errors.Is(err, frDomain.ErrCannotEditReview):
+		writeError(w, http.StatusForbidden, "cannot edit review")
+	case errors.Is(err, frDomain.ErrReviewNotFound):
+		writeError(w, http.StatusNotFound, "review not found")
+	case errors.Is(err, frDomain.ErrReviewEditWindowExpired):
+		writeError(w, http.StatusConflict, "review edit window has expired (24 hours)")
+	// Cancel after confirmed errors
+	case errors.Is(err, frDomain.ErrCannotCancelAfterConfirmed):
+		writeError(w, http.StatusConflict, "cannot cancel in current status")
 	case errors.Is(err, orgDomain.ErrMemberNotFound):
 		writeError(w, http.StatusNotFound, "member not found")
 	case errors.Is(err, orgDomain.ErrInsufficientPermissions):
