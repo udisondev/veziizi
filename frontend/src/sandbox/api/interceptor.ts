@@ -110,5 +110,4 @@ export function initSandboxInterceptor(): void {
   window.fetch = createSandboxFetch(originalFetch)
 
   isInitialized = true
-  console.log('[Sandbox] API interceptor initialized')
 }

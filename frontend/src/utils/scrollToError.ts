@@ -51,21 +51,18 @@ function getErrorSelector(errorKey: string): string | null {
 export function scrollToFirstError(errors: Record<string, string | null>): boolean {
   // Найти первый ключ с не-null ошибкой
   const firstErrorKey = Object.keys(errors).find(key => errors[key] !== null)
-  console.log('[scrollToError] firstErrorKey:', firstErrorKey)
 
   if (!firstErrorKey) {
     return false
   }
 
   const selector = getErrorSelector(firstErrorKey)
-  console.log('[scrollToError] selector:', selector)
 
   if (!selector) {
     return false
   }
 
   const element = document.querySelector(selector)
-  console.log('[scrollToError] element found:', !!element)
 
   if (!element) {
     return false
@@ -82,8 +79,6 @@ export function scrollToFirstError(errors: Record<string, string | null>): boole
   const elementCenter = rect.top + rect.height / 2
   const viewportCenter = window.innerHeight / 2
   const scrollTarget = window.scrollY + elementCenter - viewportCenter
-
-  console.log('[scrollToError] scrolling to:', scrollTarget, 'from:', window.scrollY)
 
   // Используем window.scrollTo вместо scrollIntoView
   window.scrollTo({

@@ -5,7 +5,6 @@
 
 import { freightRequestsHandlers } from './freightRequests'
 import { offersHandlers } from './offers'
-import { ordersHandlers } from './orders'
 import { membersHandlers } from './members'
 import { notificationsHandlers } from './notifications'
 
@@ -19,7 +18,7 @@ export type MockHandler = (
   params: Record<string, string>,
   body?: unknown,
   query?: URLSearchParams
-) => Promise<MockResponse> | MockResponse
+) => Promise<MockResponse | null> | MockResponse | null
 
 interface RoutePattern {
   pattern: RegExp
@@ -114,7 +113,12 @@ export async function handleSandboxRequest(
       })
 
       try {
-        return await route.handler(params, body, query)
+        const result = await route.handler(params, body, query)
+        // Handler может вернуть null для пропуска к реальному API
+        if (result === null) {
+          return null
+        }
+        return result
       } catch (error) {
         console.error('[Sandbox] Handler error:', error)
         return {
@@ -132,9 +136,7 @@ export async function handleSandboxRequest(
 if (!window.__sandboxHandlersRegistered) {
   freightRequestsHandlers()
   offersHandlers()
-  ordersHandlers()
   membersHandlers()
   notificationsHandlers()
   window.__sandboxHandlersRegistered = true
-  console.log('[Sandbox] Mock handlers registered')
 }
