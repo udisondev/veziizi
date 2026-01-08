@@ -40,7 +40,6 @@ const scenarioLoaders: Record<ScenarioType, () => Promise<{ default: ScenarioMod
   carrier_flow: () => import('@/sandbox/scenarios/carrierFlow'),
   offers_receive_flow: () => import('@/sandbox/scenarios/offersReceiveFlow'),
   admin_flow: () => import('@/sandbox/scenarios/adminFlow'),
-  orders_flow: () => import('@/sandbox/scenarios/ordersFlow'),
   subscriptions_flow: () => import('@/sandbox/scenarios/subscriptionsFlow'),
   telegram_flow: () => import('@/sandbox/scenarios/telegramFlow'),
 }
@@ -247,19 +246,12 @@ export const useOnboardingStore = defineStore('onboarding', () => {
    * Войти в режим песочницы
    */
   async function enterSandbox(scenario: ScenarioType, resumeFromStep = 0) {
-    console.log('[onboarding] enterSandbox called:', { scenario, resumeFromStep })
-
     // Помечаем sandbox как не готовый пока не завершится initialize()
     sandboxReady.value = false
 
     try {
       // Загружаем сценарий
       const module = await scenarioLoaders[scenario]()
-      console.log('[onboarding] module loaded:', {
-        hasSteps: !!module.default.steps,
-        stepsCount: module.default.steps?.length,
-        hasInitialize: typeof module.default.initialize === 'function',
-      })
       allSteps.value = module.default.steps
 
       // ВАЖНО: включаем sandbox mode ДО initialize(),
@@ -271,11 +263,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
       // Инициализация сценария (создание mock данных и т.д.)
       // Выполняется при ЛЮБОМ старте/возобновлении
       if (module.default.initialize) {
-        console.log('[onboarding] calling initialize...')
         await module.default.initialize()
-        console.log('[onboarding] initialize done')
-      } else {
-        console.log('[onboarding] no initialize function')
       }
 
       // Sandbox готов — mock данные созданы
