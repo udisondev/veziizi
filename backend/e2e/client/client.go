@@ -158,9 +158,12 @@ func (c *Client) GetOrganizationRating(id uuid.UUID) (*Response[RatingResponse],
 }
 
 // GetOrganizationReviews returns organization reviews.
-func (c *Client) GetOrganizationReviews(id uuid.UUID, limit, offset int) (*Response[PaginatedResponse[ReviewResponse]], error) {
-	path := fmt.Sprintf("/api/v1/organizations/%s/reviews?limit=%d&offset=%d", id, limit, offset)
-	return doRequest[PaginatedResponse[ReviewResponse]](c, http.MethodGet, path, nil, nil)
+func (c *Client) GetOrganizationReviews(id uuid.UUID, limit int, cursor string) (*Response[ReviewsListResponse], error) {
+	path := fmt.Sprintf("/api/v1/organizations/%s/reviews?limit=%d", id, limit)
+	if cursor != "" {
+		path += "&cursor=" + cursor
+	}
+	return doRequest[ReviewsListResponse](c, http.MethodGet, path, nil, nil)
 }
 
 // CreateInvitation creates a new invitation.
@@ -211,7 +214,7 @@ func (c *Client) CreateFreightRequest(req CreateFreightRequestRequest) (*Respons
 }
 
 // GetFreightRequests returns freight requests with optional filters.
-func (c *Client) GetFreightRequests(filters map[string]string) (*Response[[]FreightRequestResponse], error) {
+func (c *Client) GetFreightRequests(filters map[string]string) (*Response[FreightRequestListResponse], error) {
 	path := "/api/v1/freight-requests"
 	if len(filters) > 0 {
 		params := make([]string, 0, len(filters))
@@ -220,7 +223,7 @@ func (c *Client) GetFreightRequests(filters map[string]string) (*Response[[]Frei
 		}
 		path += "?" + strings.Join(params, "&")
 	}
-	return doRequest[[]FreightRequestResponse](c, http.MethodGet, path, nil, nil)
+	return doRequest[FreightRequestListResponse](c, http.MethodGet, path, nil, nil)
 }
 
 // GetFreightRequest returns a freight request by ID.
@@ -294,44 +297,31 @@ func (c *Client) GetMyOffers(status string, limit, offset int) (*Response[[]Offe
 	return doRequest[[]OfferResponse](c, http.MethodGet, path, nil, nil)
 }
 
-// --- Order Methods ---
+// --- Freight Request Completion & Review Methods ---
 
-// GetOrders returns orders with optional filters.
-func (c *Client) GetOrders(filters map[string]string) (*Response[[]OrderResponse], error) {
-	path := "/api/v1/orders"
-	if len(filters) > 0 {
-		params := make([]string, 0, len(filters))
-		for k, v := range filters {
-			params = append(params, k+"="+v)
-		}
-		path += "?" + strings.Join(params, "&")
-	}
-	return doRequest[[]OrderResponse](c, http.MethodGet, path, nil, nil)
+// CompleteFreightRequest marks the freight request as completed by current organization.
+func (c *Client) CompleteFreightRequest(frID uuid.UUID) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/freight-requests/"+frID.String()+"/complete", nil, nil)
 }
 
-// GetOrder returns an order by ID.
-func (c *Client) GetOrder(id uuid.UUID) (*Response[OrderResponse], error) {
-	return doRequest[OrderResponse](c, http.MethodGet, "/api/v1/orders/"+id.String(), nil, nil)
+// LeaveFreightRequestReview leaves a review on a completed freight request.
+func (c *Client) LeaveFreightRequestReview(frID uuid.UUID, rating int, comment *string) (*Response[LeaveReviewResponse], error) {
+	return doRequest[LeaveReviewResponse](c, http.MethodPost, "/api/v1/freight-requests/"+frID.String()+"/review", LeaveReviewRequest{Rating: rating, Comment: comment}, nil)
 }
 
-// SendMessage sends a message to order chat.
-func (c *Client) SendMessage(orderID uuid.UUID, content string) (*Response[struct{}], error) {
-	return doRequest[struct{}](c, http.MethodPost, "/api/v1/orders/"+orderID.String()+"/messages", SendMessageRequest{Content: content}, nil)
+// EditFreightRequestReview edits an existing review (within 24h window).
+func (c *Client) EditFreightRequestReview(frID uuid.UUID, rating int, comment *string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPatch, "/api/v1/freight-requests/"+frID.String()+"/review", LeaveReviewRequest{Rating: rating, Comment: comment}, nil)
 }
 
-// LeaveReview leaves a review on an order.
-func (c *Client) LeaveReview(orderID uuid.UUID, rating int, comment *string) (*Response[struct{}], error) {
-	return doRequest[struct{}](c, http.MethodPost, "/api/v1/orders/"+orderID.String()+"/review", LeaveReviewRequest{Rating: rating, Comment: comment}, nil)
+// CancelFreightRequestAfterConfirmed cancels a confirmed freight request.
+func (c *Client) CancelFreightRequestAfterConfirmed(frID uuid.UUID, reason *string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/freight-requests/"+frID.String()+"/cancel-confirmed", CancelRequest{Reason: reason}, nil)
 }
 
-// CompleteOrder marks an order as completed.
-func (c *Client) CompleteOrder(orderID uuid.UUID) (*Response[struct{}], error) {
-	return doRequest[struct{}](c, http.MethodPost, "/api/v1/orders/"+orderID.String()+"/complete", nil, nil)
-}
-
-// CancelOrder cancels an order.
-func (c *Client) CancelOrder(orderID uuid.UUID, reason *string) (*Response[struct{}], error) {
-	return doRequest[struct{}](c, http.MethodPost, "/api/v1/orders/"+orderID.String()+"/cancel", CancelRequest{Reason: reason}, nil)
+// ReassignCarrierMember reassigns the responsible carrier member.
+func (c *Client) ReassignCarrierMember(frID uuid.UUID, newMemberID uuid.UUID) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/freight-requests/"+frID.String()+"/reassign-carrier", ReassignRequest{NewMemberID: newMemberID}, nil)
 }
 
 // --- Geo Methods ---
@@ -417,12 +407,6 @@ func (c *Client) GetOrganizationHistory(id uuid.UUID, limit, offset int) (*Respo
 // GetFreightRequestHistory returns history for a freight request.
 func (c *Client) GetFreightRequestHistory(id uuid.UUID, limit, offset int) (*Response[HistoryPage], error) {
 	path := fmt.Sprintf("/api/v1/freight-requests/%s/history?limit=%d&offset=%d", id, limit, offset)
-	return doRequest[HistoryPage](c, http.MethodGet, path, nil, nil)
-}
-
-// GetOrderHistory returns history for an order.
-func (c *Client) GetOrderHistory(id uuid.UUID, limit, offset int) (*Response[HistoryPage], error) {
-	path := fmt.Sprintf("/api/v1/orders/%s/history?limit=%d&offset=%d", id, limit, offset)
 	return doRequest[HistoryPage](c, http.MethodGet, path, nil, nil)
 }
 
@@ -561,7 +545,7 @@ func (c *Client) MarkAllNotificationsRead() (*Response[struct{}], error) {
 
 // UnreadCountResponse represents unread count response.
 type UnreadCountResponse struct {
-	Count int `json:"count"`
+	Unread int `json:"unread"`
 }
 
 // GetUnreadCount returns count of unread notifications.

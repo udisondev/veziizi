@@ -19,8 +19,8 @@ type HistorySuite struct {
 	otherOrg *fixtures.CreatedOrganization
 
 	// Shared entities
-	sharedFR      *fixtures.CreatedFreightRequest
-	sharedOrderID uuid.UUID
+	sharedFR          *fixtures.CreatedFreightRequest
+	sharedConfirmedFR *fixtures.CreatedFreightRequest
 }
 
 func TestHistorySuite(t *testing.T) {
@@ -37,8 +37,8 @@ func (s *HistorySuite) SetupSuite() {
 	// Create shared freight request
 	s.sharedFR = fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
 
-	// Create shared confirmed order
-	_, _, s.sharedOrderID = s.ctx.CreateConfirmedOrder()
+	// Create shared confirmed freight request
+	s.sharedConfirmedFR, _ = s.ctx.CreateConfirmedFreightRequest()
 }
 
 // ==================== GET /api/v1/organizations/{id}/history ====================
@@ -95,22 +95,18 @@ func (s *HistorySuite) TestHIST007b_OtherOrgFRHistory() {
 	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
 }
 
-// ==================== GET /api/v1/orders/{id}/history ====================
+// ==================== Confirmed FreightRequest history ====================
 
-func (s *HistorySuite) TestHIST008_OrderHistoryAsParticipant() {
-	resp, err := s.ctx.Customer.Client.GetOrderHistory(s.sharedOrderID, 20, 0)
+func (s *HistorySuite) TestHIST008_ConfirmedFRHistoryAsParticipant() {
+	// Customer can see history of their confirmed FR
+	resp, err := s.ctx.Customer.Client.GetFreightRequestHistory(s.sharedConfirmedFR.ID, 20, 0)
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
 }
 
-func (s *HistorySuite) TestHIST009_OrderHistoryWithoutAuth() {
-	resp, err := s.ctx.AnonClient.GetOrderHistory(s.sharedOrderID, 20, 0)
-	s.Require().NoError(err)
-	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
-}
-
-func (s *HistorySuite) TestHIST010_OrderHistoryNonParticipant() {
-	resp, err := s.otherOrg.Client.GetOrderHistory(s.sharedOrderID, 20, 0)
+func (s *HistorySuite) TestHIST009_ConfirmedFRHistoryAsCarrier() {
+	// Carrier cannot see history of FR - only customer (owner) has access
+	resp, err := s.ctx.Carrier.Client.GetFreightRequestHistory(s.sharedConfirmedFR.ID, 20, 0)
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusForbidden, resp.StatusCode)
 }

@@ -88,8 +88,9 @@ func (ctx *TestContext) CreateSelectedOffer() (*CreatedFreightRequest, *CreatedO
 	return fr, offer
 }
 
-// CreateConfirmedOrder creates a full order (freight request -> offer -> selection -> confirmation).
-func (ctx *TestContext) CreateConfirmedOrder() (*CreatedFreightRequest, *CreatedOffer, uuid.UUID) {
+// CreateConfirmedFreightRequest creates a full confirmed freight request (offer -> selection -> confirmation).
+// Returns the freight request in "confirmed" status.
+func (ctx *TestContext) CreateConfirmedFreightRequest() (*CreatedFreightRequest, *CreatedOffer) {
 	ctx.T.Helper()
 
 	fr, offer := ctx.CreateSelectedOffer()
@@ -103,28 +104,25 @@ func (ctx *TestContext) CreateConfirmedOrder() (*CreatedFreightRequest, *Created
 		ctx.T.Fatalf("failed to confirm offer: %s", string(resp.RawBody))
 	}
 
-	// Wait for order to be created by worker
-	orderID := ctx.waitForOrder(fr.ID)
+	// Wait for FR to reach confirmed status
+	ctx.waitForFRStatus(fr.ID, "confirmed")
 
-	return fr, offer, orderID
+	return fr, offer
 }
 
-// waitForOrder waits for order to be created for a freight request.
+// waitForFRStatus waits for freight request to reach expected status.
 // Uses exponential backoff: 10ms -> 20ms -> 40ms -> ... -> 500ms max.
-func (ctx *TestContext) waitForOrder(frID uuid.UUID) uuid.UUID {
+func (ctx *TestContext) waitForFRStatus(frID uuid.UUID, expectedStatus string) {
 	ctx.T.Helper()
 
-	// Exponential backoff for faster response in normal case
 	backoff := 10 * time.Millisecond
 	maxBackoff := 500 * time.Millisecond
 	deadline := time.Now().Add(10 * time.Second)
 
 	for time.Now().Before(deadline) {
-		ordersResp, err := ctx.Customer.Client.GetOrders(map[string]string{
-			"freight_request_id": frID.String(),
-		})
-		if err == nil && ordersResp.StatusCode == 200 && len(ordersResp.Body) > 0 {
-			return ordersResp.Body[0].ID
+		frResp, err := ctx.Customer.Client.GetFreightRequest(frID)
+		if err == nil && frResp.StatusCode == 200 && frResp.Body.Status == expectedStatus {
+			return
 		}
 		time.Sleep(backoff)
 		if backoff < maxBackoff {
@@ -132,8 +130,7 @@ func (ctx *TestContext) waitForOrder(frID uuid.UUID) uuid.UUID {
 		}
 	}
 
-	ctx.T.Fatalf("order was not created for freight request %s", frID)
-	return uuid.Nil
+	ctx.T.Fatalf("freight request %s did not reach status %s", frID, expectedStatus)
 }
 
 // AddMemberToOrg creates and accepts an invitation, returning the new member's client.
@@ -215,4 +212,99 @@ func (ctx *TestContext) QuickCustomer() *CreatedOrganization {
 // QuickCarrier creates a new carrier organization quickly.
 func (ctx *TestContext) QuickCarrier() *CreatedOrganization {
 	return NewActiveOrganization(ctx.T, ctx.AnonClient, ctx.AdminClient).Create()
+}
+
+// CompletedFreightRequest holds a freight request that has been completed by both sides.
+type CompletedFreightRequest struct {
+	FreightRequest    *CreatedFreightRequest
+	Offer             *CreatedOffer
+	CustomerCompleted bool
+	CarrierCompleted  bool
+}
+
+// CreatePartiallyCompletedByCustomer creates a confirmed FR completed only by customer.
+func (ctx *TestContext) CreatePartiallyCompletedByCustomer() *CompletedFreightRequest {
+	ctx.T.Helper()
+
+	fr, offer := ctx.CreateConfirmedFreightRequest()
+
+	// Customer completes
+	resp, err := ctx.Customer.Client.CompleteFreightRequest(fr.ID)
+	if err != nil {
+		ctx.T.Fatalf("failed to complete by customer: %v", err)
+	}
+	if resp.StatusCode != 204 {
+		ctx.T.Fatalf("failed to complete by customer: %s", string(resp.RawBody))
+	}
+
+	// Wait for FR to reach partially_completed status
+	ctx.waitForFRStatus(fr.ID, "partially_completed")
+
+	return &CompletedFreightRequest{
+		FreightRequest:    fr,
+		Offer:             offer,
+		CustomerCompleted: true,
+		CarrierCompleted:  false,
+	}
+}
+
+// CreatePartiallyCompletedByCarrier creates a confirmed FR completed only by carrier.
+func (ctx *TestContext) CreatePartiallyCompletedByCarrier() *CompletedFreightRequest {
+	ctx.T.Helper()
+
+	fr, offer := ctx.CreateConfirmedFreightRequest()
+
+	// Carrier completes
+	resp, err := ctx.Carrier.Client.CompleteFreightRequest(fr.ID)
+	if err != nil {
+		ctx.T.Fatalf("failed to complete by carrier: %v", err)
+	}
+	if resp.StatusCode != 204 {
+		ctx.T.Fatalf("failed to complete by carrier: %s", string(resp.RawBody))
+	}
+
+	// Wait for FR to reach partially_completed status
+	ctx.waitForFRStatus(fr.ID, "partially_completed")
+
+	return &CompletedFreightRequest{
+		FreightRequest:    fr,
+		Offer:             offer,
+		CustomerCompleted: false,
+		CarrierCompleted:  true,
+	}
+}
+
+// CreateFullyCompletedFreightRequest creates a FR completed by both sides.
+func (ctx *TestContext) CreateFullyCompletedFreightRequest() *CompletedFreightRequest {
+	ctx.T.Helper()
+
+	fr, offer := ctx.CreateConfirmedFreightRequest()
+
+	// Customer completes
+	resp, err := ctx.Customer.Client.CompleteFreightRequest(fr.ID)
+	if err != nil {
+		ctx.T.Fatalf("failed to complete by customer: %v", err)
+	}
+	if resp.StatusCode != 204 {
+		ctx.T.Fatalf("failed to complete by customer: %s", string(resp.RawBody))
+	}
+
+	// Carrier completes
+	resp, err = ctx.Carrier.Client.CompleteFreightRequest(fr.ID)
+	if err != nil {
+		ctx.T.Fatalf("failed to complete by carrier: %v", err)
+	}
+	if resp.StatusCode != 204 {
+		ctx.T.Fatalf("failed to complete by carrier: %s", string(resp.RawBody))
+	}
+
+	// Wait for FR to reach completed status
+	ctx.waitForFRStatus(fr.ID, "completed")
+
+	return &CompletedFreightRequest{
+		FreightRequest:    fr,
+		Offer:             offer,
+		CustomerCompleted: true,
+		CarrierCompleted:  true,
+	}
 }
