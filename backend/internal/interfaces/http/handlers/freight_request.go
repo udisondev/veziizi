@@ -48,6 +48,13 @@ func NewFreightRequestHandler(
 
 // Response types for full data from event store
 
+// FreightRequestListResponse представляет ответ списка с cursor-based пагинацией.
+type FreightRequestListResponse struct {
+	Items      []projections.FreightRequestListItem `json:"items"`
+	NextCursor *string                              `json:"next_cursor,omitempty"`
+	HasMore    bool                                 `json:"has_more"`
+}
+
 type FreightRequestResponse struct {
 	ID                  uuid.UUID                  `json:"id"`
 	RequestNumber       int64                      `json:"request_number"`
@@ -308,9 +315,12 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithCustomerMemberID(memberID))
 	}
 
-	// Опциональный фильтр по статусу
-	if status := r.URL.Query().Get("status"); status != "" {
-		opts = append(opts, projections.WithStatus(status))
+	// Опциональный фильтр по статусам (CSV)
+	if statuses := r.URL.Query().Get("statuses"); statuses != "" {
+		statusList := splitComma(statuses)
+		if len(statusList) > 0 {
+			opts = append(opts, projections.WithStatuses(statusList))
+		}
 	}
 
 	if orgName := strings.TrimSpace(r.URL.Query().Get("org_name")); orgName != "" {
@@ -327,6 +337,13 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	if orgCountry := r.URL.Query().Get("org_country"); orgCountry != "" {
 		opts = append(opts, projections.WithOrgCountry(orgCountry))
+	}
+
+	// Request number filter
+	if requestNumber := r.URL.Query().Get("request_number"); requestNumber != "" {
+		if num, err := parseInt64(requestNumber); err == nil && num > 0 {
+			opts = append(opts, projections.WithRequestNumber(num))
+		}
 	}
 
 	// Extended filters for subscription-like filtering
@@ -421,10 +438,24 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Cursor-based pagination
+	cursorStr := r.URL.Query().Get("cursor")
+	if cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.FreightRequestCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid cursor, starting from beginning",
+				slog.String("cursor", cursorStr),
+				slog.String("error", err.Error()))
+			// Невалидный cursor — начинаем сначала
+		} else {
+			opts = append(opts, projections.WithCursor(*cursor))
+		}
+	}
+
 	// SEC-016: Валидированная пагинация
 	pagination := httputil.ParsePagination(r)
-	opts = append(opts, projections.WithLimit(pagination.Limit))
-	opts = append(opts, projections.WithOffset(pagination.Offset))
+	// Запрашиваем limit+1 для определения hasMore
+	opts = append(opts, projections.WithLimit(pagination.Limit+1))
 
 	items, err := h.projection.List(r.Context(), opts...)
 	if err != nil {
@@ -433,7 +464,35 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, items)
+	// Определяем hasMore
+	hasMore := len(items) > pagination.Limit
+	if hasMore {
+		items = items[:pagination.Limit] // убираем лишний элемент
+	}
+
+	// Строим nextCursor из последнего элемента
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		lastItem := items[len(items)-1]
+		cursorData := projections.FreightRequestCursor{
+			IsPublished:   lastItem.Status == "published",
+			RequestNumber: lastItem.RequestNumber,
+		}
+		encoded, err := httputil.EncodeCursor(cursorData)
+		if err != nil {
+			slog.Error("failed to encode cursor", slog.String("error", err.Error()))
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	response := FreightRequestListResponse{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {

@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useFreightFiltersStore, type RoutePointFilter } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { useToast } from '@/components/ui/toast/use-toast'
-import { freightRequestsApi } from '@/api/freightRequests'
+import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
 import type {
   FreightRequestListItem,
   OwnershipFilter,
@@ -15,6 +16,7 @@ import type {
   PaymentMethod,
   PaymentTerms,
   VatType,
+  FreightRequestStatus,
 } from '@/types/freightRequest'
 import {
   vehicleTypeLabels,
@@ -43,10 +45,11 @@ import {
 
 // Filter Components
 import { FreightFiltersForm } from '@/components/filters'
-import QuickSubscribeDialog from '@/components/subscriptions/QuickSubscribeDialog.vue'
 
 // Icons
 import { Plus, Clock, Building2, Package, Bell } from 'lucide-vue-next'
+
+const PAGE_SIZE = 20
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -57,14 +60,16 @@ const { canCreateFreightRequest } = usePermissions()
 
 const items = ref<FreightRequestListItem[]>([])
 const isLoading = ref(false)
+const isLoadingMore = ref(false)
 const error = ref<string | null>(null)
 const showFilters = ref(false)
-const showSubscribeDialog = ref(false)
 
 // Get reactive refs from store
 const {
   ownershipFilter,
   orgINNFilter,
+  requestNumber,
+  statuses,
   routePoints,
   minWeight,
   maxWeight,
@@ -76,14 +81,17 @@ const {
   paymentMethods,
   paymentTerms,
   vatTypes,
-  hasSubscriptionFilters,
   hasActiveFilters,
   activeFiltersCount,
+  cursor,
+  hasMore,
 } = storeToRefs(filtersStore)
 
 // Temp filters for sheet
 const tempOwnership = ref<OwnershipFilter>('all')
 const tempOrgINN = ref('')
+const tempRequestNumber = ref<number | null>(null)
+const tempStatuses = ref<FreightRequestStatus[]>([])
 const tempRoutePoints = ref<RoutePointFilter[]>([])
 const tempMinWeight = ref<number | undefined>()
 const tempMaxWeight = ref<number | undefined>()
@@ -101,6 +109,8 @@ const tempVatTypes = ref<VatType[]>([])
 function openFilters() {
   tempOwnership.value = ownershipFilter.value
   tempOrgINN.value = orgINNFilter.value
+  tempRequestNumber.value = requestNumber.value
+  tempStatuses.value = [...statuses.value]
   tempRoutePoints.value = routePoints.value.map(rp => ({ ...rp }))
   tempMinWeight.value = minWeight.value
   tempMaxWeight.value = maxWeight.value
@@ -119,6 +129,8 @@ function applyFilters() {
   filtersStore.setFilters({
     ownership: tempOwnership.value,
     orgINN: tempOrgINN.value,
+    requestNumber: tempRequestNumber.value,
+    statuses: [...tempStatuses.value],
     routePoints: tempRoutePoints.value.map(rp => ({ ...rp })),
     minWeight: tempMinWeight.value,
     maxWeight: tempMaxWeight.value,
@@ -137,6 +149,8 @@ function applyFilters() {
 function resetTempFilters() {
   tempOwnership.value = 'all'
   tempOrgINN.value = ''
+  tempRequestNumber.value = null
+  tempStatuses.value = []
   tempRoutePoints.value = []
   tempMinWeight.value = undefined
   tempMaxWeight.value = undefined
@@ -150,62 +164,79 @@ function resetTempFilters() {
   tempVatTypes.value = []
 }
 
-// Load data with filters
+// Build params for API request
+function buildParams(): FreightRequestListParams {
+  const params: FreightRequestListParams = {
+    limit: PAGE_SIZE,
+  }
+
+  // Status filter
+  if (statuses.value.length > 0) {
+    params.statuses = statuses.value.join(',')
+  }
+
+  // Ownership filter
+  if (ownershipFilter.value === 'my_org' && auth.organizationId) {
+    params.customer_org_id = auth.organizationId
+  } else if (ownershipFilter.value === 'my' && auth.memberId) {
+    params.member_id = auth.memberId
+  }
+
+  if (orgINNFilter.value) params.org_inn = orgINNFilter.value
+  if (requestNumber.value) params.request_number = requestNumber.value
+
+  // Numeric filters
+  if (minWeight.value !== undefined) params.min_weight = minWeight.value
+  if (maxWeight.value !== undefined) params.max_weight = maxWeight.value
+  if (minPrice.value !== undefined) params.min_price = minPrice.value
+  if (maxPrice.value !== undefined) params.max_price = maxPrice.value
+  if (minVolume.value !== undefined) params.min_volume = minVolume.value
+  if (maxVolume.value !== undefined) params.max_volume = maxVolume.value
+
+  // Vehicle filter
+  if (vehicleSubTypes.value.length > 0) params.vehicle_subtypes = vehicleSubTypes.value.join(',')
+
+  // Payment filters
+  if (paymentMethods.value.length > 0) params.payment_methods = paymentMethods.value.join(',')
+  if (paymentTerms.value.length > 0) params.payment_terms = paymentTerms.value.join(',')
+  if (vatTypes.value.length > 0) params.vat_types = vatTypes.value.join(',')
+
+  // Route filter - extract city IDs and country IDs from route points
+  if (routePoints.value.length > 0) {
+    // Points with city selected -> filter by city
+    const cityIds = routePoints.value
+      .filter(rp => rp.cityId !== undefined)
+      .map(rp => rp.cityId)
+    if (cityIds.length > 0) {
+      params.route_city_ids = cityIds.join(',')
+    }
+
+    // Points with only country (no city) -> filter by country
+    const countryIds = routePoints.value
+      .filter(rp => rp.countryId !== undefined && rp.cityId === undefined)
+      .map(rp => rp.countryId)
+    if (countryIds.length > 0) {
+      params.route_country_ids = countryIds.join(',')
+    }
+  }
+
+  return params
+}
+
+// Initial load (with reset)
 async function loadItems() {
   isLoading.value = true
   error.value = null
+  filtersStore.resetPagination()
+  items.value = []
 
   try {
-    const params: Parameters<typeof freightRequestsApi.list>[0] = {
-      // Always show only published requests
-      status: 'published',
-    }
+    const params = buildParams()
+    const response = await freightRequestsApi.list(params)
 
-    // Ownership filter
-    if (ownershipFilter.value === 'my_org' && auth.organizationId) {
-      params.customer_org_id = auth.organizationId
-    } else if (ownershipFilter.value === 'my' && auth.memberId) {
-      params.member_id = auth.memberId
-    }
-
-    if (orgINNFilter.value) params.org_inn = orgINNFilter.value
-
-    // Numeric filters
-    if (minWeight.value !== undefined) params.min_weight = minWeight.value
-    if (maxWeight.value !== undefined) params.max_weight = maxWeight.value
-    if (minPrice.value !== undefined) params.min_price = minPrice.value
-    if (maxPrice.value !== undefined) params.max_price = maxPrice.value
-    if (minVolume.value !== undefined) params.min_volume = minVolume.value
-    if (maxVolume.value !== undefined) params.max_volume = maxVolume.value
-
-    // Vehicle filter
-    if (vehicleSubTypes.value.length > 0) params.vehicle_subtypes = vehicleSubTypes.value.join(',')
-
-    // Payment filters
-    if (paymentMethods.value.length > 0) params.payment_methods = paymentMethods.value.join(',')
-    if (paymentTerms.value.length > 0) params.payment_terms = paymentTerms.value.join(',')
-    if (vatTypes.value.length > 0) params.vat_types = vatTypes.value.join(',')
-
-    // Route filter - extract city IDs and country IDs from route points
-    if (routePoints.value.length > 0) {
-      // Points with city selected -> filter by city
-      const cityIds = routePoints.value
-        .filter(rp => rp.cityId !== undefined)
-        .map(rp => rp.cityId)
-      if (cityIds.length > 0) {
-        params.route_city_ids = cityIds.join(',')
-      }
-
-      // Points with only country (no city) -> filter by country
-      const countryIds = routePoints.value
-        .filter(rp => rp.countryId !== undefined && rp.cityId === undefined)
-        .map(rp => rp.countryId)
-      if (countryIds.length > 0) {
-        params.route_country_ids = countryIds.join(',')
-      }
-    }
-
-    items.value = await freightRequestsApi.list(params)
+    items.value = response.items
+    filtersStore.setCursor(response.next_cursor)
+    filtersStore.setHasMore(response.has_more)
   } catch (e) {
     error.value = 'Не удалось загрузить заявки'
     logger.error('Failed to load freight requests', e)
@@ -213,6 +244,34 @@ async function loadItems() {
     isLoading.value = false
   }
 }
+
+// Load more items (infinite scroll)
+async function loadMoreItems() {
+  if (!hasMore.value || isLoadingMore.value || !cursor.value) return
+
+  isLoadingMore.value = true
+  try {
+    const params = buildParams()
+    params.cursor = cursor.value
+
+    const response = await freightRequestsApi.list(params)
+
+    items.value.push(...response.items)
+    filtersStore.setCursor(response.next_cursor)
+    filtersStore.setHasMore(response.has_more)
+  } catch (e) {
+    logger.error('Failed to load more freight requests', e)
+  } finally {
+    isLoadingMore.value = false
+  }
+}
+
+// Infinite scroll setup
+const canLoadMore = computed(() => hasMore.value && !isLoadingMore.value && cursor.value !== undefined)
+const { sentinelRef, reset: resetInfiniteScroll } = useInfiniteScroll(loadMoreItems, {
+  threshold: 300,
+  enabled: canLoadMore,
+})
 
 function goToDetail(id: string) {
   router.push(`/freight-requests/${id}`)
@@ -223,30 +282,8 @@ function goToCreate() {
 }
 
 function handleBellClick() {
-  if (hasSubscriptionFilters.value) {
-    showSubscribeDialog.value = true
-  } else {
-    toast({
-      title: 'Настройте фильтры',
-      description: 'Откройте панель фильтров и задайте параметры для подписки',
-    })
-  }
+  router.push('/subscriptions')
 }
-
-// Get current filters for subscription dialog
-const currentSubscriptionFilters = computed(() => ({
-  routePoints: routePoints.value,
-  minWeight: minWeight.value,
-  maxWeight: maxWeight.value,
-  minPrice: minPrice.value,
-  maxPrice: maxPrice.value,
-  minVolume: minVolume.value,
-  maxVolume: maxVolume.value,
-  vehicleSubTypes: vehicleSubTypes.value,
-  paymentMethods: paymentMethods.value,
-  paymentTerms: paymentTerms.value,
-  vatTypes: vatTypes.value,
-}))
 
 // Route point management functions for temp state
 function addTempRoutePoint() {
@@ -338,14 +375,18 @@ const displayItems = computed<FreightRequestListItem[]>(() => {
   return items.value
 })
 
-// Watch filters and reload
+// Watch filters and reload (reset pagination on filter change)
 watch(
   [
-    ownershipFilter, orgINNFilter, routePoints,
+    ownershipFilter, orgINNFilter, requestNumber, statuses, routePoints,
     minWeight, maxWeight, minPrice, maxPrice, minVolume, maxVolume,
     vehicleSubTypes, paymentMethods, paymentTerms, vatTypes,
   ],
-  () => loadItems(),
+  async () => {
+    await loadItems()
+    await nextTick()
+    resetInfiniteScroll()
+  },
   { deep: true }
 )
 
@@ -363,9 +404,8 @@ onMounted(() => {
         <Button
           variant="outline"
           size="icon"
-          :class="hasSubscriptionFilters ? 'text-primary border-primary' : ''"
           @click="handleBellClick"
-          title="Подписаться на заявки по текущим фильтрам"
+          title="Рассылка"
         >
           <Bell class="h-4 w-4" />
         </Button>
@@ -396,6 +436,10 @@ onMounted(() => {
             :ownership="tempOwnership"
             show-i-n-n
             :org-i-n-n="tempOrgINN"
+            show-request-number
+            :request-number="tempRequestNumber"
+            show-statuses
+            :statuses="tempStatuses"
             @add-route-point="addTempRoutePoint"
             @remove-route-point="removeTempRoutePoint"
             @update-route-point="updateTempRoutePoint"
@@ -412,6 +456,8 @@ onMounted(() => {
             @update:vat-types="tempVatTypes = $event"
             @update:ownership="tempOwnership = $event"
             @update:org-i-n-n="tempOrgINN = $event"
+            @update:request-number="tempRequestNumber = $event"
+            @update:statuses="tempStatuses = $event"
           />
         </FilterSheet>
 
@@ -472,6 +518,7 @@ onMounted(() => {
             <!-- Route -->
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 mb-2">
+                <span class="text-sm font-medium text-muted-foreground">#{{ item.request_number }}</span>
                 <StatusBadge :status="item.status" :status-map="freightRequestStatusMap" />
                 <span
                   v-if="item.status === 'published' && isExpiringSoon(item.expires_at)"
@@ -554,13 +601,21 @@ onMounted(() => {
           </div>
         </CardContent>
       </Card>
-    </div>
 
-    <!-- Quick Subscribe Dialog -->
-    <QuickSubscribeDialog
-      v-model:open="showSubscribeDialog"
-      :filters="currentSubscriptionFilters"
-      @success="showSubscribeDialog = false"
-    />
+      <!-- Infinite scroll sentinel -->
+      <div
+        ref="sentinelRef"
+        class="h-16 flex items-center justify-center"
+      >
+        <template v-if="isLoadingMore">
+          <LoadingSpinner text="Загрузка..." />
+        </template>
+        <template v-else-if="!hasMore && items.length > 0">
+          <span class="text-sm text-muted-foreground">
+            Все заявки загружены ({{ items.length }})
+          </span>
+        </template>
+      </div>
+    </div>
   </div>
 </template>
