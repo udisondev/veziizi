@@ -14,12 +14,17 @@ import (
 )
 
 type OrganizationsHandler struct {
-	projection *projections.OrganizationsProjection
+	projection                *projections.OrganizationsProjection
+	freightRequestsProjection *projections.FreightRequestsProjection
 }
 
-func NewOrganizationsHandler(projection *projections.OrganizationsProjection) *OrganizationsHandler {
+func NewOrganizationsHandler(
+	projection *projections.OrganizationsProjection,
+	freightRequestsProjection *projections.FreightRequestsProjection,
+) *OrganizationsHandler {
 	return &OrganizationsHandler{
-		projection: projection,
+		projection:                projection,
+		freightRequestsProjection: freightRequestsProjection,
 	}
 }
 
@@ -104,10 +109,22 @@ func (h *OrganizationsHandler) onSuspended(ctx context.Context, e events.Organiz
 
 func (h *OrganizationsHandler) onUpdated(ctx context.Context, e events.OrganizationUpdated) error {
 	if e.Name != nil {
+		// Обновляем в organizations_lookup
 		if err := h.projection.UpdateName(ctx, e.AggregateID(), *e.Name); err != nil {
 			return fmt.Errorf("update organization name: %w", err)
 		}
-		slog.Debug("organization name updated in lookup",
+
+		// Обновляем денормализованное имя в freight_requests_lookup
+		if h.freightRequestsProjection != nil {
+			if err := h.freightRequestsProjection.UpdateCustomerOrgName(ctx, e.AggregateID(), *e.Name); err != nil {
+				slog.Error("failed to update denormalized org name in freight requests",
+					slog.String("org_id", e.AggregateID().String()),
+					slog.String("error", err.Error()))
+				// Не возвращаем ошибку - основная проекция обновлена
+			}
+		}
+
+		slog.Debug("organization name updated in lookups",
 			slog.String("org_id", e.AggregateID().String()),
 			slog.String("name", *e.Name))
 	}

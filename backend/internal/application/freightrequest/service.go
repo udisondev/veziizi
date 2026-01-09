@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest"
@@ -47,7 +48,10 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*freightrequest.Freigh
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, freightrequest.ErrFreightRequestNotFound
 		}
-		return nil, fmt.Errorf("failed to load freight request: %w", err)
+		slog.Error("failed to load freight request",
+			slog.String("freight_request_id", id.String()),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("load freight request: %w", err)
 	}
 
 	fr := freightrequest.NewFromEvents(id, evts)
@@ -58,10 +62,39 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*freightrequest.Freigh
 	return fr, nil
 }
 
+// GetByIDs загружает несколько freight requests одним batch запросом.
+// Возвращает map[id]*FreightRequest. Отсутствующие ID не включаются в результат.
+func (s *Service) GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*freightrequest.FreightRequest, error) {
+	if len(ids) == 0 {
+		return make(map[uuid.UUID]*freightrequest.FreightRequest), nil
+	}
+
+	eventsMap, err := s.eventStore.LoadByIDs(ctx, ids, events.AggregateType)
+	if err != nil {
+		slog.Error("failed to batch load freight requests",
+			slog.Int("count", len(ids)),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("batch load freight requests: %w", err)
+	}
+
+	result := make(map[uuid.UUID]*freightrequest.FreightRequest, len(eventsMap))
+	for id, evts := range eventsMap {
+		fr := freightrequest.NewFromEvents(id, evts)
+		if fr.Version() > 0 {
+			result[id] = fr
+		}
+	}
+
+	return result, nil
+}
+
 func (s *Service) getOrganization(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
 	evts, err := s.eventStore.Load(ctx, id, orgEvents.AggregateType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load organization: %w", err)
+		slog.Error("failed to load organization",
+			slog.String("organization_id", id.String()),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("load organization: %w", err)
 	}
 	return organization.NewFromEvents(id, evts), nil
 }
@@ -116,6 +149,10 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (uuid.UUID, err
 	if err != nil {
 		return uuid.Nil, err
 	}
+
+	slog.Info("freight request created",
+		slog.String("id", resultID.String()),
+		slog.String("customer_org_id", input.CustomerOrgID.String()))
 
 	return resultID, nil
 }
@@ -239,6 +276,11 @@ func (s *Service) MakeOffer(ctx context.Context, input MakeOfferInput) (uuid.UUI
 		return uuid.Nil, err
 	}
 
+	slog.Info("offer made",
+		slog.String("offer_id", offerID.String()),
+		slog.String("freight_request_id", input.FreightRequestID.String()),
+		slog.String("carrier_org_id", input.CarrierOrgID.String()))
+
 	return offerID, nil
 }
 
@@ -346,7 +388,16 @@ func (s *Service) ConfirmOffer(ctx context.Context, input ConfirmOfferInput) err
 		return err
 	}
 
-	return s.saveAndPublish(ctx, fr)
+	if err := s.saveAndPublish(ctx, fr); err != nil {
+		return err
+	}
+
+	slog.Info("offer confirmed",
+		slog.String("offer_id", input.OfferID.String()),
+		slog.String("freight_request_id", input.FreightRequestID.String()),
+		slog.String("carrier_org_id", input.ActorOrgID.String()))
+
+	return nil
 }
 
 type DeclineOfferInput struct {
@@ -540,11 +591,19 @@ func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.Freight
 
 	return s.db.InTx(ctx, func(ctx context.Context) error {
 		if err := s.eventStore.Save(ctx, changes...); err != nil {
-			return fmt.Errorf("failed to save events: %w", err)
+			slog.Error("failed to save freight request events",
+				slog.String("freight_request_id", fr.ID().String()),
+				slog.Int("event_count", len(changes)),
+				slog.String("error", err.Error()))
+			return fmt.Errorf("save events: %w", err)
 		}
 
 		if err := s.publisher.Publish(ctx, "freightrequest.events", changes...); err != nil {
-			return fmt.Errorf("failed to publish events: %w", err)
+			slog.Error("failed to publish freight request events",
+				slog.String("freight_request_id", fr.ID().String()),
+				slog.Int("event_count", len(changes)),
+				slog.String("error", err.Error()))
+			return fmt.Errorf("publish events: %w", err)
 		}
 
 		fr.ClearChanges()

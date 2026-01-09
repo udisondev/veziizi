@@ -15,7 +15,10 @@ func main() {
 		ConsumerGroup: "organizations_projection",
 		LogFile:       "organizations-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewOrganizationsHandler(f.OrganizationsProjection()).Handle
+			return handlers.NewOrganizationsHandler(
+				f.OrganizationsProjection(),
+				f.FreightRequestsProjection(),
+			).Handle
 		},
 	})
 }

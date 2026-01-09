@@ -305,6 +305,52 @@ type Snapshot struct {
 	Data          []byte    `db:"data"`
 }
 
+// LoadByIDs загружает события для нескольких агрегатов одним batch запросом.
+// Возвращает map[aggregateID][]Event. Отсутствующие агрегаты не включаются в результат.
+func (s *PostgresStore) LoadByIDs(ctx context.Context, aggregateIDs []uuid.UUID, aggregateType string) (map[uuid.UUID][]Event, error) {
+	if len(aggregateIDs) == 0 {
+		return make(map[uuid.UUID][]Event), nil
+	}
+
+	// Загружаем все события для указанных агрегатов одним запросом
+	query, args, err := s.psql.
+		Select("id", "aggregate_id", "aggregate_type", "event_type", "version", "data", "metadata", "occurred_at").
+		From("events").
+		Where(squirrel.And{
+			squirrel.Eq{"aggregate_id": aggregateIDs},
+			squirrel.Eq{"aggregate_type": aggregateType},
+		}).
+		OrderBy("aggregate_id", "version ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build batch select query: %w", err)
+	}
+
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query events batch: %w", err)
+	}
+	defer rows.Close()
+
+	var dbRows []eventRow
+	if err := pgxscan.ScanAll(&dbRows, rows); err != nil {
+		return nil, fmt.Errorf("scan events batch: %w", err)
+	}
+
+	// Группируем события по aggregate_id
+	result := make(map[uuid.UUID][]Event, len(aggregateIDs))
+	for _, row := range dbRows {
+		envelope := row.toEnvelope()
+		event, err := envelope.UnmarshalEvent()
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal event %s for aggregate %s: %w", row.EventType, row.AggregateID, err)
+		}
+		result[row.AggregateID] = append(result[row.AggregateID], event)
+	}
+
+	return result, nil
+}
+
 func (s *PostgresStore) LoadPaginated(ctx context.Context, aggregateID uuid.UUID, aggregateType string, limit, offset int) ([]EventEnvelope, int, error) {
 	// Get total count
 	countQuery, countArgs, err := s.psql.

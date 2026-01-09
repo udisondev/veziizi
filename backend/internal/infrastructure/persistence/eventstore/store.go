@@ -17,6 +17,10 @@ type Store interface {
 	// Returns ErrAggregateNotFound if no events exist.
 	Load(ctx context.Context, aggregateID uuid.UUID, aggregateType string) ([]Event, error)
 
+	// LoadByIDs retrieves events for multiple aggregates in a single batch.
+	// Returns map[aggregateID][]Event. Missing aggregates are not included in the result.
+	LoadByIDs(ctx context.Context, aggregateIDs []uuid.UUID, aggregateType string) (map[uuid.UUID][]Event, error)
+
 	// LoadPaginated retrieves events for an aggregate with pagination.
 	// Returns events in descending order (newest first).
 	// Returns events, total count, and error.

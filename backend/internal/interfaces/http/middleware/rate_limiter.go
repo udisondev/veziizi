@@ -12,6 +12,7 @@ import (
 
 	sessionApp "codeberg.org/udison/veziizi/backend/internal/application/session"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
 )
@@ -55,7 +56,7 @@ var (
 	publicRateLimiter *shardedRateLimiter
 	geoRateLimiter    *shardedRateLimiter
 
-	// Конфигурация rate limiting
+	// Конфигурация rate limiting (заполняется из config)
 	maxRequestsPerWindow      = 10               // Максимум запросов за окно (public)
 	maxGeoRequestsPerWindow   = 200              // Максимум запросов за окно (geo)
 	maxAdminRequestsPerWindow = 50               // Максимум запросов за окно (admin)
@@ -190,10 +191,30 @@ func SetRateLimits(maxPublic, maxGeo int) {
 
 // InitRateLimiter инициализирует rate limiter'ы и запускает cleanup горутину.
 // Должен вызываться из main() перед использованием middleware.
-func InitRateLimiter() {
+// Если cfg равен nil, используются значения по умолчанию.
+func InitRateLimiter(cfg *config.RateLimitConfig) {
 	if cleanupStarted.Swap(true) {
 		// Уже инициализирован
 		return
+	}
+
+	// Применяем конфигурацию если передана
+	if cfg != nil {
+		if cfg.PublicMaxRequests > 0 {
+			maxRequestsPerWindow = cfg.PublicMaxRequests
+		}
+		if cfg.GeoMaxRequests > 0 {
+			maxGeoRequestsPerWindow = cfg.GeoMaxRequests
+		}
+		if cfg.AdminMaxRequests > 0 {
+			maxAdminRequestsPerWindow = cfg.AdminMaxRequests
+		}
+		if cfg.WindowDuration > 0 {
+			windowDuration = cfg.WindowDuration
+		}
+		if cfg.BlockDuration > 0 {
+			blockDuration = cfg.BlockDuration
+		}
 	}
 
 	publicRateLimiter = newShardedRateLimiter()
@@ -233,9 +254,9 @@ func RateLimiter(
 	sessionManager *session.Manager,
 	sessionAnalyzer *sessionApp.SessionAnalyzer,
 ) func(http.Handler) http.Handler {
-	// Убеждаемся что rate limiter инициализирован
+	// Убеждаемся что rate limiter инициализирован (с дефолтами если не инициализирован)
 	if !cleanupStarted.Load() {
-		InitRateLimiter()
+		InitRateLimiter(nil)
 	}
 
 	return func(next http.Handler) http.Handler {

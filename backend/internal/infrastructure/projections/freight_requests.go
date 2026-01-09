@@ -588,6 +588,25 @@ func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Contex
 	return result, nil
 }
 
+// UpdateCustomerOrgName обновляет имя организации-заказчика во всех заявках этой организации.
+// Используется для поддержания денормализованных данных в актуальном состоянии.
+func (p *FreightRequestsProjection) UpdateCustomerOrgName(ctx context.Context, orgID uuid.UUID, name string) error {
+	query, args, err := p.psql.
+		Update("freight_requests_lookup").
+		Set("customer_org_name", name).
+		Where(squirrel.Eq{"customer_org_id": orgID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("update customer org name: %w", err)
+	}
+
+	return nil
+}
+
 // HaveSharedConfirmedFreight проверяет есть ли подтверждённая перевозка между двумя организациями
 // (одна как заказчик, другая как перевозчик)
 func (p *FreightRequestsProjection) HaveSharedConfirmedFreight(ctx context.Context, orgID1, orgID2 uuid.UUID) (bool, error) {

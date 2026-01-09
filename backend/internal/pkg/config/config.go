@@ -11,12 +11,13 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig
-	HTTP     HTTPConfig
-	Session  SessionConfig
-	Telegram TelegramConfig
-	App      AppConfig
-	GeoIP    GeoIPConfig
+	Database  DatabaseConfig
+	HTTP      HTTPConfig
+	Session   SessionConfig
+	Telegram  TelegramConfig
+	App       AppConfig
+	GeoIP     GeoIPConfig
+	RateLimit RateLimitConfig
 }
 
 type DatabaseConfig struct {
@@ -54,6 +55,19 @@ type GeoIPConfig struct {
 	// Path to MaxMind GeoLite2-City.mmdb database file
 	// Download from: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
 	DatabasePath string `env:"GEOIP_DATABASE_PATH" envDefault:""`
+}
+
+type RateLimitConfig struct {
+	// Public endpoints (login, register, invitations)
+	PublicMaxRequests int `env:"RATE_LIMIT_PUBLIC_MAX" envDefault:"10"`
+	// Geo endpoints (higher limit for autocomplete)
+	GeoMaxRequests int `env:"RATE_LIMIT_GEO_MAX" envDefault:"200"`
+	// Admin endpoints
+	AdminMaxRequests int `env:"RATE_LIMIT_ADMIN_MAX" envDefault:"50"`
+	// Window duration for rate limiting
+	WindowDuration time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"1m"`
+	// Block duration when rate limited
+	BlockDuration time.Duration `env:"RATE_LIMIT_BLOCK" envDefault:"15m"`
 }
 
 func Load() (*Config, error) {

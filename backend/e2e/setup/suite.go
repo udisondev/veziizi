@@ -246,7 +246,7 @@ func (s *Suite) startEventHandlers() error {
 	if err != nil {
 		return err
 	}
-	organizationsHandler := eventHandlers.NewOrganizationsHandler(s.Factory.OrganizationsProjection())
+	organizationsHandler := eventHandlers.NewOrganizationsHandler(s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
 	router.AddNoPublisherHandler("organizations", "organization.events", orgsSub, organizationsHandler.Handle)
 
 	invSub, err := createSubscriber("e2e_invitations", "organization.events")
