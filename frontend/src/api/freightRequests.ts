@@ -9,13 +9,23 @@ import type {
   MakeOfferResponse,
 } from '@/types/freightRequest'
 
+/**
+ * Ответ с cursor-based пагинацией
+ */
+export interface CursorPaginatedResponse<T> {
+  items: T[]
+  next_cursor?: string
+  has_more: boolean
+}
+
 export interface FreightRequestListParams {
   customer_org_id?: string
   member_id?: string
-  status?: string
+  statuses?: string  // comma-separated statuses
   org_name?: string
   org_inn?: string
   org_country?: string
+  request_number?: number
   // Extended filters (subscription-like)
   min_weight?: number
   max_weight?: number
@@ -31,7 +41,7 @@ export interface FreightRequestListParams {
   route_city_ids?: string // comma-separated city IDs
   route_country_ids?: string // comma-separated country IDs (for filtering by country without city)
   limit?: number
-  offset?: number
+  cursor?: string // cursor для keyset pagination
 }
 
 export const freightRequestsApi = {
@@ -39,14 +49,15 @@ export const freightRequestsApi = {
     return api.post('/freight-requests', data)
   },
 
-  async list(params?: FreightRequestListParams): Promise<FreightRequestListItem[]> {
+  async list(params?: FreightRequestListParams): Promise<CursorPaginatedResponse<FreightRequestListItem>> {
     const searchParams = new URLSearchParams()
     if (params?.customer_org_id) searchParams.set('customer_org_id', params.customer_org_id)
     if (params?.member_id) searchParams.set('member_id', params.member_id)
-    if (params?.status) searchParams.set('status', params.status)
+    if (params?.statuses) searchParams.set('statuses', params.statuses)
     if (params?.org_name) searchParams.set('org_name', params.org_name)
     if (params?.org_inn) searchParams.set('org_inn', params.org_inn)
     if (params?.org_country) searchParams.set('org_country', params.org_country)
+    if (params?.request_number) searchParams.set('request_number', params.request_number.toString())
     // Extended filters
     if (params?.min_weight !== undefined) searchParams.set('min_weight', params.min_weight.toString())
     if (params?.max_weight !== undefined) searchParams.set('max_weight', params.max_weight.toString())
@@ -63,11 +74,11 @@ export const freightRequestsApi = {
     if (params?.route_country_ids) searchParams.set('route_country_ids', params.route_country_ids)
     // Pagination
     if (params?.limit) searchParams.set('limit', params.limit.toString())
-    if (params?.offset) searchParams.set('offset', params.offset.toString())
+    if (params?.cursor) searchParams.set('cursor', params.cursor)
 
     const query = searchParams.toString()
-    const result = await api.get<FreightRequestListItem[] | null>(`/freight-requests${query ? `?${query}` : ''}`)
-    return result ?? []
+    const result = await api.get<CursorPaginatedResponse<FreightRequestListItem> | null>(`/freight-requests${query ? `?${query}` : ''}`)
+    return result ?? { items: [], has_more: false }
   },
 
   get(id: string): Promise<FreightRequest> {

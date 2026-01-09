@@ -6,7 +6,11 @@ import type {
   PaymentMethod,
   PaymentTerms,
   VatType,
+  FreightRequestStatus,
 } from '@/types/freightRequest'
+
+// Дефолтные статусы для фильтра (пустой = все статусы)
+const DEFAULT_STATUSES: FreightRequestStatus[] = []
 
 export interface RoutePointFilter {
   id: string
@@ -20,7 +24,13 @@ export interface RoutePointFilter {
 export const useFreightFiltersStore = defineStore('freightFilters', () => {
   // Filter state
   const ownershipFilter = ref<OwnershipFilter>('all')
+
+  // Pagination state
+  const cursor = ref<string | undefined>(undefined)
+  const hasMore = ref(true)
   const orgINNFilter = ref('')
+  const requestNumber = ref<number | null>(null)
+  const statuses = ref<FreightRequestStatus[]>([...DEFAULT_STATUSES])
   const routePoints = ref<RoutePointFilter[]>([])
   const minWeight = ref<number | undefined>()
   const maxWeight = ref<number | undefined>()
@@ -33,7 +43,15 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   const paymentTerms = ref<PaymentTerms[]>([])
   const vatTypes = ref<VatType[]>([])
 
-  // Computed - subscription filters (everything except ownership and INN)
+  // Helper для проверки что статусы изменены относительно дефолта
+  const isStatusesChanged = computed(() => {
+    if (statuses.value.length !== DEFAULT_STATUSES.length) return true
+    const sorted = [...statuses.value].sort()
+    const defaultSorted = [...DEFAULT_STATUSES].sort()
+    return sorted.some((s, i) => s !== defaultSorted[i])
+  })
+
+  // Computed - subscription filters (everything except ownership, INN and statuses)
   const hasSubscriptionFilters = computed(() =>
     routePoints.value.length > 0 ||
     minWeight.value !== undefined ||
@@ -51,6 +69,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   const hasActiveFilters = computed(() =>
     ownershipFilter.value !== 'all' ||
     orgINNFilter.value !== '' ||
+    requestNumber.value !== null ||
+    isStatusesChanged.value ||
     hasSubscriptionFilters.value
   )
 
@@ -58,6 +78,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     let count = 0
     if (ownershipFilter.value !== 'all') count++
     if (orgINNFilter.value !== '') count++
+    if (requestNumber.value !== null) count++
+    if (isStatusesChanged.value) count++
     if (routePoints.value.length > 0) count++
     if (minWeight.value !== undefined || maxWeight.value !== undefined) count++
     if (minPrice.value !== undefined || maxPrice.value !== undefined) count++
@@ -73,6 +95,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   function setFilters(filters: {
     ownership?: OwnershipFilter
     orgINN?: string
+    requestNumber?: number | null
+    statuses?: FreightRequestStatus[]
     routePoints?: RoutePointFilter[]
     minWeight?: number
     maxWeight?: number
@@ -87,6 +111,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   }) {
     if (filters.ownership !== undefined) ownershipFilter.value = filters.ownership
     if (filters.orgINN !== undefined) orgINNFilter.value = filters.orgINN
+    if (filters.requestNumber !== undefined) requestNumber.value = filters.requestNumber
+    if (filters.statuses !== undefined) statuses.value = filters.statuses
     if (filters.routePoints !== undefined) routePoints.value = filters.routePoints
     if (filters.minWeight !== undefined) minWeight.value = filters.minWeight
     if (filters.maxWeight !== undefined) maxWeight.value = filters.maxWeight
@@ -100,9 +126,25 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     if (filters.vatTypes !== undefined) vatTypes.value = filters.vatTypes
   }
 
+  // Pagination actions
+  function resetPagination() {
+    cursor.value = undefined
+    hasMore.value = true
+  }
+
+  function setCursor(newCursor: string | undefined) {
+    cursor.value = newCursor
+  }
+
+  function setHasMore(value: boolean) {
+    hasMore.value = value
+  }
+
   function resetFilters() {
     ownershipFilter.value = 'all'
     orgINNFilter.value = ''
+    requestNumber.value = null
+    statuses.value = [...DEFAULT_STATUSES]
     routePoints.value = []
     minWeight.value = undefined
     maxWeight.value = undefined
@@ -114,6 +156,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     paymentMethods.value = []
     paymentTerms.value = []
     vatTypes.value = []
+    // Сброс пагинации при сбросе фильтров
+    resetPagination()
   }
 
   // Route point management
@@ -150,6 +194,8 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     // State
     ownershipFilter,
     orgINNFilter,
+    requestNumber,
+    statuses,
     routePoints,
     minWeight,
     maxWeight,
@@ -161,6 +207,10 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     paymentMethods,
     paymentTerms,
     vatTypes,
+
+    // Pagination state
+    cursor,
+    hasMore,
 
     // Computed
     hasSubscriptionFilters,
@@ -174,5 +224,10 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     removeRoutePoint,
     updateRoutePoint,
     reorderRoutePoints,
+
+    // Pagination actions
+    resetPagination,
+    setCursor,
+    setHasMore,
   }
 })

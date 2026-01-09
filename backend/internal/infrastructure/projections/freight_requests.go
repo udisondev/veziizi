@@ -66,6 +66,15 @@ func WithStatus(status string) FilterOption {
 	}
 }
 
+func WithStatuses(statuses []string) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(statuses) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"status": statuses})
+	}
+}
+
 func WithLimit(limit int) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Limit(uint64(limit))
@@ -75,6 +84,43 @@ func WithLimit(limit int) FilterOption {
 func WithOffset(offset int) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Offset(uint64(offset))
+	}
+}
+
+// FreightRequestCursor для keyset pagination.
+// Сортировка: (status = 'published') DESC, request_number DESC
+type FreightRequestCursor struct {
+	IsPublished   bool  `json:"p"` // status == 'published'
+	RequestNumber int64 `json:"n"` // request_number
+}
+
+// WithCursor добавляет условие keyset pagination.
+// Возвращает записи "после" cursor в порядке сортировки.
+func WithCursor(cursor FreightRequestCursor) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if cursor.IsPublished {
+			// Cursor на published записи.
+			// Следующие записи:
+			//   1. published с меньшим request_number, ИЛИ
+			//   2. не-published (любой request_number)
+			return b.Where(
+				squirrel.Or{
+					squirrel.And{
+						squirrel.Eq{"status": "published"},
+						squirrel.Lt{"request_number": cursor.RequestNumber},
+					},
+					squirrel.NotEq{"status": "published"},
+				},
+			)
+		}
+		// Cursor на не-published записи.
+		// Следующие записи: не-published с меньшим request_number.
+		return b.Where(
+			squirrel.And{
+				squirrel.NotEq{"status": "published"},
+				squirrel.Lt{"request_number": cursor.RequestNumber},
+			},
+		)
 	}
 }
 
@@ -302,7 +348,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			"carrier_org_id", "carrier_member_id", "confirmed_at",
 		).
 		From("freight_requests_lookup").
-		OrderBy("created_at DESC")
+		OrderBy("(status = 'published') DESC", "request_number DESC")
 
 	for _, opt := range opts {
 		builder = opt(builder)
