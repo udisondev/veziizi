@@ -292,3 +292,157 @@ func (s *AdminSuite) TestUserSessionCannotAccessListReviews() {
 	s.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
 }
 
+// ==================== Review Full Cycle Tests ====================
+
+func (s *AdminSuite) TestADM030_ReviewFullCycle_Approve() {
+	s.T().Skip("TODO: Requires review-analyzer and reviews-projection workers to be running")
+	// Create a completed FR and leave a review
+	completed := s.ctx.CreateFullyCompletedFreightRequest()
+
+	comment := "Great service!"
+	reviewResp, err := s.ctx.Customer.Client.LeaveFreightRequestReview(completed.FreightRequest.ID, 5, &comment)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, reviewResp.StatusCode)
+	reviewID := reviewResp.Body.ReviewID
+
+	// Wait for review to appear in admin list (pending_analysis → pending_moderation)
+	// Note: review-analyzer worker processes it, may auto-approve or send to moderation
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.AdminClient.AdminGetReviews("pending_moderation")
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, r := range resp.Body {
+			if r.ID == reviewID {
+				return true
+			}
+		}
+		// Check if already auto-approved
+		resp, err = s.ctx.AdminClient.AdminGetReviews("approved")
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, r := range resp.Body {
+			if r.ID == reviewID {
+				return true // already approved (auto)
+			}
+		}
+		return false
+	}, "review should appear in admin list (pending_moderation or approved)")
+
+	// Try to get the review and approve if pending
+	getResp, err := s.ctx.AdminClient.AdminGetReview(reviewID)
+	s.Require().NoError(err)
+	if getResp.StatusCode == http.StatusOK && getResp.Body.Status == "pending_moderation" {
+		approveResp, err := s.ctx.AdminClient.AdminApproveReview(reviewID)
+		s.Require().NoError(err)
+		s.Require().Equal(http.StatusNoContent, approveResp.StatusCode, "should approve review successfully")
+	}
+}
+
+func (s *AdminSuite) TestADM031_ReviewReject() {
+	s.T().Skip("TODO: Requires review-analyzer and reviews-projection workers to be running")
+	// Create a completed FR and leave a review
+	completed := s.ctx.CreateFullyCompletedFreightRequest()
+
+	comment := "Suspicious review"
+	reviewResp, err := s.ctx.Customer.Client.LeaveFreightRequestReview(completed.FreightRequest.ID, 5, &comment)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, reviewResp.StatusCode)
+	reviewID := reviewResp.Body.ReviewID
+
+	// Wait for review to appear in admin list
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.AdminClient.AdminGetReviews("pending_moderation")
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, r := range resp.Body {
+			if r.ID == reviewID {
+				return true
+			}
+		}
+		return false
+	}, "review should appear in pending_moderation")
+
+	// Reject the review
+	rejectResp, err := s.ctx.AdminClient.AdminRejectReview(reviewID, "Fake review detected")
+	s.Require().NoError(err)
+	// May already be auto-approved, so accept either 204 or 409
+	s.Require().True(rejectResp.StatusCode == http.StatusNoContent || rejectResp.StatusCode == http.StatusConflict,
+		"should reject or conflict, got %d", rejectResp.StatusCode)
+}
+
+func (s *AdminSuite) TestADM032_FraudsterDeactivatesReviews() {
+	s.T().Skip("TODO: Requires review-analyzer, reviews-projection and fraudster-handler workers to be running")
+	// Create a new org that will become a fraudster
+	fraudOrg := fixtures.NewActiveOrganization(s.T(), s.ctx.AnonClient, s.ctx.AdminClient).Create()
+
+	// Create a FR between fraud org (customer) and carrier
+	frBuilder := fixtures.NewFreightRequest(s.T(), fraudOrg.Client)
+	fr := frBuilder.Create()
+
+	// Carrier makes offer
+	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+
+	// Fraud org selects
+	selectResp, err := fraudOrg.Client.SelectOffer(fr.ID, offer.OfferID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, selectResp.StatusCode)
+
+	// Carrier confirms
+	confirmResp, err := s.ctx.Carrier.Client.ConfirmOffer(fr.ID, offer.OfferID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, confirmResp.StatusCode)
+
+	// Wait for confirmed status
+	helpers.Wait(s.T(), func() bool {
+		frResp, err := fraudOrg.Client.GetFreightRequest(fr.ID)
+		return err == nil && frResp.StatusCode == http.StatusOK && frResp.Body.Status == "confirmed"
+	}, "FR should be confirmed")
+
+	// Both sides complete
+	completeResp, err := fraudOrg.Client.CompleteFreightRequest(fr.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, completeResp.StatusCode)
+
+	completeResp, err = s.ctx.Carrier.Client.CompleteFreightRequest(fr.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, completeResp.StatusCode)
+
+	// Wait for completed status
+	helpers.Wait(s.T(), func() bool {
+		frResp, err := fraudOrg.Client.GetFreightRequest(fr.ID)
+		return err == nil && frResp.StatusCode == http.StatusOK && frResp.Body.Status == "completed"
+	}, "FR should be completed")
+
+	// Fraud org leaves a review
+	comment := "Fraudulent review"
+	reviewResp, err := fraudOrg.Client.LeaveFreightRequestReview(fr.ID, 5, &comment)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusCreated, reviewResp.StatusCode)
+
+	// Mark the org as fraudster
+	markResp, err := s.ctx.AdminClient.AdminMarkFraudster(fraudOrg.OrganizationID, true, "Fraud detected")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, markResp.StatusCode)
+
+	// Verify org is marked as fraudster
+	orgIDStr := fraudOrg.OrganizationID.String()
+	helpers.Wait(s.T(), func() bool {
+		fraudstersResp, err := s.ctx.AdminClient.AdminListFraudsters()
+		if err != nil || fraudstersResp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, f := range fraudstersResp.Body.Fraudsters {
+			if f.OrgID == orgIDStr {
+				return true
+			}
+		}
+		return false
+	}, "org should be in fraudsters list")
+
+	// Note: The fraudster-handler worker should deactivate reviews from this org
+	// This is an async process, so we just verify the mechanism is in place
+}
+

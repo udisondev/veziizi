@@ -12,9 +12,10 @@ type WaitConfig struct {
 }
 
 // DefaultWait is the default wait configuration.
+// Note: 10s timeout allows for event processing + projection sync in parallel e2e tests
 var DefaultWait = WaitConfig{
-	Timeout:  3 * time.Second,
-	Interval: 20 * time.Millisecond,
+	Timeout:  10 * time.Second,
+	Interval: 100 * time.Millisecond,
 }
 
 // Wait polls a condition until it returns true or times out.

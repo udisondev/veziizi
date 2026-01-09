@@ -61,7 +61,7 @@ func (s *NotificationsSuite) TestNOT005_GetUnreadCount() {
 	resp, err := s.ctx.Customer.Client.GetUnreadCount()
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
-	s.Assert().GreaterOrEqual(resp.Body.Count, 0)
+	s.Assert().GreaterOrEqual(resp.Body.Unread, 0)
 }
 
 func (s *NotificationsSuite) TestNOT005b_UnreadCountWithoutAuth() {
@@ -111,6 +111,8 @@ func (s *NotificationsSuite) TestNOT009_GetPreferences() {
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
 	s.Assert().Equal(s.ctx.Customer.MemberID, resp.Body.MemberID)
+	// Verify enabled_categories is present
+	s.Assert().NotEmpty(resp.Body.EnabledCategories, "enabled_categories should not be empty")
 }
 
 func (s *NotificationsSuite) TestNOT009b_PreferencesWithoutAuth() {
@@ -121,34 +123,40 @@ func (s *NotificationsSuite) TestNOT009b_PreferencesWithoutAuth() {
 
 // ==================== PATCH /api/v1/notifications/preferences ====================
 
-func (s *NotificationsSuite) TestNOT010_EnableTelegram() {
-	enabled := true
+func (s *NotificationsSuite) TestNOT010_UpdateCategories() {
+	// Update offers category settings
 	resp, err := s.ctx.Customer.Client.UpdateNotificationPreferences(client.UpdatePreferencesRequest{
-		Telegram: &enabled,
+		Categories: client.EnabledCategories{
+			"offers": client.CategorySettings{InApp: true, Telegram: true},
+		},
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 }
 
-func (s *NotificationsSuite) TestNOT011_DisableInApp() {
-	disabled := false
+func (s *NotificationsSuite) TestNOT011_DisableOffersInApp() {
+	// Disable in-app for offers category
 	resp, err := s.ctx.Customer.Client.UpdateNotificationPreferences(client.UpdatePreferencesRequest{
-		InApp: &disabled,
+		Categories: client.EnabledCategories{
+			"offers": client.CategorySettings{InApp: false, Telegram: true},
+		},
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 
 	// Re-enable for other tests
-	enabled := true
 	_, _ = s.ctx.Customer.Client.UpdateNotificationPreferences(client.UpdatePreferencesRequest{
-		InApp: &enabled,
+		Categories: client.EnabledCategories{
+			"offers": client.CategorySettings{InApp: true, Telegram: true},
+		},
 	})
 }
 
 func (s *NotificationsSuite) TestNOT011b_UpdatePreferencesWithoutAuth() {
-	enabled := true
 	resp, err := s.ctx.AnonClient.UpdateNotificationPreferences(client.UpdatePreferencesRequest{
-		InApp: &enabled,
+		Categories: client.EnabledCategories{
+			"offers": client.CategorySettings{InApp: true, Telegram: true},
+		},
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)

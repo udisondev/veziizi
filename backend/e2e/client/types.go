@@ -241,6 +241,32 @@ type FreightRequestResponse struct {
 	ExpiresAt           time.Time           `json:"expires_at"`
 }
 
+// FreightRequestListItem is a simplified version for list responses
+type FreightRequestListItem struct {
+	ID                 uuid.UUID  `json:"id"`
+	RequestNumber      int64      `json:"request_number"`
+	CustomerOrgID      uuid.UUID  `json:"customer_org_id"`
+	Status             string     `json:"status"`
+	ExpiresAt          time.Time  `json:"expires_at"`
+	CreatedAt          time.Time  `json:"created_at"`
+	OriginAddress      *string    `json:"origin_address,omitempty"`
+	DestinationAddress *string    `json:"destination_address,omitempty"`
+	CargoWeight        *float64   `json:"cargo_weight,omitempty"`
+	PriceAmount        *int64     `json:"price_amount,omitempty"`
+	PriceCurrency      *string    `json:"price_currency,omitempty"`
+	VehicleType        *string    `json:"vehicle_type,omitempty"`
+	VehicleSubType     *string    `json:"vehicle_subtype,omitempty"`
+	CustomerOrgName    *string    `json:"customer_org_name,omitempty"`
+	CustomerMemberID   *uuid.UUID `json:"customer_member_id,omitempty"`
+}
+
+// FreightRequestListResponse is the response for list freight requests
+type FreightRequestListResponse struct {
+	Items      []FreightRequestListItem `json:"items"`
+	NextCursor *string                  `json:"next_cursor,omitempty"`
+	HasMore    bool                     `json:"has_more"`
+}
+
 type CreateOfferRequest struct {
 	Price         Money   `json:"price"`
 	Comment       string  `json:"comment,omitempty"`
@@ -279,61 +305,33 @@ type CancelRequest struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
-// --- Order Types ---
-
-type OrderResponse struct {
-	ID                 uuid.UUID        `json:"id"`
-	OrderNumber        string           `json:"order_number"`
-	FreightRequestID   uuid.UUID        `json:"freight_request_id"`
-	OfferID            uuid.UUID        `json:"offer_id"`
-	CustomerOrgID      uuid.UUID        `json:"customer_org_id"`
-	CustomerOrgName    string           `json:"customer_org_name,omitempty"`
-	CustomerMemberID   uuid.UUID        `json:"customer_member_id"`
-	CustomerMemberName string           `json:"customer_member_name,omitempty"`
-	CarrierOrgID       uuid.UUID        `json:"carrier_org_id"`
-	CarrierOrgName     string           `json:"carrier_org_name,omitempty"`
-	CarrierMemberID    uuid.UUID        `json:"carrier_member_id"`
-	CarrierMemberName  string           `json:"carrier_member_name,omitempty"`
-	Status             string           `json:"status"`
-	Messages           []MessageResponse `json:"messages,omitempty"`
-	Documents          []DocumentResponse `json:"documents,omitempty"`
-	Reviews            []ReviewResponse  `json:"reviews,omitempty"`
-	Version            int              `json:"version"`
-	CreatedAt          time.Time        `json:"created_at"`
-}
-
-type MessageResponse struct {
-	ID        uuid.UUID `json:"id"`
-	SenderID  uuid.UUID `json:"sender_id"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type DocumentResponse struct {
-	ID         uuid.UUID `json:"id"`
-	UploaderID uuid.UUID `json:"uploader_id"`
-	Filename   string    `json:"filename"`
-	Size       int64     `json:"size"`
-	MimeType   string    `json:"mime_type"`
-	CreatedAt  time.Time `json:"created_at"`
-}
-
-type ReviewResponse struct {
-	ID        uuid.UUID `json:"id"`
-	AuthorID  uuid.UUID `json:"author_id"`
-	TargetID  uuid.UUID `json:"target_id"`
-	Rating    int       `json:"rating"`
-	Comment   *string   `json:"comment,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type SendMessageRequest struct {
-	Content string `json:"content"`
-}
+// --- Freight Request Review Types ---
 
 type LeaveReviewRequest struct {
 	Rating  int     `json:"rating"`
 	Comment *string `json:"comment,omitempty"`
+}
+
+type LeaveReviewResponse struct {
+	ReviewID uuid.UUID `json:"review_id"`
+}
+
+// --- Organization Review Types ---
+
+type OrgReviewResponse struct {
+	ID            string  `json:"id"`
+	OrderID       string  `json:"order_id"`
+	ReviewerOrgID string  `json:"reviewer_org_id"`
+	Rating        int     `json:"rating"`
+	Comment       string  `json:"comment"`
+	Weight        float64 `json:"weight"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+type ReviewsListResponse struct {
+	Items      []OrgReviewResponse `json:"items"`
+	NextCursor string              `json:"next_cursor,omitempty"`
+	HasMore    bool                `json:"has_more"`
 }
 
 // --- Geo Types ---
@@ -384,16 +382,30 @@ type RejectOrganizationRequest struct {
 
 // --- Notification Types ---
 
+// CategorySettings настройки для одной категории
+type CategorySettings struct {
+	InApp    bool `json:"in_app"`
+	Telegram bool `json:"telegram"`
+}
+
+// EnabledCategories настройки всех категорий
+type EnabledCategories map[string]CategorySettings
+
+// TelegramStatusResponse статус Telegram
+type TelegramStatusResponse struct {
+	Connected   bool    `json:"connected"`
+	Username    *string `json:"username,omitempty"`
+	ConnectedAt *string `json:"connected_at,omitempty"`
+}
+
 type NotificationPreferencesResponse struct {
-	MemberID   uuid.UUID `json:"member_id"`
-	InApp      bool      `json:"in_app"`
-	Telegram   bool      `json:"telegram"`
-	TelegramID *int64    `json:"telegram_id,omitempty"`
+	MemberID          uuid.UUID              `json:"member_id"`
+	EnabledCategories EnabledCategories      `json:"enabled_categories"`
+	Telegram          TelegramStatusResponse `json:"telegram"`
 }
 
 type UpdatePreferencesRequest struct {
-	InApp    *bool `json:"in_app,omitempty"`
-	Telegram *bool `json:"telegram,omitempty"`
+	Categories EnabledCategories `json:"categories"`
 }
 
 type InAppNotificationResponse struct {
