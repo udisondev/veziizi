@@ -1,6 +1,7 @@
 package organization
 
 import (
+	"fmt"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/organization/entities"
@@ -168,7 +169,7 @@ func (o *Organization) GetInvitationByToken(token string) (*entities.Invitation,
 
 func (o *Organization) Approve(adminID uuid.UUID) error {
 	if !o.status.CanBeApproved() {
-		return ErrOrganizationNotPending
+		return fmt.Errorf("approve organization %s: %w", o.ID(), ErrOrganizationNotPending)
 	}
 
 	o.Apply(events.OrganizationApproved{
@@ -181,7 +182,7 @@ func (o *Organization) Approve(adminID uuid.UUID) error {
 
 func (o *Organization) Reject(adminID uuid.UUID, reason string) error {
 	if !o.status.CanBeRejected() {
-		return ErrOrganizationNotPending
+		return fmt.Errorf("reject organization %s: %w", o.ID(), ErrOrganizationNotPending)
 	}
 
 	o.Apply(events.OrganizationRejected{
@@ -195,7 +196,7 @@ func (o *Organization) Reject(adminID uuid.UUID, reason string) error {
 
 func (o *Organization) Suspend(adminID uuid.UUID, reason string) error {
 	if !o.status.CanBeSuspended() {
-		return ErrOrganizationNotActive
+		return fmt.Errorf("suspend organization %s: %w", o.ID(), ErrOrganizationNotActive)
 	}
 
 	o.Apply(events.OrganizationSuspended{
@@ -210,10 +211,10 @@ func (o *Organization) Suspend(adminID uuid.UUID, reason string) error {
 func (o *Organization) Update(actorID uuid.UUID, name, phone, email *string, address *values.Address) error {
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("update organization %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageOrganization() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("update organization %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	o.Apply(events.OrganizationUpdated{
@@ -240,21 +241,21 @@ func (o *Organization) CreateInvitation(
 ) error {
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("create invitation in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("create invitation in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	// Check if email already exists as member
 	if _, exists := o.GetMemberByEmail(email); exists {
-		return ErrMemberAlreadyExists
+		return fmt.Errorf("create invitation in org %s for email %s: %w", o.ID(), email, ErrMemberAlreadyExists)
 	}
 
 	// Check if pending invitation exists for this email
 	for _, inv := range o.invitations {
 		if inv.Email() == email && inv.Status() == values.InvitationStatusPending {
-			return ErrEmailAlreadyInvited
+			return fmt.Errorf("create invitation in org %s for email %s: %w", o.ID(), email, ErrEmailAlreadyInvited)
 		}
 	}
 

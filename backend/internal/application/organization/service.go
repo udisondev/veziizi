@@ -112,6 +112,11 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterO
 		return nil, err
 	}
 
+	slog.Info("organization registered",
+		slog.String("organization_id", orgID.String()),
+		slog.String("owner_member_id", memberID.String()),
+		slog.String("name", input.Name))
+
 	return &RegisterOutput{
 		OrganizationID: orgID,
 		MemberID:       memberID,
@@ -124,9 +129,38 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*organization.Organiza
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, organization.ErrOrganizationNotFound
 		}
-		return nil, fmt.Errorf("failed to load organization: %w", err)
+		slog.Error("failed to load organization",
+			slog.String("organization_id", id.String()),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("load organization: %w", err)
 	}
 	return organization.NewFromEvents(id, evts), nil
+}
+
+// GetByIDs загружает несколько организаций одним batch запросом.
+// Возвращает map[id]*Organization. Отсутствующие ID не включаются в результат.
+func (s *Service) GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*organization.Organization, error) {
+	if len(ids) == 0 {
+		return make(map[uuid.UUID]*organization.Organization), nil
+	}
+
+	eventsMap, err := s.eventStore.LoadByIDs(ctx, ids, events.AggregateType)
+	if err != nil {
+		slog.Error("failed to batch load organizations",
+			slog.Int("count", len(ids)),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("batch load organizations: %w", err)
+	}
+
+	result := make(map[uuid.UUID]*organization.Organization, len(eventsMap))
+	for id, evts := range eventsMap {
+		org := organization.NewFromEvents(id, evts)
+		if org.Version() > 0 {
+			result[id] = org
+		}
+	}
+
+	return result, nil
 }
 
 // GetNames возвращает названия организаций по их ID
@@ -546,12 +580,20 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 
 	return s.db.InTx(ctx, func(ctx context.Context) error {
 		if err := s.eventStore.Save(ctx, changes...); err != nil {
-			return fmt.Errorf("failed to save events: %w", err)
+			slog.Error("failed to save organization events",
+				slog.String("organization_id", org.ID().String()),
+				slog.Int("event_count", len(changes)),
+				slog.String("error", err.Error()))
+			return fmt.Errorf("save events: %w", err)
 		}
 
 		// Publish to message bus - watermill subscribers will update projections async
 		if err := s.publisher.Publish(ctx, "organization.events", changes...); err != nil {
-			return fmt.Errorf("failed to publish events: %w", err)
+			slog.Error("failed to publish organization events",
+				slog.String("organization_id", org.ID().String()),
+				slog.Int("event_count", len(changes)),
+				slog.String("error", err.Error()))
+			return fmt.Errorf("publish events: %w", err)
 		}
 
 		org.ClearChanges()

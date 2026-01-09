@@ -14,7 +14,7 @@ type Payment struct {
 // Validate validates payment information
 func (p Payment) Validate() error {
 	if p.Price != nil && p.Price.Amount < 0 {
-		return fmt.Errorf("price cannot be negative")
+		return fmt.Errorf("validate payment: %w", ErrNegativeAmount)
 	}
 	return nil
 }

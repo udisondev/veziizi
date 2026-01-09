@@ -69,8 +69,8 @@ func main() {
 		}
 	}()
 
-	// Инициализация rate limiter'а (до middleware)
-	middleware.InitRateLimiter()
+	// Инициализация rate limiter'а с конфигом (до middleware)
+	middleware.InitRateLimiter(&cfg.RateLimit)
 
 	sessionManager := session.NewManager(cfg)
 	adminSessionManager := session.NewAdminManager(cfg)
@@ -86,6 +86,7 @@ func main() {
 	server.Router().Use(middleware.CORS(cfg))            // SEC-010
 	server.Router().Use(middleware.BodyLimit())          // SEC-015
 	server.Router().Use(middleware.RequireAuth(sessionManager))
+	server.Router().Use(middleware.EventMetaEnricher(sessionManager)) // Добавляем metadata для аудита событий
 	server.Router().Use(middleware.RateLimiter(sessionManager, f.SessionAnalyzer()))
 	server.Router().Use(middleware.CSRFProtection()) // SEC-005
 

@@ -7,6 +7,7 @@ import (
 
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -47,8 +48,14 @@ func NewEventPublisher(pool *pgxpool.Pool, logger watermill.LoggerAdapter) (*Eve
 func (p *EventPublisher) Publish(ctx context.Context, topic string, events ...eventstore.Event) error {
 	messages := make([]*message.Message, 0, len(events))
 
+	// Извлекаем metadata из контекста для аудита
+	var metadata map[string]string
+	if meta, ok := httputil.EventMetaFromCtx(ctx); ok {
+		metadata = meta.ToMap()
+	}
+
 	for _, event := range events {
-		envelope, err := eventstore.NewEventEnvelope(event, nil)
+		envelope, err := eventstore.NewEventEnvelope(event, metadata)
 		if err != nil {
 			return fmt.Errorf("failed to create envelope: %w", err)
 		}
