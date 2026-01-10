@@ -41,6 +41,9 @@ const borderRadius = 24 // для круглой кнопки
 const screenWidth = ref(window.innerWidth)
 const screenHeight = ref(window.innerHeight)
 
+// На мобильных (< 640px) показываем tooltip снизу
+const isMobile = computed(() => screenWidth.value < 640)
+
 // Стили для 4 div вокруг "дырки"
 const topStyle = computed(() => ({
   top: '0',
@@ -89,10 +92,24 @@ function updatePosition() {
     height: rect.height + padding * 2,
   }
 
-  // Tooltip слева от кнопки (с отступом)
-  tooltipPosition.value = {
-    top: rect.top + rect.height / 2,
-    left: rect.left - 16,
+  // Tooltip: на мобильных — снизу, на десктопе — слева
+  if (isMobile.value) {
+    // Ширина tooltip на мобильных: min(screenWidth - 24, 384)
+    const tooltipWidth = Math.min(screenWidth.value - 24, 384)
+    // Центр tooltip должен быть в пределах: [12 + width/2, screenWidth - 12 - width/2]
+    const minLeft = 12 + tooltipWidth / 2
+    const maxLeft = screenWidth.value - 12 - tooltipWidth / 2
+    const idealLeft = rect.left + rect.width / 2
+
+    tooltipPosition.value = {
+      top: rect.bottom + 16,
+      left: Math.max(minLeft, Math.min(idealLeft, maxLeft)),
+    }
+  } else {
+    tooltipPosition.value = {
+      top: rect.top + rect.height / 2,
+      left: rect.left - 16,
+    }
   }
 
   isReady.value = true
@@ -176,17 +193,23 @@ function blockClick(e: MouseEvent) {
           }"
         />
 
-        <!-- Tooltip слева от кнопки -->
+        <!-- Tooltip: на мобильных снизу, на десктопе слева -->
         <div
-          class="fixed z-[70] w-72 rounded-lg border bg-white p-4 shadow-xl pointer-events-auto"
+          class="fixed z-[70] rounded-lg border bg-white p-4 shadow-xl pointer-events-auto"
+          :class="isMobile ? 'w-[calc(100vw-24px)] max-w-sm' : 'w-72'"
           :style="{
             top: `${tooltipPosition.top}px`,
             left: `${tooltipPosition.left}px`,
-            transform: 'translate(-100%, -50%)',
+            transform: isMobile ? 'translate(-50%, 0)' : 'translate(-100%, -50%)',
           }"
         >
-          <!-- Стрелка вправо -->
+          <!-- Стрелка: вверх на мобильных, вправо на десктопе -->
           <div
+            v-if="isMobile"
+            class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-45 w-3 h-3 bg-white border-l border-t"
+          />
+          <div
+            v-else
             class="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 rotate-45 w-3 h-3 bg-white border-r border-t"
           />
 
