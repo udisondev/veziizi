@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { ChevronRight, ChevronLeft, SkipForward } from 'lucide-vue-next'
 import { useTutorialPopupTracker, onPopupChange } from '@/composables/useTutorialPopupTracker'
 import { tutorialBus } from '@/sandbox/events'
-import { mockFreightRequests } from '@/sandbox/mockData/freightRequests'
+import { mockOffers } from '@/sandbox/mockData/offers'
 import { mockNotifications } from '@/sandbox/mockData/notifications'
 import { throttle, SCROLL_THROTTLE_DELAY } from '@/utils/debounce'
 
@@ -30,6 +30,11 @@ const placement = ref<'top' | 'bottom' | 'left' | 'right'>('bottom')
 async function scrollToTargetIfNeeded(target: Element): Promise<void> {
   // Не прокручиваем во время паузы (scroll к ошибке валидации)
   if (scrollPaused.value) return
+
+  // Не скроллим для элементов внутри fixed/modal контейнеров (Sheet, Dialog)
+  // scrollIntoView на таких элементах скроллит основной документ неправильно
+  const isInsideFixedContainer = target.closest('[role="dialog"], [data-state="open"], .fixed')
+  if (isInsideFixedContainer) return
 
   const rect = target.getBoundingClientRect()
   const viewportHeight = window.innerHeight
@@ -70,7 +75,13 @@ async function updatePosition() {
 
   const target = document.querySelector(targetSelector)
   if (!target) {
-    console.warn(`[Tutorial] Target not found: ${targetSelector}`)
+    // Target ещё не в DOM (например, внутри модалки с анимацией)
+    // Центрируем tooltip временно, retry вызовется автоматически через 600ms
+    const tooltipRect = tooltip.getBoundingClientRect()
+    position.value = {
+      top: Math.max(100, (window.innerHeight - tooltipRect.height) / 2),
+      left: Math.max(20, (window.innerWidth - tooltipRect.width) / 2),
+    }
     return
   }
 
@@ -86,6 +97,11 @@ async function updatePosition() {
   const padding = 12
   const arrowSize = 8
   const bottomPadding = 100 // Отступ снизу для кнопок tooltip
+
+  // Максимальная ширина tooltip (sm = 384px или 100vw - 24px на мобильных)
+  // Используем maxTooltipWidth для расчёта позиции, т.к. CSS maxWidth гарантирует эту ширину
+  const maxTooltipWidth = Math.min(384, window.innerWidth - padding * 2)
+  const effectiveTooltipWidth = maxTooltipWidth
 
   // Выбираем rect для позиционирования:
   // - Если popup открыт вниз, используем combined rect чтобы tooltip был под popup
@@ -132,7 +148,7 @@ async function updatePosition() {
 
   // Определяем fallback позицию если недостаточно места
   const needsVerticalSpace = tooltipRect.height + padding
-  const needsHorizontalSpace = tooltipRect.width + padding
+  const needsHorizontalSpace = effectiveTooltipWidth + padding
   const hasSpaceTop = spaceTop >= needsVerticalSpace
   const hasSpaceBottom = spaceBottom >= needsVerticalSpace + bottomPadding
   const hasSpaceLeft = spaceLeft >= needsHorizontalSpace
@@ -167,15 +183,15 @@ async function updatePosition() {
   switch (newPlacement) {
     case 'top':
       top = rect.top - tooltipRect.height - arrowSize - padding
-      left = rect.left + rect.width / 2 - tooltipRect.width / 2
+      left = rect.left + rect.width / 2 - effectiveTooltipWidth / 2
       break
     case 'bottom':
       top = rect.bottom + arrowSize + padding
-      left = rect.left + rect.width / 2 - tooltipRect.width / 2
+      left = rect.left + rect.width / 2 - effectiveTooltipWidth / 2
       break
     case 'left':
       top = rect.top + rect.height / 2 - tooltipRect.height / 2
-      left = rect.left - tooltipRect.width - arrowSize - padding
+      left = rect.left - effectiveTooltipWidth - arrowSize - padding
       break
     case 'right':
       top = rect.top + rect.height / 2 - tooltipRect.height / 2
@@ -183,13 +199,19 @@ async function updatePosition() {
       break
   }
 
-  // Ограничиваем границами экрана с учётом отступа снизу
-  left = Math.max(padding, Math.min(left, window.innerWidth - tooltipRect.width - padding))
+  // Ограничиваем границами экрана с учётом отступа
+  const maxLeft = window.innerWidth - effectiveTooltipWidth - padding
+  // Если экран уже чем tooltip + отступы, прижимаем к левому краю
+  if (maxLeft < padding) {
+    left = padding
+  } else {
+    left = Math.max(padding, Math.min(left, maxLeft))
+  }
   top = Math.max(padding, Math.min(top, window.innerHeight - tooltipRect.height - bottomPadding))
 
   // Дополнительная проверка: если tooltip перекрывает целевой элемент, сдвигаем
   const tooltipBottom = top + tooltipRect.height
-  const tooltipRight = left + tooltipRect.width
+  const tooltipRight = left + effectiveTooltipWidth
 
   // Если tooltip перекрывает цель по вертикали
   if (top < rect.bottom && tooltipBottom > rect.top &&
@@ -211,6 +233,8 @@ watch(
       await nextTick()
       // Небольшая задержка для отрисовки целевого элемента
       setTimeout(updatePosition, 100)
+      // Повторная попытка для элементов в модалках/меню с анимацией (500ms)
+      setTimeout(updatePosition, 600)
     }
   },
   { immediate: true }
@@ -278,14 +302,16 @@ async function startOffersTraining() {
   // Завершаем текущий сценарий (customer_flow)
   onboarding.completeScenario()
 
-  // Используем фиксированный ID для совместимости с offersReceiveFlow.ts
-  const frId = 'sandbox-fr-offers'
+  // Используем ID созданной заявки или fallback
+  const createdRequest = onboarding.sandboxCreatedRequest
+  const frId = createdRequest?.id ?? 'sandbox-fr-offers'
 
   // Очищаем предыдущие уведомления
   mockNotifications.clear()
 
-  // Подготавливаем данные для offers сценария (офферы + уведомления)
-  await mockFreightRequests.seedWithOffers(frId, 4)
+  // Добавляем офферы и уведомления к заявке
+  await mockOffers.simulateIncomingOffers(frId, 4, 0)
+  mockNotifications.seedOffersNotifications(frId, 4)
 
   // НЕ переходим сразу на страницу заявки
   // Пользователь должен кликнуть на уведомление чтобы попасть туда
@@ -298,8 +324,31 @@ async function startOffersTraining() {
   await nextTick()
   await new Promise(resolve => setTimeout(resolve, 100))
 
-  // Входим в сценарий с шага 0 (начинаем с уведомлений)
-  await onboarding.enterSandbox('offers_receive_flow', 0)
+  // Входим в сценарий В РЕЖИМЕ ЦЕПОЧКИ
+  await onboarding.enterSandbox('offers_receive_flow', 0, {
+    freightRequestId: frId,
+  })
+}
+
+async function startCompletionTraining() {
+  // Завершаем текущий сценарий (offers_receive_flow)
+  onboarding.completeScenario()
+
+  // Получаем ID заявки из chain context
+  const frId = onboarding.getChainedFreightRequestId() ?? 'sandbox-fr-completion'
+
+  // Переходим на страницу заявки (она уже confirmed после offersReceiveFlow)
+  await router.push(`/freight-requests/${frId}`)
+
+  // Ждём загрузки страницы
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 200))
+
+  // Входим в completionFlow В РЕЖИМЕ ЦЕПОЧКИ с пропуском intro шага
+  await onboarding.enterSandbox('completion_flow', 0, {
+    freightRequestId: frId,
+    skipIntro: true,
+  })
 }
 
 const arrowClasses = computed(() => {
@@ -330,16 +379,20 @@ const isManualStep = computed(() => {
   return currentStep.value.completionType === 'manual'
 })
 
-// Показываем кнопку "Пропустить" только для manual шагов или если шаг явно skippable
-// НЕ показываем если есть кнопка обучения по предложениям
+// Показываем кнопку "Пропустить" ТОЛЬКО если шаг явно skippable
 const showSkipButton = computed(() => {
   if (!currentStep.value) return false
   if (currentStep.value.showOffersTrainingButton) return false
-  return currentStep.value.completionType === 'manual' || currentStep.value.skippable === true
+  return currentStep.value.skippable === true
 })
 
-// Показываем кнопку "Назад" если не на первом шаге
+// Показываем кнопку "Назад" если не на первом шаге и НЕ action шаг
 const showBackButton = computed(() => {
+  if (!currentStep.value) return false
+  // Для action шагов не показываем кнопки навигации — ждём действия пользователя
+  if (currentStep.value.completionType === 'action') return false
+  // Явно скрыть "Назад" для шагов внутри модалок
+  if (currentStep.value.hideBackButton) return false
   return currentStepIndex.value > 0
 })
 </script>
@@ -353,12 +406,13 @@ const showBackButton = computed(() => {
       leave-to-class="opacity-0 scale-95"
     >
       <div
-        v-if="currentStep && !validationErrorMode"
+        v-if="currentStep && !validationErrorMode && !currentStep.hideTooltip"
         ref="tooltipRef"
-        class="fixed z-[70] max-w-sm max-h-[calc(100vh-200px)] overflow-y-auto rounded-lg border bg-white p-4 shadow-xl pointer-events-none"
+        class="fixed z-[70] max-h-[calc(100vh-200px)] overflow-y-auto rounded-lg border bg-white p-4 shadow-xl pointer-events-none"
         :style="{
-          top: `${position.top}px`,
-          left: `${position.left}px`,
+          top: `${Math.max(12, position.top)}px`,
+          left: `${Math.max(12, position.left)}px`,
+          maxWidth: `min(384px, calc(100vw - 24px))`,
         }"
       >
         <!-- Arrow (скрываем если нет target) -->
@@ -419,6 +473,17 @@ const showBackButton = computed(() => {
             @click="startOffersTraining"
           >
             Пройти обучение по предложениям
+          </Button>
+
+          <!-- Кнопка перехода к обучению по завершению -->
+          <Button
+            v-if="currentStep?.showCompletionTrainingButton"
+            variant="default"
+            size="sm"
+            class="w-full mt-3 pointer-events-auto"
+            @click="startCompletionTraining"
+          >
+            Пройти обучение по завершению
           </Button>
         </div>
       </div>
