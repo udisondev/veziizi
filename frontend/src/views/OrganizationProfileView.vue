@@ -3,19 +3,21 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { organizationsApi } from '@/api/organizations'
 import type { OrganizationDetail, OrganizationRating, OrganizationReview } from '@/types/admin'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { logger } from '@/utils/logger'
 
 // Shared Components
 import { DetailPageHeader } from '@/components/shared'
+import { LoadingSpinner } from '@/components/shared'
 
 const route = useRoute()
 
 const organization = ref<OrganizationDetail | null>(null)
 const rating = ref<OrganizationRating | null>(null)
 const reviews = ref<OrganizationReview[]>([])
-const reviewsTotal = ref(0)
+const reviewsCursor = ref<string | undefined>(undefined)
+const reviewsHasMore = ref(false)
 const isLoading = ref(true)
-const isLoadingMore = ref(false)
 const error = ref('')
 
 const REVIEWS_PER_PAGE = 5
@@ -40,11 +42,21 @@ const statusColors: Record<string, string> = {
   rejected: 'bg-gray-100 text-gray-800',
 }
 
-const hasMoreReviews = computed(() => reviews.value.length < reviewsTotal.value)
+// Infinite scroll setup
+const canLoadMore = computed(() => reviewsHasMore.value && reviewsCursor.value !== undefined)
+const { sentinelRef, isLoadingMore } = useInfiniteScroll(loadMoreReviews, {
+  threshold: 300,
+  enabled: canLoadMore,
+})
 
 async function loadData() {
   isLoading.value = true
   error.value = ''
+  // Reset reviews pagination
+  reviews.value = []
+  reviewsCursor.value = undefined
+  reviewsHasMore.value = false
+
   try {
     const id = route.params.id as string
     const [orgData, ratingData, reviewsData] = await Promise.all([
@@ -55,7 +67,8 @@ async function loadData() {
     organization.value = orgData
     rating.value = ratingData
     reviews.value = reviewsData.items ?? []
-    reviewsTotal.value = reviewsData.total ?? 0
+    reviewsCursor.value = reviewsData.next_cursor
+    reviewsHasMore.value = reviewsData.has_more
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка загрузки'
   } finally {
@@ -64,19 +77,19 @@ async function loadData() {
 }
 
 async function loadMoreReviews() {
-  if (isLoadingMore.value || !hasMoreReviews.value) return
-  isLoadingMore.value = true
+  if (!reviewsHasMore.value || !reviewsCursor.value) return
+
   try {
     const id = route.params.id as string
     const reviewsData = await organizationsApi.getReviews(id, {
       limit: REVIEWS_PER_PAGE,
-      offset: reviews.value.length,
+      cursor: reviewsCursor.value,
     })
     reviews.value.push(...(reviewsData.items ?? []))
+    reviewsCursor.value = reviewsData.next_cursor
+    reviewsHasMore.value = reviewsData.has_more
   } catch (e) {
     logger.error('Failed to load more reviews', e)
-  } finally {
-    isLoadingMore.value = false
   }
 }
 
@@ -195,7 +208,7 @@ watch(() => route.params.id, () => {
         <div class="bg-white rounded-lg shadow p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">
             Отзывы
-            <span v-if="reviewsTotal > 0" class="text-gray-500 font-normal">({{ reviewsTotal }})</span>
+            <span v-if="rating && rating.total_reviews > 0" class="text-gray-500 font-normal">({{ rating.total_reviews }})</span>
           </h2>
 
           <div v-if="reviews.length === 0" class="text-center py-8 text-gray-500">
@@ -234,15 +247,12 @@ watch(() => route.params.id, () => {
               <p v-if="review.comment" class="text-gray-700 mt-2 break-words">{{ review.comment }}</p>
             </div>
 
-            <!-- Load More Button -->
-            <div v-if="hasMoreReviews" class="text-center pt-4">
-              <button
-                @click="loadMoreReviews"
-                :disabled="isLoadingMore"
-                class="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium disabled:opacity-50"
-              >
-                {{ isLoadingMore ? 'Загрузка...' : 'Показать ещё' }}
-              </button>
+            <!-- Infinite scroll sentinel -->
+            <div
+              ref="sentinelRef"
+              class="h-12 flex items-center justify-center"
+            >
+              <LoadingSpinner v-if="isLoadingMore" text="Загрузка..." />
             </div>
           </div>
         </div>
