@@ -65,11 +65,6 @@ export interface OrganizationReview {
   created_at: string
 }
 
-export interface OrganizationReviewsResponse {
-  items: OrganizationReview[]
-  total: number
-}
-
 // Review moderation types
 export interface FraudSignal {
   type: string
