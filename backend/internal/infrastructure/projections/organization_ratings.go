@@ -2,6 +2,8 @@ package projections
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -36,24 +38,54 @@ type OrganizationRating struct {
 
 // ReviewListItem represents a single review for listing
 type ReviewListItem struct {
-	ID              uuid.UUID `json:"id"`
-	OrderID         uuid.UUID `json:"order_id"`
-	ReviewerOrgID   uuid.UUID `json:"reviewer_org_id"`
-	ReviewedOrgID   uuid.UUID `json:"reviewed_org_id"`
-	Rating          int       `json:"rating"`
-	Comment         string    `json:"comment"`
-	Status          string    `json:"status"`
-	RawWeight       float64   `json:"raw_weight"`
-	FinalWeight     float64   `json:"final_weight"`
-	FraudScore      float64   `json:"fraud_score"`
-	ActivationDate  *time.Time `json:"activation_date,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID             uuid.UUID  `json:"id"`
+	OrderID        uuid.UUID  `json:"order_id"`
+	ReviewerOrgID  uuid.UUID  `json:"reviewer_org_id"`
+	ReviewedOrgID  uuid.UUID  `json:"reviewed_org_id"`
+	Rating         int        `json:"rating"`
+	Comment        string     `json:"comment"`
+	Status         string     `json:"status"`
+	RawWeight      float64    `json:"raw_weight"`
+	FinalWeight    float64    `json:"final_weight"`
+	FraudScore     float64    `json:"fraud_score"`
+	ActivationDate *time.Time `json:"activation_date,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
+
+// ReviewsCursor для keyset pagination.
+// Сортировка: created_at DESC, id DESC (для уникальности при одинаковом времени)
+type ReviewsCursor struct {
+	CreatedAt time.Time `json:"t"`
+	ID        uuid.UUID `json:"i"`
+}
+
+// Encode возвращает base64-encoded JSON cursor
+func (c ReviewsCursor) Encode() string {
+	data, _ := json.Marshal(c)
+	return base64.URLEncoding.EncodeToString(data)
+}
+
+// DecodeReviewsCursor декодирует cursor из base64 строки
+func DecodeReviewsCursor(s string) (*ReviewsCursor, error) {
+	if s == "" {
+		return nil, nil
+	}
+	data, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64: %w", err)
+	}
+	var c ReviewsCursor
+	if err := json.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("unmarshal cursor: %w", err)
+	}
+	return &c, nil
 }
 
 // GetRating returns aggregated rating for an organization
 func (p *OrganizationRatingsProjection) GetRating(ctx context.Context, orgID uuid.UUID) (*OrganizationRating, error) {
+	// Get rating stats from organization_ratings
 	query, args, err := p.psql.
-		Select("org_id", "total_reviews", "average_rating", "weighted_average", "pending_reviews").
+		Select("org_id", "average_rating", "weighted_average", "pending_reviews").
 		From("organization_ratings").
 		Where(squirrel.Eq{"org_id": orgID}).
 		ToSql()
@@ -64,22 +96,37 @@ func (p *OrganizationRatingsProjection) GetRating(ctx context.Context, orgID uui
 	var rating OrganizationRating
 	if err := p.db.QueryRow(ctx, query, args...).Scan(
 		&rating.OrgID,
-		&rating.TotalReviews,
 		&rating.AverageRating,
 		&rating.WeightedAverage,
 		&rating.PendingReviews,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// If no rating exists, return zero rating
-			return &OrganizationRating{
+			rating = OrganizationRating{
 				OrgID:           orgID,
-				TotalReviews:    0,
 				AverageRating:   0,
 				WeightedAverage: 0,
 				PendingReviews:  0,
-			}, nil
+			}
+		} else {
+			return nil, fmt.Errorf("scan rating: %w", err)
 		}
-		return nil, fmt.Errorf("scan rating: %w", err)
+	}
+
+	// Count visible reviews (approved + active) from reviews_lookup
+	countQuery, countArgs, err := p.psql.
+		Select("COUNT(*)").
+		From("reviews_lookup").
+		Where(squirrel.And{
+			squirrel.Eq{"reviewed_org_id": orgID},
+			squirrel.Eq{"status": []string{values.StatusActive.String(), values.StatusApproved.String()}},
+		}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build count query: %w", err)
+	}
+
+	if err := p.db.QueryRow(ctx, countQuery, countArgs...).Scan(&rating.TotalReviews); err != nil {
+		return nil, fmt.Errorf("count visible reviews: %w", err)
 	}
 
 	return &rating, nil
@@ -87,13 +134,13 @@ func (p *OrganizationRatingsProjection) GetRating(ctx context.Context, orgID uui
 
 // ListReviews returns active reviews for an organization with pagination
 func (p *OrganizationRatingsProjection) ListReviews(ctx context.Context, orgID uuid.UUID, limit, offset int) ([]ReviewListItem, int, error) {
-	// Count total active reviews
+	// Count total visible reviews (active + approved)
 	countQuery, countArgs, err := p.psql.
 		Select("COUNT(*)").
 		From("reviews_lookup").
 		Where(squirrel.And{
 			squirrel.Eq{"reviewed_org_id": orgID},
-			squirrel.Eq{"status": values.StatusActive.String()},
+			squirrel.Eq{"status": []string{values.StatusActive.String(), values.StatusApproved.String()}},
 		}).
 		ToSql()
 	if err != nil {
@@ -115,7 +162,7 @@ func (p *OrganizationRatingsProjection) ListReviews(ctx context.Context, orgID u
 		From("reviews_lookup").
 		Where(squirrel.And{
 			squirrel.Eq{"reviewed_org_id": orgID},
-			squirrel.Eq{"status": values.StatusActive.String()},
+			squirrel.Eq{"status": []string{values.StatusActive.String(), values.StatusApproved.String()}},
 		}).
 		OrderBy("created_at DESC").
 		Limit(uint64(limit)).
@@ -154,6 +201,96 @@ func (p *OrganizationRatingsProjection) ListReviews(ctx context.Context, orgID u
 	}
 
 	return result, total, nil
+}
+
+// ReviewsCursorResult содержит результаты cursor-based пагинации
+type ReviewsCursorResult struct {
+	Items      []ReviewListItem
+	NextCursor string // пустая строка если больше нет записей
+	HasMore    bool
+}
+
+// ListReviewsByCursor returns visible reviews (active + approved) for an organization using cursor-based pagination
+func (p *OrganizationRatingsProjection) ListReviewsByCursor(ctx context.Context, orgID uuid.UUID, cursor *ReviewsCursor, limit int) (*ReviewsCursorResult, error) {
+	// Базовый запрос
+	builder := p.psql.
+		Select("id", "order_id", "reviewer_org_id", "reviewed_org_id", "rating", "comment", "status", "raw_weight", "final_weight", "fraud_score", "activation_date", "created_at").
+		From("reviews_lookup").
+		Where(squirrel.And{
+			squirrel.Eq{"reviewed_org_id": orgID},
+			squirrel.Eq{"status": []string{values.StatusActive.String(), values.StatusApproved.String()}},
+		}).
+		OrderBy("created_at DESC", "id DESC").
+		Limit(uint64(limit + 1)) // +1 для определения hasMore
+
+	// Применяем cursor если есть
+	if cursor != nil {
+		// Keyset pagination: (created_at, id) < (cursor.created_at, cursor.id)
+		builder = builder.Where(
+			squirrel.Or{
+				squirrel.Lt{"created_at": cursor.CreatedAt},
+				squirrel.And{
+					squirrel.Eq{"created_at": cursor.CreatedAt},
+					squirrel.Lt{"id": cursor.ID},
+				},
+			},
+		)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select query: %w", err)
+	}
+
+	rows, err := p.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query reviews: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]ReviewListItem, 0, limit)
+	for rows.Next() {
+		var item ReviewListItem
+		if err := rows.Scan(
+			&item.ID,
+			&item.OrderID,
+			&item.ReviewerOrgID,
+			&item.ReviewedOrgID,
+			&item.Rating,
+			&item.Comment,
+			&item.Status,
+			&item.RawWeight,
+			&item.FinalWeight,
+			&item.FraudScore,
+			&item.ActivationDate,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, item)
+	}
+
+	// Определяем hasMore и обрезаем до limit
+	hasMore := len(result) > limit
+	if hasMore {
+		result = result[:limit]
+	}
+
+	// Формируем nextCursor
+	var nextCursor string
+	if hasMore && len(result) > 0 {
+		last := result[len(result)-1]
+		nextCursor = ReviewsCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		}.Encode()
+	}
+
+	return &ReviewsCursorResult{
+		Items:      result,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}, nil
 }
 
 // AddWeightedRating updates the aggregated rating when a review is activated

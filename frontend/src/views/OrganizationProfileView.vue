@@ -110,7 +110,7 @@ watch(() => route.params.id, () => {
 <template>
   <div class="min-h-screen bg-background">
     <!-- Header -->
-    <DetailPageHeader back-to="/" back-label="Назад" use-history />
+    <DetailPageHeader back-to="/" back-label="Назад" use-history back-tutorial-id="org-back-button" />
 
     <!-- Content -->
     <main class="max-w-4xl mx-auto px-4 py-6">

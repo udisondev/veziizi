@@ -693,18 +693,21 @@ type RatingResponse struct {
 }
 
 type OrgReviewResponse struct {
-	ID            string  `json:"id"`
-	OrderID       string  `json:"order_id"`
-	ReviewerOrgID string  `json:"reviewer_org_id"`
-	Rating        int     `json:"rating"`
-	Comment       string  `json:"comment"`
-	Weight        float64 `json:"weight"`
-	CreatedAt     string  `json:"created_at"`
+	ID             string  `json:"id"`
+	OrderID        string  `json:"order_id"`
+	ReviewerOrgID  string  `json:"reviewer_org_id"`
+	Rating         int     `json:"rating"`
+	Comment        string  `json:"comment"`
+	Weight         float64 `json:"weight"`
+	Status         string  `json:"status"`
+	ActivationDate *string `json:"activation_date,omitempty"`
+	CreatedAt      string  `json:"created_at"`
 }
 
 type ReviewsListResponse struct {
-	Items []OrgReviewResponse `json:"items"`
-	Total int                 `json:"total"`
+	Items      []OrgReviewResponse `json:"items"`
+	NextCursor string              `json:"next_cursor,omitempty"`
+	HasMore    bool                `json:"has_more"`
 }
 
 func (h *OrganizationHandler) GetRating(w http.ResponseWriter, r *http.Request) {
@@ -740,41 +743,51 @@ func (h *OrganizationHandler) ListReviews(w http.ResponseWriter, r *http.Request
 
 	// Parse pagination params
 	limit := 10
-	offset := 0
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
 			limit = l
 		}
 	}
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
-			offset = o
-		}
+
+	// Parse cursor (cursor-based pagination)
+	cursorStr := r.URL.Query().Get("cursor")
+	cursor, err := projections.DecodeReviewsCursor(cursorStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid cursor")
+		return
 	}
 
-	reviews, total, err := h.ratingsProjection.ListReviews(r.Context(), id, limit, offset)
+	result, err := h.ratingsProjection.ListReviewsByCursor(r.Context(), id, cursor, limit)
 	if err != nil {
 		slog.Error("failed to list reviews", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "failed to list reviews")
 		return
 	}
 
-	items := make([]OrgReviewResponse, 0, len(reviews))
-	for _, review := range reviews {
+	items := make([]OrgReviewResponse, 0, len(result.Items))
+	for _, review := range result.Items {
+		var activationDate *string
+		if review.ActivationDate != nil {
+			formatted := review.ActivationDate.Format("2006-01-02T15:04:05Z")
+			activationDate = &formatted
+		}
 		items = append(items, OrgReviewResponse{
-			ID:            review.ID.String(),
-			OrderID:       review.OrderID.String(),
-			ReviewerOrgID: review.ReviewerOrgID.String(),
-			Rating:        review.Rating,
-			Comment:       review.Comment,
-			Weight:        review.FinalWeight,
-			CreatedAt:     review.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			ID:             review.ID.String(),
+			OrderID:        review.OrderID.String(),
+			ReviewerOrgID:  review.ReviewerOrgID.String(),
+			Rating:         review.Rating,
+			Comment:        review.Comment,
+			Weight:         review.FinalWeight,
+			Status:         review.Status,
+			ActivationDate: activationDate,
+			CreatedAt:      review.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		})
 	}
 
 	writeJSON(w, http.StatusOK, ReviewsListResponse{
-		Items: items,
-		Total: total,
+		Items:      items,
+		NextCursor: result.NextCursor,
+		HasMore:    result.HasMore,
 	})
 }
 
