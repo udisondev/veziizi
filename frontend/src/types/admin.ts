@@ -60,6 +60,8 @@ export interface OrganizationReview {
   reviewer_org_name: string
   rating: number
   comment: string
+  status: string
+  activation_date?: string
   created_at: string
 }
 
