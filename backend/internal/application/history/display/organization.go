@@ -47,6 +47,8 @@ func (f *OrganizationFormatter) Format(ctx context.Context, event eventstore.Eve
 		return f.formatMemberBlocked(ctx, e, resolver), nil
 	case events.MemberUnblocked:
 		return f.formatMemberUnblocked(ctx, e, resolver), nil
+	case events.MemberInfoUpdated:
+		return f.formatMemberInfoUpdated(ctx, e, resolver), nil
 	case events.InvitationCreated:
 		return f.formatInvitationCreated(ctx, e, resolver), nil
 	case events.InvitationAccepted:
@@ -222,6 +224,35 @@ func (f *OrganizationFormatter) formatMemberUnblocked(ctx context.Context, e eve
 
 	if memberName != "" {
 		view.AddField("Сотрудник", memberName)
+	}
+
+	return view
+}
+
+func (f *OrganizationFormatter) formatMemberInfoUpdated(ctx context.Context, e events.MemberInfoUpdated, resolver EntityResolver) DisplayView {
+	memberName := resolver.ResolveMember(ctx, e.MemberID)
+	description := "Данные сотрудника обновлены"
+	if memberName != "" {
+		description = "Данные " + memberName + " обновлены"
+	}
+
+	view := NewDisplayView("Данные сотрудника обновлены", description).
+		WithIcon("user-edit").
+		WithSeverity("info")
+
+	if memberName != "" {
+		view.AddField("Сотрудник", memberName)
+	}
+
+	// Показываем изменения с помощью diff
+	if e.OldName != e.NewName {
+		view.AddDiff("ФИО", e.OldName, e.NewName)
+	}
+	if e.OldEmail != e.NewEmail {
+		view.AddDiff("Email", e.OldEmail, e.NewEmail)
+	}
+	if e.OldPhone != e.NewPhone {
+		view.AddDiff("Телефон", e.OldPhone, e.NewPhone)
 	}
 
 	return view

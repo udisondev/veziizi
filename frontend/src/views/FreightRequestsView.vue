@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -376,19 +376,34 @@ const displayItems = computed<FreightRequestListItem[]>(() => {
 })
 
 // Watch filters and reload (reset pagination on filter change)
+// Debounce to prevent excessive API calls during rapid filter changes
+let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const FILTER_DEBOUNCE_MS = 300
+
 watch(
   [
     ownershipFilter, orgINNFilter, requestNumber, statuses, routePoints,
     minWeight, maxWeight, minPrice, maxPrice, minVolume, maxVolume,
     vehicleSubTypes, paymentMethods, paymentTerms, vatTypes,
   ],
-  async () => {
-    await loadItems()
-    await nextTick()
-    resetInfiniteScroll()
+  () => {
+    if (filterDebounceTimer) {
+      clearTimeout(filterDebounceTimer)
+    }
+    filterDebounceTimer = setTimeout(async () => {
+      await loadItems()
+      await nextTick()
+      resetInfiniteScroll()
+    }, FILTER_DEBOUNCE_MS)
   },
   { deep: true }
 )
+
+onUnmounted(() => {
+  if (filterDebounceTimer) {
+    clearTimeout(filterDebounceTimer)
+  }
+})
 
 onMounted(() => {
   loadItems()

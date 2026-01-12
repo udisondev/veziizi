@@ -51,7 +51,9 @@ export function createSandboxFetch(originalFetch: typeof fetch): typeof fetch {
 
     // Если handler не найден — пропускаем к реальному API
     // (для запросов которые не нужно мокать, например auth/me)
-    console.warn(`[Sandbox] No handler for ${method} ${path}, passing through`)
+    if (import.meta.env.DEV) {
+      console.warn(`[Sandbox] No handler for ${method} ${path}, passing through`)
+    }
     return originalFetch(input, init)
   }
 }

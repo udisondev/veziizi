@@ -11,6 +11,7 @@ export type ScenarioType =
   | 'admin_flow'
   | 'subscriptions_flow'
   | 'telegram_flow'
+  | 'completion_flow'
 
 // Тип завершения шага
 export type StepCompletionType =
@@ -55,12 +56,28 @@ export interface TutorialStep {
   // Можно ли пропустить шаг
   skippable?: boolean
 
+  // Скрыть кнопку "Назад" (для шагов внутри модалок)
+  hideBackButton?: boolean
+
   // Показать кнопку перехода к обучению по предложениям
   showOffersTrainingButton?: boolean
+
+  // Показать кнопку перехода к обучению по завершению
+  showCompletionTrainingButton?: boolean
 
   // Платформа: 'all' (по умолчанию), 'mobile', 'desktop'
   // Шаги с platform: 'mobile' скрываются на desktop и наоборот
   platform?: StepPlatform
+
+  // Скрыть tooltip для этого шага (для action шагов в модальных окнах)
+  hideTooltip?: boolean
+}
+
+// Контекст цепочки курсов
+export interface ChainContext {
+  isChained: boolean
+  freightRequestId: string | null
+  skipIntro: boolean
 }
 
 // Сценарий обучения
@@ -137,9 +154,12 @@ export interface TutorialEvents {
 
   // Modal events
   'rejectModal:opened': void
+  'selectModal:opened': void
+  'unselectModal:opened': void
 
   // Tab navigation
   'tab:offers': void
+  'tab:details': void
 
   // Filters
   'filters:applied': void
@@ -181,6 +201,18 @@ export interface TutorialEvents {
   'route:commentToggled': { pointIndex: number; shown: boolean }
   'route:pointAdded': { newIndex: number }
   'route:pointsReordered': void
+
+  // Completion events (завершение заявки)
+  'completion:confirmOpened': void
+  'completion:completed': { frId: string }
+
+  // Review events (отзывы)
+  'review:ratingSelected': { rating: number }
+  'review:submitted': { frId: string; reviewId: string }
+  'review:skipped': { frId: string }
+  'review:closed': void // При любом закрытии модального окна отзыва
+  'review:editOpened': void
+  'review:edited': { frId: string }
 }
 
 // Ключи событий

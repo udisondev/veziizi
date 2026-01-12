@@ -204,31 +204,198 @@ func (s *PostgresStore) maybeCreateSnapshot(ctx context.Context, aggregateID uui
 		return nil
 	}
 
-	envelopes, err := s.loadAllEnvelopes(ctx, aggregateID, aggregateType)
+	// Create snapshot marker with version only (data stored via SaveWithState for state-based snapshots)
+	// This allows efficient skipping of old events while maintaining backward compatibility
+	query, args, err := s.psql.
+		Insert("snapshots").
+		Columns("aggregate_id", "aggregate_type", "version", "data", "created_at").
+		Values(aggregateID, aggregateType, currentVersion, []byte("{}"), squirrel.Expr("NOW()")).
+		Suffix("ON CONFLICT (aggregate_id) DO UPDATE SET version = EXCLUDED.version, created_at = NOW()").
+		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to load events for snapshot: %w", err)
+		return fmt.Errorf("build snapshot upsert query: %w", err)
 	}
 
-	snapshotData, err := json.Marshal(envelopes)
+	if _, err := s.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("upsert snapshot: %w", err)
+	}
+
+	return nil
+}
+
+// SaveWithState saves events and creates a state-based snapshot.
+// Use this method when the aggregate implements Snapshotable interface.
+// The state parameter should be the result of calling aggregate.State().
+func (s *PostgresStore) SaveWithState(ctx context.Context, state any, events ...Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	return s.db.InTx(ctx, func(ctx context.Context) error {
+		grouped := make(map[aggregateKey][]Event)
+		for _, event := range events {
+			key := aggregateKey{ID: event.AggregateID(), Type: event.AggregateType()}
+			grouped[key] = append(grouped[key], event)
+		}
+
+		for key, aggEvents := range grouped {
+			var lastVersion int64
+
+			for _, event := range aggEvents {
+				envelope, err := NewEventEnvelope(event, nil)
+				if err != nil {
+					return fmt.Errorf("create envelope: %w", err)
+				}
+
+				metadataJSON, err := json.Marshal(envelope.Metadata)
+				if err != nil {
+					return fmt.Errorf("marshal metadata: %w", err)
+				}
+
+				query, args, err := s.psql.
+					Insert("events").
+					Columns("id", "aggregate_id", "aggregate_type", "event_type", "version", "data", "metadata", "occurred_at").
+					Values(
+						envelope.ID,
+						envelope.AggregateID,
+						envelope.AggregateType,
+						envelope.EventType,
+						envelope.Version,
+						envelope.Payload,
+						metadataJSON,
+						envelope.OccurredAt,
+					).
+					ToSql()
+				if err != nil {
+					return fmt.Errorf("build insert query: %w", err)
+				}
+
+				if _, err := s.db.Exec(ctx, query, args...); err != nil {
+					var pgErr *pgconn.PgError
+					if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
+						return ErrConcurrentModification
+					}
+					return fmt.Errorf("insert event: %w", err)
+				}
+
+				lastVersion = event.Version()
+			}
+
+			// Create state-based snapshot if threshold reached
+			if lastVersion%s.snapshotThreshold == 0 && state != nil {
+				if err := s.createStateSnapshot(ctx, key.ID, key.Type, lastVersion, state); err != nil {
+					return fmt.Errorf("create state snapshot: %w", err)
+				}
+			}
+		}
+
+		return nil
+	})
+}
+
+// createStateSnapshot stores aggregate state as snapshot
+func (s *PostgresStore) createStateSnapshot(ctx context.Context, aggregateID uuid.UUID, aggregateType string, version int64, state any) error {
+	stateData, err := json.Marshal(state)
 	if err != nil {
-		return fmt.Errorf("failed to marshal snapshot data: %w", err)
+		return fmt.Errorf("marshal state: %w", err)
 	}
 
 	query, args, err := s.psql.
 		Insert("snapshots").
 		Columns("aggregate_id", "aggregate_type", "version", "data", "created_at").
-		Values(aggregateID, aggregateType, currentVersion, snapshotData, squirrel.Expr("NOW()")).
+		Values(aggregateID, aggregateType, version, stateData, squirrel.Expr("NOW()")).
 		Suffix("ON CONFLICT (aggregate_id) DO UPDATE SET version = EXCLUDED.version, data = EXCLUDED.data, created_at = NOW()").
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build snapshot upsert query: %w", err)
+		return fmt.Errorf("build snapshot upsert query: %w", err)
 	}
 
 	if _, err := s.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("failed to upsert snapshot: %w", err)
+		return fmt.Errorf("upsert snapshot: %w", err)
 	}
 
+	slog.Debug("state snapshot created",
+		slog.String("aggregate_id", aggregateID.String()),
+		slog.String("aggregate_type", aggregateType),
+		slog.Int64("version", version),
+	)
+
 	return nil
+}
+
+// LoadResult contains events and optional snapshot state for aggregate reconstruction
+type LoadResult struct {
+	Events        []Event
+	SnapshotState []byte // Raw JSON state, nil if no snapshot
+	SnapshotVer   int64  // Version of snapshot, 0 if no snapshot
+}
+
+// LoadWithSnapshot loads events and returns snapshot state if available.
+// Callers can use SnapshotState to restore aggregate via FromSnapshot(),
+// then apply remaining Events.
+func (s *PostgresStore) LoadWithSnapshot(ctx context.Context, aggregateID uuid.UUID, aggregateType string) (*LoadResult, error) {
+	snapshot, err := s.loadSnapshot(ctx, aggregateID, aggregateType)
+	if err != nil {
+		return nil, fmt.Errorf("load snapshot: %w", err)
+	}
+
+	var fromVersion int64 = 0
+	var snapshotState []byte
+	var snapshotVer int64
+
+	if snapshot != nil {
+		fromVersion = snapshot.Version
+		snapshotVer = snapshot.Version
+		// Only include state if it's not empty marker
+		if len(snapshot.Data) > 2 { // More than "{}"
+			snapshotState = snapshot.Data
+		}
+	}
+
+	query, args, err := s.psql.
+		Select("id", "aggregate_id", "aggregate_type", "event_type", "version", "data", "metadata", "occurred_at").
+		From("events").
+		Where(squirrel.And{
+			squirrel.Eq{"aggregate_id": aggregateID},
+			squirrel.Eq{"aggregate_type": aggregateType},
+			squirrel.Gt{"version": fromVersion},
+		}).
+		OrderBy("version ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select query: %w", err)
+	}
+
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query events: %w", err)
+	}
+	defer rows.Close()
+
+	var dbRows []eventRow
+	if err := pgxscan.ScanAll(&dbRows, rows); err != nil {
+		return nil, fmt.Errorf("scan events: %w", err)
+	}
+
+	if len(dbRows) == 0 && snapshot == nil {
+		return nil, ErrAggregateNotFound
+	}
+
+	events := make([]Event, 0, len(dbRows))
+	for _, row := range dbRows {
+		envelope := row.toEnvelope()
+		event, err := envelope.UnmarshalEvent()
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal event %s: %w", row.EventType, err)
+		}
+		events = append(events, event)
+	}
+
+	return &LoadResult{
+		Events:        events,
+		SnapshotState: snapshotState,
+		SnapshotVer:   snapshotVer,
+	}, nil
 }
 
 func (s *PostgresStore) loadAllEnvelopes(ctx context.Context, aggregateID uuid.UUID, aggregateType string) ([]EventEnvelope, error) {

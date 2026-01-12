@@ -165,25 +165,43 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   // ===============================
-  // Polling
+  // Polling with Page Visibility API
   // ===============================
+  let visibilityHandler: (() => void) | null = null
+
+  function doPollingTick(): void {
+    // Не полим если вкладка неактивна
+    if (document.hidden) return
+    fetchUnreadCount()
+    fetchRecentNotifications()
+  }
+
   function startPolling(): void {
     if (pollingInterval.value) return
 
     // Сразу загружаем
-    fetchUnreadCount()
-    fetchRecentNotifications()
+    doPollingTick()
 
-    pollingInterval.value = window.setInterval(() => {
-      fetchUnreadCount()
-      fetchRecentNotifications()
-    }, POLLING_INTERVAL_MS)
+    pollingInterval.value = window.setInterval(doPollingTick, POLLING_INTERVAL_MS)
+
+    // Подписываемся на изменение видимости вкладки
+    visibilityHandler = () => {
+      if (!document.hidden) {
+        // Вкладка стала видимой — сразу обновляем
+        doPollingTick()
+      }
+    }
+    document.addEventListener('visibilitychange', visibilityHandler)
   }
 
   function stopPolling(): void {
     if (pollingInterval.value) {
       window.clearInterval(pollingInterval.value)
       pollingInterval.value = null
+    }
+    if (visibilityHandler) {
+      document.removeEventListener('visibilitychange', visibilityHandler)
+      visibilityHandler = null
     }
   }
 

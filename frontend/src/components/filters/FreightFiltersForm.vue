@@ -6,6 +6,7 @@ import type {
   PaymentTerms,
   VatType,
   OwnershipFilter,
+  FreightRequestStatus,
 } from '@/types/freightRequest'
 import {
   allVehicleSubTypeOptions,
@@ -13,7 +14,14 @@ import {
   paymentTermsOptions,
   vatTypeOptions,
   ownershipOptions,
+  freightRequestStatusLabels,
 } from '@/types/freightRequest'
+
+// Опции статусов для ChipButtonGroup (без 'all')
+const statusFilterOptions = Object.entries(freightRequestStatusLabels).map(([value, label]) => ({
+  value: value as FreightRequestStatus,
+  label,
+}))
 
 // UI Components
 import { Label } from '@/components/ui/label'
@@ -66,6 +74,10 @@ interface Props {
   ownership?: OwnershipFilter
   showINN?: boolean
   orgINN?: string
+  showRequestNumber?: boolean
+  requestNumber?: number | null
+  showStatuses?: boolean
+  statuses?: FreightRequestStatus[]
 }
 
 interface Emits {
@@ -94,13 +106,19 @@ interface Emits {
   // Optional fields
   (e: 'update:ownership', value: OwnershipFilter): void
   (e: 'update:orgINN', value: string): void
+  (e: 'update:requestNumber', value: number | null): void
+  (e: 'update:statuses', value: FreightRequestStatus[]): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
   showOwnership: false,
   showINN: false,
+  showRequestNumber: false,
   ownership: 'all',
   orgINN: '',
+  requestNumber: null,
+  showStatuses: false,
+  statuses: () => ['published'],
 })
 
 const emit = defineEmits<Emits>()
@@ -129,6 +147,11 @@ const localVatTypes = computed({
 const localOwnership = computed({
   get: () => props.ownership,
   set: (v) => emit('update:ownership', v as OwnershipFilter),
+})
+
+const localStatuses = computed({
+  get: () => props.statuses,
+  set: (v) => emit('update:statuses', v),
 })
 </script>
 
@@ -163,7 +186,27 @@ const localOwnership = computed({
       />
     </div>
 
-    <Separator v-if="showOwnership || showINN" />
+    <!-- Request Number (optional) -->
+    <div v-if="showRequestNumber" class="space-y-2">
+      <Label>Номер заявки</Label>
+      <Input
+        :model-value="requestNumber ?? ''"
+        type="number"
+        placeholder="Поиск по номеру"
+        @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)"
+      />
+    </div>
+
+    <!-- Statuses (optional) -->
+    <ChipButtonGroup
+      v-if="showStatuses"
+      v-model="localStatuses"
+      :options="statusFilterOptions"
+      label="Статус заявки"
+      empty-text="Не выбрано — все статусы"
+    />
+
+    <Separator v-if="showOwnership || showINN || showRequestNumber || showStatuses" />
 
     <!-- Route Points -->
     <SubscriptionRouteStep

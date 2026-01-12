@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { freightRequestsApi } from '@/api/freightRequests'
+import { computed, watch } from 'vue'
+import { useFreightRequestCompletion } from '@/composables/useFreightRequestCompletion'
+import { useTutorialEvent } from '@/composables/useTutorialEvent'
 import StarRating from './StarRating.vue'
-import type { FreightRequest, FreightReview } from '@/types/freightRequest'
+import type { FreightRequest } from '@/types/freightRequest'
 import { formatDateTime } from '@/utils/formatters'
 
 // UI Components
@@ -33,140 +33,76 @@ const emit = defineEmits<{
   reviewEdited: []
 }>()
 
-const auth = useAuthStore()
+// Tutorial events
+const { emit: emitTutorial } = useTutorialEvent()
 
-// State
-const isLoading = ref(false)
-const error = ref('')
+// Use composable for completion/review logic
+const freightRequestRef = computed(() => props.freightRequest)
 
-// Modals
-const showCompleteConfirm = ref(false)
-const showReviewModal = ref(false)
-const isEditingReview = ref(false)
-
-// Review form
-const reviewRating = ref(5)
-const reviewComment = ref('')
-
-// Computed properties
-const isCustomer = computed(() => props.freightRequest.customer_org_id === auth.organizationId)
-const isCarrier = computed(() => props.freightRequest.carrier_org_id === auth.organizationId)
-
-const hasCompleted = computed(() => {
-  if (isCustomer.value) return props.freightRequest.customer_completed
-  if (isCarrier.value) return props.freightRequest.carrier_completed
-  return false
+const {
+  isLoading,
+  error,
+  showCompleteConfirm,
+  showReviewModal,
+  isEditingReview,
+  reviewRating,
+  reviewComment,
+  isCustomer,
+  hasCompleted,
+  canComplete,
+  myReview,
+  counterpartyReview,
+  canEditReview,
+  editTimeRemaining,
+  counterpartyName,
+  handleComplete: doComplete,
+  openReviewModal: doOpenReviewModal,
+  submitReview: doSubmitReview,
+  skipReview,
+} = useFreightRequestCompletion({
+  freightRequest: freightRequestRef,
+  onCompleted: () => emit('completed'),
+  onReviewLeft: () => emit('reviewLeft'),
+  onReviewEdited: () => emit('reviewEdited'),
 })
 
-const canComplete = computed(() => {
-  const status = props.freightRequest.status
-  const canCompleteStatuses = ['confirmed', 'partially_completed']
-  return canCompleteStatuses.includes(status) && !hasCompleted.value
-})
-
-const myReview = computed((): FreightReview | undefined => {
-  if (isCustomer.value) return props.freightRequest.customer_review
-  if (isCarrier.value) return props.freightRequest.carrier_review
-  return undefined
-})
-
-const counterpartyReview = computed((): FreightReview | undefined => {
-  if (isCustomer.value) return props.freightRequest.carrier_review
-  if (isCarrier.value) return props.freightRequest.customer_review
-  return undefined
-})
-
-const canLeaveReview = computed(() => {
-  return hasCompleted.value && !myReview.value
-})
-
-const canEditReview = computed(() => {
-  return myReview.value?.can_edit ?? false
-})
-
-const editTimeRemaining = computed(() => {
-  if (!myReview.value?.edit_expires_at) return null
-  const expiresAt = new Date(myReview.value.edit_expires_at)
-  const now = new Date()
-  const diffMs = expiresAt.getTime() - now.getTime()
-  if (diffMs <= 0) return null
-
-  const hours = Math.floor(diffMs / (1000 * 60 * 60))
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-
-  if (hours > 0) {
-    return `${hours} ч ${minutes} мин`
+// Watch for confirm modal opening
+watch(showCompleteConfirm, (opened) => {
+  if (opened) {
+    emitTutorial('completion:confirmOpened', undefined)
   }
-  return `${minutes} мин`
 })
 
-const counterpartyName = computed(() => {
-  if (isCustomer.value) {
-    return props.freightRequest.carrier_org_name || 'Перевозчик'
-  }
-  return props.freightRequest.customer_org_name || 'Заказчик'
+// Watch for rating selection
+watch(reviewRating, (rating) => {
+  emitTutorial('review:ratingSelected', { rating })
 })
 
-// Actions
+// Wrap actions to emit tutorial events
 async function handleComplete() {
-  isLoading.value = true
-  error.value = ''
-  try {
-    await freightRequestsApi.complete(props.freightRequest.id)
-    showCompleteConfirm.value = false
-    // Показываем модал для отзыва
-    showReviewModal.value = true
-    emit('completed')
-  } catch (e: any) {
-    error.value = e.message || 'Ошибка при завершении'
-  } finally {
-    isLoading.value = false
-  }
+  await doComplete()
+  emitTutorial('completion:completed', { frId: props.freightRequest.id })
 }
 
 function openReviewModal(edit = false) {
-  isEditingReview.value = edit
-  if (edit && myReview.value) {
-    reviewRating.value = myReview.value.rating
-    reviewComment.value = myReview.value.comment || ''
-  } else {
-    reviewRating.value = 5
-    reviewComment.value = ''
+  if (edit) {
+    emitTutorial('review:editOpened', undefined)
   }
-  showReviewModal.value = true
+  doOpenReviewModal(edit)
 }
 
 async function submitReview() {
-  isLoading.value = true
-  error.value = ''
-  try {
-    const data = {
-      rating: reviewRating.value,
-      comment: reviewComment.value || undefined,
-    }
-
-    if (isEditingReview.value) {
-      await freightRequestsApi.editReview(props.freightRequest.id, data)
-      emit('reviewEdited')
-    } else {
-      await freightRequestsApi.leaveReview(props.freightRequest.id, data)
-      emit('reviewLeft')
-    }
-    showReviewModal.value = false
-  } catch (e: any) {
-    error.value = e.message || 'Ошибка при сохранении отзыва'
-  } finally {
-    isLoading.value = false
+  await doSubmitReview()
+  if (isEditingReview.value) {
+    emitTutorial('review:edited', { frId: props.freightRequest.id })
+  } else {
+    emitTutorial('review:submitted', { frId: props.freightRequest.id, reviewId: myReview.value?.id || '' })
   }
-}
-
-function skipReview() {
-  showReviewModal.value = false
 }
 </script>
 
 <template>
-  <Card class="mt-4">
+  <Card class="mt-4" data-tutorial="completion-section">
     <CardHeader>
       <CardTitle class="flex items-center gap-2">
         <CheckCircle2 class="h-5 w-5" />
@@ -175,7 +111,7 @@ function skipReview() {
     </CardHeader>
     <CardContent class="space-y-4">
       <!-- Completion Status -->
-      <div class="space-y-2">
+      <div class="space-y-2" data-tutorial="completion-status">
         <h4 class="font-medium">Статус завершения</h4>
         <div class="flex flex-col gap-2 text-sm">
           <div class="flex items-center gap-2">
@@ -211,7 +147,7 @@ function skipReview() {
 
       <!-- Complete Button -->
       <div v-if="canComplete">
-        <Button @click="showCompleteConfirm = true" :disabled="isLoading">
+        <Button @click="showCompleteConfirm = true" :disabled="isLoading" data-tutorial="complete-btn">
           <Check class="mr-2 h-4 w-4" />
           Завершить перевозку
         </Button>
@@ -231,7 +167,7 @@ function skipReview() {
           <p v-if="myReview.comment" class="text-sm">{{ myReview.comment }}</p>
 
           <div v-if="canEditReview" class="flex items-center gap-2">
-            <Button variant="outline" size="sm" @click="openReviewModal(true)">
+            <Button variant="outline" size="sm" @click="openReviewModal(true)" data-tutorial="edit-review-btn">
               <Pencil class="mr-2 h-3 w-3" />
               Редактировать
             </Button>
@@ -272,7 +208,7 @@ function skipReview() {
 
   <!-- Complete Confirmation -->
   <Dialog v-model:open="showCompleteConfirm">
-    <DialogContent class="sm:max-w-md">
+    <DialogContent class="sm:max-w-md" data-tutorial="complete-confirm-modal">
       <DialogHeader>
         <DialogTitle>Завершить перевозку?</DialogTitle>
         <DialogDescription>
@@ -283,7 +219,7 @@ function skipReview() {
         <Button variant="outline" @click="showCompleteConfirm = false">
           Отмена
         </Button>
-        <Button @click="handleComplete" :disabled="isLoading">
+        <Button @click="handleComplete" :disabled="isLoading" data-tutorial="complete-confirm-btn">
           Завершить
         </Button>
       </DialogFooter>
@@ -292,7 +228,7 @@ function skipReview() {
 
   <!-- Review Modal -->
   <Dialog v-model:open="showReviewModal">
-    <DialogContent class="sm:max-w-md">
+    <DialogContent class="sm:max-w-md" data-tutorial="review-modal">
       <DialogHeader>
         <DialogTitle>
           {{ isEditingReview ? 'Редактировать отзыв' : 'Оставить отзыв' }}
@@ -308,7 +244,7 @@ function skipReview() {
       <div class="space-y-4 py-4">
         <div class="space-y-2">
           <Label>Оценка</Label>
-          <StarRating v-model="reviewRating" size="lg" />
+          <StarRating v-model="reviewRating" size="lg" data-tutorial="review-rating" />
         </div>
 
         <div class="space-y-2">
@@ -318,18 +254,19 @@ function skipReview() {
             v-model="reviewComment"
             placeholder="Опишите ваш опыт работы..."
             rows="3"
+            data-tutorial="review-comment"
           />
         </div>
 
         <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
       </div>
 
-      <DialogFooter class="gap-2 sm:gap-0">
-        <Button v-if="!isEditingReview" variant="outline" @click="skipReview">
+      <DialogFooter class="gap-2">
+        <Button variant="ghost" @click="skipReview" data-tutorial="review-skip-btn">
           Пропустить
         </Button>
-        <Button @click="submitReview" :disabled="isLoading || reviewRating < 1">
-          {{ isEditingReview ? 'Сохранить' : 'Отправить отзыв' }}
+        <Button @click="submitReview" :disabled="isLoading || reviewRating < 1" data-tutorial="review-submit-btn">
+          {{ isEditingReview ? 'Сохранить' : 'Отправить' }}
         </Button>
       </DialogFooter>
     </DialogContent>

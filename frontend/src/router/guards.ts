@@ -1,5 +1,6 @@
 import type { RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAdminStore } from '@/stores/admin'
 
 type NavigationGuardReturn =
   | boolean
@@ -82,10 +83,14 @@ export async function orgActiveGuard(
 export async function adminGuard(
   _to: RouteLocationNormalized
 ): Promise<NavigationGuardReturn> {
-  // Admin auth is separate - check localStorage
-  const adminId = localStorage.getItem('adminId')
+  const admin = useAdminStore()
 
-  if (!adminId) {
+  // Initialize admin state if not done yet
+  if (!admin.isInitialized) {
+    await admin.initialize()
+  }
+
+  if (!admin.isAuthenticated) {
     return { name: 'admin-login' }
   }
 

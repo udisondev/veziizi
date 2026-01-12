@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs } from 'vue'
 import {
   DialogClose,
   DialogContent,
@@ -12,8 +12,13 @@ import {
 import { X } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 
+defineOptions({
+  inheritAttrs: false,
+})
+
 const props = defineProps<DialogContentProps & { class?: string }>()
 const emits = defineEmits<DialogContentEmits>()
+const attrs = useAttrs()
 
 const forwarded = useForwardPropsEmits(props, emits)
 
@@ -30,7 +35,7 @@ const contentClasses = computed(() =>
     <DialogOverlay
       class="fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
     />
-    <DialogContent v-bind="forwarded" :class="contentClasses">
+    <DialogContent v-bind="{ ...forwarded, ...attrs }" :class="contentClasses">
       <slot />
       <DialogClose
         class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"

@@ -51,6 +51,7 @@ func (h *AdminHandler) RegisterRoutes(r *mux.Router) {
 	// Auth
 	r.HandleFunc("/api/v1/admin/auth/login", h.Login).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/admin/auth/logout", h.Logout).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/admin/auth/me", h.Me).Methods(http.MethodGet)
 
 	// Organizations
 	r.HandleFunc("/api/v1/admin/organizations", h.ListPending).Methods(http.MethodGet)
@@ -130,6 +131,38 @@ func (h *AdminHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type AdminMeResponse struct {
+	AdminID string `json:"admin_id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+}
+
+func (h *AdminHandler) Me(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := h.session.GetAdminID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	adm, err := h.adminRepo.GetByID(r.Context(), adminID)
+	if err != nil {
+		slog.Error("failed to get admin", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if !adm.IsActive {
+		writeError(w, http.StatusForbidden, "account is disabled")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, AdminMeResponse{
+		AdminID: adm.ID.String(),
+		Email:   adm.Email,
+		Name:    adm.Name,
+	})
 }
 
 type PendingOrganizationResponse struct {

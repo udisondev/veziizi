@@ -25,6 +25,7 @@ import {
   Truck,
   Users,
   Sparkles,
+  CheckCircle2,
 } from 'lucide-vue-next'
 import type { ScenarioType } from '@/types/tutorial'
 
@@ -75,6 +76,14 @@ const scenarios = computed<ScenarioOption[]>(() => [
     description: 'Как выбирать предложения перевозчиков',
     icon: Truck,
     color: 'bg-green-100 text-green-600',
+    show: true,
+  },
+  {
+    type: 'completion_flow',
+    title: 'Завершение заявки',
+    description: 'Как завершить перевозку и оставить отзыв',
+    icon: CheckCircle2,
+    color: 'bg-emerald-100 text-emerald-600',
     show: true,
   },
   {

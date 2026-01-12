@@ -44,7 +44,12 @@ class MockFreightRequestStore {
   async seedWithOffers(
     frId: string,
     offersCount: number = 4,
-    owner?: { customer_org_id: string; customer_org_name: string; customer_member_id: string }
+    owner?: {
+      customer_org_id: string
+      customer_org_name: string
+      customer_member_id: string
+      customer_member_name?: string
+    }
   ): Promise<void> {
     // Создаём заявку с указанным ID
     const fr = this.generateMockRequest()
@@ -52,6 +57,7 @@ class MockFreightRequestStore {
     fr.customer_org_id = owner?.customer_org_id || 'sandbox-org-1'
     fr.customer_org_name = owner?.customer_org_name || 'Моя организация (Sandbox)'
     fr.customer_member_id = owner?.customer_member_id || 'sandbox-member-1'
+    fr.customer_member_name = owner?.customer_member_name
     fr.status = 'published'
 
     this.items.set(frId, fr)
@@ -131,6 +137,109 @@ class MockFreightRequestStore {
     if (fr) {
       fr.status = 'cancelled'
     }
+  }
+
+  /**
+   * Завершить заявку (для sandbox)
+   */
+  complete(id: string, party: 'customer' | 'carrier'): void {
+    const fr = this.items.get(id)
+    if (!fr) return
+
+    const now = new Date().toISOString()
+
+    if (party === 'customer') {
+      fr.customer_completed = true
+      fr.customer_completed_at = now
+    } else {
+      fr.carrier_completed = true
+      fr.carrier_completed_at = now
+    }
+
+    // Если обе стороны завершили - статус completed
+    if (fr.customer_completed && fr.carrier_completed) {
+      fr.status = 'completed'
+      fr.completed_at = now
+    } else {
+      fr.status = 'partially_completed'
+    }
+  }
+
+  /**
+   * Оставить отзыв (для sandbox)
+   */
+  leaveReview(id: string, party: 'customer' | 'carrier', rating: number, comment?: string): string {
+    const fr = this.items.get(id)
+    if (!fr) return ''
+
+    const reviewId = generateId('review')
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000) // +24 часа
+
+    const review = {
+      id: reviewId,
+      rating,
+      comment,
+      created_at: now.toISOString(),
+      can_edit: true,
+      edit_expires_at: expiresAt.toISOString(),
+    }
+
+    if (party === 'customer') {
+      fr.customer_review = review
+    } else {
+      fr.carrier_review = review
+    }
+
+    return reviewId
+  }
+
+  /**
+   * Редактировать отзыв (для sandbox)
+   */
+  editReview(id: string, party: 'customer' | 'carrier', rating: number, comment?: string): void {
+    const fr = this.items.get(id)
+    if (!fr) return
+
+    const review = party === 'customer' ? fr.customer_review : fr.carrier_review
+    if (!review) return
+
+    review.rating = rating
+    review.comment = comment
+  }
+
+  /**
+   * Создать подтверждённую заявку для сценария завершения
+   */
+  async seedConfirmedRequest(
+    frId: string,
+    owner: {
+      customer_org_id: string
+      customer_org_name: string
+      customer_member_id: string
+      customer_member_name?: string
+    }
+  ): Promise<void> {
+    // Создаём базовую заявку
+    const fr = this.generateMockRequest()
+    fr.id = frId
+    fr.customer_org_id = owner.customer_org_id
+    fr.customer_org_name = owner.customer_org_name
+    fr.customer_member_id = owner.customer_member_id
+    fr.customer_member_name = owner.customer_member_name
+    fr.status = 'confirmed'
+
+    // Данные перевозчика (mock)
+    fr.carrier_org_id = 'carrier-sandbox-1'
+    fr.carrier_org_name = 'ТрансЛогистик'
+    fr.carrier_member_id = 'carrier-member-1'
+    fr.carrier_member_name = 'Иван Петров'
+
+    // Статусы завершения
+    fr.customer_completed = false
+    fr.carrier_completed = false
+
+    this.items.set(frId, fr)
   }
 
   /**

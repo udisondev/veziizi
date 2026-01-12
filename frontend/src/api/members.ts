@@ -41,4 +41,8 @@ export const membersApi = {
   unblock(orgId: string, memberId: string): Promise<void> {
     return api.post(`/organizations/${orgId}/members/${memberId}/unblock`)
   },
+
+  updateInfo(orgId: string, memberId: string, name: string, email: string, phone: string): Promise<void> {
+    return api.patch(`/organizations/${orgId}/members/${memberId}/info`, { name, email, phone })
+  },
 }

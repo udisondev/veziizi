@@ -10,16 +10,17 @@ export { mockBot } from './bot'
 export { mockMembers } from './members'
 export { mockNotifications } from './notifications'
 
+// Импорты для resetAllMockData
+import { mockFreightRequests } from './freightRequests'
+import { mockOffers } from './offers'
+import { mockBot } from './bot'
+import { mockMembers } from './members'
+import { mockNotifications } from './notifications'
+
 /**
  * Сбросить все mock stores
  */
 export function resetAllMockData(): void {
-  const { mockFreightRequests } = require('./freightRequests')
-  const { mockOffers } = require('./offers')
-  const { mockBot } = require('./bot')
-  const { mockMembers } = require('./members')
-  const { mockNotifications } = require('./notifications')
-
   mockFreightRequests.clear()
   mockOffers.clear()
   mockBot.reset()

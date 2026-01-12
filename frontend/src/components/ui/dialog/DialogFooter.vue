@@ -7,7 +7,7 @@ const props = defineProps<{
 }>()
 
 const classes = computed(() =>
-  cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-2', props.class)
+  cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3', props.class)
 )
 </script>
 

@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator'
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -106,6 +107,7 @@ const userInitial = computed(() => {
             <SheetContent side="left" class="w-72">
               <SheetHeader>
                 <SheetTitle class="text-left">Меню</SheetTitle>
+                <SheetDescription class="sr-only">Навигация по приложению</SheetDescription>
               </SheetHeader>
               <nav class="mt-6 space-y-1">
                 <button

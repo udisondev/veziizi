@@ -239,3 +239,109 @@ func (t *Ticket) apply(evt eventstore.Event) {
 		t.updatedAt = e.OccurredAt()
 	}
 }
+
+// =====================================
+// Snapshot support for efficient loading
+// =====================================
+
+// TicketSnapshot represents serializable state of Ticket aggregate
+type TicketSnapshot struct {
+	ID           uuid.UUID                    `json:"id"`
+	Version      int64                        `json:"version"`
+	TicketNumber int64                        `json:"ticket_number"`
+	MemberID     uuid.UUID                    `json:"member_id"`
+	OrgID        uuid.UUID                    `json:"org_id"`
+	Subject      string                       `json:"subject"`
+	Status       values.TicketStatus          `json:"status"`
+	Messages     map[uuid.UUID]MessageSnapshot `json:"messages"`
+	CreatedAt    time.Time                    `json:"created_at"`
+	UpdatedAt    time.Time                    `json:"updated_at"`
+	ClosedAt     *time.Time                   `json:"closed_at,omitempty"`
+}
+
+// MessageSnapshot represents serializable state of Message entity
+type MessageSnapshot struct {
+	ID         uuid.UUID            `json:"id"`
+	SenderType entities.SenderType  `json:"sender_type"`
+	SenderID   uuid.UUID            `json:"sender_id"`
+	Content    string               `json:"content"`
+	CreatedAt  time.Time            `json:"created_at"`
+}
+
+// State returns current aggregate state for snapshot storage.
+// Implements aggregate.Snapshotable interface.
+func (t *Ticket) State() any {
+	messages := make(map[uuid.UUID]MessageSnapshot, len(t.messages))
+	for id, m := range t.messages {
+		messages[id] = MessageSnapshot{
+			ID:         m.ID(),
+			SenderType: m.SenderType(),
+			SenderID:   m.SenderID(),
+			Content:    m.Content(),
+			CreatedAt:  m.CreatedAt(),
+		}
+	}
+
+	return TicketSnapshot{
+		ID:           t.ID(),
+		Version:      t.Version(),
+		TicketNumber: t.ticketNumber,
+		MemberID:     t.memberID,
+		OrgID:        t.orgID,
+		Subject:      t.subject,
+		Status:       t.status,
+		Messages:     messages,
+		CreatedAt:    t.createdAt,
+		UpdatedAt:    t.updatedAt,
+		ClosedAt:     t.closedAt,
+	}
+}
+
+// FromSnapshot restores aggregate from snapshot state.
+// Implements aggregate.Snapshotable interface.
+func (t *Ticket) FromSnapshot(state any) error {
+	snap, ok := state.(TicketSnapshot)
+	if !ok {
+		return ErrInvalidSnapshotType
+	}
+
+	t.Base.SetID(snap.ID)
+	t.Base.SetVersion(snap.Version)
+
+	t.ticketNumber = snap.TicketNumber
+	t.memberID = snap.MemberID
+	t.orgID = snap.OrgID
+	t.subject = snap.Subject
+	t.status = snap.Status
+	t.createdAt = snap.CreatedAt
+	t.updatedAt = snap.UpdatedAt
+	t.closedAt = snap.ClosedAt
+
+	t.messages = make(map[uuid.UUID]*entities.Message, len(snap.Messages))
+	for id, ms := range snap.Messages {
+		msg := entities.NewMessage(
+			ms.ID,
+			ms.SenderType,
+			ms.SenderID,
+			ms.Content,
+			ms.CreatedAt,
+		)
+		t.messages[id] = &msg
+	}
+
+	return nil
+}
+
+// NewFromSnapshot creates Ticket from snapshot state.
+func NewFromSnapshot(id uuid.UUID, state any) (*Ticket, error) {
+	t := &Ticket{
+		Base:     aggregate.NewBase(id),
+		messages: make(map[uuid.UUID]*entities.Message),
+	}
+
+	if err := t.FromSnapshot(state); err != nil {
+		return nil, err
+	}
+
+	return t, nil
+}

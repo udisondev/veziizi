@@ -7,7 +7,6 @@ import AppHeader from '@/components/ui/AppHeader.vue'
 import DevUserSwitcher from '@/components/dev/DevUserSwitcher.vue'
 import { Toaster } from '@/components/ui/toast'
 import { devApi } from '@/api/dev'
-import { initSandboxInterceptor } from '@/sandbox/api/interceptor'
 import {
   TutorialOverlay,
   TutorialTooltip,
@@ -31,11 +30,7 @@ const showHeader = computed(() => {
 const isDevMode = ref(false)
 
 onMounted(async () => {
-  // Initialize sandbox API interceptor
-  initSandboxInterceptor()
-
-  // Load onboarding progress from localStorage
-  onboarding.loadProgress()
+  // Sandbox interceptor и loadProgress инициализируются в main.ts ДО монтирования app
 
   if (import.meta.env.DEV) {
     try {

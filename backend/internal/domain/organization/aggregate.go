@@ -451,6 +451,70 @@ func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
 	return nil
 }
 
+// UpdateMemberInfo updates member's name, email and phone (partial update)
+// Rules:
+// - Owner/admin can edit any non-owner member
+// - Owner can edit only themselves among owners
+// - Cannot edit blocked members
+// - nil values mean "don't change"
+func (o *Organization) UpdateMemberInfo(actorID, memberID uuid.UUID, name, email, phone *string) error {
+	actor, ok := o.members[actorID]
+	if !ok {
+		return ErrMemberNotFound
+	}
+
+	member, ok := o.members[memberID]
+	if !ok {
+		return ErrMemberNotFound
+	}
+
+	// Owner can only be edited by themselves
+	if member.Role() == values.MemberRoleOwner {
+		if actorID != memberID {
+			return ErrCannotEditOwner
+		}
+	} else {
+		// For non-owner members, actor must have CanManageMembers permission
+		// OR be editing themselves
+		if actorID != memberID && !actor.CanManageMembers() {
+			return ErrInsufficientPermissions
+		}
+	}
+
+	// Resolve final values - use current if nil
+	newName := member.Name()
+	if name != nil {
+		newName = *name
+	}
+	newEmail := member.Email()
+	if email != nil {
+		newEmail = *email
+	}
+	newPhone := member.Phone()
+	if phone != nil {
+		newPhone = *phone
+	}
+
+	// Don't apply if nothing changed
+	if member.Name() == newName && member.Email() == newEmail && member.Phone() == newPhone {
+		return nil
+	}
+
+	o.Apply(events.MemberInfoUpdated{
+		BaseEvent: eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		MemberID:  memberID,
+		OldName:   member.Name(),
+		NewName:   newName,
+		OldEmail:  member.Email(),
+		NewEmail:  newEmail,
+		OldPhone:  member.Phone(),
+		NewPhone:  newPhone,
+		UpdatedBy: actorID,
+	})
+
+	return nil
+}
+
 // RemoveMember removes member from organization (dev only, no permission checks)
 func (o *Organization) RemoveMember(memberID uuid.UUID) error {
 	member, ok := o.members[memberID]
@@ -570,7 +634,6 @@ func (o *Organization) apply(evt eventstore.Event) {
 		member := entities.NewMember(
 			e.MemberID,
 			e.Email,
-			e.PasswordHash,
 			e.Name,
 			e.Phone,
 			e.Role,
@@ -593,6 +656,11 @@ func (o *Organization) apply(evt eventstore.Event) {
 	case events.MemberUnblocked:
 		if m, ok := o.members[e.MemberID]; ok {
 			m.Unblock()
+		}
+
+	case events.MemberInfoUpdated:
+		if m, ok := o.members[e.MemberID]; ok {
+			m.UpdateInfo(e.NewName, e.NewEmail, e.NewPhone)
 		}
 
 	case events.InvitationCreated:
@@ -645,4 +713,192 @@ func (o *Organization) apply(evt eventstore.Event) {
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+// =====================================
+// Snapshot support for efficient loading
+// =====================================
+
+// OrganizationSnapshot represents serializable state of Organization aggregate
+type OrganizationSnapshot struct {
+	ID                   uuid.UUID                  `json:"id"`
+	Version              int64                      `json:"version"`
+	Name                 string                     `json:"name"`
+	INN                  string                     `json:"inn"`
+	LegalName            string                     `json:"legal_name"`
+	Country              values.Country             `json:"country"`
+	Phone                string                     `json:"phone"`
+	Email                string                     `json:"email"`
+	Address              values.Address             `json:"address"`
+	Status               values.OrganizationStatus  `json:"status"`
+	CreatedAt            time.Time                  `json:"created_at"`
+	SuspendedAt          *time.Time                 `json:"suspended_at,omitempty"`
+	IsConfirmedFraudster bool                       `json:"is_confirmed_fraudster"`
+	IsSuspectedFraudster bool                       `json:"is_suspected_fraudster"`
+	FraudsterMarkedAt    *time.Time                 `json:"fraudster_marked_at,omitempty"`
+	FraudsterMarkedBy    *uuid.UUID                 `json:"fraudster_marked_by,omitempty"`
+	FraudsterReason      string                     `json:"fraudster_reason,omitempty"`
+	Members              map[uuid.UUID]MemberSnapshot     `json:"members"`
+	Invitations          map[uuid.UUID]InvitationSnapshot `json:"invitations"`
+}
+
+// MemberSnapshot represents serializable state of Member entity
+type MemberSnapshot struct {
+	ID         uuid.UUID           `json:"id"`
+	Email      string              `json:"email"`
+	Name       string              `json:"name"`
+	Phone      string              `json:"phone"`
+	TelegramID *int64              `json:"telegram_id,omitempty"`
+	Role       values.MemberRole   `json:"role"`
+	Status     values.MemberStatus `json:"status"`
+	CreatedAt  time.Time           `json:"created_at"`
+}
+
+// InvitationSnapshot represents serializable state of Invitation entity
+type InvitationSnapshot struct {
+	ID        uuid.UUID               `json:"id"`
+	Email     string                  `json:"email"`
+	Role      values.MemberRole       `json:"role"`
+	Token     string                  `json:"token"`
+	Status    values.InvitationStatus `json:"status"`
+	CreatedBy uuid.UUID               `json:"created_by"`
+	CreatedAt time.Time               `json:"created_at"`
+	ExpiresAt time.Time               `json:"expires_at"`
+	Name      *string                 `json:"name,omitempty"`
+	Phone     *string                 `json:"phone,omitempty"`
+}
+
+// State returns current aggregate state for snapshot storage.
+// Implements aggregate.Snapshotable interface.
+func (o *Organization) State() any {
+	members := make(map[uuid.UUID]MemberSnapshot, len(o.members))
+	for id, m := range o.members {
+		members[id] = MemberSnapshot{
+			ID:         m.ID(),
+			Email:      m.Email(),
+			Name:       m.Name(),
+			Phone:      m.Phone(),
+			TelegramID: m.TelegramID(),
+			Role:       m.Role(),
+			Status:     m.Status(),
+			CreatedAt:  m.CreatedAt(),
+		}
+	}
+
+	invitations := make(map[uuid.UUID]InvitationSnapshot, len(o.invitations))
+	for id, inv := range o.invitations {
+		invitations[id] = InvitationSnapshot{
+			ID:        inv.ID(),
+			Email:     inv.Email(),
+			Role:      inv.Role(),
+			Token:     inv.Token(),
+			Status:    inv.Status(),
+			CreatedBy: inv.CreatedBy(),
+			CreatedAt: inv.CreatedAt(),
+			ExpiresAt: inv.ExpiresAt(),
+			Name:      inv.Name(),
+			Phone:     inv.Phone(),
+		}
+	}
+
+	return OrganizationSnapshot{
+		ID:                   o.ID(),
+		Version:              o.Version(),
+		Name:                 o.name,
+		INN:                  o.inn,
+		LegalName:            o.legalName,
+		Country:              o.country,
+		Phone:                o.phone,
+		Email:                o.email,
+		Address:              o.address,
+		Status:               o.status,
+		CreatedAt:            o.createdAt,
+		SuspendedAt:          o.suspendedAt,
+		IsConfirmedFraudster: o.isConfirmedFraudster,
+		IsSuspectedFraudster: o.isSuspectedFraudster,
+		FraudsterMarkedAt:    o.fraudsterMarkedAt,
+		FraudsterMarkedBy:    o.fraudsterMarkedBy,
+		FraudsterReason:      o.fraudsterReason,
+		Members:              members,
+		Invitations:          invitations,
+	}
+}
+
+// FromSnapshot restores aggregate from snapshot state.
+// Implements aggregate.Snapshotable interface.
+func (o *Organization) FromSnapshot(state any) error {
+	snap, ok := state.(OrganizationSnapshot)
+	if !ok {
+		return fmt.Errorf("invalid snapshot type: expected OrganizationSnapshot, got %T", state)
+	}
+
+	// Restore base aggregate state
+	o.Base.SetID(snap.ID)
+	o.Base.SetVersion(snap.Version)
+
+	o.name = snap.Name
+	o.inn = snap.INN
+	o.legalName = snap.LegalName
+	o.country = snap.Country
+	o.phone = snap.Phone
+	o.email = snap.Email
+	o.address = snap.Address
+	o.status = snap.Status
+	o.createdAt = snap.CreatedAt
+	o.suspendedAt = snap.SuspendedAt
+	o.isConfirmedFraudster = snap.IsConfirmedFraudster
+	o.isSuspectedFraudster = snap.IsSuspectedFraudster
+	o.fraudsterMarkedAt = snap.FraudsterMarkedAt
+	o.fraudsterMarkedBy = snap.FraudsterMarkedBy
+	o.fraudsterReason = snap.FraudsterReason
+
+	o.members = make(map[uuid.UUID]*entities.Member, len(snap.Members))
+	for id, ms := range snap.Members {
+		m := entities.RestoreMember(
+			ms.ID,
+			ms.Email,
+			ms.Name,
+			ms.Phone,
+			ms.TelegramID,
+			ms.Role,
+			ms.Status,
+			ms.CreatedAt,
+		)
+		o.members[id] = &m
+	}
+
+	o.invitations = make(map[uuid.UUID]*entities.Invitation, len(snap.Invitations))
+	for id, is := range snap.Invitations {
+		inv := entities.RestoreInvitation(
+			is.ID,
+			is.Email,
+			is.Role,
+			is.Token,
+			is.Status,
+			is.CreatedBy,
+			is.CreatedAt,
+			is.ExpiresAt,
+			is.Name,
+			is.Phone,
+		)
+		o.invitations[id] = &inv
+	}
+
+	return nil
+}
+
+// NewFromSnapshot creates Organization from snapshot state.
+// Used by event store when loading aggregate with snapshot.
+func NewFromSnapshot(id uuid.UUID, state any) (*Organization, error) {
+	org := &Organization{
+		Base:        aggregate.NewBase(id),
+		members:     make(map[uuid.UUID]*entities.Member),
+		invitations: make(map[uuid.UUID]*entities.Invitation),
+	}
+
+	if err := org.FromSnapshot(state); err != nil {
+		return nil, fmt.Errorf("restore from snapshot: %w", err)
+	}
+
+	return org, nil
 }

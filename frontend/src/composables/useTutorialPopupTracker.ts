@@ -108,7 +108,9 @@ export function useTutorialPopupTracker() {
         }
       } catch (e) {
         // Некоторые селекторы могут быть невалидными в определённых браузерах
-        console.warn(`[PopupTracker] Invalid selector: ${selector}`, e)
+        if (import.meta.env.DEV) {
+          console.warn(`[PopupTracker] Invalid selector: ${selector}`, e)
+        }
       }
     }
 
@@ -252,6 +254,7 @@ export function useTutorialPopupTracker() {
 
 // Singleton MutationObserver для отслеживания изменений popup
 let sharedObserver: MutationObserver | null = null
+let popupChangeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const popupChangeListeners = new Set<() => void>()
 
 /**
@@ -321,9 +324,14 @@ function ensureSharedObserver(): void {
     }
 
     if (hasPopupChange) {
-      // Небольшая задержка для завершения анимации popup
-      setTimeout(() => {
+      // Debounce multiple rapid changes (e.g., animation frames)
+      if (popupChangeDebounceTimer) {
+        clearTimeout(popupChangeDebounceTimer)
+      }
+      // Небольшая задержка для завершения анимации popup + debounce
+      popupChangeDebounceTimer = setTimeout(() => {
         popupChangeListeners.forEach(cb => cb())
+        popupChangeDebounceTimer = null
       }, 50)
     }
   })
@@ -340,6 +348,10 @@ function ensureSharedObserver(): void {
  * Останавливает shared observer
  */
 function stopSharedObserver(): void {
+  if (popupChangeDebounceTimer) {
+    clearTimeout(popupChangeDebounceTimer)
+    popupChangeDebounceTimer = null
+  }
   if (sharedObserver) {
     sharedObserver.disconnect()
     sharedObserver = null

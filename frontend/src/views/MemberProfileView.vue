@@ -43,6 +43,14 @@ const showUnblockModal = ref(false)
 const unblockLoading = ref(false)
 const unblockError = ref('')
 
+// Edit modal
+const showEditModal = ref(false)
+const editName = ref('')
+const editEmail = ref('')
+const editPhone = ref('')
+const editLoading = ref(false)
+const editError = ref('')
+
 // Permissions
 const canManage = computed(() => {
   if (!member.value || !auth.organizationId) return false
@@ -68,7 +76,26 @@ const canUnblock = computed(() => {
   return member.value.status === 'blocked'
 })
 
-const hasAnyAction = computed(() => canBlock.value || canUnblock.value)
+const canEdit = computed(() => {
+  if (!member.value || !auth.organizationId) return false
+  // User must be from the same organization
+  if (member.value.organization_id !== auth.organizationId) return false
+
+  // Owner can only be edited by themselves
+  if (member.value.role === 'owner') {
+    return member.value.id === auth.memberId
+  }
+
+  // For non-owner members: manager can edit anyone, or member can edit themselves
+  if (auth.role === 'owner' || auth.role === 'administrator') {
+    return true
+  }
+
+  // Regular employee can only edit themselves
+  return member.value.id === auth.memberId
+})
+
+const hasAnyAction = computed(() => canBlock.value || canUnblock.value || canEdit.value)
 
 async function loadData() {
   isLoading.value = true
@@ -159,6 +186,59 @@ async function confirmUnblock() {
     unblockLoading.value = false
   }
 }
+
+// Edit actions
+function openEditModal() {
+  if (!member.value) return
+  editName.value = member.value.name
+  editEmail.value = member.value.email
+  editPhone.value = member.value.phone || ''
+  editError.value = ''
+  showEditModal.value = true
+}
+
+function closeEditModal() {
+  showEditModal.value = false
+}
+
+async function confirmEdit() {
+  if (!member.value) return
+
+  if (!editName.value.trim()) {
+    editError.value = 'Укажите ФИО'
+    return
+  }
+  if (!editEmail.value.trim()) {
+    editError.value = 'Укажите Email'
+    return
+  }
+  if (!editPhone.value.trim()) {
+    editError.value = 'Укажите телефон'
+    return
+  }
+
+  editLoading.value = true
+  editError.value = ''
+
+  try {
+    await membersApi.updateInfo(
+      member.value.organization_id,
+      member.value.id,
+      editName.value.trim(),
+      editEmail.value.trim(),
+      editPhone.value.trim()
+    )
+    // Optimistic update - сразу обновляем локальное состояние
+    member.value.name = editName.value.trim()
+    member.value.email = editEmail.value.trim()
+    member.value.phone = editPhone.value.trim()
+    closeEditModal()
+  } catch (e: unknown) {
+    editError.value = e instanceof Error ? e.message : 'Не удалось обновить данные сотрудника'
+  } finally {
+    editLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -173,6 +253,13 @@ async function confirmUnblock() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              v-if="canEdit"
+              data-tutorial="edit-member-btn"
+              @click="openEditModal"
+            >
+              Редактировать
+            </DropdownMenuItem>
             <DropdownMenuItem
               v-if="canBlock"
               data-tutorial="block-member-btn"
@@ -362,6 +449,72 @@ async function confirmUnblock() {
             class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
             {{ unblockLoading ? 'Разблокировка...' : 'Разблокировать' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div v-if="showEditModal" class="fixed inset-0 bg-black/25 flex items-center justify-center z-50 p-4" @click="closeEditModal">
+      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
+        <h2 class="text-xl font-bold mb-4 text-gray-900">Редактирование данных сотрудника</h2>
+
+        <div v-if="editError" class="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm mb-4">
+          {{ editError }}
+        </div>
+
+        <div class="space-y-4 mb-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              ФИО <span class="text-red-500">*</span>
+            </label>
+            <input
+              v-model="editName"
+              type="text"
+              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Иванов Иван Иванович"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Email <span class="text-red-500">*</span>
+            </label>
+            <input
+              v-model="editEmail"
+              type="email"
+              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="example@mail.ru"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Телефон <span class="text-red-500">*</span>
+            </label>
+            <input
+              v-model="editPhone"
+              type="tel"
+              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="+7 (999) 123-45-67"
+            />
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            @click="closeEditModal"
+            :disabled="editLoading"
+            class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <button
+            @click="confirmEdit"
+            :disabled="editLoading || !editName.trim() || !editEmail.trim() || !editPhone.trim()"
+            class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {{ editLoading ? 'Сохранение...' : 'Сохранить' }}
           </button>
         </div>
       </div>
