@@ -1,6 +1,7 @@
 package freightrequest
 
 import (
+	"errors"
 	"time"
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/entities"
@@ -903,3 +904,255 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 		f.carrierMemberID = &e.NewMemberID
 	}
 }
+
+// =====================================
+// Snapshot support for efficient loading
+// =====================================
+
+// FreightRequestSnapshot represents serializable state of FreightRequest aggregate
+type FreightRequestSnapshot struct {
+	ID                            uuid.UUID                      `json:"id"`
+	Version                       int64                          `json:"version"`
+	RequestNumber                 int64                          `json:"request_number"`
+	CustomerOrgID                 uuid.UUID                      `json:"customer_org_id"`
+	CustomerMemberID              uuid.UUID                      `json:"customer_member_id"`
+	Route                         values.Route                   `json:"route"`
+	Cargo                         values.CargoInfo               `json:"cargo"`
+	VehicleRequirements           values.VehicleRequirements     `json:"vehicle_requirements"`
+	Payment                       values.Payment                 `json:"payment"`
+	Comment                       string                         `json:"comment"`
+	Status                        values.FreightRequestStatus    `json:"status"`
+	FreightVersion                int                            `json:"freight_version"`
+	ExpiresAt                     time.Time                      `json:"expires_at"`
+	CreatedAt                     time.Time                      `json:"created_at"`
+	CancelledAt                   *time.Time                     `json:"cancelled_at,omitempty"`
+	Offers                        map[uuid.UUID]OfferSnapshot    `json:"offers"`
+	SelectedOffer                 *uuid.UUID                     `json:"selected_offer,omitempty"`
+	ConfirmedAt                   *time.Time                     `json:"confirmed_at,omitempty"`
+	ConfirmedOfferID              *uuid.UUID                     `json:"confirmed_offer_id,omitempty"`
+	CarrierOrgID                  *uuid.UUID                     `json:"carrier_org_id,omitempty"`
+	CarrierMemberID               *uuid.UUID                     `json:"carrier_member_id,omitempty"`
+	CustomerCompleted             bool                           `json:"customer_completed"`
+	CustomerCompletedAt           *time.Time                     `json:"customer_completed_at,omitempty"`
+	CarrierCompleted              bool                           `json:"carrier_completed"`
+	CarrierCompletedAt            *time.Time                     `json:"carrier_completed_at,omitempty"`
+	CompletedAt                   *time.Time                     `json:"completed_at,omitempty"`
+	CancelledAfterConfirmedAt     *time.Time                     `json:"cancelled_after_confirmed_at,omitempty"`
+	CancelledAfterConfirmedBy     *uuid.UUID                     `json:"cancelled_after_confirmed_by,omitempty"`
+	CancelledAfterConfirmedReason string                         `json:"cancelled_after_confirmed_reason,omitempty"`
+	CustomerReview                *ReviewSnapshot                `json:"customer_review,omitempty"`
+	CarrierReview                 *ReviewSnapshot                `json:"carrier_review,omitempty"`
+}
+
+// OfferSnapshot represents serializable state of Offer entity
+type OfferSnapshot struct {
+	ID              uuid.UUID            `json:"id"`
+	CarrierOrgID    uuid.UUID            `json:"carrier_org_id"`
+	CarrierMemberID uuid.UUID            `json:"carrier_member_id"`
+	Price           values.Money         `json:"price"`
+	Comment         string               `json:"comment"`
+	FreightVersion  int                  `json:"freight_version"`
+	VatType         values.VatType       `json:"vat_type"`
+	PaymentMethod   values.PaymentMethod `json:"payment_method"`
+	Status          values.OfferStatus   `json:"status"`
+	CreatedAt       time.Time            `json:"created_at"`
+}
+
+// ReviewSnapshot represents serializable state of Review entity in FreightRequest
+type ReviewSnapshot struct {
+	ID            uuid.UUID `json:"id"`
+	ReviewerOrgID uuid.UUID `json:"reviewer_org_id"`
+	Rating        int       `json:"rating"`
+	Comment       string    `json:"comment"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// State returns current aggregate state for snapshot storage.
+// Implements aggregate.Snapshotable interface.
+func (f *FreightRequest) State() any {
+	offers := make(map[uuid.UUID]OfferSnapshot, len(f.offers))
+	for id, o := range f.offers {
+		offers[id] = OfferSnapshot{
+			ID:              o.ID(),
+			CarrierOrgID:    o.CarrierOrgID(),
+			CarrierMemberID: o.CarrierMemberID(),
+			Price:           o.Price(),
+			Comment:         o.Comment(),
+			FreightVersion:  o.FreightVersion(),
+			VatType:         o.VatType(),
+			PaymentMethod:   o.PaymentMethod(),
+			Status:          o.Status(),
+			CreatedAt:       o.CreatedAt(),
+		}
+	}
+
+	var customerReview, carrierReview *ReviewSnapshot
+	if f.customerReview != nil {
+		customerReview = &ReviewSnapshot{
+			ID:            f.customerReview.ID(),
+			ReviewerOrgID: f.customerReview.ReviewerOrgID(),
+			Rating:        f.customerReview.Rating(),
+			Comment:       f.customerReview.Comment(),
+			CreatedAt:     f.customerReview.CreatedAt(),
+		}
+	}
+	if f.carrierReview != nil {
+		carrierReview = &ReviewSnapshot{
+			ID:            f.carrierReview.ID(),
+			ReviewerOrgID: f.carrierReview.ReviewerOrgID(),
+			Rating:        f.carrierReview.Rating(),
+			Comment:       f.carrierReview.Comment(),
+			CreatedAt:     f.carrierReview.CreatedAt(),
+		}
+	}
+
+	return FreightRequestSnapshot{
+		ID:                            f.ID(),
+		Version:                       f.Version(),
+		RequestNumber:                 f.requestNumber,
+		CustomerOrgID:                 f.customerOrgID,
+		CustomerMemberID:              f.customerMemberID,
+		Route:                         f.route,
+		Cargo:                         f.cargo,
+		VehicleRequirements:           f.vehicleRequirements,
+		Payment:                       f.payment,
+		Comment:                       f.comment,
+		Status:                        f.status,
+		FreightVersion:                f.freightVersion,
+		ExpiresAt:                     f.expiresAt,
+		CreatedAt:                     f.createdAt,
+		CancelledAt:                   f.cancelledAt,
+		Offers:                        offers,
+		SelectedOffer:                 f.selectedOffer,
+		ConfirmedAt:                   f.confirmedAt,
+		ConfirmedOfferID:              f.confirmedOfferID,
+		CarrierOrgID:                  f.carrierOrgID,
+		CarrierMemberID:               f.carrierMemberID,
+		CustomerCompleted:             f.customerCompleted,
+		CustomerCompletedAt:           f.customerCompletedAt,
+		CarrierCompleted:              f.carrierCompleted,
+		CarrierCompletedAt:            f.carrierCompletedAt,
+		CompletedAt:                   f.completedAt,
+		CancelledAfterConfirmedAt:     f.cancelledAfterConfirmedAt,
+		CancelledAfterConfirmedBy:     f.cancelledAfterConfirmedBy,
+		CancelledAfterConfirmedReason: f.cancelledAfterConfirmedReason,
+		CustomerReview:                customerReview,
+		CarrierReview:                 carrierReview,
+	}
+}
+
+// FromSnapshot restores aggregate from snapshot state.
+// Implements aggregate.Snapshotable interface.
+func (f *FreightRequest) FromSnapshot(state any) error {
+	snap, ok := state.(FreightRequestSnapshot)
+	if !ok {
+		return ErrInvalidSnapshotType
+	}
+
+	f.Base.SetID(snap.ID)
+	f.Base.SetVersion(snap.Version)
+
+	f.requestNumber = snap.RequestNumber
+	f.customerOrgID = snap.CustomerOrgID
+	f.customerMemberID = snap.CustomerMemberID
+	f.route = snap.Route
+	f.cargo = snap.Cargo
+	f.vehicleRequirements = snap.VehicleRequirements
+	f.payment = snap.Payment
+	f.comment = snap.Comment
+	f.status = snap.Status
+	f.freightVersion = snap.FreightVersion
+	f.expiresAt = snap.ExpiresAt
+	f.createdAt = snap.CreatedAt
+	f.cancelledAt = snap.CancelledAt
+	f.selectedOffer = snap.SelectedOffer
+	f.confirmedAt = snap.ConfirmedAt
+	f.confirmedOfferID = snap.ConfirmedOfferID
+	f.carrierOrgID = snap.CarrierOrgID
+	f.carrierMemberID = snap.CarrierMemberID
+	f.customerCompleted = snap.CustomerCompleted
+	f.customerCompletedAt = snap.CustomerCompletedAt
+	f.carrierCompleted = snap.CarrierCompleted
+	f.carrierCompletedAt = snap.CarrierCompletedAt
+	f.completedAt = snap.CompletedAt
+	f.cancelledAfterConfirmedAt = snap.CancelledAfterConfirmedAt
+	f.cancelledAfterConfirmedBy = snap.CancelledAfterConfirmedBy
+	f.cancelledAfterConfirmedReason = snap.CancelledAfterConfirmedReason
+
+	f.offers = make(map[uuid.UUID]*entities.Offer, len(snap.Offers))
+	for id, os := range snap.Offers {
+		o := entities.NewOffer(
+			os.ID,
+			os.CarrierOrgID,
+			os.CarrierMemberID,
+			os.Price,
+			os.Comment,
+			os.FreightVersion,
+			os.VatType,
+			os.PaymentMethod,
+			os.CreatedAt,
+		)
+		// Restore status via state transitions
+		restoreOfferStatus(&o, os.Status)
+		f.offers[id] = &o
+	}
+
+	if snap.CustomerReview != nil {
+		r := entities.NewReview(
+			snap.CustomerReview.ID,
+			snap.CustomerReview.ReviewerOrgID,
+			snap.CustomerReview.Rating,
+			snap.CustomerReview.Comment,
+			snap.CustomerReview.CreatedAt,
+		)
+		f.customerReview = &r
+	}
+
+	if snap.CarrierReview != nil {
+		r := entities.NewReview(
+			snap.CarrierReview.ID,
+			snap.CarrierReview.ReviewerOrgID,
+			snap.CarrierReview.Rating,
+			snap.CarrierReview.Comment,
+			snap.CarrierReview.CreatedAt,
+		)
+		f.carrierReview = &r
+	}
+
+	return nil
+}
+
+// restoreOfferStatus sets offer to target status
+func restoreOfferStatus(o *entities.Offer, target values.OfferStatus) {
+	switch target {
+	case values.OfferStatusSelected:
+		_ = o.Select()
+	case values.OfferStatusConfirmed:
+		_ = o.Select()
+		_ = o.Confirm()
+	case values.OfferStatusRejected:
+		_ = o.Reject()
+	case values.OfferStatusWithdrawn:
+		_ = o.Withdraw()
+	case values.OfferStatusDeclined:
+		_ = o.Select()
+		_ = o.Decline()
+	}
+}
+
+// NewFromSnapshot creates FreightRequest from snapshot state.
+func NewFromSnapshot(id uuid.UUID, state any) (*FreightRequest, error) {
+	fr := &FreightRequest{
+		Base:   aggregate.NewBase(id),
+		offers: make(map[uuid.UUID]*entities.Offer),
+	}
+
+	if err := fr.FromSnapshot(state); err != nil {
+		return nil, err
+	}
+
+	return fr, nil
+}
+
+// ErrInvalidSnapshotType is returned when snapshot type doesn't match
+var ErrInvalidSnapshotType = errors.New("invalid snapshot type")

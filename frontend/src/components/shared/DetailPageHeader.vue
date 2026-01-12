@@ -7,6 +7,7 @@ withDefaults(
     backTo: RouteLocationRaw
     backLabel?: string
     useHistory?: boolean
+    backTutorialId?: string
   }>(),
   {
     backLabel: 'Назад',
@@ -18,7 +19,7 @@ withDefaults(
 <template>
   <header class="sticky top-14 z-40 bg-card border-b">
     <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-      <BackLink :to="backTo" :label="backLabel" :use-history="useHistory" />
+      <BackLink :to="backTo" :label="backLabel" :use-history="useHistory" :tutorial-id="backTutorialId" />
       <slot name="actions" />
     </div>
   </header>

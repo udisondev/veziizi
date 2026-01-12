@@ -285,3 +285,113 @@ func (r *Review) apply(evt eventstore.Event) {
 		r.status = values.StatusDeactivated
 	}
 }
+
+// =====================================
+// Snapshot support for efficient loading
+// =====================================
+
+// ReviewSnapshot represents serializable state of Review aggregate
+type ReviewSnapshot struct {
+	ID                 uuid.UUID             `json:"id"`
+	Version            int64                 `json:"version"`
+	OrderID            uuid.UUID             `json:"order_id"`
+	ReviewerOrgID      uuid.UUID             `json:"reviewer_org_id"`
+	ReviewedOrgID      uuid.UUID             `json:"reviewed_org_id"`
+	Rating             int                   `json:"rating"`
+	Comment            string                `json:"comment"`
+	OrderAmount        int64                 `json:"order_amount"`
+	OrderCurrency      string                `json:"order_currency"`
+	OrderCreatedAt     time.Time             `json:"order_created_at"`
+	OrderCompletedAt   time.Time             `json:"order_completed_at"`
+	RawWeight          float64               `json:"raw_weight"`
+	FinalWeight        float64               `json:"final_weight"`
+	FraudSignals       []events.FraudSignal  `json:"fraud_signals,omitempty"`
+	FraudScore         float64               `json:"fraud_score"`
+	Status             values.ReviewStatus   `json:"status"`
+	RequiresModeration bool                  `json:"requires_moderation"`
+	ActivationDate     *time.Time            `json:"activation_date,omitempty"`
+	CreatedAt          time.Time             `json:"created_at"`
+	AnalyzedAt         *time.Time            `json:"analyzed_at,omitempty"`
+	ModeratedAt        *time.Time            `json:"moderated_at,omitempty"`
+	ModeratedBy        *uuid.UUID            `json:"moderated_by,omitempty"`
+	ActivatedAt        *time.Time            `json:"activated_at,omitempty"`
+}
+
+// State returns current aggregate state for snapshot storage.
+// Implements aggregate.Snapshotable interface.
+func (r *Review) State() any {
+	return ReviewSnapshot{
+		ID:                 r.ID(),
+		Version:            r.Version(),
+		OrderID:            r.orderID,
+		ReviewerOrgID:      r.reviewerOrgID,
+		ReviewedOrgID:      r.reviewedOrgID,
+		Rating:             r.rating,
+		Comment:            r.comment,
+		OrderAmount:        r.orderAmount,
+		OrderCurrency:      r.orderCurrency,
+		OrderCreatedAt:     r.orderCreatedAt,
+		OrderCompletedAt:   r.orderCompletedAt,
+		RawWeight:          r.rawWeight,
+		FinalWeight:        r.finalWeight,
+		FraudSignals:       r.fraudSignals,
+		FraudScore:         r.fraudScore,
+		Status:             r.status,
+		RequiresModeration: r.requiresModeration,
+		ActivationDate:     r.activationDate,
+		CreatedAt:          r.createdAt,
+		AnalyzedAt:         r.analyzedAt,
+		ModeratedAt:        r.moderatedAt,
+		ModeratedBy:        r.moderatedBy,
+		ActivatedAt:        r.activatedAt,
+	}
+}
+
+// FromSnapshot restores aggregate from snapshot state.
+// Implements aggregate.Snapshotable interface.
+func (r *Review) FromSnapshot(state any) error {
+	snap, ok := state.(ReviewSnapshot)
+	if !ok {
+		return errors.New("invalid snapshot type: expected ReviewSnapshot")
+	}
+
+	r.Base.SetID(snap.ID)
+	r.Base.SetVersion(snap.Version)
+
+	r.orderID = snap.OrderID
+	r.reviewerOrgID = snap.ReviewerOrgID
+	r.reviewedOrgID = snap.ReviewedOrgID
+	r.rating = snap.Rating
+	r.comment = snap.Comment
+	r.orderAmount = snap.OrderAmount
+	r.orderCurrency = snap.OrderCurrency
+	r.orderCreatedAt = snap.OrderCreatedAt
+	r.orderCompletedAt = snap.OrderCompletedAt
+	r.rawWeight = snap.RawWeight
+	r.finalWeight = snap.FinalWeight
+	r.fraudSignals = snap.FraudSignals
+	r.fraudScore = snap.FraudScore
+	r.status = snap.Status
+	r.requiresModeration = snap.RequiresModeration
+	r.activationDate = snap.ActivationDate
+	r.createdAt = snap.CreatedAt
+	r.analyzedAt = snap.AnalyzedAt
+	r.moderatedAt = snap.ModeratedAt
+	r.moderatedBy = snap.ModeratedBy
+	r.activatedAt = snap.ActivatedAt
+
+	return nil
+}
+
+// NewFromSnapshot creates Review from snapshot state.
+func NewFromSnapshot(id uuid.UUID, state any) (*Review, error) {
+	r := &Review{
+		Base: aggregate.NewBase(id),
+	}
+
+	if err := r.FromSnapshot(state); err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}

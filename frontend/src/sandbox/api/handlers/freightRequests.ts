@@ -34,7 +34,13 @@ export function freightRequestsHandlers(): void {
     const offset = parseInt(query?.get('offset') || '0', 10)
     filtered = filtered.slice(offset, offset + limit)
 
-    return { data: filtered }
+    return {
+      data: {
+        items: filtered,
+        next_cursor: undefined,
+        has_more: false,
+      },
+    }
   })
 
   // Get freight request by ID
@@ -87,6 +93,72 @@ export function freightRequestsHandlers(): void {
   // Reassign freight request
   registerHandler('POST', '/freight-requests/:id/reassign', (params, body) => {
     // В sandbox просто принимаем
+    return { status: 204 }
+  })
+
+  // Complete freight request
+  registerHandler('POST', '/freight-requests/:id/complete', (params) => {
+    const fr = getMockFreightRequests().get(params.id)
+    if (!fr) {
+      return {
+        status: 404,
+        data: { error: 'Заявка не найдена', error_code: 'NOT_FOUND' },
+      }
+    }
+
+    // Определяем сторону (в sandbox всегда customer)
+    getMockFreightRequests().complete(params.id, 'customer')
+
+    return { status: 204 }
+  })
+
+  // Leave review
+  registerHandler('POST', '/freight-requests/:id/review', (params, body) => {
+    const fr = getMockFreightRequests().get(params.id)
+    if (!fr) {
+      return {
+        status: 404,
+        data: { error: 'Заявка не найдена', error_code: 'NOT_FOUND' },
+      }
+    }
+
+    const { rating, comment } = body as { rating: number; comment?: string }
+
+    if (rating < 1 || rating > 5) {
+      return {
+        status: 400,
+        data: { error: 'Рейтинг должен быть от 1 до 5', error_code: 'INVALID_RATING' },
+      }
+    }
+
+    // В sandbox всегда оставляем отзыв как customer
+    const reviewId = getMockFreightRequests().leaveReview(params.id, 'customer', rating, comment)
+
+    return { status: 201, data: { review_id: reviewId } }
+  })
+
+  // Edit review
+  registerHandler('PATCH', '/freight-requests/:id/review', (params, body) => {
+    const fr = getMockFreightRequests().get(params.id)
+    if (!fr) {
+      return {
+        status: 404,
+        data: { error: 'Заявка не найдена', error_code: 'NOT_FOUND' },
+      }
+    }
+
+    const { rating, comment } = body as { rating: number; comment?: string }
+
+    if (rating < 1 || rating > 5) {
+      return {
+        status: 400,
+        data: { error: 'Рейтинг должен быть от 1 до 5', error_code: 'INVALID_RATING' },
+      }
+    }
+
+    // В sandbox всегда редактируем отзыв как customer
+    getMockFreightRequests().editReview(params.id, 'customer', rating, comment)
+
     return { status: 204 }
   })
 }

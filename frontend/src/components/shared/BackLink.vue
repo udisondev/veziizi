@@ -10,6 +10,7 @@ const props = withDefaults(
     label?: string
     class?: string
     useHistory?: boolean
+    tutorialId?: string
   }>(),
   {
     label: 'Назад',
@@ -38,11 +39,11 @@ function goBack() {
 </script>
 
 <template>
-  <a v-if="useHistory" :class="classes" @click="goBack">
+  <a v-if="useHistory" :class="classes" :data-tutorial="tutorialId" @click="goBack">
     <ArrowLeft class="h-4 w-4" />
     {{ label }}
   </a>
-  <RouterLink v-else :to="to" :class="classes">
+  <RouterLink v-else :to="to" :class="classes" :data-tutorial="tutorialId">
     <ArrowLeft class="h-4 w-4" />
     {{ label }}
   </RouterLink>

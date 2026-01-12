@@ -12,8 +12,6 @@ import { Button } from '@/components/ui/button'
 import { ChevronRight, ChevronLeft, SkipForward } from 'lucide-vue-next'
 import { useTutorialPopupTracker, onPopupChange } from '@/composables/useTutorialPopupTracker'
 import { tutorialBus } from '@/sandbox/events'
-import { mockOffers } from '@/sandbox/mockData/offers'
-import { mockNotifications } from '@/sandbox/mockData/notifications'
 import { throttle, SCROLL_THROTTLE_DELAY } from '@/utils/debounce'
 
 const router = useRouter()
@@ -221,6 +219,12 @@ async function updatePosition() {
     newPlacement = 'bottom'
   }
 
+  // Финальное ограничение top после всех корректировок
+  const maxTop = window.innerHeight - tooltipRect.height - padding
+  if (top > maxTop) {
+    top = Math.max(padding, maxTop)
+  }
+
   position.value = { top, left }
   placement.value = newPlacement
 }
@@ -299,19 +303,14 @@ function handleBack() {
 }
 
 async function startOffersTraining() {
-  // Завершаем текущий сценарий (customer_flow)
-  onboarding.completeScenario()
-
-  // Используем ID созданной заявки или fallback
+  // СНАЧАЛА сохраняем ID созданной заявки (до completeScenario, который очищает его)
   const createdRequest = onboarding.sandboxCreatedRequest
   const frId = createdRequest?.id ?? 'sandbox-fr-offers'
 
-  // Очищаем предыдущие уведомления
-  mockNotifications.clear()
+  // ПОТОМ завершаем текущий сценарий (customer_flow)
+  onboarding.completeScenario()
 
-  // Добавляем офферы и уведомления к заявке
-  await mockOffers.simulateIncomingOffers(frId, 4, 0)
-  mockNotifications.seedOffersNotifications(frId, 4)
+  // Офферы, уведомления и заявка создаются в initialize() сценария offers_receive_flow
 
   // НЕ переходим сразу на страницу заявки
   // Пользователь должен кликнуть на уведомление чтобы попасть туда
@@ -331,11 +330,11 @@ async function startOffersTraining() {
 }
 
 async function startCompletionTraining() {
-  // Завершаем текущий сценарий (offers_receive_flow)
-  onboarding.completeScenario()
-
-  // Получаем ID заявки из chain context
+  // СНАЧАЛА сохраняем ID заявки (до completeScenario, который очищает chainContext)
   const frId = onboarding.getChainedFreightRequestId() ?? 'sandbox-fr-completion'
+
+  // ПОТОМ завершаем текущий сценарий (offers_receive_flow)
+  onboarding.completeScenario()
 
   // Переходим на страницу заявки (она уже confirmed после offersReceiveFlow)
   await router.push(`/freight-requests/${frId}`)
@@ -408,7 +407,7 @@ const showBackButton = computed(() => {
       <div
         v-if="currentStep && !validationErrorMode && !currentStep.hideTooltip"
         ref="tooltipRef"
-        class="fixed z-[70] max-h-[calc(100vh-200px)] overflow-y-auto rounded-lg border bg-white p-4 shadow-xl pointer-events-none"
+        class="fixed z-[70] max-h-[calc(100vh-200px)] overflow-y-auto rounded-lg border bg-white p-4 shadow-xl"
         :style="{
           top: `${Math.max(12, position.top)}px`,
           left: `${Math.max(12, position.left)}px`,

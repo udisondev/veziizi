@@ -110,6 +110,7 @@ const currentTab = ref('details')
 // Отправляем событие для туториала при смене таба
 watch(currentTab, (newTab) => {
   if (newTab === 'offers') emitTutorial('tab:offers')
+  if (newTab === 'details') emitTutorial('tab:details')
 })
 
 // History loader
@@ -156,6 +157,21 @@ const showCompleteConfirm = ref(false)
 const showReviewModal = ref(false)
 const reviewRating = ref(5)
 const reviewComment = ref('')
+
+// Offer action confirmation modals
+const showSelectModal = ref(false)
+const selectOfferId = ref<string | null>(null)
+
+const showConfirmOfferModal = ref(false)
+const confirmOfferId = ref<string | null>(null)
+
+const showDeclineModal = ref(false)
+const declineOfferId = ref<string | null>(null)
+const declineReason = ref('')
+
+const showUnselectModal = ref(false)
+const unselectOfferId = ref<string | null>(null)
+const unselectReason = ref('')
 
 // Make offer form
 const offerForm = ref<MakeOfferRequest>({
@@ -326,6 +342,20 @@ watch(showMakeOfferModal, (open) => {
   }
 })
 
+// Tutorial: emit event when completion confirm opens
+watch(showCompleteConfirm, (opened) => {
+  if (opened) {
+    emitTutorial('completion:confirmOpened', undefined)
+  }
+})
+
+// Tutorial: emit event when review rating changes
+watch(reviewRating, (rating) => {
+  if (showReviewModal.value) {
+    emitTutorial('review:ratingSelected', { rating })
+  }
+})
+
 // Methods
 async function loadData() {
   isLoading.value = true
@@ -402,12 +432,21 @@ async function handleMakeOffer() {
   }
 }
 
-async function handleSelectOffer(offerId: string) {
-  if (!freightRequest.value) return
+function openSelectModal(offerId: string) {
+  selectOfferId.value = offerId
+  showSelectModal.value = true
+  emitTutorial('selectModal:opened')
+}
+
+async function confirmSelectOffer() {
+  if (!freightRequest.value || !selectOfferId.value) return
   actionLoading.value = true
+  const offerId = selectOfferId.value
   try {
     await freightRequestsApi.selectOffer(freightRequest.value.id, offerId)
     emitTutorial('offer:selected', { frId: freightRequest.value.id, offerId })
+    showSelectModal.value = false
+    selectOfferId.value = null
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -485,12 +524,20 @@ function goToReassignCarrier() {
   })
 }
 
-async function handleConfirmOffer(offerId: string) {
-  if (!freightRequest.value) return
+function openConfirmOfferModal(offerId: string) {
+  confirmOfferId.value = offerId
+  showConfirmOfferModal.value = true
+}
+
+async function confirmConfirmOffer() {
+  if (!freightRequest.value || !confirmOfferId.value) return
   actionLoading.value = true
+  const offerId = confirmOfferId.value
   try {
     await freightRequestsApi.confirmOffer(freightRequest.value.id, offerId)
     emitTutorial('offer:confirmed', { frId: freightRequest.value.id, offerId })
+    showConfirmOfferModal.value = false
+    confirmOfferId.value = null
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -499,11 +546,21 @@ async function handleConfirmOffer(offerId: string) {
   }
 }
 
-async function handleDeclineOffer(offerId: string) {
-  if (!freightRequest.value) return
+function openDeclineModal(offerId: string) {
+  declineOfferId.value = offerId
+  declineReason.value = ''
+  showDeclineModal.value = true
+}
+
+async function confirmDeclineOffer() {
+  if (!freightRequest.value || !declineOfferId.value) return
   actionLoading.value = true
+  const offerId = declineOfferId.value
   try {
-    await freightRequestsApi.declineOffer(freightRequest.value.id, offerId)
+    await freightRequestsApi.declineOffer(freightRequest.value.id, offerId, declineReason.value || undefined)
+    showDeclineModal.value = false
+    declineOfferId.value = null
+    declineReason.value = ''
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -512,12 +569,23 @@ async function handleDeclineOffer(offerId: string) {
   }
 }
 
-async function handleUnselectOffer(offerId: string) {
-  if (!freightRequest.value) return
+function openUnselectModal(offerId: string) {
+  unselectOfferId.value = offerId
+  unselectReason.value = ''
+  showUnselectModal.value = true
+  emitTutorial('unselectModal:opened')
+}
+
+async function confirmUnselectOffer() {
+  if (!freightRequest.value || !unselectOfferId.value) return
   actionLoading.value = true
+  const offerId = unselectOfferId.value
   try {
-    await freightRequestsApi.unselectOffer(freightRequest.value.id, offerId)
+    await freightRequestsApi.unselectOffer(freightRequest.value.id, offerId, unselectReason.value || undefined)
     emitTutorial('offer:unselected', { frId: freightRequest.value.id, offerId })
+    showUnselectModal.value = false
+    unselectOfferId.value = null
+    unselectReason.value = ''
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -533,6 +601,7 @@ async function handleComplete() {
   try {
     await freightRequestsApi.complete(freightRequest.value.id)
     showCompleteConfirm.value = false
+    emitTutorial('completion:completed', { frId: freightRequest.value.id })
     // Показываем модал для отзыва
     reviewRating.value = 5
     reviewComment.value = ''
@@ -558,10 +627,13 @@ async function submitReview() {
     const data = { rating: reviewRating.value, comment: reviewComment.value || undefined }
     if (myReview.value) {
       await freightRequestsApi.editReview(freightRequest.value.id, data)
+      emitTutorial('review:edited', { frId: freightRequest.value.id })
     } else {
       await freightRequestsApi.leaveReview(freightRequest.value.id, data)
+      emitTutorial('review:submitted', { frId: freightRequest.value.id, reviewId: '' })
     }
     showReviewModal.value = false
+    emitTutorial('review:closed', undefined)
     await loadData()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
@@ -571,7 +643,11 @@ async function submitReview() {
 }
 
 function skipReview() {
+  if (freightRequest.value) {
+    emitTutorial('review:skipped', { frId: freightRequest.value.id })
+  }
   showReviewModal.value = false
+  emitTutorial('review:closed', undefined)
 }
 
 // Слушатель переключения вкладки из туториала
@@ -609,6 +685,7 @@ onUnmounted(() => {
             <Button
               v-if="canComplete"
               size="sm"
+              data-tutorial="complete-request-btn"
               @click="showCompleteConfirm = true"
             >
               <Check class="mr-2 h-4 w-4" />
@@ -749,14 +826,14 @@ onUnmounted(() => {
                       </div>
 
                       <!-- Carrier Info (когда confirmed или для перевозчика) -->
-                      <div v-if="showCarrierInfo" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-2">
-                        <span class="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">Перевозчик:</span>
+                      <div v-if="showCarrierInfo" data-tutorial="carrier-info" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-3 pt-2 border-t border-border">
                         <!-- Организация перевозчика -->
                         <router-link
                           v-if="freightRequest.carrier_org_id"
                           :to="`/organizations/${freightRequest.carrier_org_id}`"
                           class="inline-flex items-center gap-1 text-primary hover:underline max-w-[200px] sm:max-w-[280px]"
                           :title="freightRequest.carrier_org_name || 'Организация'"
+                          data-tutorial="carrier-org-link"
                         >
                           <Building2 class="h-4 w-4 shrink-0" />
                           <span class="truncate">{{ freightRequest.carrier_org_name || 'Организация' }}</span>
@@ -769,6 +846,7 @@ onUnmounted(() => {
                             :to="`/members/${freightRequest.carrier_member_id}`"
                             class="text-primary hover:underline truncate"
                             :title="freightRequest.carrier_member_name"
+                            data-tutorial="carrier-member-link"
                           >
                             {{ freightRequest.carrier_member_name }}
                           </router-link>
@@ -1011,12 +1089,12 @@ onUnmounted(() => {
               :freight-request="freightRequest"
               :offers="offers"
               :action-loading="actionLoading"
-              @select="handleSelectOffer"
+              @select="openSelectModal"
               @reject="openRejectModal"
               @withdraw="openWithdrawModal"
-              @confirm="handleConfirmOffer"
-              @decline="handleDeclineOffer"
-              @unselect="handleUnselectOffer"
+              @confirm="openConfirmOfferModal"
+              @decline="openDeclineModal"
+              @unselect="openUnselectModal"
             />
           </TabsContent>
 
@@ -1241,9 +1319,123 @@ onUnmounted(() => {
       </DialogContent>
     </Dialog>
 
+    <!-- Select Offer Dialog -->
+    <Dialog v-model:open="showSelectModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Выбрать предложение?</DialogTitle>
+          <DialogDescription>
+            После выбора перевозчик получит уведомление и должен будет подтвердить своё участие.
+            Если перевозчик подтвердит, все остальные предложения будут автоматически отклонены.
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogFooter>
+          <Button variant="outline" @click="showSelectModal = false">
+            Отмена
+          </Button>
+          <Button :disabled="actionLoading" @click="confirmSelectOffer">
+            {{ actionLoading ? 'Выбор...' : 'Выбрать' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Confirm Offer Dialog -->
+    <Dialog v-model:open="showConfirmOfferModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Подтвердить участие?</DialogTitle>
+          <DialogDescription>
+            После подтверждения заявка перейдёт в статус "Подтверждена" и вы станете перевозчиком.
+            Это действие подразумевает обязательство выполнить перевозку.
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogFooter>
+          <Button variant="outline" @click="showConfirmOfferModal = false">
+            Отмена
+          </Button>
+          <Button :disabled="actionLoading" @click="confirmConfirmOffer">
+            {{ actionLoading ? 'Подтверждение...' : 'Подтвердить' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Decline Offer Dialog -->
+    <Dialog v-model:open="showDeclineModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Отказаться от предложения?</DialogTitle>
+          <DialogDescription>
+            Вы отказываетесь от выбранного заказчиком предложения.
+            Заказчик сможет выбрать другого перевозчика.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-2">
+          <Label>Причина отказа</Label>
+          <Textarea
+            v-model="declineReason"
+            rows="3"
+            placeholder="Укажите причину (опционально)..."
+          />
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" @click="showDeclineModal = false">
+            Отмена
+          </Button>
+          <Button
+            variant="destructive"
+            :disabled="actionLoading"
+            @click="confirmDeclineOffer"
+          >
+            {{ actionLoading ? 'Отказ...' : 'Отказаться' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Unselect Offer Dialog -->
+    <Dialog v-model:open="showUnselectModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Отменить выбор?</DialogTitle>
+          <DialogDescription>
+            Предложение вернётся в статус "Ожидает" и перевозчик получит уведомление.
+            Вы сможете выбрать это или другое предложение позже.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-2">
+          <Label>Причина отмены</Label>
+          <Textarea
+            v-model="unselectReason"
+            rows="3"
+            placeholder="Укажите причину (опционально)..."
+          />
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" @click="showUnselectModal = false">
+            Назад
+          </Button>
+          <Button
+            variant="destructive"
+            :disabled="actionLoading"
+            @click="confirmUnselectOffer"
+          >
+            {{ actionLoading ? 'Отмена выбора...' : 'Отменить выбор' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <!-- Complete Confirmation Dialog -->
     <Dialog v-model:open="showCompleteConfirm">
-      <DialogContent class="sm:max-w-md">
+      <DialogContent class="sm:max-w-md" data-tutorial="complete-confirm-modal">
         <DialogHeader>
           <DialogTitle>Завершить заявку?</DialogTitle>
           <DialogDescription>
@@ -1254,7 +1446,7 @@ onUnmounted(() => {
           <Button variant="outline" @click="showCompleteConfirm = false">
             Отмена
           </Button>
-          <Button :disabled="actionLoading" @click="handleComplete">
+          <Button :disabled="actionLoading" data-tutorial="complete-confirm-btn" @click="handleComplete">
             {{ actionLoading ? 'Завершение...' : 'Завершить' }}
           </Button>
         </DialogFooter>
@@ -1263,7 +1455,7 @@ onUnmounted(() => {
 
     <!-- Review Modal -->
     <Dialog v-model:open="showReviewModal">
-      <DialogContent class="sm:max-w-md">
+      <DialogContent class="sm:max-w-md" data-tutorial="review-modal">
         <DialogHeader>
           <DialogTitle>
             {{ myReview ? 'Редактировать отзыв' : 'Оставить отзыв' }}
@@ -1276,7 +1468,7 @@ onUnmounted(() => {
         <div class="space-y-4 py-4">
           <div class="space-y-2">
             <Label>Оценка</Label>
-            <StarRating v-model="reviewRating" size="lg" />
+            <StarRating v-model="reviewRating" size="lg" data-tutorial="review-rating" />
           </div>
 
           <div class="space-y-2">
@@ -1286,18 +1478,19 @@ onUnmounted(() => {
               v-model="reviewComment"
               placeholder="Опишите ваш опыт работы..."
               rows="3"
+              data-tutorial="review-comment"
             />
           </div>
 
           <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
         </div>
 
-        <DialogFooter class="gap-2 sm:gap-0">
-          <Button v-if="!myReview" variant="outline" @click="skipReview">
+        <DialogFooter class="gap-2">
+          <Button variant="ghost" data-tutorial="review-skip-btn" @click="showReviewModal = false">
             Пропустить
           </Button>
-          <Button :disabled="actionLoading || reviewRating < 1" @click="submitReview">
-            {{ actionLoading ? 'Сохранение...' : (myReview ? 'Сохранить' : 'Отправить отзыв') }}
+          <Button :disabled="actionLoading || reviewRating < 1" data-tutorial="review-submit-btn" @click="submitReview">
+            {{ actionLoading ? 'Сохранение...' : (myReview ? 'Сохранить' : 'Отправить') }}
           </Button>
         </DialogFooter>
       </DialogContent>

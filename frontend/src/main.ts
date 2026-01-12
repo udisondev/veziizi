@@ -3,9 +3,16 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { logger } from '@/utils/logger'
+import { initSandboxInterceptor } from '@/sandbox/api/interceptor'
+import { useOnboardingStore } from '@/stores/onboarding'
 import './style.css'
 
+// ВАЖНО: Инициализируем sandbox interceptor ДО создания Vue app
+// чтобы все API запросы перехватывались с самого начала
+initSandboxInterceptor()
+
 const app = createApp(App)
+const pinia = createPinia()
 
 // Global error handler
 app.config.errorHandler = (err, instance, info) => {
@@ -23,7 +30,15 @@ if (import.meta.env.DEV) {
   }
 }
 
-app.use(createPinia())
+app.use(pinia)
 app.use(router)
 
-app.mount('#app')
+// ВАЖНО: Загружаем sandbox state ДО монтирования приложения
+// чтобы isSandboxMode был установлен до того как компоненты начнут делать запросы
+async function init() {
+  const onboarding = useOnboardingStore()
+  await onboarding.loadProgress()
+  app.mount('#app')
+}
+
+init()

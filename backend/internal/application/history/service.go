@@ -86,6 +86,7 @@ var actorFieldMapping = map[string]string{
 	"member.role_changed": "changed_by",
 	"member.blocked":      "blocked_by",
 	"member.unblocked":    "unblocked_by",
+	"member.info_updated": "updated_by",
 
 	// Invitation events
 	"invitation.created":   "created_by",

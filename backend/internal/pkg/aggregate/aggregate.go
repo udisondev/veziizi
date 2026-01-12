@@ -5,6 +5,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// Snapshotable defines interface for aggregates that support state snapshots.
+// Aggregates implementing this interface can be efficiently restored from
+// a snapshot state instead of replaying all events.
+type Snapshotable interface {
+	// State returns the current state of the aggregate for snapshot storage.
+	// The returned value must be JSON-serializable.
+	State() any
+
+	// FromSnapshot restores the aggregate from a snapshot state.
+	// Returns error if the state cannot be applied.
+	FromSnapshot(state any) error
+}
+
 type Base struct {
 	id      uuid.UUID
 	version int64
@@ -44,4 +57,16 @@ func (b *Base) Apply(event eventstore.Event) {
 // Replay applies event from history (version updates, but no changes recorded)
 func (b *Base) Replay(event eventstore.Event) {
 	b.version = event.Version()
+}
+
+// SetVersion sets the aggregate version directly.
+// Used when restoring aggregate from snapshot state.
+func (b *Base) SetVersion(version int64) {
+	b.version = version
+}
+
+// SetID sets the aggregate ID.
+// Used when restoring aggregate from snapshot state.
+func (b *Base) SetID(id uuid.UUID) {
+	b.id = id
 }

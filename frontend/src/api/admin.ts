@@ -23,6 +23,10 @@ export const adminApi = {
     return api.post('/admin/auth/logout')
   },
 
+  me(): Promise<AdminLoginResponse> {
+    return api.get('/admin/auth/me')
+  },
+
   async getOrganizations(): Promise<PendingOrganization[]> {
     const result = await api.get<PendingOrganization[] | null>('/admin/organizations')
     return result ?? []

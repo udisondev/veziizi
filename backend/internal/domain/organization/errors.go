@@ -17,6 +17,7 @@ var (
 	ErrInsufficientPermissions  = errors.New("insufficient permissions")
 	ErrCannotChangeOwnRole      = errors.New("cannot change own role")
 	ErrCannotBlockSelf          = errors.New("cannot block yourself")
+	ErrCannotEditOwner          = errors.New("only owner can edit their own info")
 	ErrEmailAlreadyInvited      = errors.New("email already has pending invitation")
 	ErrNameRequired             = errors.New("name is required")
 	ErrPhoneRequired            = errors.New("phone is required")

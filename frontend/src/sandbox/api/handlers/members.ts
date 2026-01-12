@@ -8,31 +8,111 @@ import { tutorialBus } from '@/sandbox/events'
 import { useAuthStore } from '@/stores/auth'
 import type { MemberRole } from '@/types/member'
 
+// Mock организации-перевозчики (для поиска members)
+const CARRIER_ORGANIZATIONS = {
+  'carrier-1': {
+    id: 'carrier-1',
+    name: 'ТрансЛогистик',
+    members: [
+      {
+        id: 'carrier-1-member',
+        email: 'petrov@translogistic.ru',
+        name: 'Иван Петров',
+        phone: '+7 (495) 123-45-68',
+        role: 'owner',
+        status: 'active',
+        created_at: '2024-01-15T10:00:00Z',
+      },
+    ],
+  },
+  'carrier-2': {
+    id: 'carrier-2',
+    name: 'СпецГруз',
+    members: [
+      {
+        id: 'carrier-2-member',
+        email: 'smirnov@specgruz.ru',
+        name: 'Алексей Смирнов',
+        phone: '+7 (495) 234-56-79',
+        role: 'owner',
+        status: 'active',
+        created_at: '2024-02-10T12:00:00Z',
+      },
+    ],
+  },
+  'carrier-3': {
+    id: 'carrier-3',
+    name: 'МегаФура',
+    members: [
+      {
+        id: 'carrier-3-member',
+        email: 'kozlov@megafura.ru',
+        name: 'Дмитрий Козлов',
+        phone: '+7 (495) 345-67-90',
+        role: 'owner',
+        status: 'active',
+        created_at: '2024-03-05T14:00:00Z',
+      },
+    ],
+  },
+} as const
+
+// Хелпер для поиска member в mock организациях-перевозчиках
+function findMemberInCarrierOrgs(memberId: string) {
+  for (const org of Object.values(CARRIER_ORGANIZATIONS)) {
+    const member = org.members.find(m => m.id === memberId)
+    if (member) {
+      return { member, organization: org }
+    }
+  }
+  return null
+}
+
 export function membersHandlers(): void {
   // Get member profile
   registerHandler('GET', '/members/:id', (params) => {
     const auth = useAuthStore()
+
+    // Сначала ищем в mock store текущей организации
     const member = mockMembers.get(params.id)
-
-    if (!member) {
-      // Если member не найден в mock store — пропускаем к реальному API
-      return null
+    if (member) {
+      // Используем реальные данные организации из auth store
+      return {
+        data: {
+          id: member.id,
+          name: member.name,
+          email: member.email,
+          phone: member.phone,
+          role: member.role,
+          status: member.status,
+          organization_id: auth.organizationId,
+          organization_name: auth.organization?.name || 'Моя организация',
+          created_at: member.created_at,
+        },
+      }
     }
 
-    // Используем реальные данные организации из auth store
-    return {
-      data: {
-        id: member.id,
-        name: member.name,
-        email: member.email,
-        phone: member.phone,
-        role: member.role,
-        status: member.status,
-        organization_id: auth.organizationId,
-        organization_name: auth.organization?.name || 'Моя организация',
-        created_at: member.created_at,
-      },
+    // Затем ищем в mock организациях-перевозчиках (для tutorial)
+    const carrierResult = findMemberInCarrierOrgs(params.id)
+    if (carrierResult) {
+      const { member: carrierMember, organization } = carrierResult
+      return {
+        data: {
+          id: carrierMember.id,
+          name: carrierMember.name,
+          email: carrierMember.email,
+          phone: carrierMember.phone,
+          role: carrierMember.role,
+          status: carrierMember.status,
+          organization_id: organization.id,
+          organization_name: organization.name,
+          created_at: carrierMember.created_at,
+        },
+      }
     }
+
+    // Если member не найден нигде — пропускаем к реальному API
+    return null
   })
 
   // Get organization with members (для listByOrganization)
@@ -102,6 +182,38 @@ export function membersHandlers(): void {
 
     // Эмитим событие
     tutorialBus.emit('member:unblocked', { memberId: params.memberId })
+
+    return { status: 204 }
+  })
+
+  // Update member info (partial update - nil fields are not changed)
+  registerHandler('PATCH', '/organizations/:orgId/members/:memberId/info', (params, body) => {
+    const { name, email, phone } = body as { name?: string; email?: string; phone?: string }
+
+    // Валидация: если поле передано, оно не должно быть пустым
+    if (name !== undefined && name.trim() === '') {
+      return {
+        status: 400,
+        data: { error: 'name cannot be empty' },
+      }
+    }
+    if (email !== undefined && email.trim() === '') {
+      return {
+        status: 400,
+        data: { error: 'email cannot be empty' },
+      }
+    }
+    if (phone !== undefined && phone.trim() === '') {
+      return {
+        status: 400,
+        data: { error: 'phone cannot be empty' },
+      }
+    }
+
+    mockMembers.updateInfo(params.memberId, name, email, phone)
+
+    // Эмитим событие
+    tutorialBus.emit('member:infoUpdated', { memberId: params.memberId, name, email, phone })
 
     return { status: 204 }
   })

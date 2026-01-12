@@ -15,8 +15,8 @@ export const steps: TutorialStep[] = [
   // Мобильная навигация
   {
     id: 'open_menu',
-    title: 'Откройте меню',
-    description: 'Нажмите на кнопку меню в левом верхнем углу.',
+    title: 'Откройте меню и выберите "Заявки"',
+    description: 'Нажмите на кнопку меню в левом верхнем углу, затем выберите "Заявки".',
     target: 'mobile-menu-btn',
     tooltipPosition: 'right',
     completionType: 'action',
@@ -26,9 +26,9 @@ export const steps: TutorialStep[] = [
   {
     id: 'select_requests',
     title: 'Выберите "Заявки"',
-    description: 'В меню нажмите "Заявки" для перехода к списку заявок.',
+    description: 'Нажмите "Заявки" для перехода к списку заявок.',
     target: 'mobile-nav-requests',
-    tooltipPosition: 'right',
+    hideTooltip: true, // Только подсветка, без tooltip
     completionType: 'navigate',
     completionAction: '/',
     platform: 'mobile',

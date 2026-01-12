@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"codeberg.org/udison/veziizi/backend/internal/application/organization"
 	orgDomain "codeberg.org/udison/veziizi/backend/internal/domain/organization"
@@ -47,6 +48,7 @@ func (h *OrganizationHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/role", h.ChangeMemberRole).Methods(http.MethodPatch)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/block", h.BlockMember).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/unblock", h.UnblockMember).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/info", h.UpdateMemberInfo).Methods(http.MethodPatch)
 	r.HandleFunc("/api/v1/invitations/{token}", h.GetInvitation).Methods(http.MethodGet)
 	r.HandleFunc("/api/v1/invitations/{token}/accept", h.AcceptInvitation).Methods(http.MethodPost)
 }
@@ -563,6 +565,91 @@ func (h *OrganizationHandler) UnblockMember(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UpdateMemberInfoRequest supports partial updates - nil fields are not changed
+type UpdateMemberInfoRequest struct {
+	Name  *string `json:"name"`
+	Email *string `json:"email"`
+	Phone *string `json:"phone"`
+}
+
+func (h *OrganizationHandler) UpdateMemberInfo(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orgID, err := uuid.Parse(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+	memberID, err := uuid.Parse(vars["memberId"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid member id")
+		return
+	}
+
+	actorID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// SEC-008: BOLA fix - проверяем принадлежность к организации
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != orgID {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
+	var req UpdateMemberInfoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Валидация: если поле передано, оно не должно быть пустым
+	if req.Name != nil && strings.TrimSpace(*req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "name cannot be empty")
+		return
+	}
+	if req.Email != nil {
+		email := strings.TrimSpace(*req.Email)
+		if email == "" {
+			writeError(w, http.StatusBadRequest, "email cannot be empty")
+			return
+		}
+		if !isValidEmail(email) {
+			writeError(w, http.StatusBadRequest, "invalid email format")
+			return
+		}
+	}
+	if req.Phone != nil && strings.TrimSpace(*req.Phone) == "" {
+		writeError(w, http.StatusBadRequest, "phone cannot be empty")
+		return
+	}
+
+	if err := h.service.UpdateMemberInfo(r.Context(), organization.UpdateMemberInfoInput{
+		OrganizationID: orgID,
+		ActorID:        actorID,
+		MemberID:       memberID,
+		Name:           req.Name,
+		Email:          req.Email,
+		Phone:          req.Phone,
+	}); err != nil {
+		handleDomainError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// isValidEmail performs basic email format validation
+func isValidEmail(email string) bool {
+	at := strings.Index(email, "@")
+	if at < 1 {
+		return false
+	}
+	dot := strings.LastIndex(email, ".")
+	return dot > at+1 && dot < len(email)-1
+}
+
 func handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, orgDomain.ErrOrganizationNotFound):
@@ -587,6 +674,8 @@ func handleDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "cannot change own role")
 	case errors.Is(err, orgDomain.ErrCannotBlockSelf):
 		writeError(w, http.StatusBadRequest, "cannot block yourself")
+	case errors.Is(err, orgDomain.ErrCannotEditOwner):
+		writeError(w, http.StatusForbidden, "only owner can edit their own info")
 	case errors.Is(err, orgDomain.ErrMemberCannotBeRemoved):
 		writeError(w, http.StatusBadRequest, "owner cannot be removed")
 	case errors.Is(err, orgDomain.ErrNameRequired):

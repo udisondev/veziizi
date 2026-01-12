@@ -144,6 +144,18 @@ class MockMembersStore {
   }
 
   /**
+   * Обновить информацию о сотруднике (partial update)
+   */
+  updateInfo(memberId: string, name?: string, email?: string, phone?: string): void {
+    const member = this.members.get(memberId)
+    if (member) {
+      if (name !== undefined) member.name = name
+      if (email !== undefined) member.email = email
+      if (phone !== undefined) member.phone = phone
+    }
+  }
+
+  /**
    * Очистить store
    */
   clear(): void {

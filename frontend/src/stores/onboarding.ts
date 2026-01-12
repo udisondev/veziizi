@@ -7,6 +7,8 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { tutorialBus } from '@/sandbox/events'
+import { resetAllMockData } from '@/sandbox/mockData'
+import { useNotificationsStore } from '@/stores/notifications'
 import type {
   ScenarioType,
   TutorialStep,
@@ -14,6 +16,7 @@ import type {
   STORAGE_KEYS,
   TutorialEventKey,
   StepPlatform,
+  ChainContext,
 } from '@/types/tutorial'
 import type { PopupDirection } from '@/composables/useTutorialPopupTracker'
 
@@ -42,6 +45,7 @@ const scenarioLoaders: Record<ScenarioType, () => Promise<{ default: ScenarioMod
   admin_flow: () => import('@/sandbox/scenarios/adminFlow'),
   subscriptions_flow: () => import('@/sandbox/scenarios/subscriptionsFlow'),
   telegram_flow: () => import('@/sandbox/scenarios/telegramFlow'),
+  completion_flow: () => import('@/sandbox/scenarios/completionFlow'),
 }
 
 export const useOnboardingStore = defineStore('onboarding', () => {
@@ -52,8 +56,16 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   // Режим песочницы
   // ВАЖНО: Синхронно проверяем localStorage при создании store,
   // чтобы API interceptor работал с первого запроса
-  const savedState = localStorage.getItem(STORAGE_KEYS.SANDBOX_STATE)
-  const initialSandboxMode = savedState ? JSON.parse(savedState).isSandboxMode === true : false
+  let initialSandboxMode = false
+  try {
+    const savedState = localStorage.getItem(STORAGE_KEYS.SANDBOX_STATE)
+    if (savedState) {
+      initialSandboxMode = JSON.parse(savedState).isSandboxMode === true
+    }
+  } catch {
+    // Поврежденные данные в localStorage — игнорируем
+    localStorage.removeItem(STORAGE_KEYS.SANDBOX_STATE)
+  }
   const isSandboxMode = ref(initialSandboxMode)
 
   // Desktop или mobile (реактивно отслеживается)
@@ -106,7 +118,8 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   const hasCompletedOnboarding = ref(false)
 
   // Готовность sandbox (true если НЕ в sandbox или sandbox полностью инициализирован)
-  const sandboxReady = ref(true)
+  // Если sandbox восстанавливается из localStorage, нужно подождать initialize()
+  const sandboxReady = ref(!initialSandboxMode)
 
   // Обработчик текущего события
   let currentEventUnsubscribe: (() => void) | null = null
@@ -124,6 +137,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     status: string
     created_at: string
   } | null>(null)
+
+  // Контекст цепочки курсов (для передачи данных между связанными курсами)
+  const chainContext = ref<ChainContext | null>(null)
 
   // === Computed ===
 
@@ -151,7 +167,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   /**
    * Загрузить прогресс из localStorage
    */
-  function loadProgress() {
+  async function loadProgress() {
     try {
       const savedProgress = localStorage.getItem(STORAGE_KEYS.PROGRESS)
       if (savedProgress) {
@@ -168,8 +184,12 @@ export const useOnboardingStore = defineStore('onboarding', () => {
       if (savedState) {
         const state = JSON.parse(savedState)
         if (state.isSandboxMode && state.activeScenario) {
-          // Восстанавливаем состояние sandbox
-          enterSandbox(state.activeScenario, state.currentStepIndex)
+          // Восстанавливаем состояние sandbox с chainContext если есть
+          // ВАЖНО: await чтобы sandbox был готов до рендера компонентов
+          const chain = state.chainContext?.freightRequestId
+            ? { freightRequestId: state.chainContext.freightRequestId, skipIntro: state.chainContext.skipIntro }
+            : undefined
+          await enterSandbox(state.activeScenario, state.currentStepIndex, chain)
         }
       }
     } catch (e) {
@@ -189,6 +209,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
           isSandboxMode: true,
           activeScenario: activeScenario.value,
           currentStepIndex: currentStepIndex.value,
+          chainContext: chainContext.value,
         }))
       } else {
         localStorage.removeItem(STORAGE_KEYS.SANDBOX_STATE)
@@ -244,12 +265,30 @@ export const useOnboardingStore = defineStore('onboarding', () => {
 
   /**
    * Войти в режим песочницы
+   * @param scenario - тип сценария
+   * @param resumeFromStep - с какого шага начать (по умолчанию 0)
+   * @param chain - контекст цепочки курсов (опционально)
    */
-  async function enterSandbox(scenario: ScenarioType, resumeFromStep = 0) {
+  async function enterSandbox(
+    scenario: ScenarioType,
+    resumeFromStep = 0,
+    chain?: { freightRequestId: string; skipIntro?: boolean }
+  ) {
     // Помечаем sandbox как не готовый пока не завершится initialize()
     sandboxReady.value = false
 
     try {
+      // Устанавливаем chain context ДО initialize() и загрузки сценария
+      if (chain) {
+        chainContext.value = {
+          isChained: true,
+          freightRequestId: chain.freightRequestId,
+          skipIntro: chain.skipIntro ?? false,
+        }
+      } else {
+        chainContext.value = null
+      }
+
       // Загружаем сценарий
       const module = await scenarioLoaders[scenario]()
       allSteps.value = module.default.steps
@@ -264,6 +303,11 @@ export const useOnboardingStore = defineStore('onboarding', () => {
       // Выполняется при ЛЮБОМ старте/возобновлении
       if (module.default.initialize) {
         await module.default.initialize()
+      }
+
+      // Если skipIntro — начинаем со следующего шага (пропускаем intro)
+      if (chain?.skipIntro && resumeFromStep === 0) {
+        currentStepIndex.value = 1
       }
 
       // Sandbox готов — mock данные созданы
@@ -300,7 +344,13 @@ export const useOnboardingStore = defineStore('onboarding', () => {
    * Очистить состояние sandbox
    */
   function cleanup() {
+    // 1. Сначала выключаем sandbox mode — все новые запросы пойдут к реальному API
     isSandboxMode.value = false
+
+    // 2. Очищаем все mock данные
+    resetAllMockData()
+
+    // 3. Сбрасываем состояние store
     activeScenario.value = null
     allSteps.value = []
     currentStepIndex.value = 0
@@ -308,11 +358,17 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     highlightedElement.value = null
     popupDirection.value = null
     sandboxCreatedRequest.value = null
+    chainContext.value = null
 
     if (currentEventUnsubscribe) {
       currentEventUnsubscribe()
       currentEventUnsubscribe = null
     }
+
+    // 4. Очищаем Pinia notifications store и перезагружаем с реального сервера
+    const notificationsStore = useNotificationsStore()
+    notificationsStore.cleanup()
+    notificationsStore.initialize()
 
     localStorage.removeItem(STORAGE_KEYS.SANDBOX_STATE)
   }
@@ -524,6 +580,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     if (allCompleted) {
       hasCompletedOnboarding.value = true
     }
+
+    // Редирект на главную после завершения (sandbox данные невалидны вне sandbox)
+    router.push('/')
   }
 
   /**
@@ -621,6 +680,20 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     scrollPaused.value = false
   }
 
+  /**
+   * Получить ID заявки из chain context (для цепочки курсов)
+   */
+  function getChainedFreightRequestId(): string | null {
+    return chainContext.value?.freightRequestId ?? null
+  }
+
+  /**
+   * Проверить, запущен ли сценарий в режиме цепочки
+   */
+  function isInChainMode(): boolean {
+    return chainContext.value?.isChained ?? false
+  }
+
   return {
     // State
     isSandboxMode,
@@ -638,6 +711,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     hasSeenHelpHint,
     hasCompletedOnboarding,
     sandboxCreatedRequest,
+    chainContext,
     isDesktop,
 
     // Computed
@@ -673,5 +747,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     exitValidationErrorMode,
     setSandboxCreatedRequest,
     clearSandboxCreatedRequest,
+    getChainedFreightRequestId,
+    isInChainMode,
   }
 })

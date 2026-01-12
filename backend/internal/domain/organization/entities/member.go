@@ -8,41 +8,39 @@ import (
 )
 
 type Member struct {
-	id           uuid.UUID
-	email        string
-	passwordHash string
-	name         string
-	phone        string
-	telegramID   *int64
-	role         values.MemberRole
-	status       values.MemberStatus
-	createdAt    time.Time
+	id         uuid.UUID
+	email      string
+	name       string
+	phone      string
+	telegramID *int64
+	role       values.MemberRole
+	status     values.MemberStatus
+	createdAt  time.Time
+	// NOTE: passwordHash removed from domain entity (SEC-007)
+	// Password hash stored only in members_lookup projection
 }
 
 func NewMember(
 	id uuid.UUID,
 	email string,
-	passwordHash string,
 	name string,
 	phone string,
 	role values.MemberRole,
 ) Member {
 	return Member{
-		id:           id,
-		email:        email,
-		passwordHash: passwordHash,
-		name:         name,
-		phone:        phone,
-		role:         role,
-		status:       values.MemberStatusActive,
-		createdAt:    time.Now().UTC(),
+		id:        id,
+		email:     email,
+		name:      name,
+		phone:     phone,
+		role:      role,
+		status:    values.MemberStatusActive,
+		createdAt: time.Now().UTC(),
 	}
 }
 
-func (m Member) ID() uuid.UUID              { return m.id }
-func (m Member) Email() string              { return m.email }
-func (m Member) PasswordHash() string       { return m.passwordHash }
-func (m Member) Name() string               { return m.name }
+func (m Member) ID() uuid.UUID   { return m.id }
+func (m Member) Email() string   { return m.email }
+func (m Member) Name() string    { return m.name }
 func (m Member) Phone() string              { return m.phone }
 func (m Member) TelegramID() *int64         { return m.telegramID }
 func (m Member) Role() values.MemberRole    { return m.role }
@@ -81,15 +79,16 @@ func (m *Member) SetTelegramID(telegramID int64) {
 	m.telegramID = &telegramID
 }
 
-func (m *Member) UpdatePassword(hash string) {
-	m.passwordHash = hash
+func (m *Member) UpdateInfo(name, email, phone string) {
+	m.name = name
+	m.email = email
+	m.phone = phone
 }
 
 // RestoreMember creates Member from stored data (for event replay)
 func RestoreMember(
 	id uuid.UUID,
 	email string,
-	passwordHash string,
 	name string,
 	phone string,
 	telegramID *int64,
@@ -98,14 +97,13 @@ func RestoreMember(
 	createdAt time.Time,
 ) Member {
 	return Member{
-		id:           id,
-		email:        email,
-		passwordHash: passwordHash,
-		name:         name,
-		phone:        phone,
-		telegramID:   telegramID,
-		role:         role,
-		status:       status,
-		createdAt:    createdAt,
+		id:         id,
+		email:      email,
+		name:       name,
+		phone:      phone,
+		telegramID: telegramID,
+		role:       role,
+		status:     status,
+		createdAt:  createdAt,
 	}
 }

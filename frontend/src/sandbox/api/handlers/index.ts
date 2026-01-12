@@ -7,6 +7,7 @@ import { freightRequestsHandlers } from './freightRequests'
 import { offersHandlers } from './offers'
 import { membersHandlers } from './members'
 import { notificationsHandlers } from './notifications'
+import { organizationsHandlers } from './organizations'
 
 export interface MockResponse {
   status?: number
@@ -138,5 +139,6 @@ if (!window.__sandboxHandlersRegistered) {
   offersHandlers()
   membersHandlers()
   notificationsHandlers()
+  organizationsHandlers()
   window.__sandboxHandlersRegistered = true
 }

@@ -3,6 +3,7 @@ import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAdminStore } from '@/stores/admin'
 import { adminApi, type AdminSupportTicketDetail } from '@/api/admin'
+import { getErrorMessage } from '@/api/errors'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -92,8 +93,8 @@ async function sendMessage() {
     await adminApi.addSupportMessage(ticketId.value, newMessage.value.trim())
     newMessage.value = ''
     await loadTicket()
-  } catch (e: any) {
-    sendError.value = e.response?.data?.error || 'Не удалось отправить сообщение'
+  } catch (e) {
+    sendError.value = getErrorMessage(e)
   } finally {
     sending.value = false
   }

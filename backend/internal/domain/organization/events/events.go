@@ -20,6 +20,7 @@ const (
 	TypeMemberRoleChanged     = "member.role_changed"
 	TypeMemberBlocked         = "member.blocked"
 	TypeMemberUnblocked       = "member.unblocked"
+	TypeMemberInfoUpdated     = "member.info_updated"
 	TypeInvitationCreated     = "invitation.created"
 	TypeInvitationAccepted    = "invitation.accepted"
 	TypeInvitationExpired     = "invitation.expired"
@@ -39,6 +40,7 @@ func init() {
 	eventstore.RegisterEventType[MemberRoleChanged](TypeMemberRoleChanged)
 	eventstore.RegisterEventType[MemberBlocked](TypeMemberBlocked)
 	eventstore.RegisterEventType[MemberUnblocked](TypeMemberUnblocked)
+	eventstore.RegisterEventType[MemberInfoUpdated](TypeMemberInfoUpdated)
 	eventstore.RegisterEventType[InvitationCreated](TypeInvitationCreated)
 	eventstore.RegisterEventType[InvitationAccepted](TypeInvitationAccepted)
 	eventstore.RegisterEventType[InvitationExpired](TypeInvitationExpired)
@@ -154,6 +156,21 @@ type MemberUnblocked struct {
 }
 
 func (e MemberUnblocked) EventType() string { return TypeMemberUnblocked }
+
+// MemberInfoUpdated is emitted when member info (name, email, phone) is updated
+type MemberInfoUpdated struct {
+	eventstore.BaseEvent
+	MemberID  uuid.UUID `json:"member_id"`
+	OldName   string    `json:"old_name"`
+	NewName   string    `json:"new_name"`
+	OldEmail  string    `json:"old_email"`
+	NewEmail  string    `json:"new_email"`
+	OldPhone  string    `json:"old_phone"`
+	NewPhone  string    `json:"new_phone"`
+	UpdatedBy uuid.UUID `json:"updated_by"` // member ID who made the change
+}
+
+func (e MemberInfoUpdated) EventType() string { return TypeMemberInfoUpdated }
 
 // InvitationCreated is emitted when invitation is created
 type InvitationCreated struct {

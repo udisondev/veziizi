@@ -9,9 +9,18 @@ import { mockOffers } from '@/sandbox/mockData/offers'
 import { mockNotifications } from '@/sandbox/mockData/notifications'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
+import { useOnboardingStore } from '@/stores/onboarding'
 
-// ID заявки для этого сценария
+// ID заявки для этого сценария (fallback для автономного режима)
 const FR_ID = 'sandbox-fr-offers'
+
+/**
+ * Получить ID заявки — из chain context или fallback
+ */
+function getFreightRequestId(): string {
+  const onboarding = useOnboardingStore()
+  return onboarding.getChainedFreightRequestId() ?? FR_ID
+}
 
 /**
  * Инициализация сценария — создаёт mock данные при любом старте/возобновлении
@@ -19,16 +28,22 @@ const FR_ID = 'sandbox-fr-offers'
  */
 async function initialize() {
   const auth = useAuthStore()
+  const onboarding = useOnboardingStore()
 
-  // Очищаем предыдущие данные
+  // Очищаем предыдущие уведомления в любом случае
   mockNotifications.clear()
 
-  // Создаём заявку с офферами и уведомлениями
-  // Используем текущую организацию пользователя как владельца заявки
-  await mockFreightRequests.seedWithOffers(FR_ID, 4, {
+  // Определяем ID заявки (из chain context или fallback)
+  const frId = getFreightRequestId()
+
+  // В обоих режимах создаём заявку в mockFreightRequests с офферами
+  // (в режиме цепочки заявка из customerFlow хранится только в sandboxCreatedRequest,
+  // но не в mockFreightRequests — поэтому нужно её создать)
+  await mockFreightRequests.seedWithOffers(frId, 4, {
     customer_org_id: auth.organizationId!,
-    customer_org_name: auth.organizationName || 'Моя организация',
+    customer_org_name: auth.organization?.name || 'Моя организация',
     customer_member_id: auth.memberId!,
+    customer_member_name: auth.name || 'Ответственный',
   })
 
   // Принудительно обновить Pinia store чтобы badge появился сразу
@@ -59,7 +74,8 @@ export const steps: TutorialStep[] = [
     description: 'Нажмите на любое уведомление о предложении чтобы перейти к заявке.',
     // Без target — tooltip не перекрывает уведомления
     completionType: 'navigate',
-    completionAction: `/freight-requests/${FR_ID}`,
+    // Partial match — любой путь начинающийся с /freight-requests/
+    completionAction: '/freight-requests/',
   },
 
   // === Вкладка предложений ===
@@ -99,7 +115,15 @@ export const steps: TutorialStep[] = [
     target: 'select-offer-btn',
     tooltipPosition: 'left',
     completionType: 'action',
+    completionAction: 'selectModal:opened',
+  },
+  {
+    id: 'offers_select_confirm_modal',
+    title: 'Подтверждение выбора',
+    description: 'Подтвердите выбор предложения в открывшемся окне.',
+    completionType: 'action',
     completionAction: 'offer:selected',
+    hideTooltip: true,
   },
   {
     id: 'offers_unselect',
@@ -108,7 +132,15 @@ export const steps: TutorialStep[] = [
     target: 'unselect-offer-btn',
     tooltipPosition: 'left',
     completionType: 'action',
+    completionAction: 'unselectModal:opened',
+  },
+  {
+    id: 'offers_unselect_confirm_modal',
+    title: 'Подтверждение отмены',
+    description: 'Подтвердите отмену выбора в открывшемся окне.',
+    completionType: 'action',
     completionAction: 'offer:unselected',
+    hideTooltip: true,
   },
   {
     id: 'offers_select_confirm',
@@ -118,23 +150,79 @@ export const steps: TutorialStep[] = [
     target: 'select-offer-btn',
     tooltipPosition: 'left',
     completionType: 'action',
-    completionAction: 'offer:confirmed',
+    completionAction: 'selectModal:opened',
     async beforeStep() {
       // Настраиваем автоподтверждение для всех оставшихся pending офферов
-      const offers = mockOffers.listByFreightRequest(FR_ID)
+      const frId = getFreightRequestId()
+      const offers = mockOffers.listByFreightRequest(frId)
       offers
         .filter(o => o.status === 'pending')
         .forEach(offer => mockOffers.setAutoConfirm(offer.id, true))
     },
   },
+  {
+    id: 'offers_select_confirm_modal_final',
+    title: 'Подтверждение выбора',
+    description: 'Подтвердите выбор. После этого перевозчик автоматически подтвердит участие.',
+    completionType: 'action',
+    completionAction: 'offer:confirmed',
+    hideTooltip: true,
+  },
+  {
+    id: 'offers_switch_to_details',
+    title: 'Детали заявки',
+    description: 'Теперь откройте вкладку "Детали заявки" чтобы увидеть информацию о перевозчике.',
+    target: 'tabs-dropdown',
+    tooltipPosition: 'right',
+    completionType: 'action',
+    completionAction: 'tab:details',
+  },
+  {
+    id: 'offers_carrier_info',
+    title: 'Информация о перевозчике',
+    description: 'После подтверждения здесь отображается информация о перевозчике: организация и ответственный сотрудник.',
+    target: 'carrier-info',
+    tooltipPosition: 'bottom',
+    completionType: 'manual',
+  },
+  {
+    id: 'offers_visit_carrier',
+    title: 'Профиль перевозчика',
+    description: 'Нажмите на название организации перевозчика, чтобы посмотреть его профиль и рейтинг.',
+    target: 'carrier-org-link',
+    tooltipPosition: 'bottom',
+    completionType: 'navigate',
+    completionAction: '/organizations/carrier-',
+  },
+  {
+    id: 'offers_back_to_request',
+    title: 'Вернитесь к заявке',
+    description: 'Нажмите кнопку "Назад" чтобы вернуться к заявке.',
+    target: 'org-back-button',
+    tooltipPosition: 'bottom',
+    completionType: 'navigate',
+    // Partial match — любой путь начинающийся с /freight-requests/
+    completionAction: '/freight-requests/',
+    hint: 'Кнопка "Назад" вернёт вас на предыдущую страницу',
+  },
+  {
+    id: 'offers_visit_member',
+    title: 'Профиль ответственного',
+    description: 'Нажмите на ФИО ответственного перевозчика, чтобы посмотреть его профиль.',
+    target: 'carrier-member-link',
+    tooltipPosition: 'bottom',
+    completionType: 'navigate',
+    completionAction: '/members/carrier-',
+  },
 
   // === Завершение ===
   {
     id: 'offers_complete',
-    title: 'Готово!',
+    title: 'Обучение завершено!',
     description:
-      'Перевозчик подтверждён. Перевозка готова к выполнению.',
+      'Вы научились работать с предложениями. Хотите пройти обучение по завершению заявки и отзывам?',
     completionType: 'manual',
+    showCompletionTrainingButton: true,
   },
 ]
 

@@ -221,10 +221,15 @@ class MockOfferStore {
       }
     })
 
-    // Обновляем статус заявки
+    // Обновляем статус заявки и копируем информацию о перевозчике
     const fr = getMockFreightRequests()?.get(frId)
     if (fr) {
       fr.status = 'confirmed'
+      // Копируем carrier info из оффера
+      fr.carrier_org_id = offer.carrier_org_id
+      fr.carrier_org_name = offer.carrier_org_name
+      fr.carrier_member_id = offer.carrier_member_id
+      fr.carrier_member_name = offer.carrier_member_name
     }
 
     // Отправляем событие

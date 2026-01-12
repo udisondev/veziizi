@@ -476,6 +476,28 @@ func (s *Service) UnblockMember(ctx context.Context, input UnblockMemberInput) e
 	return s.saveAndPublish(ctx, org)
 }
 
+type UpdateMemberInfoInput struct {
+	OrganizationID uuid.UUID
+	ActorID        uuid.UUID
+	MemberID       uuid.UUID
+	Name           *string // nil = don't change
+	Email          *string // nil = don't change
+	Phone          *string // nil = don't change
+}
+
+func (s *Service) UpdateMemberInfo(ctx context.Context, input UpdateMemberInfoInput) error {
+	org, err := s.Get(ctx, input.OrganizationID)
+	if err != nil {
+		return err
+	}
+
+	if err := org.UpdateMemberInfo(input.ActorID, input.MemberID, input.Name, input.Email, input.Phone); err != nil {
+		return err
+	}
+
+	return s.saveAndPublish(ctx, org)
+}
+
 // DevRemoveMember removes member from organization (dev only, no permission checks)
 func (s *Service) DevRemoveMember(ctx context.Context, orgID, memberID uuid.UUID) error {
 	org, err := s.Get(ctx, orgID)

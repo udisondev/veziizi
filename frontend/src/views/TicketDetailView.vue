@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getTicket, addMessage, reopenTicket, type TicketDetail } from '@/api/support'
+import { getErrorMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 
 // UI Components
@@ -44,8 +45,8 @@ async function loadTicket() {
     ticket.value = await getTicket(ticketId.value)
     await nextTick()
     scrollToBottom()
-  } catch (e: any) {
-    error.value = e.response?.data?.error || 'Не удалось загрузить обращение'
+  } catch (e) {
+    error.value = getErrorMessage(e)
   } finally {
     loading.value = false
   }
@@ -60,8 +61,8 @@ async function sendMessage() {
     await addMessage(ticketId.value, { content: newMessage.value.trim() })
     newMessage.value = ''
     await loadTicket()
-  } catch (e: any) {
-    sendError.value = e.response?.data?.error || 'Не удалось отправить сообщение'
+  } catch (e) {
+    sendError.value = getErrorMessage(e)
   } finally {
     sending.value = false
   }
@@ -72,8 +73,8 @@ async function handleReopen() {
   try {
     await reopenTicket(ticketId.value)
     await loadTicket()
-  } catch (e: any) {
-    console.error('Failed to reopen ticket:', e)
+  } catch (e) {
+    // Logged by logger utility
   } finally {
     reopening.value = false
   }

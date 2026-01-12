@@ -5,6 +5,7 @@ import { useOnboardingStore } from '@/stores/onboarding'
 import { usePermissions } from '@/composables/usePermissions'
 import { storeToRefs } from 'pinia'
 import { createTicket, getMyTickets, type TicketListItem } from '@/api/support'
+import { getErrorMessage } from '@/api/errors'
 import type { ScenarioType } from '@/types/tutorial'
 
 // UI Components
@@ -87,6 +88,14 @@ const allCourses: CourseInfo[] = [
     duration: '~3 мин',
   },
   {
+    id: 'completion_flow',
+    title: 'Завершение заявки',
+    description: 'Как завершить перевозку и оставить отзыв',
+    icon: CheckCircle,
+    color: 'bg-emerald-100 text-emerald-600',
+    duration: '~3 мин',
+  },
+  {
     id: 'admin_flow',
     title: 'Управление командой',
     description: 'Приглашение сотрудников и управление ролями',
@@ -143,8 +152,8 @@ async function submitTicket() {
     setTimeout(() => {
       router.push(`/support/tickets/${result.id}`)
     }, 1500)
-  } catch (e: any) {
-    error.value = e.response?.data?.error || 'Не удалось создать обращение'
+  } catch (e) {
+    error.value = getErrorMessage(e)
   } finally {
     submitting.value = false
   }
