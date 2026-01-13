@@ -184,9 +184,9 @@ export function useFreightRequestForm() {
       errors.price = 'Укажите стоимость или отметьте "Не указывать цену"'
     }
 
-    // Если выбрана отсрочка, то дни обязательны (только если цена указывается)
-    if (!payment.no_price && payment.terms === 'deferred' && !payment.deferred_days) {
-      errors.deferred_days = 'Укажите количество дней отсрочки'
+    // Если выбрана отсрочка, то дни обязательны и должны быть > 0
+    if (payment.terms === 'deferred' && (!payment.deferred_days || payment.deferred_days <= 0)) {
+      errors.deferred_days = 'Укажите количество дней отсрочки (больше 0)'
     }
 
     return !errors.price && !errors.deferred_days
@@ -390,10 +390,10 @@ export function useFreightRequestForm() {
         ? 'Укажите стоимость или отметьте "Не указывать цену"'
         : null
     }
-    if (field === 'deferred_days' && !payment.no_price && payment.terms === 'deferred') {
-      errors.deferred_days = payment.deferred_days
+    if (field === 'deferred_days' && payment.terms === 'deferred') {
+      errors.deferred_days = (payment.deferred_days && payment.deferred_days > 0)
         ? null
-        : 'Укажите количество дней отсрочки'
+        : 'Укажите количество дней отсрочки (больше 0)'
     }
   }
 
