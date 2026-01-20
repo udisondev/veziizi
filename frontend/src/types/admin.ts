@@ -131,3 +131,73 @@ export interface MarkFraudsterRequest {
 export interface UnmarkFraudsterRequest {
   reason: string
 }
+
+// Email Template types
+export interface VariableSpec {
+  type: string
+  required: boolean
+  description?: string
+}
+
+export interface EmailTemplate {
+  id: string
+  slug: string
+  name: string
+  subject: string
+  body_html: string
+  body_text: string
+  category: 'transactional' | 'marketing'
+  variables_schema: Record<string, VariableSpec>
+  is_system: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface EmailTemplatesListResponse {
+  templates: EmailTemplate[]
+  total: number
+}
+
+export interface EmailTemplateListFilter {
+  category?: 'transactional' | 'marketing'
+  is_active?: boolean
+  is_system?: boolean
+  search?: string
+  limit?: number
+  offset?: number
+}
+
+export interface CreateEmailTemplateRequest {
+  slug: string
+  name: string
+  subject: string
+  body_html: string
+  body_text: string
+  category: 'transactional' | 'marketing'
+  variables_schema?: Record<string, VariableSpec>
+}
+
+export interface UpdateEmailTemplateRequest {
+  name?: string
+  subject?: string
+  body_html?: string
+  body_text?: string
+  category?: 'transactional' | 'marketing'
+  variables_schema?: Record<string, VariableSpec>
+  is_active?: boolean
+}
+
+export interface PreviewEmailTemplateRequest {
+  template_id?: string
+  subject: string
+  body_html: string
+  body_text: string
+  variables: Record<string, string>
+}
+
+export interface PreviewEmailTemplateResponse {
+  subject: string
+  body_html: string
+  body_text: string
+}
