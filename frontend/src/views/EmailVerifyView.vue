@@ -43,7 +43,7 @@ onMounted(async () => {
 })
 
 function goToSettings() {
-  router.push('/settings/notifications')
+  router.push('/notifications/settings')
 }
 
 function goToLogin() {
