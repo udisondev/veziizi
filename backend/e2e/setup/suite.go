@@ -116,6 +116,9 @@ func newSuite(t *testing.T) (*Suite, error) {
 	projections.RegistrationVelocity.MaxRegistrationsPerIPPerHour = 10000
 	projections.RegistrationVelocity.MaxRegistrationsPerFingerprintPer24h = 10000
 
+	// Increase password reset rate limits for tests
+	projections.SetPasswordResetRateLimits(10000, 10000)
+
 	// Disable logging in tests (or set to minimal level)
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelError,
@@ -317,6 +320,7 @@ func (s *Suite) startServer() {
 	server.Router().Use(middleware.CORS(s.Config))
 	server.Router().Use(middleware.BodyLimit())
 	server.Router().Use(middleware.RequireAuth(sessionManager))
+	server.Router().Use(middleware.CheckMemberStatus(sessionManager, s.Factory.MembersProjection()))
 	server.Router().Use(middleware.RateLimiter(sessionManager, s.Factory.SessionAnalyzer()))
 	server.Router().Use(middleware.CSRFProtection())
 
@@ -350,6 +354,15 @@ func (s *Suite) startServer() {
 
 	adminSupportHandler := handlers.NewAdminSupportHandler(s.Factory.SupportService(), s.Factory.SupportTicketsProjection(), adminSessionManager)
 	adminSupportHandler.RegisterRoutes(server.Router())
+
+	passwordResetHandler := handlers.NewPasswordResetHandler(
+		s.Factory.MembersProjection(),
+		s.Factory.PasswordResetProjection(),
+		s.Factory.EmailTemplatesProjection(),
+		s.Factory.EmailProvider(),
+		s.Config,
+	)
+	passwordResetHandler.RegisterRoutes(server.Router())
 
 	if s.Config.IsDevelopment() {
 		devHandler := handlers.NewDevHandler(s.Config, s.Factory.MembersProjection(), s.Factory.OrganizationService(), sessionManager)

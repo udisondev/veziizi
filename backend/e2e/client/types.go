@@ -48,6 +48,17 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// ForgotPasswordRequest is the request for initiating password reset
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// ResetPasswordRequest is the request for resetting password with token
+type ResetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
 type LoginResponse struct {
 	MemberID       uuid.UUID `json:"member_id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
@@ -64,6 +75,7 @@ type MeResponse struct {
 	Name           string              `json:"name"`
 	Phone          *string             `json:"phone,omitempty"`
 	TelegramID     *int64              `json:"telegram_id,omitempty"`
+	Status         string              `json:"status"`
 	Organization   OrganizationSummary `json:"organization"`
 }
 
@@ -82,6 +94,19 @@ type MemberPublicProfile struct {
 	Phone          *string   `json:"phone,omitempty"`
 	Role           string    `json:"role"`
 	Status         string    `json:"status"`
+}
+
+// MemberProfileResponse is returned by GET /api/v1/members/{id}
+type MemberProfileResponse struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Email            string    `json:"email"`
+	Phone            *string   `json:"phone,omitempty"`
+	Role             string    `json:"role"`
+	Status           string    `json:"status"`
+	OrganizationID   string    `json:"organization_id"`
+	OrganizationName string    `json:"organization_name"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // --- Organization Types ---
@@ -117,9 +142,29 @@ type OrganizationResponse struct {
 	Version  int       `json:"version"`
 }
 
+// OrganizationMemberDetail is a member in organization full response
+type OrganizationMemberDetail struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
+	Role      string `json:"role"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+}
+
 type OrganizationFullResponse struct {
-	OrganizationResponse
-	Members []MemberPublicProfile `json:"members"`
+	ID        string                     `json:"id"`
+	Name      string                     `json:"name"`
+	INN       string                     `json:"inn"`
+	LegalName string                     `json:"legal_name"`
+	Country   string                     `json:"country"`
+	Phone     string                     `json:"phone"`
+	Email     string                     `json:"email"`
+	Address   string                     `json:"address"`
+	Status    string                     `json:"status"`
+	Members   []OrganizationMemberDetail `json:"members"`
+	CreatedAt string                     `json:"created_at"`
 }
 
 type RatingResponse struct {
@@ -194,8 +239,9 @@ type Cargo struct {
 }
 
 type VehicleRequirements struct {
-	VehicleType    string `json:"vehicle_type"`
-	VehicleSubtype string `json:"vehicle_subtype"`
+	VehicleType    string   `json:"vehicle_type"`
+	VehicleSubtype string   `json:"vehicle_subtype"`
+	LoadingTypes   []string `json:"loading_types,omitempty"`
 }
 
 type Money struct {
