@@ -43,6 +43,55 @@ export function authHandlers(): void {
     }
   })
 
+  // GET /auth/reset-password/:token - валидация токена
+  registerHandler('GET', '/auth/reset-password/:token', (params) => {
+    const token = params.token as string
+
+    // Тестовые токены для демонстрации разных состояний
+    if (token === 'expired-token') {
+      return {
+        status: 410,
+        data: { error: 'Token expired' },
+      }
+    }
+
+    if (token === 'invalid-token') {
+      return {
+        status: 404,
+        data: { error: 'Token not found' },
+      }
+    }
+
+    // Проверяем реальный токен
+    const tokenData = passwordResetTokens.get(token)
+
+    if (!tokenData) {
+      // Для тестового токена всегда OK
+      if (token === TEST_RESET_TOKEN) {
+        return {
+          status: 204,
+          data: null,
+        }
+      }
+      return {
+        status: 404,
+        data: { error: 'Token not found' },
+      }
+    }
+
+    if (tokenData.expiresAt < new Date()) {
+      return {
+        status: 410,
+        data: { error: 'Token expired' },
+      }
+    }
+
+    return {
+      status: 204,
+      data: null,
+    }
+  })
+
   // POST /auth/reset-password
   registerHandler('POST', '/auth/reset-password', (_params, body) => {
     const { token, password } = body as { token: string; password: string }

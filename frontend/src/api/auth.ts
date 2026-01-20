@@ -34,4 +34,14 @@ export const authApi = {
   resetPassword(data: ResetPasswordRequest): Promise<void> {
     return api.post('/auth/reset-password', data)
   },
+
+  /**
+   * Проверяет валидность токена сброса пароля.
+   * @returns true если токен валиден
+   * @throws Error с кодом 'TOKEN_NOT_FOUND' или 'TOKEN_EXPIRED'
+   */
+  async validateResetToken(token: string): Promise<boolean> {
+    await api.get(`/auth/reset-password/${token}`)
+    return true
+  },
 }
