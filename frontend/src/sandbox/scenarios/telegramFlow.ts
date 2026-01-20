@@ -10,11 +10,11 @@ export const steps: TutorialStep[] = [
     id: 'telegram_start',
     title: 'Подключение Telegram',
     description: 'Подключите Telegram для получения уведомлений. Перейдём в настройки уведомлений.',
-    route: '/settings/notifications',
+    route: '/notifications/settings',
     highlightSelector: '[data-tutorial="notifications-settings-link"]',
     tooltipPosition: 'bottom',
     completionType: 'navigate',
-    completionAction: '/settings/notifications',
+    completionAction: '/notifications/settings',
   },
   {
     id: 'telegram_connect',
