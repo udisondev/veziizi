@@ -9,6 +9,7 @@ import { membersHandlers } from './members'
 import { notificationsHandlers } from './notifications'
 import { organizationsHandlers } from './organizations'
 import { authHandlers } from './auth'
+import { adminHandlers } from './admin'
 
 export interface MockResponse {
   status?: number
@@ -142,5 +143,6 @@ if (!window.__sandboxHandlersRegistered) {
   notificationsHandlers()
   organizationsHandlers()
   authHandlers()
+  adminHandlers()
   window.__sandboxHandlersRegistered = true
 }

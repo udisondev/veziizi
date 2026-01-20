@@ -233,6 +233,20 @@ const router = createRouter({
       meta: { admin: true, title: 'Обращение' },
       beforeEnter: adminGuard,
     },
+    {
+      path: '/admin/email-templates',
+      name: 'admin-email-templates',
+      component: () => import('@/views/admin/AdminEmailTemplatesView.vue'),
+      meta: { admin: true, title: 'Email шаблоны' },
+      beforeEnter: adminGuard,
+    },
+    {
+      path: '/admin/email-templates/:id',
+      name: 'admin-email-template-edit',
+      component: () => import('@/views/admin/AdminEmailTemplateEditView.vue'),
+      meta: { admin: true, title: 'Редактирование шаблона' },
+      beforeEnter: adminGuard,
+    },
 
     // Error pages
     {

@@ -12,6 +12,13 @@ import type {
   FraudstersResponse,
   MarkFraudsterRequest,
   UnmarkFraudsterRequest,
+  EmailTemplate,
+  EmailTemplatesListResponse,
+  EmailTemplateListFilter,
+  CreateEmailTemplateRequest,
+  UpdateEmailTemplateRequest,
+  PreviewEmailTemplateRequest,
+  PreviewEmailTemplateResponse,
 } from '@/types/admin'
 
 export const adminApi = {
@@ -98,6 +105,39 @@ export const adminApi = {
 
   closeSupportTicket(ticketId: string, resolution?: string): Promise<void> {
     return api.post(`/admin/support/tickets/${ticketId}/close`, { resolution })
+  },
+
+  // Email templates
+  async getEmailTemplates(filter?: EmailTemplateListFilter): Promise<EmailTemplatesListResponse> {
+    const params = new URLSearchParams()
+    if (filter?.category) params.set('category', filter.category)
+    if (filter?.is_active !== undefined) params.set('is_active', String(filter.is_active))
+    if (filter?.is_system !== undefined) params.set('is_system', String(filter.is_system))
+    if (filter?.search) params.set('search', filter.search)
+    if (filter?.limit) params.set('limit', String(filter.limit))
+    if (filter?.offset) params.set('offset', String(filter.offset))
+    const query = params.toString()
+    return api.get(`/admin/email-templates${query ? '?' + query : ''}`)
+  },
+
+  getEmailTemplate(id: string): Promise<EmailTemplate> {
+    return api.get(`/admin/email-templates/${id}`)
+  },
+
+  createEmailTemplate(data: CreateEmailTemplateRequest): Promise<EmailTemplate> {
+    return api.post('/admin/email-templates', data)
+  },
+
+  updateEmailTemplate(id: string, data: UpdateEmailTemplateRequest): Promise<EmailTemplate> {
+    return api.patch(`/admin/email-templates/${id}`, data)
+  },
+
+  deleteEmailTemplate(id: string): Promise<void> {
+    return api.delete(`/admin/email-templates/${id}`)
+  },
+
+  previewEmailTemplate(data: PreviewEmailTemplateRequest): Promise<PreviewEmailTemplateResponse> {
+    return api.post('/admin/email-templates/preview', data)
   },
 }
 
