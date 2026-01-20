@@ -46,6 +46,12 @@ func (h *NotificationHandler) RegisterRoutes(r *mux.Router) {
 	// Telegram (привязка через бота)
 	r.HandleFunc("/api/v1/notifications/telegram/link-code", h.GenerateLinkCode).Methods(http.MethodPost)
 	r.HandleFunc("/api/v1/notifications/telegram", h.DisconnectTelegram).Methods(http.MethodDelete)
+
+	// Email
+	r.HandleFunc("/api/v1/notifications/email", h.SetEmail).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/notifications/email", h.DisconnectEmail).Methods(http.MethodDelete)
+	r.HandleFunc("/api/v1/notifications/email/marketing", h.SetMarketingConsent).Methods(http.MethodPatch)
+	r.HandleFunc("/api/v1/notifications/email/resend-verification", h.ResendEmailVerification).Methods(http.MethodPost)
 }
 
 // ===============================
@@ -268,6 +274,143 @@ func (h *NotificationHandler) DisconnectTelegram(w http.ResponseWriter, r *http.
 	}
 
 	slog.Info("telegram disconnected", slog.String("member_id", memberID.String()))
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ===============================
+// Email
+// ===============================
+
+type setEmailRequest struct {
+	Email string `json:"email"`
+}
+
+// SetEmail устанавливает email для уведомлений
+func (h *NotificationHandler) SetEmail(w http.ResponseWriter, r *http.Request) {
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req setEmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	input := notifApp.SetEmailInput{
+		Email: req.Email,
+	}
+
+	if err := h.service.SetEmail(r.Context(), memberID, input); err != nil {
+		slog.Error("failed to set email",
+			slog.String("error", err.Error()),
+			slog.String("member_id", memberID.String()),
+		)
+		writeError(w, http.StatusInternalServerError, "failed to set email")
+		return
+	}
+
+	slog.Info("email set", slog.String("member_id", memberID.String()))
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DisconnectEmail отключает email уведомления
+func (h *NotificationHandler) DisconnectEmail(w http.ResponseWriter, r *http.Request) {
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.service.DisconnectEmail(r.Context(), memberID); err != nil {
+		slog.Error("failed to disconnect email",
+			slog.String("error", err.Error()),
+			slog.String("member_id", memberID.String()),
+		)
+		writeError(w, http.StatusInternalServerError, "failed to disconnect email")
+		return
+	}
+
+	slog.Info("email disconnected", slog.String("member_id", memberID.String()))
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type setMarketingConsentRequest struct {
+	Consent bool `json:"consent"`
+}
+
+// SetMarketingConsent устанавливает согласие на маркетинговые рассылки
+func (h *NotificationHandler) SetMarketingConsent(w http.ResponseWriter, r *http.Request) {
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req setMarketingConsentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	input := notifApp.SetMarketingConsentInput{
+		Consent: req.Consent,
+	}
+
+	if err := h.service.SetMarketingConsent(r.Context(), memberID, input); err != nil {
+		slog.Error("failed to set marketing consent",
+			slog.String("error", err.Error()),
+			slog.String("member_id", memberID.String()),
+		)
+		writeError(w, http.StatusInternalServerError, "failed to set marketing consent")
+		return
+	}
+
+	slog.Info("marketing consent set",
+		slog.String("member_id", memberID.String()),
+		slog.Bool("consent", req.Consent),
+	)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ResendEmailVerification повторно отправляет письмо с подтверждением email
+func (h *NotificationHandler) ResendEmailVerification(w http.ResponseWriter, r *http.Request) {
+	memberID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.service.ResendEmailVerification(r.Context(), memberID); err != nil {
+		slog.Error("failed to resend email verification",
+			slog.String("error", err.Error()),
+			slog.String("member_id", memberID.String()),
+		)
+		// Возвращаем конкретные ошибки клиенту
+		if err.Error() == "email not set" {
+			writeError(w, http.StatusBadRequest, "email not set")
+			return
+		}
+		if err.Error() == "email already verified" {
+			writeError(w, http.StatusBadRequest, "email already verified")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to resend verification")
+		return
+	}
+
+	slog.Info("email verification resent", slog.String("member_id", memberID.String()))
 
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -38,6 +38,7 @@ type GetPreferencesResponse struct {
 	MemberID          uuid.UUID                `json:"member_id"`
 	EnabledCategories values.EnabledCategories `json:"enabled_categories"`
 	Telegram          TelegramStatusResponse   `json:"telegram"`
+	Email             EmailStatusResponse      `json:"email"`
 }
 
 // TelegramStatusResponse статус Telegram
@@ -66,6 +67,12 @@ func (s *Service) GetPreferences(ctx context.Context, memberID uuid.UUID) (*GetP
 		Telegram: TelegramStatusResponse{
 			Connected: pref.TelegramChatID != nil,
 		},
+		Email: EmailStatusResponse{
+			Connected:        pref.Email != nil,
+			Email:            pref.Email,
+			Verified:         pref.EmailVerified,
+			MarketingConsent: pref.EmailMarketingConsent,
+		},
 	}
 
 	if pref.TelegramUsername != nil {
@@ -74,6 +81,10 @@ func (s *Service) GetPreferences(ctx context.Context, memberID uuid.UUID) (*GetP
 	if pref.TelegramConnectedAt != nil {
 		formatted := pref.TelegramConnectedAt.Format("2006-01-02T15:04:05Z")
 		response.Telegram.ConnectedAt = &formatted
+	}
+	if pref.EmailVerifiedAt != nil {
+		formatted := pref.EmailVerifiedAt.Format("2006-01-02T15:04:05Z")
+		response.Email.VerifiedAt = &formatted
 	}
 
 	return response, nil
@@ -156,9 +167,8 @@ func (s *Service) ConfirmLinkCode(ctx context.Context, code string, chatID int64
 	}
 
 	// Сначала удаляем код (чтобы повторный запрос не прошёл до IsChatIDConnected)
-	if err := s.telegramLink.DeleteByCode(ctx, code); err != nil {
-		// Не критично, но логируем
-	}
+	// Ошибка удаления не критична — код всё равно истечёт по TTL
+	_ = s.telegramLink.DeleteByCode(ctx, code)
 
 	// Подключаем Telegram
 	if err := s.preferences.ConnectTelegram(ctx, linkCode.MemberID, chatID, username); err != nil {
@@ -295,4 +305,140 @@ func (s *Service) ShouldNotify(ctx context.Context, memberID uuid.UUID, notifTyp
 // GetTelegramChatID возвращает chat ID для отправки в Telegram
 func (s *Service) GetTelegramChatID(ctx context.Context, memberID uuid.UUID) (*int64, error) {
 	return s.preferences.GetTelegramChatID(ctx, memberID)
+}
+
+// ===============================
+// Email
+// ===============================
+
+// EmailStatusResponse статус Email
+type EmailStatusResponse struct {
+	Connected        bool    `json:"connected"`
+	Email            *string `json:"email,omitempty"`
+	Verified         bool    `json:"verified"`
+	VerifiedAt       *string `json:"verified_at,omitempty"`
+	MarketingConsent bool    `json:"marketing_consent"`
+}
+
+// GetEmailStatus возвращает статус email для member
+func (s *Service) GetEmailStatus(ctx context.Context, memberID uuid.UUID) (*EmailStatusResponse, error) {
+	pref, err := s.preferences.GetOrCreateByMemberID(ctx, memberID)
+	if err != nil {
+		return nil, fmt.Errorf("get preferences: %w", err)
+	}
+
+	response := &EmailStatusResponse{
+		Connected:        pref.Email != nil,
+		Email:            pref.Email,
+		Verified:         pref.EmailVerified,
+		MarketingConsent: pref.EmailMarketingConsent,
+	}
+
+	if pref.EmailVerifiedAt != nil {
+		formatted := pref.EmailVerifiedAt.Format("2006-01-02T15:04:05Z")
+		response.VerifiedAt = &formatted
+	}
+
+	return response, nil
+}
+
+// SetEmailInput входные данные для установки email
+type SetEmailInput struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// SetEmail устанавливает email для уведомлений (требует верификации)
+func (s *Service) SetEmail(ctx context.Context, memberID uuid.UUID, input SetEmailInput) error {
+	if err := s.preferences.SetEmail(ctx, memberID, input.Email); err != nil {
+		return fmt.Errorf("set email: %w", err)
+	}
+	return nil
+}
+
+// VerifyEmail подтверждает email
+func (s *Service) VerifyEmail(ctx context.Context, memberID uuid.UUID) error {
+	if err := s.preferences.VerifyEmail(ctx, memberID); err != nil {
+		return fmt.Errorf("verify email: %w", err)
+	}
+	return nil
+}
+
+// DisconnectEmail отключает email для уведомлений
+func (s *Service) DisconnectEmail(ctx context.Context, memberID uuid.UUID) error {
+	if err := s.preferences.DisconnectEmail(ctx, memberID); err != nil {
+		return fmt.Errorf("disconnect email: %w", err)
+	}
+	return nil
+}
+
+// SetMarketingConsentInput входные данные для согласия на маркетинг
+type SetMarketingConsentInput struct {
+	Consent bool `json:"consent"`
+}
+
+// SetMarketingConsent устанавливает согласие на маркетинговые рассылки
+func (s *Service) SetMarketingConsent(ctx context.Context, memberID uuid.UUID, input SetMarketingConsentInput) error {
+	if err := s.preferences.SetMarketingConsent(ctx, memberID, input.Consent); err != nil {
+		return fmt.Errorf("set marketing consent: %w", err)
+	}
+	return nil
+}
+
+// ResendEmailVerification повторно отправляет письмо верификации
+// TODO: реализовать отправку письма с кодом верификации
+func (s *Service) ResendEmailVerification(ctx context.Context, memberID uuid.UUID) error {
+	pref, err := s.preferences.GetByMemberID(ctx, memberID)
+	if err != nil {
+		return fmt.Errorf("get preferences: %w", err)
+	}
+
+	if pref.Email == nil {
+		return fmt.Errorf("email not set")
+	}
+
+	if pref.EmailVerified {
+		return fmt.Errorf("email already verified")
+	}
+
+	// TODO: отправить письмо с кодом верификации
+	// Пока просто возвращаем успех — реальная отправка будет реализована
+	// когда будет готова система email-верификации
+
+	return nil
+}
+
+// GetMemberEmail возвращает email для member (если установлен и верифицирован)
+func (s *Service) GetMemberEmail(ctx context.Context, memberID uuid.UUID) (*string, error) {
+	pref, err := s.preferences.GetByMemberID(ctx, memberID)
+	if err != nil {
+		return nil, nil // нет настроек — нет email
+	}
+
+	if pref.Email == nil || !pref.EmailVerified {
+		return nil, nil // email не установлен или не верифицирован
+	}
+
+	return pref.Email, nil
+}
+
+// ShouldSendEmail проверяет, нужно ли отправлять email уведомление
+// Проверяет: email установлен, верифицирован, категория включена
+func (s *Service) ShouldSendEmail(ctx context.Context, memberID uuid.UUID, notifType values.NotificationType) (bool, error) {
+	pref, err := s.preferences.GetByMemberID(ctx, memberID)
+	if err != nil {
+		return false, nil // нет настроек — не отправляем
+	}
+
+	// Email должен быть установлен и верифицирован
+	if pref.Email == nil || !pref.EmailVerified {
+		return false, nil
+	}
+
+	// Проверяем настройки категории
+	categories, err := pref.ParseEnabledCategories()
+	if err != nil {
+		return false, nil
+	}
+
+	return categories.IsEnabled(notifType.Category(), values.ChannelEmail), nil
 }
