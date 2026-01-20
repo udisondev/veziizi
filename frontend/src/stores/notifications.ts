@@ -33,6 +33,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
     () => preferences.value?.telegram.connected ?? false
   )
 
+  const isEmailConnected = computed(
+    () => preferences.value?.email.connected ?? false
+  )
+
+  const isEmailVerified = computed(
+    () => preferences.value?.email.verified ?? false
+  )
+
   const recentNotifications = computed(() =>
     notifications.value.slice(0, 5)
   )
@@ -124,7 +132,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   async function updateCategorySetting(
     category: NotificationCategory,
-    channel: 'in_app' | 'telegram',
+    channel: 'in_app' | 'telegram' | 'email',
     enabled: boolean
   ): Promise<void> {
     if (!preferences.value) return
@@ -236,6 +244,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
     // Computed
     hasUnread,
     isTelegramConnected,
+    isEmailConnected,
+    isEmailVerified,
     recentNotifications,
 
     // Actions: Notifications
