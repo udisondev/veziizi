@@ -86,6 +86,7 @@ func main() {
 	server.Router().Use(middleware.CORS(cfg))            // SEC-010
 	server.Router().Use(middleware.BodyLimit())          // SEC-015
 	server.Router().Use(middleware.RequireAuth(sessionManager))
+	server.Router().Use(middleware.CheckMemberStatus(sessionManager, f.MembersProjection()))
 	server.Router().Use(middleware.EventMetaEnricher(sessionManager)) // Добавляем metadata для аудита событий
 	server.Router().Use(middleware.RateLimiter(sessionManager, f.SessionAnalyzer()))
 	server.Router().Use(middleware.CSRFProtection()) // SEC-005
@@ -95,6 +96,16 @@ func main() {
 
 	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.FreightRequestsProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
 	authHandler.RegisterRoutes(server.Router())
+
+	// Password reset handler (public routes for forgot/reset password)
+	passwordResetHandler := handlers.NewPasswordResetHandler(
+		f.MembersProjection(),
+		f.PasswordResetProjection(),
+		f.EmailTemplatesProjection(),
+		f.EmailProvider(),
+		cfg,
+	)
+	passwordResetHandler.RegisterRoutes(server.Router())
 
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
 	adminHandler.RegisterRoutes(server.Router())
@@ -142,6 +153,13 @@ func main() {
 		adminSessionManager,
 	)
 	adminSupportHandler.RegisterRoutes(server.Router())
+
+	// Admin email templates handler
+	adminEmailTemplatesHandler := handlers.NewAdminEmailTemplatesHandler(
+		f.EmailTemplatesProjection(),
+		adminSessionManager,
+	)
+	adminEmailTemplatesHandler.RegisterRoutes(server.Router())
 
 	// Dev handler (only in development mode)
 	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
