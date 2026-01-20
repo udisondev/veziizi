@@ -79,7 +79,15 @@ async function handleSubmit() {
           </div>
 
           <div class="space-y-2">
-            <Label for="password">Пароль</Label>
+            <div class="flex items-center justify-between">
+              <Label for="password">Пароль</Label>
+              <router-link
+                to="/forgot-password"
+                class="text-sm text-muted-foreground hover:text-primary"
+              >
+                Забыли пароль?
+              </router-link>
+            </div>
             <Input
               id="password"
               v-model="password"
