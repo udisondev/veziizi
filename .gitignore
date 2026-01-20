@@ -41,10 +41,12 @@ tmp/
 temp/
 
 # Node modules (frontend)
-web/node_modules/
-web/dist/
-web/.nuxt/
-web/.output/
+frontend/node_modules/
+frontend/dist/
+
+# AI tools
+.beads/
+.claude/
 
 # Build artifacts
 build/
