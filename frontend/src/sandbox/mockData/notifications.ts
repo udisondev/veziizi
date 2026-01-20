@@ -94,7 +94,7 @@ class MockNotificationsStore {
    */
   seedOffersNotifications(frId: string, offersCount: number): void {
     for (let i = 0; i < offersCount && i < CARRIERS.length; i++) {
-      this.createNewOfferNotification(frId, CARRIERS[i].name, i)
+      this.createNewOfferNotification(frId, CARRIERS[i]!.name, i)
     }
   }
 
@@ -106,10 +106,96 @@ class MockNotificationsStore {
   }
 }
 
+/**
+ * Mock Notification Preferences Store
+ */
+class MockNotificationPreferencesStore {
+  private preferences = {
+    member_id: 'sandbox-member-1',
+    enabled_categories: {
+      freight_requests: { in_app: true, telegram: false, email: true },
+      offers: { in_app: true, telegram: false, email: true },
+      reviews: { in_app: true, telegram: false, email: false },
+      organization: { in_app: true, telegram: false, email: true },
+    },
+    telegram: {
+      connected: false,
+      username: undefined as string | undefined,
+      connected_at: undefined as string | undefined,
+    },
+    email: {
+      connected: true,
+      email: 'demo@veziizi.local' as string | undefined,
+      verified: true,
+      verified_at: '2026-01-15T10:00:00Z' as string | undefined,
+      marketing_consent: false,
+    },
+  }
+
+  get() {
+    return { ...this.preferences }
+  }
+
+  updateCategories(categories: Record<string, unknown>) {
+    this.preferences.enabled_categories = {
+      ...this.preferences.enabled_categories,
+      ...categories,
+    } as typeof this.preferences.enabled_categories
+  }
+
+  setEmail(email: string) {
+    this.preferences.email = {
+      connected: true,
+      email,
+      verified: false,
+      verified_at: undefined,
+      marketing_consent: false,
+    }
+  }
+
+  disconnectEmail() {
+    this.preferences.email = {
+      connected: false,
+      email: undefined,
+      verified: false,
+      verified_at: undefined,
+      marketing_consent: false,
+    }
+  }
+
+  setMarketingConsent(consent: boolean) {
+    this.preferences.email.marketing_consent = consent
+  }
+
+  verifyEmail() {
+    if (this.preferences.email.connected) {
+      this.preferences.email.verified = true
+      this.preferences.email.verified_at = new Date().toISOString()
+    }
+  }
+
+  connectTelegram(username: string) {
+    this.preferences.telegram = {
+      connected: true,
+      username,
+      connected_at: new Date().toISOString(),
+    }
+  }
+
+  disconnectTelegram() {
+    this.preferences.telegram = {
+      connected: false,
+      username: undefined,
+      connected_at: undefined,
+    }
+  }
+}
+
 // Глобальный singleton для корректной работы при HMR
 declare global {
   interface Window {
     __mockNotifications?: MockNotificationsStore
+    __mockNotificationPreferences?: MockNotificationPreferencesStore
   }
 }
 
@@ -117,4 +203,9 @@ if (!window.__mockNotifications) {
   window.__mockNotifications = new MockNotificationsStore()
 }
 
+if (!window.__mockNotificationPreferences) {
+  window.__mockNotificationPreferences = new MockNotificationPreferencesStore()
+}
+
 export const mockNotifications = window.__mockNotifications
+export const mockNotificationPreferences = window.__mockNotificationPreferences

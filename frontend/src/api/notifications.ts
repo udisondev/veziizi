@@ -77,4 +77,33 @@ export const notificationsApi = {
   async disconnectTelegram(): Promise<void> {
     await api.delete('/notifications/telegram')
   },
+
+  // ===============================
+  // Email
+  // ===============================
+
+  // Установить email для уведомлений (требует верификации)
+  async setEmail(email: string): Promise<void> {
+    await api.post('/notifications/email', { email })
+  },
+
+  // Отключить email уведомления
+  async disconnectEmail(): Promise<void> {
+    await api.delete('/notifications/email')
+  },
+
+  // Установить согласие на маркетинговые рассылки
+  async setMarketingConsent(consent: boolean): Promise<void> {
+    await api.patch('/notifications/email/marketing', { consent })
+  },
+
+  // Повторно отправить письмо с подтверждением
+  async resendVerification(): Promise<void> {
+    await api.post('/notifications/email/resend-verification')
+  },
+
+  // Подтвердить email по токену (публичный endpoint)
+  async verifyEmail(token: string): Promise<void> {
+    await api.post('/notifications/email/verify', { token })
+  },
 }
