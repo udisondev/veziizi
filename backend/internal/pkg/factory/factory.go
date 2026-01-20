@@ -57,6 +57,9 @@ type Factory struct {
 	telegramClient     *notifications.TelegramClient
 	telegramClientOnce sync.Once
 
+	emailProvider     notifications.EmailProvider
+	emailProviderOnce sync.Once
+
 	// Services (lazy)
 	orgService *orgApp.Service
 	orgOnce    sync.Once
@@ -278,6 +281,20 @@ func (f *Factory) TelegramClient() *notifications.TelegramClient {
 		f.telegramClient = notifications.NewTelegramClient(f.cfg.Telegram.BotToken)
 	})
 	return f.telegramClient
+}
+
+// EmailProvider returns Email provider (lazily created)
+func (f *Factory) EmailProvider() notifications.EmailProvider {
+	f.emailProviderOnce.Do(func() {
+		f.emailProvider = notifications.NewEmailProvider(
+			f.cfg.Email.Provider,
+			f.cfg.Email.ResendAPIKey,
+			f.cfg.Email.FromAddress,
+			f.cfg.Email.FromName,
+			f.cfg.Email.Enabled,
+		)
+	})
+	return f.emailProvider
 }
 
 // ============================================
