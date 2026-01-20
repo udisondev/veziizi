@@ -18,7 +18,7 @@ export type NotificationType =
 export type NotificationCategory = 'freight_requests' | 'offers' | 'reviews' | 'organization'
 
 // Каналы доставки
-export type NotificationChannel = 'in_app' | 'telegram'
+export type NotificationChannel = 'in_app' | 'telegram' | 'email'
 
 // Уведомление
 export interface Notification {
@@ -40,6 +40,7 @@ export interface Notification {
 export interface CategorySettings {
   in_app: boolean
   telegram: boolean
+  email: boolean
 }
 
 // Настройки всех категорий
@@ -54,11 +55,21 @@ export interface TelegramStatus {
   connected_at?: string
 }
 
+// Статус Email подключения
+export interface EmailStatus {
+  connected: boolean
+  email?: string
+  verified: boolean
+  verified_at?: string
+  marketing_consent: boolean
+}
+
 // Настройки уведомлений пользователя
 export interface NotificationPreferences {
   member_id: string
   enabled_categories: EnabledCategories
   telegram: TelegramStatus
+  email: EmailStatus
 }
 
 // Фильтры для списка

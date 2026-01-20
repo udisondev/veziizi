@@ -20,7 +20,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -29,7 +28,7 @@ import { Badge } from '@/components/ui/badge'
 import { PageHeader, LoadingSpinner, BackLink } from '@/components/shared'
 
 // Icons
-import { Bell, MessageCircle, Check, X, AlertCircle, Copy, ExternalLink } from 'lucide-vue-next'
+import { Bell, MessageCircle, Mail, Check, X, AlertCircle, Copy, ExternalLink } from 'lucide-vue-next'
 
 const { toast } = useToast()
 const notificationsStore = useNotificationsStore()
@@ -44,10 +43,12 @@ let countdownInterval: ReturnType<typeof setInterval> | null = null
 const preferences = computed(() => notificationsStore.preferences)
 const isLoading = computed(() => notificationsStore.isLoadingPreferences)
 const isTelegramConnected = computed(() => notificationsStore.isTelegramConnected)
+const isEmailConnected = computed(() => notificationsStore.isEmailConnected)
+const isEmailVerified = computed(() => notificationsStore.isEmailVerified)
 
 async function toggleSetting(
   category: NotificationCategory,
-  channel: 'in_app' | 'telegram',
+  channel: 'in_app' | 'telegram' | 'email',
   value: boolean
 ) {
   isSaving.value = true
@@ -254,6 +255,63 @@ onUnmounted(() => {
         </CardContent>
       </Card>
 
+      <!-- Email Integration -->
+      <Card class="mb-6">
+        <CardHeader>
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
+              <Mail class="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <CardTitle class="text-lg">Email</CardTitle>
+              <CardDescription>
+                Получайте уведомления на электронную почту
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <!-- Подключён и верифицирован -->
+          <div v-if="isEmailConnected && isEmailVerified" class="space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <Check class="h-5 w-5 text-green-500 shrink-0" />
+                <span class="font-medium">Подключён</span>
+                <Badge v-if="preferences?.email.email" variant="secondary">
+                  {{ preferences.email.email }}
+                </Badge>
+              </div>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              Вы будете получать уведомления на email для включённых категорий
+            </p>
+          </div>
+
+          <!-- Подключён, но не верифицирован -->
+          <div v-else-if="isEmailConnected && !isEmailVerified" class="space-y-4">
+            <div class="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+              <AlertCircle class="h-5 w-5" />
+              <span class="font-medium">Ожидает подтверждения</span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              На адрес <span class="font-medium">{{ preferences?.email.email }}</span> отправлено письмо с подтверждением.
+              Пожалуйста, перейдите по ссылке в письме для активации уведомлений.
+            </p>
+          </div>
+
+          <!-- Не подключён -->
+          <div v-else class="space-y-4">
+            <div class="flex items-center gap-2 text-muted-foreground">
+              <AlertCircle class="h-5 w-5" />
+              <span>Email не настроен</span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              Настройте email в профиле организации, чтобы получать уведомления на почту
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <!-- Notification Categories -->
       <Card>
         <CardHeader>
@@ -303,6 +361,16 @@ onUnmounted(() => {
                   @update:checked="(v: boolean) => toggleSetting(category, 'telegram', v)"
                 />
                 <span class="text-sm">Telegram</span>
+              </label>
+
+              <!-- Email toggle (only if connected and verified) -->
+              <label v-if="isEmailConnected && isEmailVerified" class="flex items-center gap-2 cursor-pointer">
+                <Switch
+                  :checked="preferences.enabled_categories[category].email"
+                  :disabled="isSaving"
+                  @update:checked="(v: boolean) => toggleSetting(category, 'email', v)"
+                />
+                <span class="text-sm">Email</span>
               </label>
             </div>
 
