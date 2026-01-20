@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
+import { ApiError } from '@/api/errors'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -10,12 +11,16 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 
 // Icons
-import { KeyRound, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-vue-next'
+import { KeyRound, AlertCircle, CheckCircle2, Eye, EyeOff, XCircle, Clock } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 
 const token = computed(() => route.params.token as string)
+
+// Token validation state
+const isValidating = ref(true)
+const tokenError = ref<'not_found' | 'expired' | null>(null)
 
 const password = ref('')
 const confirmPassword = ref('')
@@ -27,6 +32,26 @@ const isSuccess = ref(false)
 
 const passwordsMatch = computed(() => password.value === confirmPassword.value)
 const isValidPassword = computed(() => password.value.length >= 8)
+
+onMounted(async () => {
+  try {
+    await authApi.validateResetToken(token.value)
+  } catch (e) {
+    if (e instanceof ApiError) {
+      if (e.status === 404) {
+        tokenError.value = 'not_found'
+      } else if (e.status === 410) {
+        tokenError.value = 'expired'
+      } else {
+        tokenError.value = 'not_found'
+      }
+    } else {
+      tokenError.value = 'not_found'
+    }
+  } finally {
+    isValidating.value = false
+  }
+})
 
 async function handleSubmit() {
   error.value = ''
@@ -66,16 +91,66 @@ function goToLogin() {
     <Card class="w-full max-w-md">
       <CardHeader class="text-center">
         <CardTitle class="text-2xl">
-          {{ isSuccess ? 'Пароль изменён' : 'Новый пароль' }}
+          <template v-if="isValidating">Проверка...</template>
+          <template v-else-if="tokenError">Ошибка</template>
+          <template v-else-if="isSuccess">Пароль изменён</template>
+          <template v-else>Новый пароль</template>
         </CardTitle>
         <CardDescription>
-          {{ isSuccess ? 'Теперь вы можете войти' : 'Придумайте новый пароль' }}
+          <template v-if="isValidating">Подождите</template>
+          <template v-else-if="tokenError">Ссылка недействительна</template>
+          <template v-else-if="isSuccess">Теперь вы можете войти</template>
+          <template v-else>Придумайте новый пароль</template>
         </CardDescription>
       </CardHeader>
 
       <CardContent>
+        <!-- Validating token -->
+        <div v-if="isValidating" class="flex flex-col items-center gap-4 py-8">
+          <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p class="text-sm text-muted-foreground">Проверка ссылки...</p>
+        </div>
+
+        <!-- Token not found -->
+        <div v-else-if="tokenError === 'not_found'" class="space-y-4">
+          <div
+            class="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+          >
+            <XCircle class="h-5 w-5 shrink-0" />
+            <div>
+              <p class="font-medium">Ссылка недействительна</p>
+              <p class="mt-1 text-destructive/80">
+                Ссылка для сброса пароля не найдена или уже была использована.
+              </p>
+            </div>
+          </div>
+
+          <Button class="w-full" variant="outline" @click="router.push('/forgot-password')">
+            Запросить новую ссылку
+          </Button>
+        </div>
+
+        <!-- Token expired -->
+        <div v-else-if="tokenError === 'expired'" class="space-y-4">
+          <div
+            class="flex items-center gap-3 rounded-lg border border-warning/50 bg-warning/10 p-4 text-sm text-warning"
+          >
+            <Clock class="h-5 w-5 shrink-0" />
+            <div>
+              <p class="font-medium">Ссылка устарела</p>
+              <p class="mt-1 text-warning/80">
+                Срок действия ссылки истёк. Запросите новую ссылку для сброса пароля.
+              </p>
+            </div>
+          </div>
+
+          <Button class="w-full" variant="outline" @click="router.push('/forgot-password')">
+            Запросить новую ссылку
+          </Button>
+        </div>
+
         <!-- Success state -->
-        <div v-if="isSuccess" class="space-y-4">
+        <div v-else-if="isSuccess" class="space-y-4">
           <div
             class="flex items-center gap-3 rounded-lg border border-success/50 bg-success/10 p-4 text-sm text-success"
           >
@@ -93,8 +168,8 @@ function goToLogin() {
           </Button>
         </div>
 
-        <!-- Form -->
-        <template v-else>
+        <!-- Form (token is valid) -->
+        <template v-else-if="!tokenError">
           <!-- Error -->
           <div
             v-if="error"
@@ -177,7 +252,7 @@ function goToLogin() {
         </template>
       </CardContent>
 
-      <CardFooter v-if="!isSuccess" class="justify-center">
+      <CardFooter v-if="!isSuccess && !tokenError && !isValidating" class="justify-center">
         <router-link
           to="/login"
           class="text-sm text-muted-foreground hover:text-primary"
