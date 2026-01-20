@@ -48,5 +48,11 @@ func testConfigWithDSN(databaseURL string) *config.Config {
 			BotToken:    "",
 			BotUsername: "testbot",
 		},
+		Email: config.EmailConfig{
+			Enabled:     false, // Email disabled in tests, uses NoopEmailProvider
+			Provider:    "resend",
+			FromAddress: "test@veziizi.local",
+			FromName:    "Veziizi Test",
+		},
 	}
 }

@@ -130,9 +130,34 @@ func (c *Client) Me() (*Response[MeResponse], error) {
 	return doRequest[MeResponse](c, http.MethodGet, "/api/v1/auth/me", nil, nil)
 }
 
+// ForgotPassword requests a password reset email.
+func (c *Client) ForgotPassword(email string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/auth/forgot-password", ForgotPasswordRequest{
+		Email: email,
+	}, nil)
+}
+
+// ValidateResetToken validates a password reset token.
+func (c *Client) ValidateResetToken(token string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodGet, "/api/v1/auth/reset-password/"+token, nil, nil)
+}
+
+// ResetPassword resets password using token.
+func (c *Client) ResetPassword(token, newPassword string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/auth/reset-password", ResetPasswordRequest{
+		Token:       token,
+		NewPassword: newPassword,
+	}, nil)
+}
+
 // GetMember returns a member's public profile.
 func (c *Client) GetMember(id uuid.UUID) (*Response[MemberPublicProfile], error) {
 	return doRequest[MemberPublicProfile](c, http.MethodGet, "/api/v1/members/"+id.String(), nil, nil)
+}
+
+// GetMemberProfile returns full member profile with organization details.
+func (c *Client) GetMemberProfile(id uuid.UUID) (*Response[MemberProfileResponse], error) {
+	return doRequest[MemberProfileResponse](c, http.MethodGet, "/api/v1/members/"+id.String(), nil, nil)
 }
 
 // --- Organization Methods ---
