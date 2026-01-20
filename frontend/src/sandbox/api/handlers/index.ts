@@ -8,6 +8,7 @@ import { offersHandlers } from './offers'
 import { membersHandlers } from './members'
 import { notificationsHandlers } from './notifications'
 import { organizationsHandlers } from './organizations'
+import { authHandlers } from './auth'
 
 export interface MockResponse {
   status?: number
@@ -105,12 +106,12 @@ export async function handleSandboxRequest(
   const query = queryString ? new URLSearchParams(queryString) : new URLSearchParams()
 
   for (const route of routeList) {
-    const match = pathPart.match(route.pattern)
+    const match = pathPart?.match(route.pattern)
     if (match) {
       // Извлекаем параметры из URL
       const params: Record<string, string> = {}
       route.paramNames.forEach((name, index) => {
-        params[name] = match[index + 1]
+        params[name] = match[index + 1] ?? ''
       })
 
       try {
@@ -140,5 +141,6 @@ if (!window.__sandboxHandlersRegistered) {
   membersHandlers()
   notificationsHandlers()
   organizationsHandlers()
+  authHandlers()
   window.__sandboxHandlersRegistered = true
 }

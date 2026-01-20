@@ -32,6 +32,18 @@ const router = createRouter({
       component: () => import('@/views/AcceptInvitationView.vue'),
       meta: { public: true, title: 'Принять приглашение' },
     },
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('@/views/ForgotPasswordView.vue'),
+      meta: { public: true, title: 'Восстановление пароля' },
+    },
+    {
+      path: '/reset-password/:token',
+      name: 'reset-password',
+      component: () => import('@/views/ResetPasswordView.vue'),
+      meta: { public: true, title: 'Новый пароль' },
+    },
 
     // Organization status pages
     {
