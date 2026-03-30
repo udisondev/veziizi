@@ -422,3 +422,45 @@ func (p *MembersProjection) GetAllActiveMemberIDs(ctx context.Context, excludeMe
 
 	return ids, nil
 }
+
+// GetStatus returns member status by ID (lightweight query for middleware)
+func (p *MembersProjection) GetStatus(ctx context.Context, id uuid.UUID) (string, error) {
+	query, args, err := p.psql.
+		Select("status").
+		From("members_lookup").
+		Where(squirrel.Eq{"id": id}).
+		ToSql()
+	if err != nil {
+		return "", fmt.Errorf("build select status query: %w", err)
+	}
+
+	var status string
+	if err := pgxscan.Get(ctx, p.db, &status, query, args...); err != nil {
+		return "", fmt.Errorf("get member status: %w", err)
+	}
+
+	return status, nil
+}
+
+// UpdatePassword updates member's password hash
+func (p *MembersProjection) UpdatePassword(ctx context.Context, memberID uuid.UUID, passwordHash string) error {
+	query, args, err := p.psql.
+		Update("members_lookup").
+		Set("password_hash", passwordHash).
+		Where(squirrel.Eq{"id": memberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	result, err := p.db.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("member not found")
+	}
+
+	return nil
+}

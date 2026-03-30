@@ -38,7 +38,7 @@ export function randomInt(min: number, max: number): number {
  * Случайный элемент массива
  */
 export function randomItem<T>(items: T[]): T {
-  return items[Math.floor(Math.random() * items.length)]
+  return items[Math.floor(Math.random() * items.length)]!
 }
 
 /**
@@ -47,7 +47,7 @@ export function randomItem<T>(items: T[]): T {
 export function randomFutureDate(maxDays = 14): string {
   const date = new Date()
   date.setDate(date.getDate() + randomInt(1, maxDays))
-  return date.toISOString().split('T')[0]
+  return date.toISOString().split('T')[0]!
 }
 
 /**

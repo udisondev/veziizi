@@ -57,7 +57,7 @@ export type VehicleSubType =
   | 'road_train'
   | 'mega_trailer'
 
-export type LoadingType = 'rear' | 'side' | 'top'
+export type LoadingType = 'rear' | 'side' | 'top' | 'full_untarp'
 
 export type Currency = 'RUB' | 'KZT' | 'BYN' | 'EUR' | 'USD'
 
@@ -421,6 +421,7 @@ export const loadingTypeLabels: Record<LoadingType, string> = {
   rear: 'Задняя',
   side: 'Боковая',
   top: 'Верхняя',
+  full_untarp: 'Полная растентовка',
 }
 
 export const currencyLabels: Record<Currency, string> = {

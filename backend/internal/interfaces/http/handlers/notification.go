@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
 	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
 	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -52,6 +54,7 @@ func (h *NotificationHandler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/notifications/email", h.DisconnectEmail).Methods(http.MethodDelete)
 	r.HandleFunc("/api/v1/notifications/email/marketing", h.SetMarketingConsent).Methods(http.MethodPatch)
 	r.HandleFunc("/api/v1/notifications/email/resend-verification", h.ResendEmailVerification).Methods(http.MethodPost)
+	r.HandleFunc("/api/v1/notifications/email/verify", h.VerifyEmailByToken).Methods(http.MethodPost)
 }
 
 // ===============================
@@ -306,7 +309,9 @@ func (h *NotificationHandler) SetEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := notifApp.SetEmailInput{
-		Email: req.Email,
+		Email:     req.Email,
+		IP:        httputil.GetClientIP(r),
+		UserAgent: r.UserAgent(),
 	}
 
 	if err := h.service.SetEmail(r.Context(), memberID, input); err != nil {
@@ -314,11 +319,16 @@ func (h *NotificationHandler) SetEmail(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 			slog.String("member_id", memberID.String()),
 		)
+		// Возвращаем конкретные ошибки клиенту
+		if errors.Is(err, notifApp.ErrTooManyVerificationRequests) {
+			writeError(w, http.StatusTooManyRequests, "too many verification requests")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to set email")
 		return
 	}
 
-	slog.Info("email set", slog.String("member_id", memberID.String()))
+	slog.Info("email set and verification sent", slog.String("member_id", memberID.String()))
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -392,18 +402,27 @@ func (h *NotificationHandler) ResendEmailVerification(w http.ResponseWriter, r *
 		return
 	}
 
-	if err := h.service.ResendEmailVerification(r.Context(), memberID); err != nil {
+	input := notifApp.ResendEmailVerificationInput{
+		IP:        httputil.GetClientIP(r),
+		UserAgent: r.UserAgent(),
+	}
+
+	if err := h.service.ResendEmailVerification(r.Context(), memberID, input); err != nil {
 		slog.Error("failed to resend email verification",
 			slog.String("error", err.Error()),
 			slog.String("member_id", memberID.String()),
 		)
 		// Возвращаем конкретные ошибки клиенту
-		if err.Error() == "email not set" {
+		if errors.Is(err, notifApp.ErrEmailNotSet) {
 			writeError(w, http.StatusBadRequest, "email not set")
 			return
 		}
-		if err.Error() == "email already verified" {
+		if errors.Is(err, notifApp.ErrEmailAlreadyVerified) {
 			writeError(w, http.StatusBadRequest, "email already verified")
+			return
+		}
+		if errors.Is(err, notifApp.ErrTooManyVerificationRequests) {
+			writeError(w, http.StatusTooManyRequests, "too many verification requests")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to resend verification")
@@ -411,6 +430,41 @@ func (h *NotificationHandler) ResendEmailVerification(w http.ResponseWriter, r *
 	}
 
 	slog.Info("email verification resent", slog.String("member_id", memberID.String()))
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// verifyEmailRequest запрос на верификацию email
+type verifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// VerifyEmailByToken верифицирует email по токену
+func (h *NotificationHandler) VerifyEmailByToken(w http.ResponseWriter, r *http.Request) {
+	var req verifyEmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Token == "" {
+		writeError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	if err := h.service.VerifyEmailByToken(r.Context(), req.Token); err != nil {
+		slog.Error("failed to verify email",
+			slog.String("error", err.Error()),
+		)
+		if errors.Is(err, notifApp.ErrInvalidVerificationToken) {
+			writeError(w, http.StatusBadRequest, "invalid or expired token")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to verify email")
+		return
+	}
+
+	slog.Info("email verified by token")
 
 	w.WriteHeader(http.StatusNoContent)
 }

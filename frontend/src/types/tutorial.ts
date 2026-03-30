@@ -133,7 +133,10 @@ export interface TooltipConfig {
 }
 
 // События tutorial системы
+// Index signatures нужны для совместимости с mitt (EventType = string | symbol)
 export interface TutorialEvents {
+  [key: string]: unknown
+  [key: symbol]: unknown
   // Wizard events
   'wizard:next': void
   'wizard:prev': void

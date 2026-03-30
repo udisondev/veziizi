@@ -203,7 +203,7 @@ export function useTutorialPopupTracker() {
     activePopups.value = popups
 
     const hasPopups = popups.length > 0
-    const primaryDirection = hasPopups ? popups[0].direction : null
+    const primaryDirection = hasPopups ? popups[0]!.direction : null
     currentPopupDirection.value = primaryDirection
 
     const combinedRect = hasPopups

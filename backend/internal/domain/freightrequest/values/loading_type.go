@@ -3,5 +3,5 @@
 package values
 
 // LoadingType represents the type of cargo loading
-// ENUM(rear, side, top)
+// ENUM(rear, side, top, full_untarp)
 type LoadingType string

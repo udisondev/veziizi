@@ -19,6 +19,8 @@ const (
 	LoadingTypeSide LoadingType = "side"
 	// LoadingTypeTop is a LoadingType of type top.
 	LoadingTypeTop LoadingType = "top"
+	// LoadingTypeFullUntarp is a LoadingType of type full_untarp.
+	LoadingTypeFullUntarp LoadingType = "full_untarp"
 )
 
 var ErrInvalidLoadingType = fmt.Errorf("not a valid LoadingType, try [%s]", strings.Join(_LoadingTypeNames, ", "))
@@ -27,6 +29,7 @@ var _LoadingTypeNames = []string{
 	string(LoadingTypeRear),
 	string(LoadingTypeSide),
 	string(LoadingTypeTop),
+	string(LoadingTypeFullUntarp),
 }
 
 // LoadingTypeNames returns a list of possible string values of LoadingType.
@@ -49,9 +52,10 @@ func (x LoadingType) IsValid() bool {
 }
 
 var _LoadingTypeValue = map[string]LoadingType{
-	"rear": LoadingTypeRear,
-	"side": LoadingTypeSide,
-	"top":  LoadingTypeTop,
+	"rear":        LoadingTypeRear,
+	"side":        LoadingTypeSide,
+	"top":         LoadingTypeTop,
+	"full_untarp": LoadingTypeFullUntarp,
 }
 
 // ParseLoadingType attempts to convert a string to a LoadingType.

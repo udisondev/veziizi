@@ -1,5 +1,13 @@
 import { ApiError, type ApiErrorResponse } from '@/api/errors'
 
+// Callback для обработки блокировки аккаунта
+// Устанавливается в main.ts для обновления статуса в auth store
+let accountBlockedHandler: (() => Promise<void>) | null = null
+
+export function setAccountBlockedHandler(handler: () => Promise<void>): void {
+  accountBlockedHandler = handler
+}
+
 export class ApiClient {
   private baseUrl: string
 
@@ -25,12 +33,22 @@ export class ApiClient {
       const errorData: ApiErrorResponse = await response.json().catch(() => ({
         error: `HTTP ${response.status}`,
       }))
-      throw new ApiError(
+      const error = new ApiError(
         response.status,
         errorData.error,
         errorData.error_code,
         errorData.details
       )
+
+      // Если аккаунт заблокирован - обновляем статус в auth store
+      if (error.isAccountBlocked() && accountBlockedHandler) {
+        // Вызываем handler асинхронно, не блокируя основной поток
+        accountBlockedHandler().catch(() => {
+          // Игнорируем ошибки при обновлении статуса
+        })
+      }
+
+      throw error
     }
 
     if (response.status === 204) {

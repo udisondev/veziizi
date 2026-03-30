@@ -2,18 +2,34 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 
 	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
 	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
+)
+
+// Errors
+var (
+	ErrTooManyVerificationRequests = errors.New("too many verification requests")
+	ErrEmailNotSet                 = errors.New("email not set")
+	ErrEmailAlreadyVerified        = errors.New("email already verified")
+	ErrInvalidVerificationToken    = errors.New("invalid or expired verification token")
 )
 
 // Service предоставляет операции над уведомлениями
 type Service struct {
-	preferences  *projections.NotificationPreferencesProjection
-	inapp        *projections.InAppNotificationsProjection
-	telegramLink *projections.TelegramLinkProjection
+	preferences       *projections.NotificationPreferencesProjection
+	inapp             *projections.InAppNotificationsProjection
+	telegramLink      *projections.TelegramLinkProjection
+	emailVerification *projections.EmailVerificationProjection
+	publisher         message.Publisher
+	cfg               *config.Config
 }
 
 // NewService создает новый сервис уведомлений
@@ -21,11 +37,17 @@ func NewService(
 	preferences *projections.NotificationPreferencesProjection,
 	inapp *projections.InAppNotificationsProjection,
 	telegramLink *projections.TelegramLinkProjection,
+	emailVerification *projections.EmailVerificationProjection,
+	publisher message.Publisher,
+	cfg *config.Config,
 ) *Service {
 	return &Service{
-		preferences:  preferences,
-		inapp:        inapp,
-		telegramLink: telegramLink,
+		preferences:       preferences,
+		inapp:             inapp,
+		telegramLink:      telegramLink,
+		emailVerification: emailVerification,
+		publisher:         publisher,
+		cfg:               cfg,
 	}
 }
 
@@ -344,14 +366,37 @@ func (s *Service) GetEmailStatus(ctx context.Context, memberID uuid.UUID) (*Emai
 
 // SetEmailInput входные данные для установки email
 type SetEmailInput struct {
-	Email string `json:"email" validate:"required,email"`
+	Email     string `json:"email" validate:"required,email"`
+	IP        string `json:"-"` // Для rate limiting
+	UserAgent string `json:"-"` // Для audit
 }
 
 // SetEmail устанавливает email для уведомлений (требует верификации)
 func (s *Service) SetEmail(ctx context.Context, memberID uuid.UUID, input SetEmailInput) error {
+	// Проверяем rate limit
+	if err := s.emailVerification.CheckRateLimit(ctx, memberID, input.IP); err != nil {
+		if errors.Is(err, projections.ErrTooManyVerificationRequests) {
+			return ErrTooManyVerificationRequests
+		}
+		return fmt.Errorf("check rate limit: %w", err)
+	}
+
+	// Сохраняем email (невалидированный)
 	if err := s.preferences.SetEmail(ctx, memberID, input.Email); err != nil {
 		return fmt.Errorf("set email: %w", err)
 	}
+
+	// Генерируем токен верификации
+	token, err := s.emailVerification.CreateToken(ctx, memberID, input.Email, input.IP, input.UserAgent)
+	if err != nil {
+		return fmt.Errorf("create verification token: %w", err)
+	}
+
+	// Отправляем email верификации
+	if err := s.sendVerificationEmail(ctx, memberID, input.Email, token); err != nil {
+		return fmt.Errorf("send verification email: %w", err)
+	}
+
 	return nil
 }
 
@@ -384,25 +429,133 @@ func (s *Service) SetMarketingConsent(ctx context.Context, memberID uuid.UUID, i
 	return nil
 }
 
+// ResendEmailVerificationInput входные данные для повторной отправки
+type ResendEmailVerificationInput struct {
+	IP        string `json:"-"` // Для rate limiting
+	UserAgent string `json:"-"` // Для audit
+}
+
 // ResendEmailVerification повторно отправляет письмо верификации
-// TODO: реализовать отправку письма с кодом верификации
-func (s *Service) ResendEmailVerification(ctx context.Context, memberID uuid.UUID) error {
+func (s *Service) ResendEmailVerification(ctx context.Context, memberID uuid.UUID, input ResendEmailVerificationInput) error {
 	pref, err := s.preferences.GetByMemberID(ctx, memberID)
 	if err != nil {
 		return fmt.Errorf("get preferences: %w", err)
 	}
 
 	if pref.Email == nil {
-		return fmt.Errorf("email not set")
+		return ErrEmailNotSet
 	}
 
 	if pref.EmailVerified {
-		return fmt.Errorf("email already verified")
+		return ErrEmailAlreadyVerified
 	}
 
-	// TODO: отправить письмо с кодом верификации
-	// Пока просто возвращаем успех — реальная отправка будет реализована
-	// когда будет готова система email-верификации
+	// Проверяем rate limit
+	if err := s.emailVerification.CheckRateLimit(ctx, memberID, input.IP); err != nil {
+		if errors.Is(err, projections.ErrTooManyVerificationRequests) {
+			return ErrTooManyVerificationRequests
+		}
+		return fmt.Errorf("check rate limit: %w", err)
+	}
+
+	// Генерируем новый токен верификации
+	token, err := s.emailVerification.CreateToken(ctx, memberID, *pref.Email, input.IP, input.UserAgent)
+	if err != nil {
+		return fmt.Errorf("create verification token: %w", err)
+	}
+
+	// Отправляем email верификации
+	if err := s.sendVerificationEmail(ctx, memberID, *pref.Email, token); err != nil {
+		return fmt.Errorf("send verification email: %w", err)
+	}
+
+	return nil
+}
+
+// VerifyEmailByToken проверяет токен и верифицирует email
+func (s *Service) VerifyEmailByToken(ctx context.Context, token string) error {
+	// Валидируем токен
+	vToken, err := s.emailVerification.ValidateToken(ctx, token)
+	if err != nil {
+		if errors.Is(err, projections.ErrEmailVerificationTokenNotFound) ||
+			errors.Is(err, projections.ErrEmailVerificationTokenExpired) ||
+			errors.Is(err, projections.ErrEmailVerificationTokenUsed) {
+			return ErrInvalidVerificationToken
+		}
+		return fmt.Errorf("validate token: %w", err)
+	}
+
+	// Проверяем что email в токене соответствует текущему email в preferences
+	pref, err := s.preferences.GetByMemberID(ctx, vToken.MemberID)
+	if err != nil {
+		return fmt.Errorf("get preferences: %w", err)
+	}
+
+	if pref.Email == nil || *pref.Email != vToken.Email {
+		// Email был изменен после создания токена
+		return ErrInvalidVerificationToken
+	}
+
+	// Помечаем токен как использованный
+	if err := s.emailVerification.MarkAsUsed(ctx, token); err != nil {
+		return fmt.Errorf("mark token as used: %w", err)
+	}
+
+	// Верифицируем email
+	if err := s.preferences.VerifyEmail(ctx, vToken.MemberID); err != nil {
+		return fmt.Errorf("verify email: %w", err)
+	}
+
+	// Инвалидируем все оставшиеся токены для этого member
+	if err := s.emailVerification.InvalidateAllForMember(ctx, vToken.MemberID); err != nil {
+		// Логируем но не возвращаем ошибку — верификация уже успешна
+		// Tokens будут очищены scheduled cleanup
+		slog.Warn("failed to invalidate old verification tokens",
+			slog.String("member_id", vToken.MemberID.String()),
+			slog.String("error", err.Error()),
+		)
+	}
+
+	return nil
+}
+
+// verificationEmailMessage структура для отправки email верификации
+type verificationEmailMessage struct {
+	MemberID         uuid.UUID `json:"member_id"`
+	Email            string    `json:"email"`
+	NotificationType string    `json:"notification_type"`
+	Title            string    `json:"title"`
+	Body             string    `json:"body"`
+	Link             string    `json:"link,omitempty"`
+}
+
+// sendVerificationEmail отправляет email с ссылкой верификации
+func (s *Service) sendVerificationEmail(ctx context.Context, memberID uuid.UUID, email, token string) error {
+	// Формируем ссылку верификации
+	baseURL := s.cfg.App.BaseURL
+	if baseURL == "" {
+		baseURL = "https://veziizi.ru"
+	}
+	verifyLink := fmt.Sprintf("%s/verify-email?token=%s", baseURL, token)
+
+	msg := verificationEmailMessage{
+		MemberID:         memberID,
+		Email:            email,
+		NotificationType: "email_verification",
+		Title:            "Подтвердите ваш email",
+		Body:             "Для подтверждения email адреса перейдите по ссылке ниже. Ссылка действительна 24 часа.",
+		Link:             verifyLink,
+	}
+
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal email message: %w", err)
+	}
+
+	wmMsg := message.NewMessage(uuid.New().String(), payload)
+	if err := s.publisher.Publish("notification.email", wmMsg); err != nil {
+		return fmt.Errorf("publish email message: %w", err)
+	}
 
 	return nil
 }

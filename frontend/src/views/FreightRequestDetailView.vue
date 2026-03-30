@@ -24,7 +24,6 @@ import {
   vehicleTypeLabels,
   vehicleSubTypeLabels,
   loadingTypeLabels,
-  currencyLabels,
   vatTypeLabels,
   paymentMethodLabels,
   paymentTermsLabels,
@@ -33,9 +32,8 @@ import {
   vatTypeOptions,
   paymentMethodOptions,
 } from '@/types/freightRequest'
-import { freightRequestStatusMap, offerStatusMap } from '@/constants/statusMaps'
+import { freightRequestStatusMap } from '@/constants/statusMaps'
 import { formatDate, formatDateTime, formatMoney } from '@/utils/formatters'
-import { logger } from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -640,14 +638,6 @@ async function submitReview() {
   } finally {
     actionLoading.value = false
   }
-}
-
-function skipReview() {
-  if (freightRequest.value) {
-    emitTutorial('review:skipped', { frId: freightRequest.value.id })
-  }
-  showReviewModal.value = false
-  emitTutorial('review:closed', undefined)
 }
 
 // Слушатель переключения вкладки из туториала

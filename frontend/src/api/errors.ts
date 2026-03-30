@@ -3,6 +3,11 @@
  * Позволяют дифференцировать ошибки по статусу и коду
  */
 
+// V8-специфичный API для stack trace (Node.js/Chrome)
+interface ErrorWithCaptureStackTrace extends ErrorConstructor {
+  captureStackTrace(targetObject: object, constructorOpt?: Function): void
+}
+
 /**
  * HTTP статус коды
  */
@@ -50,9 +55,9 @@ export class ApiError extends Error {
     this.code = code
     this.details = details
 
-    // Maintain proper stack trace in V8
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, ApiError)
+    // Maintain proper stack trace in V8 (Node.js/Chrome)
+    if ('captureStackTrace' in Error) {
+      ;(Error as ErrorWithCaptureStackTrace).captureStackTrace(this, ApiError)
     }
   }
 
@@ -104,6 +109,16 @@ export class ApiError extends Error {
   isRateLimited(): boolean {
     return this.status === HttpStatus.TOO_MANY_REQUESTS
   }
+
+  /**
+   * Проверяет, является ли ошибка блокировкой аккаунта
+   */
+  isAccountBlocked(): boolean {
+    return (
+      this.status === HttpStatus.FORBIDDEN &&
+      this.message.toLowerCase().includes('account is blocked')
+    )
+  }
 }
 
 /**
@@ -142,6 +157,12 @@ export const errorMessages: Record<number, string> = {
   [HttpStatus.BAD_GATEWAY]: 'Сервер временно недоступен',
   [HttpStatus.SERVICE_UNAVAILABLE]: 'Сервис временно недоступен',
 }
+
+/**
+ * Специальное сообщение для блокировки аккаунта
+ */
+export const ACCOUNT_BLOCKED_MESSAGE =
+  'Ваш аккаунт заблокирован. Обратитесь к администратору организации.'
 
 /**
  * Получает пользовательское сообщение об ошибке по статусу

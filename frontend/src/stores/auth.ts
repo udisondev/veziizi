@@ -5,6 +5,7 @@ import { getFingerprint } from '@/composables/useFingerprint'
 import { logger } from '@/utils/logger'
 import type {
   MemberRole,
+  MemberStatus,
   OrganizationBrief,
   LoginRequest,
 } from '@/types/api'
@@ -17,11 +18,13 @@ export const useAuthStore = defineStore('auth', () => {
   const name = ref<string | null>(null)
   const phone = ref<string | null>(null)
   const telegramId = ref<number | null>(null)
+  const status = ref<MemberStatus | null>(null)
   const organization = ref<OrganizationBrief | null>(null)
   const isLoading = ref(false)
   const isInitialized = ref(false)
 
   const isAuthenticated = computed(() => memberId.value !== null)
+  const isBlocked = computed(() => status.value === 'blocked')
 
   async function login(credentials: LoginRequest): Promise<void> {
     isLoading.value = true
@@ -54,6 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
       name.value = data.name
       phone.value = data.phone ?? null
       telegramId.value = data.telegram_id ?? null
+      status.value = data.status
       organization.value = data.organization ?? null
     } catch (e) {
       logger.error('Failed to fetch user', e)
@@ -80,6 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
     name.value = null
     phone.value = null
     telegramId.value = null
+    status.value = null
     organization.value = null
   }
 
@@ -92,12 +97,14 @@ export const useAuthStore = defineStore('auth', () => {
     name,
     phone,
     telegramId,
+    status,
     organization,
     isLoading,
     isInitialized,
 
     // Computed
     isAuthenticated,
+    isBlocked,
 
     // Actions
     login,

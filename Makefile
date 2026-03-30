@@ -24,7 +24,7 @@ WORKERS := members invitations pending-organizations organizations \
            freight-requests review-receiver \
            review-analyzer reviews-projection review-activator \
            fraudster-handler notification-dispatcher \
-           telegram-sender support-tickets rate-limiter-cleanup
+           telegram-sender email-sender support-tickets rate-limiter-cleanup
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'

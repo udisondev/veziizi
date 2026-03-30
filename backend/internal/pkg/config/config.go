@@ -15,6 +15,7 @@ type Config struct {
 	HTTP      HTTPConfig
 	Session   SessionConfig
 	Telegram  TelegramConfig
+	Email     EmailConfig
 	App       AppConfig
 	GeoIP     GeoIPConfig
 	RateLimit RateLimitConfig
@@ -43,6 +44,25 @@ type SessionConfig struct {
 type TelegramConfig struct {
 	BotToken    string `env:"TELEGRAM_BOT_TOKEN"`
 	BotUsername string `env:"TELEGRAM_BOT_USERNAME"` // Имя бота для Telegram Login Widget
+}
+
+type EmailConfig struct {
+	// Provider: resend, smtp (default: resend)
+	Provider string `env:"EMAIL_PROVIDER" envDefault:"resend" validate:"oneof=resend smtp"`
+	// Resend API key (required when provider=resend)
+	ResendAPIKey string `env:"RESEND_API_KEY"`
+	// From address for outgoing emails
+	FromAddress string `env:"EMAIL_FROM_ADDRESS" envDefault:"noreply@veziizi.ru"`
+	// From name for outgoing emails
+	FromName string `env:"EMAIL_FROM_NAME" envDefault:"Veziizi"`
+	// SMTP settings (when provider=smtp)
+	SMTPHost     string `env:"SMTP_HOST"`
+	SMTPPort     int    `env:"SMTP_PORT" envDefault:"587"`
+	SMTPUsername string `env:"SMTP_USERNAME"`
+	SMTPPassword string `env:"SMTP_PASSWORD"`
+	SMTPUseTLS   bool   `env:"SMTP_USE_TLS" envDefault:"true"`
+	// Enabled flag - if false, emails won't be sent (useful for dev)
+	Enabled bool `env:"EMAIL_ENABLED" envDefault:"false"`
 }
 
 type AppConfig struct {
@@ -99,6 +119,12 @@ func (c *Config) validateSecuritySettings() {
 		// SEC-006: Проверка отдельного ключа для admin сессий
 		if c.Session.AdminSecret == "" {
 			slog.Warn("SEC-006: SESSION_ADMIN_SECRET not set, using SESSION_SECRET for admin sessions")
+		}
+
+		// Email configuration warnings
+		if c.Email.Enabled && c.Email.Provider == "resend" && c.Email.ResendAPIKey == "" {
+			slog.Warn("EMAIL: RESEND_API_KEY not set but EMAIL_ENABLED=true",
+				slog.String("recommendation", "set RESEND_API_KEY or disable email with EMAIL_ENABLED=false"))
 		}
 	}
 }

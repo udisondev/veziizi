@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useAuthStore } from '@/stores/auth'
 import { notificationsApi } from '@/api/notifications'
 import {
   categoryLabels,
@@ -23,15 +24,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 
 // Shared Components
 import { PageHeader, LoadingSpinner, BackLink } from '@/components/shared'
 
 // Icons
-import { Bell, MessageCircle, Mail, Check, X, AlertCircle, Copy, ExternalLink } from 'lucide-vue-next'
+import { Bell, MessageCircle, Mail, Check, X, AlertCircle, Copy, ExternalLink, RefreshCw } from 'lucide-vue-next'
 
 const { toast } = useToast()
 const notificationsStore = useNotificationsStore()
+const authStore = useAuthStore()
 
 const isGeneratingCode = ref(false)
 const isDisconnecting = ref(false)
@@ -40,11 +43,20 @@ const linkCode = ref<TelegramLinkCodeResponse | null>(null)
 const countdown = ref(0)
 let countdownInterval: ReturnType<typeof setInterval> | null = null
 
+// Email state
+const isSettingEmail = ref(false)
+const isDisconnectingEmail = ref(false)
+const isResendingVerification = ref(false)
+const isSettingMarketingConsent = ref(false)
+const emailInput = ref('')
+const showEmailForm = ref(false)
+
 const preferences = computed(() => notificationsStore.preferences)
 const isLoading = computed(() => notificationsStore.isLoadingPreferences)
 const isTelegramConnected = computed(() => notificationsStore.isTelegramConnected)
 const isEmailConnected = computed(() => notificationsStore.isEmailConnected)
 const isEmailVerified = computed(() => notificationsStore.isEmailVerified)
+const userEmail = computed(() => authStore.email)
 
 async function toggleSetting(
   category: NotificationCategory,
@@ -139,6 +151,101 @@ async function disconnectTelegram() {
     })
   } finally {
     isDisconnecting.value = false
+  }
+}
+
+// Email functions
+function startEmailSetup() {
+  emailInput.value = userEmail.value || ''
+  showEmailForm.value = true
+}
+
+function cancelEmailSetup() {
+  showEmailForm.value = false
+  emailInput.value = ''
+}
+
+async function submitEmail() {
+  if (!emailInput.value.trim()) {
+    toast({
+      title: 'Ошибка',
+      description: 'Введите email адрес',
+      variant: 'destructive',
+    })
+    return
+  }
+
+  isSettingEmail.value = true
+  try {
+    await notificationsStore.setEmail(emailInput.value.trim())
+    showEmailForm.value = false
+    toast({
+      title: 'Email добавлен',
+      description: 'На указанный адрес отправлено письмо с подтверждением',
+    })
+  } catch {
+    toast({
+      title: 'Ошибка',
+      description: 'Не удалось установить email. Попробуйте позже.',
+      variant: 'destructive',
+    })
+  } finally {
+    isSettingEmail.value = false
+  }
+}
+
+async function disconnectEmail() {
+  isDisconnectingEmail.value = true
+  try {
+    await notificationsStore.disconnectEmail()
+    toast({
+      title: 'Email отключён',
+    })
+  } catch {
+    toast({
+      title: 'Ошибка',
+      description: 'Не удалось отключить email',
+      variant: 'destructive',
+    })
+  } finally {
+    isDisconnectingEmail.value = false
+  }
+}
+
+async function resendVerification() {
+  isResendingVerification.value = true
+  try {
+    await notificationsStore.resendVerification()
+    toast({
+      title: 'Письмо отправлено',
+      description: 'Проверьте вашу почту',
+    })
+  } catch {
+    toast({
+      title: 'Ошибка',
+      description: 'Не удалось отправить письмо. Попробуйте позже.',
+      variant: 'destructive',
+    })
+  } finally {
+    isResendingVerification.value = false
+  }
+}
+
+async function toggleMarketingConsent(value: boolean) {
+  isSettingMarketingConsent.value = true
+  try {
+    await notificationsStore.setMarketingConsent(value)
+    toast({
+      title: value ? 'Подписка оформлена' : 'Подписка отменена',
+    })
+  } catch {
+    toast({
+      title: 'Ошибка',
+      description: 'Не удалось обновить настройки',
+      variant: 'destructive',
+    })
+  } finally {
+    isSettingMarketingConsent.value = false
   }
 }
 
@@ -281,32 +388,123 @@ onUnmounted(() => {
                   {{ preferences.email.email }}
                 </Badge>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                class="w-full sm:w-auto"
+                :disabled="isDisconnectingEmail"
+                @click="disconnectEmail"
+              >
+                <X class="mr-2 h-4 w-4" />
+                Отключить
+              </Button>
             </div>
             <p class="text-sm text-muted-foreground">
               Вы будете получать уведомления на email для включённых категорий
             </p>
+
+            <!-- Marketing consent -->
+            <Separator />
+            <div class="flex items-start gap-3">
+              <Switch
+                :checked="preferences?.email.marketing_consent"
+                :disabled="isSettingMarketingConsent"
+                @update:checked="toggleMarketingConsent"
+              />
+              <div>
+                <p class="font-medium text-sm">Маркетинговые рассылки</p>
+                <p class="text-sm text-muted-foreground">
+                  Получать новости платформы, акции и специальные предложения
+                </p>
+              </div>
+            </div>
           </div>
 
           <!-- Подключён, но не верифицирован -->
           <div v-else-if="isEmailConnected && !isEmailVerified" class="space-y-4">
-            <div class="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
-              <AlertCircle class="h-5 w-5" />
-              <span class="font-medium">Ожидает подтверждения</span>
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div class="flex items-center gap-2 flex-wrap text-yellow-600 dark:text-yellow-400">
+                <AlertCircle class="h-5 w-5 shrink-0" />
+                <span class="font-medium">Ожидает подтверждения</span>
+                <Badge v-if="preferences?.email.email" variant="secondary">
+                  {{ preferences.email.email }}
+                </Badge>
+              </div>
+              <div class="flex gap-2 w-full sm:w-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="flex-1 sm:flex-none"
+                  :disabled="isResendingVerification"
+                  @click="resendVerification"
+                >
+                  <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isResendingVerification }" />
+                  Отправить ещё раз
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="flex-1 sm:flex-none"
+                  :disabled="isDisconnectingEmail"
+                  @click="disconnectEmail"
+                >
+                  <X class="mr-2 h-4 w-4" />
+                  Отменить
+                </Button>
+              </div>
             </div>
             <p class="text-sm text-muted-foreground">
-              На адрес <span class="font-medium">{{ preferences?.email.email }}</span> отправлено письмо с подтверждением.
-              Пожалуйста, перейдите по ссылке в письме для активации уведомлений.
+              На указанный адрес отправлено письмо с подтверждением.
+              Перейдите по ссылке в письме для активации уведомлений.
             </p>
           </div>
 
-          <!-- Не подключён -->
+          <!-- Не подключён - форма ввода -->
+          <div v-else-if="showEmailForm" class="space-y-4">
+            <div class="flex flex-col sm:flex-row gap-2">
+              <Input
+                v-model="emailInput"
+                type="email"
+                placeholder="your@email.com"
+                class="flex-1"
+                :disabled="isSettingEmail"
+                @keyup.enter="submitEmail"
+              />
+              <div class="flex gap-2">
+                <Button
+                  :disabled="isSettingEmail || !emailInput.trim()"
+                  class="flex-1 sm:flex-none"
+                  @click="submitEmail"
+                >
+                  {{ isSettingEmail ? 'Подключение...' : 'Подключить' }}
+                </Button>
+                <Button
+                  variant="ghost"
+                  :disabled="isSettingEmail"
+                  class="flex-1 sm:flex-none"
+                  @click="cancelEmailSetup"
+                >
+                  Отмена
+                </Button>
+              </div>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              На указанный адрес будет отправлено письмо для подтверждения
+            </p>
+          </div>
+
+          <!-- Не подключён - кнопка -->
           <div v-else class="space-y-4">
             <div class="flex items-center gap-2 text-muted-foreground">
               <AlertCircle class="h-5 w-5" />
-              <span>Email не настроен</span>
+              <span>Email не подключён</span>
             </div>
-            <p class="text-sm text-muted-foreground">
-              Настройте email в профиле организации, чтобы получать уведомления на почту
+            <Button @click="startEmailSetup">
+              <Mail class="mr-2 h-4 w-4" />
+              Подключить Email
+            </Button>
+            <p v-if="userEmail" class="text-sm text-muted-foreground">
+              Ваш email из профиля: <span class="font-medium">{{ userEmail }}</span>
             </p>
           </div>
         </CardContent>

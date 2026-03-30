@@ -12,6 +12,7 @@ review-activator: ./bin/worker-review-activator
 fraudster: ./bin/worker-fraudster-handler
 notif-dispatch: ./bin/worker-notification-dispatcher
 telegram-sender: ./bin/worker-telegram-sender
+email-sender: ./bin/worker-email-sender
 telegram-bot: ./bin/telegram-bot
 support: ./bin/worker-support-tickets
 rate-limiter: ./bin/worker-rate-limiter-cleanup

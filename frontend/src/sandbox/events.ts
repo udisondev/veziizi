@@ -3,11 +3,12 @@
  * Event bus для отслеживания действий пользователя в sandbox режиме
  */
 
-import mitt from 'mitt'
+import mitt, { type Emitter } from 'mitt'
 import type { TutorialEvents } from '@/types/tutorial'
 
 // Создаём типизированный event emitter
-export const tutorialBus = mitt<TutorialEvents>()
+// Используем type assertion для обхода строгой проверки mitt
+export const tutorialBus = mitt() as unknown as Emitter<TutorialEvents>
 
 // Хелпер для дебага событий (только в dev mode)
 if (import.meta.env.DEV) {

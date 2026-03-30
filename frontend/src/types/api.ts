@@ -1,5 +1,7 @@
 export type MemberRole = 'owner' | 'administrator' | 'employee'
 
+export type MemberStatus = 'active' | 'blocked'
+
 export type OrganizationStatus = 'pending' | 'active' | 'rejected' | 'suspended'
 
 export interface OrganizationBrief {
@@ -15,6 +17,7 @@ export interface MeResponse {
   name: string
   phone?: string
   telegram_id?: number
+  status: MemberStatus
   organization?: OrganizationBrief
 }
 

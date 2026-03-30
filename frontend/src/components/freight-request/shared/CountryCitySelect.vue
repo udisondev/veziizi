@@ -65,9 +65,11 @@ const {
   onClose: () => closeCityDropdown(),
 })
 
+// Template refs used in template via ref="..." (vue-tsc false positive workaround)
+void cityDropdownRef
+
 // Dropdown direction (up or down)
 const dropdownDirection = ref<'down' | 'up'>('down')
-const cityContainerRef = ref<HTMLElement | null>(null)
 
 function calculateDropdownDirection() {
   if (!cityInputRef.value) return

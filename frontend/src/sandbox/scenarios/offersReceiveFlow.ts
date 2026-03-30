@@ -28,7 +28,6 @@ function getFreightRequestId(): string {
  */
 async function initialize() {
   const auth = useAuthStore()
-  const onboarding = useOnboardingStore()
 
   // Очищаем предыдущие уведомления в любом случае
   mockNotifications.clear()

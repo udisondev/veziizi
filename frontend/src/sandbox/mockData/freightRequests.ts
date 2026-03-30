@@ -121,6 +121,8 @@ class MockFreightRequestStore {
       comment: data.comment,
       status: 'published',
       freight_version: 1,
+      customer_completed: false,
+      carrier_completed: false,
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       created_at: new Date().toISOString(),
     }
@@ -132,7 +134,7 @@ class MockFreightRequestStore {
   /**
    * Отменить заявку
    */
-  cancel(id: string, reason?: string): void {
+  cancel(id: string, _reason?: string): void {
     const fr = this.items.get(id)
     if (fr) {
       fr.status = 'cancelled'
@@ -321,6 +323,8 @@ class MockFreightRequestStore {
       },
       status: 'published',
       freight_version: 1,
+      customer_completed: false,
+      carrier_completed: false,
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       created_at: new Date(Date.now() - randomInt(1, 48) * 60 * 60 * 1000).toISOString(),
     }

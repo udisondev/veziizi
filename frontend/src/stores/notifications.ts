@@ -173,6 +173,63 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   // ===============================
+  // Actions: Email
+  // ===============================
+  async function setEmail(email: string): Promise<void> {
+    try {
+      await notificationsApi.setEmail(email)
+      if (preferences.value) {
+        preferences.value.email = {
+          connected: true,
+          email,
+          verified: false,
+          marketing_consent: false,
+        }
+      }
+    } catch (e) {
+      logger.error('Failed to set email', e)
+      throw e
+    }
+  }
+
+  async function disconnectEmail(): Promise<void> {
+    try {
+      await notificationsApi.disconnectEmail()
+      if (preferences.value) {
+        preferences.value.email = {
+          connected: false,
+          verified: false,
+          marketing_consent: false,
+        }
+      }
+    } catch (e) {
+      logger.error('Failed to disconnect email', e)
+      throw e
+    }
+  }
+
+  async function setMarketingConsent(consent: boolean): Promise<void> {
+    try {
+      await notificationsApi.setMarketingConsent(consent)
+      if (preferences.value) {
+        preferences.value.email.marketing_consent = consent
+      }
+    } catch (e) {
+      logger.error('Failed to set marketing consent', e)
+      throw e
+    }
+  }
+
+  async function resendVerification(): Promise<void> {
+    try {
+      await notificationsApi.resendVerification()
+    } catch (e) {
+      logger.error('Failed to resend verification', e)
+      throw e
+    }
+  }
+
+  // ===============================
   // Polling with Page Visibility API
   // ===============================
   let visibilityHandler: (() => void) | null = null
@@ -261,6 +318,12 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
     // Actions: Telegram
     disconnectTelegram,
+
+    // Actions: Email
+    setEmail,
+    disconnectEmail,
+    setMarketingConsent,
+    resendVerification,
 
     // Lifecycle
     initialize,

@@ -100,6 +100,9 @@ const tempStatus = ref<MemberStatusFilter>('all')
 // Invitations tab ref
 const invitationsTabRef = ref<InstanceType<typeof InvitationsTab> | null>(null)
 
+// Template refs used in template via ref="..." (vue-tsc false positive workaround)
+void invitationsTabRef
+
 // Computed
 const filteredMembers = computed(() => {
   let result = members.value

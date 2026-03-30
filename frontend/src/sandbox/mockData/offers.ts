@@ -92,7 +92,7 @@ class MockOfferStore {
       await new Promise((resolve) => setTimeout(resolve, delayMs * (i + 1)))
 
       this.offerCounter++
-      const carrier = CARRIERS[i % CARRIERS.length]
+      const carrier = CARRIERS[i % CARRIERS.length]!
       const basePrice = randomInt(30000, 80000) * 100 // 30k-80k рублей в копейках
 
       const offer: Offer = {

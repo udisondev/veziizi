@@ -89,7 +89,7 @@ const MOCK_RATINGS: Record<string, OrganizationRating> = {
 export function organizationsHandlers(): void {
   // Get organization by ID
   registerHandler('GET', '/organizations/:id', (params) => {
-    const org = MOCK_ORGANIZATIONS[params.id]
+    const org = MOCK_ORGANIZATIONS[params.id!]
 
     if (!org) {
       // Если организация не найдена в mock store — пропускаем к реальному API
@@ -101,7 +101,7 @@ export function organizationsHandlers(): void {
 
   // Get organization rating
   registerHandler('GET', '/organizations/:id/rating', (params) => {
-    const rating = MOCK_RATINGS[params.id]
+    const rating = MOCK_RATINGS[params.id!]
 
     if (!rating) {
       // Если рейтинг не найден — возвращаем дефолтный
@@ -116,7 +116,7 @@ export function organizationsHandlers(): void {
   // Get organization reviews (пустой список для mock)
   registerHandler('GET', '/organizations/:id/reviews', (params) => {
     // Для mock возвращаем несколько фейковых отзывов
-    const orgName = MOCK_ORGANIZATIONS[params.id]?.name
+    const orgName = MOCK_ORGANIZATIONS[params.id!]?.name
 
     if (!orgName) {
       return null

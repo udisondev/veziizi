@@ -133,6 +133,18 @@ type Factory struct {
 	supportTicketsProjection *projections.SupportTicketsProjection
 	supportTicketsOnce       sync.Once
 
+	// Проекция email шаблонов
+	emailTemplatesProjection *projections.EmailTemplatesProjection
+	emailTemplatesOnce       sync.Once
+
+	// Проекция токенов сброса пароля
+	passwordResetProjection *projections.PasswordResetProjection
+	passwordResetOnce       sync.Once
+
+	// Проекция токенов верификации email
+	emailVerificationProjection *projections.EmailVerificationProjection
+	emailVerificationOnce       sync.Once
+
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
 	analyzerOnce   sync.Once
@@ -346,6 +358,9 @@ func (f *Factory) NotificationService() *notifApp.Service {
 			f.NotificationPreferencesProjection(),
 			f.InAppNotificationsProjection(),
 			f.TelegramLinkProjection(),
+			f.EmailVerificationProjection(),
+			f.MustPublisher().RawPublisher(),
+			f.cfg,
 		)
 	})
 	return f.notificationService
@@ -479,6 +494,30 @@ func (f *Factory) SupportTicketsProjection() *projections.SupportTicketsProjecti
 		f.supportTicketsProjection = projections.NewSupportTicketsProjection(f.DB())
 	})
 	return f.supportTicketsProjection
+}
+
+// EmailTemplatesProjection возвращает проекцию email шаблонов
+func (f *Factory) EmailTemplatesProjection() *projections.EmailTemplatesProjection {
+	f.emailTemplatesOnce.Do(func() {
+		f.emailTemplatesProjection = projections.NewEmailTemplatesProjection(f.DB())
+	})
+	return f.emailTemplatesProjection
+}
+
+// PasswordResetProjection возвращает проекцию токенов сброса пароля
+func (f *Factory) PasswordResetProjection() *projections.PasswordResetProjection {
+	f.passwordResetOnce.Do(func() {
+		f.passwordResetProjection = projections.NewPasswordResetProjection(f.DB())
+	})
+	return f.passwordResetProjection
+}
+
+// EmailVerificationProjection возвращает проекцию токенов верификации email
+func (f *Factory) EmailVerificationProjection() *projections.EmailVerificationProjection {
+	f.emailVerificationOnce.Do(func() {
+		f.emailVerificationProjection = projections.NewEmailVerificationProjection(f.DB())
+	})
+	return f.emailVerificationProjection
 }
 
 // ============================================

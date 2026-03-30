@@ -31,9 +31,15 @@ type PreferencesLookup struct {
 	TelegramChatID      *int64     `db:"telegram_chat_id"`
 	TelegramUsername    *string    `db:"telegram_username"`
 	TelegramConnectedAt *time.Time `db:"telegram_connected_at"`
-	EnabledCategories   []byte     `db:"enabled_categories"` // JSONB
-	CreatedAt           time.Time  `db:"created_at"`
-	UpdatedAt           time.Time  `db:"updated_at"`
+	// Email fields
+	Email                   *string    `db:"email"`
+	EmailVerified           bool       `db:"email_verified"`
+	EmailVerifiedAt         *time.Time `db:"email_verified_at"`
+	EmailMarketingConsent   bool       `db:"email_marketing_consent"`
+	EmailMarketingConsentAt *time.Time `db:"email_marketing_consent_at"`
+	EnabledCategories       []byte     `db:"enabled_categories"` // JSONB
+	CreatedAt               time.Time  `db:"created_at"`
+	UpdatedAt               time.Time  `db:"updated_at"`
 }
 
 // ParseEnabledCategories парсит JSONB в структуру
@@ -50,6 +56,7 @@ type PreferencesResponse struct {
 	MemberID          uuid.UUID               `json:"member_id"`
 	EnabledCategories values.EnabledCategories `json:"enabled_categories"`
 	Telegram          TelegramStatus          `json:"telegram"`
+	Email             EmailStatus             `json:"email"`
 }
 
 // TelegramStatus представляет статус Telegram подключения
@@ -59,10 +66,24 @@ type TelegramStatus struct {
 	ConnectedAt *time.Time `json:"connected_at,omitempty"`
 }
 
+// EmailStatus представляет статус Email подключения
+type EmailStatus struct {
+	Connected        bool       `json:"connected"`
+	Email            *string    `json:"email,omitempty"`
+	Verified         bool       `json:"verified"`
+	VerifiedAt       *time.Time `json:"verified_at,omitempty"`
+	MarketingConsent bool       `json:"marketing_consent"`
+}
+
 // GetByMemberID возвращает настройки member
 func (p *NotificationPreferencesProjection) GetByMemberID(ctx context.Context, memberID uuid.UUID) (*PreferencesLookup, error) {
 	query, args, err := p.psql.
-		Select("member_id", "telegram_chat_id", "telegram_username", "telegram_connected_at", "enabled_categories", "created_at", "updated_at").
+		Select(
+			"member_id",
+			"telegram_chat_id", "telegram_username", "telegram_connected_at",
+			"email", "email_verified", "email_verified_at", "email_marketing_consent", "email_marketing_consent_at",
+			"enabled_categories", "created_at", "updated_at",
+		).
 		From("notification_preferences").
 		Where(squirrel.Eq{"member_id": memberID}).
 		ToSql()
@@ -97,7 +118,7 @@ func (p *NotificationPreferencesProjection) GetOrCreateByMemberID(ctx context.Co
 		Columns("member_id", "enabled_categories").
 		Values(memberID, categoriesJSON).
 		Suffix("ON CONFLICT (member_id) DO NOTHING").
-		Suffix("RETURNING member_id, telegram_chat_id, telegram_username, telegram_connected_at, enabled_categories, created_at, updated_at").
+		Suffix("RETURNING member_id, telegram_chat_id, telegram_username, telegram_connected_at, email, email_verified, email_verified_at, email_marketing_consent, email_marketing_consent_at, enabled_categories, created_at, updated_at").
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build insert query: %w", err)
@@ -309,6 +330,224 @@ func (p *NotificationPreferencesProjection) GetMembersWithInAppEnabled(ctx conte
 	var result []uuid.UUID
 	if err := pgxscan.Select(ctx, p.db, &result, query, args...); err != nil {
 		return nil, fmt.Errorf("failed to get members with in_app enabled: %w", err)
+	}
+
+	return result, nil
+}
+
+// ===== Email methods =====
+
+// SetEmail устанавливает email для уведомлений (требует верификации)
+func (p *NotificationPreferencesProjection) SetEmail(ctx context.Context, memberID uuid.UUID, email string) error {
+	now := time.Now()
+
+	// Убедимся, что запись существует
+	if _, err := p.GetOrCreateByMemberID(ctx, memberID); err != nil {
+		return fmt.Errorf("ensure preferences exist: %w", err)
+	}
+
+	query, args, err := p.psql.
+		Update("notification_preferences").
+		Set("email", email).
+		Set("email_verified", false).
+		Set("email_verified_at", nil).
+		Set("updated_at", now).
+		Where(squirrel.Eq{"member_id": memberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("set email: %w", err)
+	}
+
+	return nil
+}
+
+// VerifyEmail подтверждает email и включает email для всех категорий
+func (p *NotificationPreferencesProjection) VerifyEmail(ctx context.Context, memberID uuid.UUID) error {
+	now := time.Now()
+
+	// Получаем текущие настройки
+	pref, err := p.GetByMemberID(ctx, memberID)
+	if err != nil {
+		return fmt.Errorf("get preferences: %w", err)
+	}
+
+	if pref.Email == nil {
+		return fmt.Errorf("email not set")
+	}
+
+	// Получаем категории и включаем email для всех
+	categories, err := pref.ParseEnabledCategories()
+	if err != nil {
+		categories = values.DefaultEnabledCategories()
+	}
+	categories.EnableEmailForAll()
+
+	categoriesJSON, err := json.Marshal(categories)
+	if err != nil {
+		return fmt.Errorf("marshal categories: %w", err)
+	}
+
+	query, args, err := p.psql.
+		Update("notification_preferences").
+		Set("email_verified", true).
+		Set("email_verified_at", now).
+		Set("enabled_categories", categoriesJSON).
+		Set("updated_at", now).
+		Where(squirrel.Eq{"member_id": memberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("verify email: %w", err)
+	}
+
+	return nil
+}
+
+// DisconnectEmail отключает email для уведомлений
+func (p *NotificationPreferencesProjection) DisconnectEmail(ctx context.Context, memberID uuid.UUID) error {
+	query, args, err := p.psql.
+		Update("notification_preferences").
+		Set("email", nil).
+		Set("email_verified", false).
+		Set("email_verified_at", nil).
+		Set("email_marketing_consent", false).
+		Set("email_marketing_consent_at", nil).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{"member_id": memberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("disconnect email: %w", err)
+	}
+
+	return nil
+}
+
+// SetMarketingConsent устанавливает согласие на маркетинговые рассылки
+func (p *NotificationPreferencesProjection) SetMarketingConsent(ctx context.Context, memberID uuid.UUID, consent bool) error {
+	now := time.Now()
+
+	var consentAt any
+	if consent {
+		consentAt = now
+	}
+
+	query, args, err := p.psql.
+		Update("notification_preferences").
+		Set("email_marketing_consent", consent).
+		Set("email_marketing_consent_at", consentAt).
+		Set("updated_at", now).
+		Where(squirrel.Eq{"member_id": memberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("set marketing consent: %w", err)
+	}
+
+	return nil
+}
+
+// GetEmail возвращает email для member (если установлен)
+func (p *NotificationPreferencesProjection) GetEmail(ctx context.Context, memberID uuid.UUID) (*string, error) {
+	query, args, err := p.psql.
+		Select("email").
+		From("notification_preferences").
+		Where(squirrel.Eq{"member_id": memberID}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select query: %w", err)
+	}
+
+	var email *string
+	if err := pgxscan.Get(ctx, p.db, &email, query, args...); err != nil {
+		return nil, fmt.Errorf("get email: %w", err)
+	}
+
+	return email, nil
+}
+
+// IsEmailVerified проверяет, верифицирован ли email
+func (p *NotificationPreferencesProjection) IsEmailVerified(ctx context.Context, memberID uuid.UUID) (bool, error) {
+	query, args, err := p.psql.
+		Select("email_verified").
+		From("notification_preferences").
+		Where(squirrel.Eq{"member_id": memberID}).
+		ToSql()
+	if err != nil {
+		return false, fmt.Errorf("build select query: %w", err)
+	}
+
+	var verified bool
+	if err := pgxscan.Get(ctx, p.db, &verified, query, args...); err != nil {
+		return false, nil // запись не существует — не верифицирован
+	}
+
+	return verified, nil
+}
+
+// GetMembersWithEmailEnabled возвращает member IDs у которых включен email для категории
+func (p *NotificationPreferencesProjection) GetMembersWithEmailEnabled(ctx context.Context, category values.NotificationCategory, memberIDs []uuid.UUID) ([]uuid.UUID, error) {
+	if len(memberIDs) == 0 {
+		return nil, nil
+	}
+
+	// JSONB query для проверки настроек + email должен быть верифицирован
+	jsonPath := fmt.Sprintf("enabled_categories->'%s'->>'email'", category)
+
+	query, args, err := p.psql.
+		Select("member_id").
+		From("notification_preferences").
+		Where(squirrel.Eq{"member_id": memberIDs}).
+		Where(squirrel.NotEq{"email": nil}).
+		Where(squirrel.Eq{"email_verified": true}).
+		Where(fmt.Sprintf("%s = 'true'", jsonPath)).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select query: %w", err)
+	}
+
+	var result []uuid.UUID
+	if err := pgxscan.Select(ctx, p.db, &result, query, args...); err != nil {
+		return nil, fmt.Errorf("get members with email enabled: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetMembersWithMarketingConsent возвращает member IDs у которых есть согласие на маркетинг
+func (p *NotificationPreferencesProjection) GetMembersWithMarketingConsent(ctx context.Context, memberIDs []uuid.UUID) ([]uuid.UUID, error) {
+	if len(memberIDs) == 0 {
+		return nil, nil
+	}
+
+	query, args, err := p.psql.
+		Select("member_id").
+		From("notification_preferences").
+		Where(squirrel.Eq{"member_id": memberIDs}).
+		Where(squirrel.NotEq{"email": nil}).
+		Where(squirrel.Eq{"email_verified": true}).
+		Where(squirrel.Eq{"email_marketing_consent": true}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select query: %w", err)
+	}
+
+	var result []uuid.UUID
+	if err := pgxscan.Select(ctx, p.db, &result, query, args...); err != nil {
+		return nil, fmt.Errorf("get members with marketing consent: %w", err)
 	}
 
 	return result, nil
