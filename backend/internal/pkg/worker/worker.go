@@ -44,8 +44,8 @@ func Run(cfg Config) {
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory - all dependencies are lazily initialized
 	f := factory.New(appCfg)
@@ -91,15 +91,13 @@ func Run(cfg Config) {
 	go func() {
 		if err := router.Run(ctx); err != nil {
 			slog.Error("router error", slog.String("error", err.Error()))
-			cancel()
+			stop()
 		}
 	}()
 
 	slog.Info(fmt.Sprintf("%s worker started", cfg.Name))
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
 	slog.Info(fmt.Sprintf("shutting down %s worker...", cfg.Name))
 
@@ -149,8 +147,8 @@ func RunScheduled(cfg ScheduledConfig) {
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory - all dependencies are lazily initialized
 	f := factory.New(appCfg)
@@ -180,19 +178,14 @@ func RunScheduled(cfg ScheduledConfig) {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	for {
 		select {
 		case <-ticker.C:
 			if err := handler(ctx); err != nil {
 				slog.Error("handler error", slog.String("error", err.Error()))
 			}
-		case <-quit:
-			slog.Info(fmt.Sprintf("shutting down %s scheduled worker...", cfg.Name))
-			return
 		case <-ctx.Done():
+			slog.Info(fmt.Sprintf("shutting down %s scheduled worker...", cfg.Name))
 			return
 		}
 	}

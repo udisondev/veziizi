@@ -12,6 +12,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization"
 	orgEvents "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/sequence"
@@ -375,7 +376,7 @@ type ConfirmOfferInput struct {
 	OfferID          uuid.UUID
 	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
-	ActorRole        string
+	ActorRole        orgValues.MemberRole
 }
 
 func (s *Service) ConfirmOffer(ctx context.Context, input ConfirmOfferInput) error {
@@ -405,7 +406,7 @@ type DeclineOfferInput struct {
 	OfferID          uuid.UUID
 	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
-	ActorRole        string
+	ActorRole        orgValues.MemberRole
 	Reason           string
 }
 
@@ -576,7 +577,7 @@ func (s *Service) ReassignCarrierMember(ctx context.Context, input ReassignCarri
 		return freightrequest.ErrNotConfirmed
 	}
 
-	if err := fr.ReassignCarrierMember(input.ActorID, input.NewMemberID, string(actor.Role())); err != nil {
+	if err := fr.ReassignCarrierMember(input.ActorID, input.NewMemberID, actor.Role()); err != nil {
 		return err
 	}
 

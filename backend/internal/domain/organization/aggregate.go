@@ -35,6 +35,9 @@ type Organization struct {
 
 	members     map[uuid.UUID]*entities.Member
 	invitations map[uuid.UUID]*entities.Invitation
+
+	membersCache     []entities.Member
+	invitationsCache []entities.Invitation
 }
 
 // New creates a new Organization (for registration)
@@ -129,12 +132,24 @@ func (o *Organization) FraudsterMarkedAt() *time.Time { return o.fraudsterMarked
 func (o *Organization) FraudsterMarkedBy() *uuid.UUID { return o.fraudsterMarkedBy }
 func (o *Organization) FraudsterReason() string       { return o.fraudsterReason }
 
-func (o *Organization) Members() map[uuid.UUID]*entities.Member {
-	return o.members
+func (o *Organization) MembersList() []entities.Member {
+	if o.membersCache == nil {
+		o.membersCache = make([]entities.Member, 0, len(o.members))
+		for _, m := range o.members {
+			o.membersCache = append(o.membersCache, *m)
+		}
+	}
+	return o.membersCache
 }
 
-func (o *Organization) Invitations() map[uuid.UUID]*entities.Invitation {
-	return o.invitations
+func (o *Organization) InvitationsList() []entities.Invitation {
+	if o.invitationsCache == nil {
+		o.invitationsCache = make([]entities.Invitation, 0, len(o.invitations))
+		for _, inv := range o.invitations {
+			o.invitationsCache = append(o.invitationsCache, *inv)
+		}
+	}
+	return o.invitationsCache
 }
 
 func (o *Organization) GetMember(id uuid.UUID) (*entities.Member, bool) {
@@ -209,6 +224,9 @@ func (o *Organization) Suspend(adminID uuid.UUID, reason string) error {
 }
 
 func (o *Organization) Update(actorID uuid.UUID, name, phone, email *string, address *values.Address) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("update organization %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
 		return fmt.Errorf("update organization %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
@@ -239,6 +257,9 @@ func (o *Organization) CreateInvitation(
 	name *string,
 	phone *string,
 ) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("create invitation in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
 		return fmt.Errorf("create invitation in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
@@ -365,6 +386,9 @@ func (o *Organization) AcceptInvitation(
 }
 
 func (o *Organization) ChangeMemberRole(actorID, memberID uuid.UUID, newRole values.MemberRole) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("change member role in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
 		return ErrMemberNotFound
@@ -398,6 +422,9 @@ func (o *Organization) ChangeMemberRole(actorID, memberID uuid.UUID, newRole val
 }
 
 func (o *Organization) BlockMember(actorID, memberID uuid.UUID, reason string) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("block member in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
 		return ErrMemberNotFound
@@ -430,6 +457,9 @@ func (o *Organization) BlockMember(actorID, memberID uuid.UUID, reason string) e
 }
 
 func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("unblock member in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
 		return ErrMemberNotFound
@@ -593,6 +623,9 @@ func (o *Organization) Apply(evt eventstore.Event) {
 
 // apply updates state from event (used by both Apply and Replay)
 func (o *Organization) apply(evt eventstore.Event) {
+	o.membersCache = nil
+	o.invitationsCache = nil
+
 	switch e := evt.(type) {
 	case events.OrganizationCreated:
 		o.name = e.Name
@@ -637,6 +670,7 @@ func (o *Organization) apply(evt eventstore.Event) {
 			e.Name,
 			e.Phone,
 			e.Role,
+			e.OccurredAt(),
 		)
 		o.members[e.MemberID] = &member
 
@@ -670,6 +704,7 @@ func (o *Organization) apply(evt eventstore.Event) {
 			e.Role,
 			e.Token,
 			e.CreatedBy,
+			e.OccurredAt(),
 			time.Unix(e.ExpiresAt, 0),
 			e.Name,
 			e.Phone,

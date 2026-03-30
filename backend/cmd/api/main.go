@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events" // register events
 	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"   // register events
@@ -50,8 +51,8 @@ func main() {
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory IoC container - all dependencies are lazily initialized
 	f := factory.New(cfg)
@@ -108,7 +109,12 @@ func main() {
 	passwordResetHandler.RegisterRoutes(server.Router())
 
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
-	adminHandler.RegisterRoutes(server.Router())
+	// Register login on main router (no admin auth required)
+	server.Router().HandleFunc("/api/v1/admin/auth/login", adminHandler.Login).Methods("POST")
+	// All other admin routes require admin auth
+	adminRouter := server.Router().PathPrefix("/api/v1/admin").Subrouter()
+	adminRouter.Use(middleware.RequireAdminAuth(adminSessionManager))
+	adminHandler.RegisterRoutes(adminRouter)
 
 	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), sessionManager)
 	frHandler.RegisterRoutes(server.Router())
@@ -152,14 +158,14 @@ func main() {
 		f.SupportTicketsProjection(),
 		adminSessionManager,
 	)
-	adminSupportHandler.RegisterRoutes(server.Router())
+	adminSupportHandler.RegisterRoutes(adminRouter)
 
 	// Admin email templates handler
 	adminEmailTemplatesHandler := handlers.NewAdminEmailTemplatesHandler(
 		f.EmailTemplatesProjection(),
 		adminSessionManager,
 	)
-	adminEmailTemplatesHandler.RegisterRoutes(server.Router())
+	adminEmailTemplatesHandler.RegisterRoutes(adminRouter)
 
 	// Dev handler (only in development mode)
 	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
@@ -174,20 +180,21 @@ func main() {
 	go func() {
 		if err := server.Start(); err != nil {
 			slog.Error("server error", slog.String("error", err.Error()))
-			cancel()
+			stop()
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
 	slog.Info("shutting down...")
 
 	// Stop rate limiter cleanup goroutine
 	middleware.StopRateLimiterCleanup()
 
-	if err := server.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("failed to shutdown server", slog.String("error", err.Error()))
 	}
 }

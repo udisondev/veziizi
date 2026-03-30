@@ -144,6 +144,10 @@ func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "notification_ids is required")
 		return
 	}
+	if len(req.NotificationIDs) > 100 {
+		writeError(w, http.StatusBadRequest, "too many notification_ids (max 100)")
+		return
+	}
 
 	input := notifApp.MarkAsReadInput{
 		NotificationIDs: req.NotificationIDs,

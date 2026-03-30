@@ -75,8 +75,9 @@ func (h *NotificationDispatcherHandler) processEvent(ctx context.Context, evt ev
 	requests, err := h.registry.Process(ctx, evt)
 	if err != nil {
 		slog.Error("failed to process notification rules",
-			slog.String("event_type", evt.EventType()),
-			slog.String("error", err.Error()))
+			"event_type", evt.EventType(),
+			"error", err,
+			"action", "skipped_retry")
 		return nil // Не блокируем очередь
 	}
 
@@ -101,9 +102,10 @@ func (h *NotificationDispatcherHandler) processEvent(ctx context.Context, evt ev
 
 		if err := h.sendNotification(ctx, req); err != nil {
 			slog.Warn("failed to send notification",
-				slog.String("member_id", req.RecipientMemberID.String()),
-				slog.String("type", string(req.NotificationType)),
-				slog.String("error", err.Error()))
+				"member_id", req.RecipientMemberID.String(),
+				"type", string(req.NotificationType),
+				"error", err,
+				"action", "skipped_retry")
 		}
 	}
 

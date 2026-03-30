@@ -26,6 +26,7 @@ func NewMember(
 	name string,
 	phone string,
 	role values.MemberRole,
+	createdAt time.Time,
 ) Member {
 	return Member{
 		id:        id,
@@ -34,7 +35,7 @@ func NewMember(
 		phone:     phone,
 		role:      role,
 		status:    values.MemberStatusActive,
-		createdAt: time.Now().UTC(),
+		createdAt: createdAt,
 	}
 }
 
