@@ -7,7 +7,6 @@ import { useOnboardingStore } from '@/stores/onboarding'
 import { useFreightFiltersStore, type RoutePointFilter } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
-import { useToast } from '@/components/ui/toast/use-toast'
 import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
 import type {
   FreightRequestListItem,
@@ -55,7 +54,6 @@ const router = useRouter()
 const auth = useAuthStore()
 const onboarding = useOnboardingStore()
 const filtersStore = useFreightFiltersStore()
-const { toast } = useToast()
 const { canCreateFreightRequest } = usePermissions()
 
 const items = ref<FreightRequestListItem[]>([])
@@ -273,6 +271,9 @@ const { sentinelRef, reset: resetInfiniteScroll } = useInfiniteScroll(loadMoreIt
   enabled: canLoadMore,
 })
 
+// Template refs used in template via ref="..." (vue-tsc false positive workaround)
+void sentinelRef
+
 function goToDetail(id: string) {
   router.push(`/freight-requests/${id}`)
 }
@@ -353,6 +354,8 @@ function isExpiringSoon(expiresAt: string): boolean {
 function sandboxRequestToListItem(req: NonNullable<typeof onboarding.sandboxCreatedRequest>): FreightRequestListItem {
   return {
     id: req.id,
+    request_number: 1, // sandbox mock
+    customer_org_id: 'sandbox-org-1',
     status: req.status as 'published',
     origin_address: req.origin_address,
     destination_address: req.destination_address,

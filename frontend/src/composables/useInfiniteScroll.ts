@@ -2,7 +2,7 @@
  * Composable для infinite scroll с IntersectionObserver
  */
 
-import { ref, onMounted, onUnmounted, watch, type Ref, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, type Ref } from 'vue'
 
 export interface UseInfiniteScrollOptions {
   /**
@@ -48,7 +48,7 @@ export function useInfiniteScroll(
 
   async function handleIntersect(entries: IntersectionObserverEntry[]) {
     const entry = entries[0]
-    if (entry.isIntersecting && !isLoadingMore.value && enabled.value) {
+    if (entry?.isIntersecting && !isLoadingMore.value && enabled.value) {
       isLoadingMore.value = true
       try {
         await loadMore()

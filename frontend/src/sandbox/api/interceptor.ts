@@ -75,8 +75,9 @@ function createMockResponse(mock: MockResponse): Response {
 
   // Для ошибок
   if (status >= 400) {
+    const errorData = data as { error?: string; error_code?: string } | undefined
     return new Response(
-      JSON.stringify({ error: data?.error || 'Error', error_code: data?.error_code }),
+      JSON.stringify({ error: errorData?.error || 'Error', error_code: errorData?.error_code }),
       {
         status,
         statusText: status === 404 ? 'Not Found' : 'Error',

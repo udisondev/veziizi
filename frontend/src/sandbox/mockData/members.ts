@@ -3,7 +3,7 @@
  * Mock данные для сотрудников организации
  */
 
-import { generateId, randomItem, CONTACT_NAMES, PHONE_NUMBERS } from './generators'
+import { generateId, CONTACT_NAMES, PHONE_NUMBERS } from './generators'
 
 interface MockMember {
   id: string
@@ -59,9 +59,9 @@ class MockMembersStore {
     for (let i = 0; i < count - 1; i++) {
       const member: MockMember = {
         id: generateId('member'),
-        email: EMAILS[i % EMAILS.length],
-        name: CONTACT_NAMES[i % CONTACT_NAMES.length],
-        phone: PHONE_NUMBERS[i % PHONE_NUMBERS.length],
+        email: EMAILS[i % EMAILS.length]!,
+        name: CONTACT_NAMES[i % CONTACT_NAMES.length]!,
+        phone: PHONE_NUMBERS[i % PHONE_NUMBERS.length]!,
         role: i === 0 ? 'administrator' : 'employee',
         status: 'active',
         created_at: new Date(Date.now() - (i + 1) * 30 * 24 * 60 * 60 * 1000).toISOString(),

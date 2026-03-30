@@ -49,6 +49,9 @@ const { sentinelRef, isLoadingMore } = useInfiniteScroll(loadMoreReviews, {
   enabled: canLoadMore,
 })
 
+// Template refs used in template via ref="..." (vue-tsc false positive workaround)
+void sentinelRef
+
 async function loadData() {
   isLoading.value = true
   error.value = ''

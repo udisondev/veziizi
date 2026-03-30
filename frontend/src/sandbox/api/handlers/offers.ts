@@ -14,18 +14,18 @@ function getMockOffers() {
 export function offersHandlers(): void {
   // List offers for freight request
   registerHandler('GET', '/freight-requests/:frId/offers', (params) => {
-    const offers = getMockOffers().listByFreightRequest(params.frId)
+    const offers = getMockOffers().listByFreightRequest(params.frId!)
     return { data: offers }
   })
 
   // Make offer (как перевозчик)
   registerHandler('POST', '/freight-requests/:frId/offers', (params, body) => {
     const data = body as MakeOfferRequest
-    const result = getMockOffers().create(params.frId, data)
+    const result = getMockOffers().create(params.frId!, data)
 
     // Эмитим событие
     tutorialBus.emit('offer:created', {
-      frId: params.frId,
+      frId: params.frId!,
       offerId: result.offer_id
     })
 
@@ -35,25 +35,25 @@ export function offersHandlers(): void {
   // Select offer
   registerHandler('POST', '/freight-requests/:frId/offers/:offerId/select', (params) => {
     // Статус FR обновляется внутри mockOffers.select()
-    getMockOffers().select(params.frId, params.offerId)
+    getMockOffers().select(params.frId!, params.offerId!)
 
     // Эмитим событие
     tutorialBus.emit('offer:selected', {
-      frId: params.frId,
-      offerId: params.offerId
+      frId: params.frId!,
+      offerId: params.offerId!
     })
 
     return { status: 204 }
   })
 
   // Reject offer
-  registerHandler('POST', '/freight-requests/:frId/offers/:offerId/reject', (params, body) => {
-    getMockOffers().reject(params.frId, params.offerId)
+  registerHandler('POST', '/freight-requests/:frId/offers/:offerId/reject', (params, _body) => {
+    getMockOffers().reject(params.frId!, params.offerId!)
 
     // Эмитим событие
     tutorialBus.emit('offer:rejected', {
-      frId: params.frId,
-      offerId: params.offerId
+      frId: params.frId!,
+      offerId: params.offerId!
     })
 
     return { status: 204 }
@@ -62,12 +62,12 @@ export function offersHandlers(): void {
   // Unselect offer
   registerHandler('POST', '/freight-requests/:frId/offers/:offerId/unselect', (params) => {
     // Статус FR обновляется внутри mockOffers.unselect()
-    getMockOffers().unselect(params.frId, params.offerId)
+    getMockOffers().unselect(params.frId!, params.offerId!)
 
     // Эмитим событие
     tutorialBus.emit('offer:unselected', {
-      frId: params.frId,
-      offerId: params.offerId
+      frId: params.frId!,
+      offerId: params.offerId!
     })
 
     return { status: 204 }
@@ -76,7 +76,7 @@ export function offersHandlers(): void {
   // Confirm offer (создаёт заказ)
   registerHandler('POST', '/freight-requests/:frId/offers/:offerId/confirm', (params) => {
     // Статус FR обновляется и order:created эмитится внутри mockOffers.confirm()
-    getMockOffers().confirm(params.frId, params.offerId)
+    getMockOffers().confirm(params.frId!, params.offerId!)
 
     return { status: 204 }
   })
@@ -84,25 +84,25 @@ export function offersHandlers(): void {
   // Decline offer (перевозчик отказывается от выбранного оффера)
   registerHandler('POST', '/freight-requests/:frId/offers/:offerId/decline', (params) => {
     // Статус FR обновляется внутри mockOffers.decline()
-    getMockOffers().decline(params.frId, params.offerId)
+    getMockOffers().decline(params.frId!, params.offerId!)
 
     // Эмитим событие
     tutorialBus.emit('offer:declined', {
-      frId: params.frId,
-      offerId: params.offerId
+      frId: params.frId!,
+      offerId: params.offerId!
     })
 
     return { status: 204 }
   })
 
   // Withdraw offer (отзыв своего предложения)
-  registerHandler('DELETE', '/freight-requests/:frId/offers/:offerId', (params, body) => {
-    getMockOffers().withdraw(params.frId, params.offerId)
+  registerHandler('DELETE', '/freight-requests/:frId/offers/:offerId', (params, _body) => {
+    getMockOffers().withdraw(params.frId!, params.offerId!)
 
     // Эмитим событие
     tutorialBus.emit('offer:withdrawn', {
-      frId: params.frId,
-      offerId: params.offerId
+      frId: params.frId!,
+      offerId: params.offerId!
     })
 
     return { status: 204 }

@@ -100,7 +100,7 @@ export function useFreightRequestForm() {
           errors[`point_${i}_date_from`] = validators.dateNotInPast(point.date_from)
         } else {
           // Последующие точки: >= предыдущей
-          const prevPoint = routePoints.value[i - 1]
+          const prevPoint = routePoints.value[i - 1]!
           errors[`point_${i}_date_from`] = validators.dateSequence(
             point.date_from,
             prevPoint.date_to,
@@ -329,7 +329,7 @@ export function useFreightRequestForm() {
             errors[field] = validators.dateNotInPast(point.date_from)
           } else {
             // Последующие точки: >= предыдущей
-            const prevPoint = routePoints.value[index - 1]
+            const prevPoint = routePoints.value[index - 1]!
             errors[field] = validators.dateSequence(
               point.date_from,
               prevPoint.date_to,

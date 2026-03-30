@@ -81,6 +81,7 @@ type NotificationChannel string
 const (
 	ChannelInApp    NotificationChannel = "in_app"
 	ChannelTelegram NotificationChannel = "telegram"
+	ChannelEmail    NotificationChannel = "email"
 )
 
 // EntityType определяет тип сущности, к которой относится уведомление
@@ -97,15 +98,20 @@ const (
 type DeliveryStatus string
 
 const (
-	DeliveryStatusSent    DeliveryStatus = "sent"
-	DeliveryStatusFailed  DeliveryStatus = "failed"
-	DeliveryStatusSkipped DeliveryStatus = "skipped"
+	DeliveryStatusSent      DeliveryStatus = "sent"
+	DeliveryStatusFailed    DeliveryStatus = "failed"
+	DeliveryStatusSkipped   DeliveryStatus = "skipped"
+	DeliveryStatusDelivered DeliveryStatus = "delivered" // Email: подтверждена доставка
+	DeliveryStatusBounced   DeliveryStatus = "bounced"   // Email: отклонено сервером получателя
+	DeliveryStatusOpened    DeliveryStatus = "opened"    // Email: маркетинговые - письмо открыто
+	DeliveryStatusClicked   DeliveryStatus = "clicked"   // Email: маркетинговые - клик по ссылке
 )
 
 // CategorySettings настройки для одной категории
 type CategorySettings struct {
 	InApp    bool `json:"in_app"`
 	Telegram bool `json:"telegram"`
+	Email    bool `json:"email"`
 }
 
 // EnabledCategories настройки всех категорий
@@ -114,11 +120,11 @@ type EnabledCategories map[NotificationCategory]CategorySettings
 // DefaultEnabledCategories возвращает настройки по умолчанию
 func DefaultEnabledCategories() EnabledCategories {
 	return EnabledCategories{
-		CategoryFreightRequests: {InApp: true, Telegram: false},
-		CategoryOffers:          {InApp: true, Telegram: false},
-		CategoryOrders:          {InApp: true, Telegram: false},
-		CategoryReviews:         {InApp: true, Telegram: false},
-		CategoryOrganization:    {InApp: true, Telegram: false},
+		CategoryFreightRequests: {InApp: true, Telegram: false, Email: false},
+		CategoryOffers:          {InApp: true, Telegram: false, Email: false},
+		CategoryOrders:          {InApp: true, Telegram: false, Email: false},
+		CategoryReviews:         {InApp: true, Telegram: false, Email: false},
+		CategoryOrganization:    {InApp: true, Telegram: false, Email: false},
 	}
 }
 
@@ -133,6 +139,8 @@ func (c EnabledCategories) IsEnabled(category NotificationCategory, channel Noti
 		return settings.InApp
 	case ChannelTelegram:
 		return settings.Telegram
+	case ChannelEmail:
+		return settings.Email
 	default:
 		return false
 	}
@@ -145,4 +153,36 @@ func (c EnabledCategories) EnableTelegramForAll() {
 		settings.Telegram = true
 		c[cat] = settings
 	}
+}
+
+// EnableEmailForAll включает email для всех категорий
+func (c EnabledCategories) EnableEmailForAll() {
+	for _, cat := range AllCategories() {
+		settings := c[cat]
+		settings.Email = true
+		c[cat] = settings
+	}
+}
+
+// EmailType определяет тип email для разделения транзакционных и маркетинговых
+type EmailType string
+
+const (
+	// EmailTypeTransactional — транзакционные письма (сброс пароля, подтверждение email, верификация)
+	// Высокий приоритет, без tracking открытий/кликов
+	EmailTypeTransactional EmailType = "transactional"
+
+	// EmailTypeMarketing — маркетинговые письма (рассылки, промо-акции)
+	// Обычный приоритет, с tracking открытий/кликов, требует opt-in
+	EmailTypeMarketing EmailType = "marketing"
+)
+
+// IsTransactional проверяет является ли тип транзакционным
+func (t EmailType) IsTransactional() bool {
+	return t == EmailTypeTransactional
+}
+
+// AllowsTracking проверяет разрешён ли tracking для типа email
+func (t EmailType) AllowsTracking() bool {
+	return t == EmailTypeMarketing
 }

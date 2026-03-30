@@ -203,6 +203,7 @@ type MeResponse struct {
 	Name           string               `json:"name"`
 	Phone          *string              `json:"phone,omitempty"`
 	TelegramID     *int64               `json:"telegram_id,omitempty"`
+	Status         string               `json:"status"`
 	Organization   *OrganizationBrief   `json:"organization,omitempty"`
 }
 
@@ -244,6 +245,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		Name:           member.Name,
 		Phone:          member.Phone,
 		TelegramID:     member.TelegramID,
+		Status:         member.Status,
 		Organization: &OrganizationBrief{
 			Name:   org.Name(),
 			Status: org.Status().String(),

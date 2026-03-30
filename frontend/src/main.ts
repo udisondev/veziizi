@@ -4,6 +4,8 @@ import App from './App.vue'
 import router from './router'
 import { logger } from '@/utils/logger'
 import { initSandboxInterceptor } from '@/sandbox/api/interceptor'
+import { setAccountBlockedHandler } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
 import './style.css'
 
@@ -32,6 +34,13 @@ if (import.meta.env.DEV) {
 
 app.use(pinia)
 app.use(router)
+
+// Устанавливаем handler для обработки блокировки аккаунта
+// Когда API возвращает 403 "account is blocked", автоматически обновляем статус
+setAccountBlockedHandler(async () => {
+  const auth = useAuthStore()
+  await auth.fetchMe()
+})
 
 // ВАЖНО: Загружаем sandbox state ДО монтирования приложения
 // чтобы isSandboxMode был установлен до того как компоненты начнут делать запросы

@@ -74,7 +74,7 @@ export function membersHandlers(): void {
     const auth = useAuthStore()
 
     // Сначала ищем в mock store текущей организации
-    const member = mockMembers.get(params.id)
+    const member = mockMembers.get(params.id!)
     if (member) {
       // Используем реальные данные организации из auth store
       return {
@@ -93,7 +93,7 @@ export function membersHandlers(): void {
     }
 
     // Затем ищем в mock организациях-перевозчиках (для tutorial)
-    const carrierResult = findMemberInCarrierOrgs(params.id)
+    const carrierResult = findMemberInCarrierOrgs(params.id!)
     if (carrierResult) {
       const { member: carrierMember, organization } = carrierResult
       return {
@@ -153,11 +153,11 @@ export function membersHandlers(): void {
       }
     }
 
-    mockMembers.changeRole(params.memberId, role)
+    mockMembers.changeRole(params.memberId!, role)
 
     // Эмитим событие
     tutorialBus.emit('member:roleChanged', {
-      memberId: params.memberId,
+      memberId: params.memberId!,
       newRole: role,
     })
 
@@ -166,22 +166,22 @@ export function membersHandlers(): void {
 
   // Block member
   registerHandler('POST', '/organizations/:orgId/members/:memberId/block', (params, body) => {
-    const { reason } = body as { reason: string }
+    const { reason: _reason } = body as { reason: string }
 
-    mockMembers.block(params.memberId)
+    mockMembers.block(params.memberId!)
 
     // Эмитим событие
-    tutorialBus.emit('member:blocked', { memberId: params.memberId })
+    tutorialBus.emit('member:blocked', { memberId: params.memberId! })
 
     return { status: 204 }
   })
 
   // Unblock member
   registerHandler('POST', '/organizations/:orgId/members/:memberId/unblock', (params) => {
-    mockMembers.unblock(params.memberId)
+    mockMembers.unblock(params.memberId!)
 
     // Эмитим событие
-    tutorialBus.emit('member:unblocked', { memberId: params.memberId })
+    tutorialBus.emit('member:unblocked', { memberId: params.memberId! })
 
     return { status: 204 }
   })
@@ -210,16 +210,15 @@ export function membersHandlers(): void {
       }
     }
 
-    mockMembers.updateInfo(params.memberId, name, email, phone)
+    mockMembers.updateInfo(params.memberId!, name, email, phone)
 
-    // Эмитим событие
-    tutorialBus.emit('member:infoUpdated', { memberId: params.memberId, name, email, phone })
+    // В sandbox не эмитим событие member:infoUpdated (нет в TutorialEvents)
 
     return { status: 204 }
   })
 
   // Create invitation
-  registerHandler('POST', '/organizations/:orgId/invitations', (params, body) => {
+  registerHandler('POST', '/organizations/:orgId/invitations', (_params, body) => {
     const { email, role } = body as { email: string; role: 'administrator' | 'employee' }
 
     const result = mockMembers.createInvitation(email, role)

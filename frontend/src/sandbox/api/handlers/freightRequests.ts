@@ -13,7 +13,7 @@ function getMockFreightRequests() {
 
 export function freightRequestsHandlers(): void {
   // List freight requests
-  registerHandler('GET', '/freight-requests', (params, body, query) => {
+  registerHandler('GET', '/freight-requests', (_params, _body, query) => {
     const items = getMockFreightRequests().list()
 
     // Применяем фильтры из query
@@ -45,7 +45,7 @@ export function freightRequestsHandlers(): void {
 
   // Get freight request by ID
   registerHandler('GET', '/freight-requests/:id', (params) => {
-    const fr = getMockFreightRequests().get(params.id)
+    const fr = getMockFreightRequests().get(params.id!)
     if (!fr) {
       return {
         status: 404,
@@ -56,7 +56,7 @@ export function freightRequestsHandlers(): void {
   })
 
   // Create freight request
-  registerHandler('POST', '/freight-requests', async (params, body) => {
+  registerHandler('POST', '/freight-requests', async (_params, body) => {
     const data = body as CreateFreightRequestRequest
     const result = getMockFreightRequests().create(data)
 
@@ -67,8 +67,8 @@ export function freightRequestsHandlers(): void {
   })
 
   // Update freight request
-  registerHandler('PATCH', '/freight-requests/:id', (params, body) => {
-    const fr = getMockFreightRequests().get(params.id)
+  registerHandler('PATCH', '/freight-requests/:id', (params, _body) => {
+    const fr = getMockFreightRequests().get(params.id!)
     if (!fr) {
       return {
         status: 404,
@@ -82,23 +82,23 @@ export function freightRequestsHandlers(): void {
   // Cancel freight request
   registerHandler('DELETE', '/freight-requests/:id', (params, body) => {
     const reason = (body as { reason?: string })?.reason
-    getMockFreightRequests().cancel(params.id, reason)
+    getMockFreightRequests().cancel(params.id!, reason)
 
     // Эмитим событие
-    tutorialBus.emit('freightRequest:cancelled', { id: params.id })
+    tutorialBus.emit('freightRequest:cancelled', { id: params.id! })
 
     return { status: 204 }
   })
 
   // Reassign freight request
-  registerHandler('POST', '/freight-requests/:id/reassign', (params, body) => {
+  registerHandler('POST', '/freight-requests/:id/reassign', (_params, _body) => {
     // В sandbox просто принимаем
     return { status: 204 }
   })
 
   // Complete freight request
   registerHandler('POST', '/freight-requests/:id/complete', (params) => {
-    const fr = getMockFreightRequests().get(params.id)
+    const fr = getMockFreightRequests().get(params.id!)
     if (!fr) {
       return {
         status: 404,
@@ -107,14 +107,14 @@ export function freightRequestsHandlers(): void {
     }
 
     // Определяем сторону (в sandbox всегда customer)
-    getMockFreightRequests().complete(params.id, 'customer')
+    getMockFreightRequests().complete(params.id!, 'customer')
 
     return { status: 204 }
   })
 
   // Leave review
   registerHandler('POST', '/freight-requests/:id/review', (params, body) => {
-    const fr = getMockFreightRequests().get(params.id)
+    const fr = getMockFreightRequests().get(params.id!)
     if (!fr) {
       return {
         status: 404,
@@ -132,14 +132,14 @@ export function freightRequestsHandlers(): void {
     }
 
     // В sandbox всегда оставляем отзыв как customer
-    const reviewId = getMockFreightRequests().leaveReview(params.id, 'customer', rating, comment)
+    const reviewId = getMockFreightRequests().leaveReview(params.id!, 'customer', rating, comment)
 
     return { status: 201, data: { review_id: reviewId } }
   })
 
   // Edit review
   registerHandler('PATCH', '/freight-requests/:id/review', (params, body) => {
-    const fr = getMockFreightRequests().get(params.id)
+    const fr = getMockFreightRequests().get(params.id!)
     if (!fr) {
       return {
         status: 404,
@@ -157,7 +157,7 @@ export function freightRequestsHandlers(): void {
     }
 
     // В sandbox всегда редактируем отзыв как customer
-    getMockFreightRequests().editReview(params.id, 'customer', rating, comment)
+    getMockFreightRequests().editReview(params.id!, 'customer', rating, comment)
 
     return { status: 204 }
   })

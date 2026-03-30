@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
-import type { Offer, FreightRequest } from '@/types/freightRequest'
+import type { Offer, FreightRequest, Currency } from '@/types/freightRequest'
 import { vatTypeLabels, paymentMethodLabels } from '@/types/freightRequest'
 import { offerStatusMap } from '@/constants/statusMaps'
 import { formatDateTime, formatMoney } from '@/utils/formatters'
@@ -58,7 +58,7 @@ const canManageOffers = computed(() => {
   )
 })
 
-function formatPrice(amount: number, currency: 'RUB' | 'EUR' | 'USD'): string {
+function formatPrice(amount: number, currency: Currency): string {
   return formatMoney({ amount, currency })
 }
 </script>

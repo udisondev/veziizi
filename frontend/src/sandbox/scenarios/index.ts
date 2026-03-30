@@ -38,6 +38,18 @@ export const scenarioMeta: Record<ScenarioType, Omit<Scenario, 'steps'>> = {
     description: 'Получайте уведомления в Telegram',
     icon: 'MessageCircle',
   },
+  offers_receive_flow: {
+    id: 'offers_receive_flow',
+    name: 'Получение офферов',
+    description: 'Научитесь работать с предложениями перевозчиков',
+    icon: 'Handshake',
+  },
+  completion_flow: {
+    id: 'completion_flow',
+    name: 'Завершение заявки',
+    description: 'Научитесь завершать заявки и оставлять отзывы',
+    icon: 'CheckCircle',
+  },
 }
 
 // Основные сценарии для welcome модалки

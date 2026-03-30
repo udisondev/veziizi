@@ -175,22 +175,23 @@ async function generatePreview() {
 }
 
 function addVariable() {
-  if (!newVarName.value.trim()) return
+  const varName = newVarName.value.trim()
+  if (!varName) return
 
-  form.value.variables_schema[newVarName.value.trim()] = {
+  form.value.variables_schema[varName] = {
     type: newVarType.value,
     required: newVarRequired.value,
     description: newVarDescription.value || undefined,
   }
+
+  // Add to preview data BEFORE reset
+  previewData.value[varName] = ''
 
   // Reset form
   newVarName.value = ''
   newVarType.value = 'string'
   newVarRequired.value = true
   newVarDescription.value = ''
-
-  // Add to preview data
-  previewData.value[newVarName.value.trim()] = ''
 }
 
 function removeVariable(name: string) {

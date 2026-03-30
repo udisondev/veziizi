@@ -2,8 +2,8 @@
 import { computed, ref, onMounted } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useOnboardingStore } from '@/stores/onboarding'
 import AppHeader from '@/components/ui/AppHeader.vue'
+import AccountBlockedBanner from '@/components/AccountBlockedBanner.vue'
 import DevUserSwitcher from '@/components/dev/DevUserSwitcher.vue'
 import { Toaster } from '@/components/ui/toast'
 import { devApi } from '@/api/dev'
@@ -16,7 +16,6 @@ import {
 
 const route = useRoute()
 const auth = useAuthStore()
-const onboarding = useOnboardingStore()
 
 const showHeader = computed(() => {
   // Don't show header on public pages and admin pages
@@ -26,6 +25,8 @@ const showHeader = computed(() => {
   // Show only for authenticated users
   return auth.isAuthenticated
 })
+
+const showBanner = computed(() => auth.isAuthenticated && auth.isBlocked)
 
 const isDevMode = ref(false)
 
@@ -45,8 +46,14 @@ onMounted(async () => {
 
 <template>
   <div class="min-h-screen bg-background">
-    <AppHeader v-if="showHeader" />
-    <RouterView :key="route.path" />
+    <!-- Account Blocked Banner - Fixed at top, above all content -->
+    <AccountBlockedBanner />
+
+    <div :class="{ 'pt-24': showBanner }">
+      <AppHeader v-if="showHeader" />
+      <RouterView :key="route.path" />
+    </div>
+
     <DevUserSwitcher v-if="isDevMode" />
     <Toaster />
 

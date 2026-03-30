@@ -4,7 +4,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { tutorialBus } from '@/sandbox/events'
 import { resetAllMockData } from '@/sandbox/mockData'
@@ -13,12 +13,11 @@ import type {
   ScenarioType,
   TutorialStep,
   TutorialProgress,
-  STORAGE_KEYS,
   TutorialEventKey,
-  StepPlatform,
   ChainContext,
 } from '@/types/tutorial'
 import type { PopupDirection } from '@/composables/useTutorialPopupTracker'
+import type { VehicleType, VehicleSubType, Currency } from '@/types/freightRequest'
 
 // Breakpoint для desktop (md в Tailwind)
 const DESKTOP_BREAKPOINT = 768
@@ -131,9 +130,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     destination_address: string
     cargo_weight: number
     price_amount?: number
-    price_currency?: string
-    vehicle_type: string
-    vehicle_subtype: string
+    price_currency?: Currency
+    vehicle_type: VehicleType
+    vehicle_subtype: VehicleSubType
     status: string
     created_at: string
   } | null>(null)
@@ -612,9 +611,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     destination_address: string
     cargo_weight: number
     price_amount?: number
-    price_currency?: string
-    vehicle_type: string
-    vehicle_subtype: string
+    price_currency?: Currency
+    vehicle_type: VehicleType
+    vehicle_subtype: VehicleSubType
     created_at: string
   }) {
     sandboxCreatedRequest.value = {

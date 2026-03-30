@@ -11,7 +11,6 @@ import { storeToRefs } from 'pinia'
 import { Button } from '@/components/ui/button'
 import { ChevronRight, ChevronLeft, SkipForward } from 'lucide-vue-next'
 import { useTutorialPopupTracker, onPopupChange } from '@/composables/useTutorialPopupTracker'
-import { tutorialBus } from '@/sandbox/events'
 import { throttle, SCROLL_THROTTLE_DELAY } from '@/utils/debounce'
 
 const router = useRouter()
@@ -114,7 +113,7 @@ async function updatePosition() {
   const spaceLeft = rect.left
   const spaceRight = window.innerWidth - rect.right
 
-  let preferredPlacement = currentStep.value.tooltipPosition || 'bottom'
+  let preferredPlacement = currentStep.value?.tooltipPosition || 'bottom'
 
   // Если popup открыт вниз — tooltip тоже идёт вниз (под popup)
   // Мы уже используем combined rect, так что tooltip будет под выпадающим списком
