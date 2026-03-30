@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/review"
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/worker"
+	"github.com/udisondev/veziizi/backend/internal/domain/review"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
+	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
 
 const (

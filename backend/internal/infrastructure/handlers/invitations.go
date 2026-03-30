@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/ThreeDotsLabs/watermill/message"
 )

@@ -4,11 +4,11 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/support/entities"
-	"codeberg.org/udison/veziizi/backend/internal/domain/support/events"
-	"codeberg.org/udison/veziizi/backend/internal/domain/support/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/aggregate"
+	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
+	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
+	"github.com/udisondev/veziizi/backend/internal/domain/support/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/pkg/aggregate"
 	"github.com/google/uuid"
 )
 

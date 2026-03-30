@@ -14,8 +14,8 @@ import (
 	"os"
 	"testing"
 
-	"codeberg.org/udison/veziizi/backend/e2e/client"
-	"codeberg.org/udison/veziizi/backend/e2e/setup"
+	"github.com/udisondev/veziizi/backend/e2e/client"
+	"github.com/udisondev/veziizi/backend/e2e/setup"
 )
 
 var (

@@ -1,7 +1,7 @@
 package aggregate
 
 import (
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/google/uuid"
 )
 

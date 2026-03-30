@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	frEvents "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/rules"
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	frEvents "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/rules"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
 // OfferRejectedRule уведомляет перевозчика что его предложение отклонено

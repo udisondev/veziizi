@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 

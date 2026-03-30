@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 )

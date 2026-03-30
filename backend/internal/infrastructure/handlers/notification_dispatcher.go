@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	notifApp "codeberg.org/udison/veziizi/backend/internal/application/notification"
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/rules"
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	notifApp "github.com/udisondev/veziizi/backend/internal/application/notification"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/rules"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 )

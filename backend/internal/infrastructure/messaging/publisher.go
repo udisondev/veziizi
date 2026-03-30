@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
+	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"

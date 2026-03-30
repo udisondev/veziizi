@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/jackc/pgx/v5"
 )
 

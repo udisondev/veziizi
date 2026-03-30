@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"codeberg.org/udison/veziizi/backend/internal/application/organization"
-	orgDomain "codeberg.org/udison/veziizi/backend/internal/domain/organization"
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
+	"github.com/udisondev/veziizi/backend/internal/application/organization"
+	orgDomain "github.com/udisondev/veziizi/backend/internal/domain/organization"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
+	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )

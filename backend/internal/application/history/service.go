@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/application/history/display"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/application/history/display"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
 )
 

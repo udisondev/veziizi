@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
 // testConfigWithDSN creates a configuration with the provided database DSN.

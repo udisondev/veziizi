@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
-	reviewEvents "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
+	reviewEvents "github.com/udisondev/veziizi/backend/internal/domain/review/events"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 

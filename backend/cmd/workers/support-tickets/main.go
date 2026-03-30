@@ -10,12 +10,12 @@ import (
 	"syscall"
 
 	// IMPORTANT: Register event types for deserialization
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"
 
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
-	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"

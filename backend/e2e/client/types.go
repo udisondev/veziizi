@@ -4,7 +4,7 @@ package client
 import (
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/handlers"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
 	"github.com/google/uuid"
 )
 

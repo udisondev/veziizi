@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"

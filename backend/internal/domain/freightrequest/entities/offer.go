@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/values"
+	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/google/uuid"
 )
 
