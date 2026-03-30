@@ -170,7 +170,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.session.SetAuth(r, w, member.ID, member.OrganizationID, member.Role); err != nil {
+	if err := h.session.RegenerateAndSetAuth(r, w, member.ID, member.OrganizationID, member.Role); err != nil {
 		slog.Error("failed to set session", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return

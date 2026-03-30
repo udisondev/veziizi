@@ -654,6 +654,8 @@ func handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, orgDomain.ErrOrganizationNotFound):
 		writeError(w, http.StatusNotFound, "organization not found")
+	case errors.Is(err, orgDomain.ErrOrganizationNotActive):
+		writeError(w, http.StatusForbidden, "organization is not active")
 	case errors.Is(err, orgDomain.ErrMemberNotFound):
 		writeError(w, http.StatusNotFound, "member not found")
 	case errors.Is(err, orgDomain.ErrInvitationNotFound):
@@ -744,8 +746,9 @@ func mapOrganizationToPublicResponse(org *orgDomain.Organization) PublicOrganiza
 }
 
 func mapOrganizationToResponse(org *orgDomain.Organization) OrganizationResponse {
-	members := make([]MemberResponse, 0, len(org.Members()))
-	for _, m := range org.Members() {
+	membersList := org.MembersList()
+	members := make([]MemberResponse, 0, len(membersList))
+	for _, m := range membersList {
 		members = append(members, MemberResponse{
 			ID:        m.ID().String(),
 			Email:     m.Email(),

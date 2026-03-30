@@ -195,7 +195,7 @@ func (p *EmailTemplatesProjection) List(ctx context.Context, filter EmailTemplat
 		qb = qb.Where(squirrel.Eq{"is_system": *filter.IsSystem})
 	}
 	if filter.SearchText != "" {
-		searchPattern := "%" + filter.SearchText + "%"
+		searchPattern := "%" + EscapeLikePattern(filter.SearchText) + "%"
 		qb = qb.Where(squirrel.Or{
 			squirrel.ILike{"name": searchPattern},
 			squirrel.ILike{"slug": searchPattern},
@@ -381,7 +381,7 @@ func (p *EmailTemplatesProjection) Count(ctx context.Context, filter EmailTempla
 		qb = qb.Where(squirrel.Eq{"is_system": *filter.IsSystem})
 	}
 	if filter.SearchText != "" {
-		searchPattern := "%" + filter.SearchText + "%"
+		searchPattern := "%" + EscapeLikePattern(filter.SearchText) + "%"
 		qb = qb.Where(squirrel.Or{
 			squirrel.ILike{"name": searchPattern},
 			squirrel.ILike{"slug": searchPattern},

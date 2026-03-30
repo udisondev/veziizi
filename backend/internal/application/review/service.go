@@ -235,10 +235,10 @@ func (s *Service) saveAndPublish(ctx context.Context, r *review.Review) error {
 		return fmt.Errorf("save review: %w", err)
 	}
 
-	for _, evt := range changes {
-		if err := s.publisher.Publish(ctx, "review.events", evt); err != nil {
-			return fmt.Errorf("publish event: %w", err)
-		}
+	r.ClearChanges()
+
+	if err := s.publisher.Publish(ctx, "review.events", changes...); err != nil {
+		return fmt.Errorf("publish review events: %w", err)
 	}
 
 	return nil

@@ -190,7 +190,9 @@ func (s *Service) ConfirmLinkCode(ctx context.Context, code string, chatID int64
 
 	// Сначала удаляем код (чтобы повторный запрос не прошёл до IsChatIDConnected)
 	// Ошибка удаления не критична — код всё равно истечёт по TTL
-	_ = s.telegramLink.DeleteByCode(ctx, code)
+	if err := s.telegramLink.DeleteByCode(ctx, code); err != nil {
+		slog.Error("delete link code", "error", err, "code", code)
+	}
 
 	// Подключаем Telegram
 	if err := s.preferences.ConnectTelegram(ctx, linkCode.MemberID, chatID, username); err != nil {

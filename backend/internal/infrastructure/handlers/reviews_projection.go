@@ -40,13 +40,13 @@ func NewReviewsProjectionHandler(
 func (h *ReviewsProjectionHandler) Handle(msg *message.Message) error {
 	var envelope eventstore.EventEnvelope
 	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
+		slog.Error("failed to unmarshal event envelope", "error", err, "action", "skipped_retry")
 		return fmt.Errorf("unmarshal event envelope: %w", err)
 	}
 
 	evt, err := envelope.UnmarshalEvent()
 	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
+		slog.Error("failed to unmarshal event", "error", err, "action", "skipped_retry")
 		return fmt.Errorf("unmarshal event: %w", err)
 	}
 
@@ -104,17 +104,17 @@ func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.Revi
 
 	// Increment pending reviews counter
 	if err := h.ratings.IncrementPendingReviews(ctx, e.ReviewedOrgID); err != nil {
-		slog.Error("failed to increment pending reviews", slog.String("error", err.Error()))
+		slog.Error("failed to increment pending reviews", "error", err, "action", "skipped_retry")
 	}
 
 	// Update interaction stats (атомарный INSERT/UPDATE)
 	if err := h.fraudData.IncrementReviewStats(ctx, e.ReviewerOrgID, e.ReviewedOrgID, e.Rating); err != nil {
-		slog.Error("failed to update interaction stats", slog.String("error", err.Error()))
+		slog.Error("failed to update interaction stats", "error", err, "action", "skipped_retry")
 	}
 
 	// Increment total reviews left by reviewer (атомарный INSERT/UPDATE)
 	if err := h.fraudData.IncrementTotalReviewsLeft(ctx, e.ReviewerOrgID); err != nil {
-		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
+		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
 	}
 
 	return nil
@@ -204,10 +204,10 @@ func (h *ReviewsProjectionHandler) onApproved(ctx context.Context, e events.Revi
 	// Get reviewed org ID to decrement pending
 	reviewedOrgID, err := h.getReviewedOrgID(ctx, e.AggregateID())
 	if err != nil {
-		slog.Error("failed to get reviewed org id", slog.String("error", err.Error()))
+		slog.Error("failed to get reviewed org id", "error", err, "action", "skipped_retry")
 	} else {
 		if err := h.ratings.DecrementPendingReviews(ctx, reviewedOrgID); err != nil {
-			slog.Error("failed to decrement pending reviews", slog.String("error", err.Error()))
+			slog.Error("failed to decrement pending reviews", "error", err, "action", "skipped_retry")
 		}
 	}
 
@@ -239,23 +239,23 @@ func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.Revi
 	// Get review data
 	reviewData, err := h.getReviewData(ctx, e.AggregateID())
 	if err != nil {
-		slog.Error("failed to get review data", slog.String("error", err.Error()))
+		slog.Error("failed to get review data", "error", err, "action", "skipped_retry")
 		return nil
 	}
 
 	// Decrement pending reviews
 	if err := h.ratings.DecrementPendingReviews(ctx, reviewData.ReviewedOrgID); err != nil {
-		slog.Error("failed to decrement pending reviews", slog.String("error", err.Error()))
+		slog.Error("failed to decrement pending reviews", "error", err, "action", "skipped_retry")
 	}
 
 	// Increment rejected reviews counter
 	if err := h.ratings.IncrementRejectedReviews(ctx, reviewData.ReviewedOrgID); err != nil {
-		slog.Error("failed to increment rejected reviews", slog.String("error", err.Error()))
+		slog.Error("failed to increment rejected reviews", "error", err, "action", "skipped_retry")
 	}
 
 	// Update reviewer reputation (атомарный INSERT/UPDATE)
 	if err := h.fraudData.IncrementRejectedReviews(ctx, reviewData.ReviewerOrgID, 0.1); err != nil {
-		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
+		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
 	}
 
 	return nil
@@ -296,7 +296,7 @@ func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.Rev
 
 	// Update reviewer reputation (атомарный инкремент)
 	if err := h.fraudData.IncrementActiveReviewsLeft(ctx, reviewData.ReviewerOrgID); err != nil {
-		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
+		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
 	}
 
 	return nil
@@ -330,13 +330,13 @@ func (h *ReviewsProjectionHandler) onDeactivated(ctx context.Context, e events.R
 	// If was active, remove from organization ratings
 	if wasActive {
 		if err := h.ratings.RemoveWeightedRating(ctx, reviewData.ReviewedOrgID, reviewData.Rating, reviewData.FinalWeight); err != nil {
-			slog.Error("failed to remove weighted rating", slog.String("error", err.Error()))
+			slog.Error("failed to remove weighted rating", "error", err, "action", "skipped_retry")
 		}
 	}
 
 	// Update reviewer reputation (атомарный инкремент)
 	if err := h.fraudData.IncrementDeactivatedReviews(ctx, reviewData.ReviewerOrgID, wasActive); err != nil {
-		slog.Error("failed to update reviewer reputation", slog.String("error", err.Error()))
+		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
 	}
 
 	return nil

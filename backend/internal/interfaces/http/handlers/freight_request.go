@@ -15,6 +15,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	orgDomain "github.com/udisondev/veziizi/backend/internal/domain/organization"
+	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
@@ -794,7 +795,7 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 	// - Посторонние не видят ничего
 	isOwner := fr.CustomerOrgID() == currentOrgID
 	filteredOffers := make([]*entities.Offer, 0)
-	for _, offer := range fr.Offers() {
+	for _, offer := range fr.OffersList() {
 		if isOwner || offer.CarrierOrgID() == currentOrgID {
 			filteredOffers = append(filteredOffers, offer)
 		}
@@ -1039,7 +1040,7 @@ func (h *FreightRequestHandler) ConfirmOffer(w http.ResponseWriter, r *http.Requ
 		OfferID:          offerID,
 		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
-		ActorRole:        role,
+		ActorRole:        orgValues.MemberRole(role),
 	}); err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -1088,7 +1089,7 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 		OfferID:          offerID,
 		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
-		ActorRole:        role,
+		ActorRole:        orgValues.MemberRole(role),
 		Reason:           req.Reason,
 	}); err != nil {
 		h.handleDomainError(w, err)
