@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	sessionApp "codeberg.org/udison/veziizi/backend/internal/application/session"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
+	sessionApp "github.com/udisondev/veziizi/backend/internal/application/session"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
 )
 

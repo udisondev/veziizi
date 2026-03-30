@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization"
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/messaging"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/dbtx"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/google/uuid"
 )
 

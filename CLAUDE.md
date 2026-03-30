@@ -14,7 +14,7 @@ Communicate in Russian (Русский язык).
 
 ## Module Path
 
-`codeberg.org/udison/veziizi` — все импорты начинаются с этого пути.
+`github.com/udisondev/veziizi` — все импорты начинаются с этого пути.
 
 ## Prerequisites
 
@@ -219,11 +219,11 @@ APP_ENV=development                # development | production
 Workers **должны** импортировать events packages через blank import для регистрации типов событий:
 ```go
 import (
-    _ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
-    _ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
-    _ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"
-    _ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
-    _ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"
+    _ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+    _ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
+    _ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
+    _ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"
+    _ "github.com/udisondev/veziizi/backend/internal/domain/support/events"
 )
 ```
 Без этого `eventstore.EventEnvelope.UnmarshalEvent()` вернёт ошибку "unknown event type".

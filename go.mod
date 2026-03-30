@@ -1,4 +1,4 @@
-module codeberg.org/udison/veziizi
+module github.com/udisondev/veziizi
 
 go 1.25.4
 

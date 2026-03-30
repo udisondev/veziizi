@@ -9,13 +9,13 @@ import (
 	"syscall"
 
 	// Event registration - CRITICAL
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"

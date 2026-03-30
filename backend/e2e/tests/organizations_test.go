@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"codeberg.org/udison/veziizi/backend/e2e/client"
-	"codeberg.org/udison/veziizi/backend/e2e/fixtures"
-	"codeberg.org/udison/veziizi/backend/e2e/helpers"
+	"github.com/udisondev/veziizi/backend/e2e/client"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
+	"github.com/udisondev/veziizi/backend/e2e/helpers"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
 )

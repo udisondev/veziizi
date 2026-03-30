@@ -2,11 +2,11 @@ package main
 
 import (
 	// Event registration - CRITICAL for deserialization
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/handlers"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/worker"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 

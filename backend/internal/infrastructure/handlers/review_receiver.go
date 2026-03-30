@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	reviewApp "codeberg.org/udison/veziizi/backend/internal/application/review"
-	freightEvents "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
+	freightEvents "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 

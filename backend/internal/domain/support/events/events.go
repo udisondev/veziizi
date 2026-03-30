@@ -1,8 +1,8 @@
 package events
 
 import (
-	"codeberg.org/udison/veziizi/backend/internal/domain/support/entities"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/google/uuid"
 )
 

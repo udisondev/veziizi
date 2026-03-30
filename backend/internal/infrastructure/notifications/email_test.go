@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 )
 
 func TestNoopEmailProvider_Send(t *testing.T) {

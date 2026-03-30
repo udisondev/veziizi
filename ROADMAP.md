@@ -389,7 +389,7 @@ Order.ReviewLeft → review-receiver → Review.Received
 - Watermill publisher with native pgx adapters (BeginnerFromPgx, TxFromPgx)
 - HTTP server with gorilla/mux, sessions with gorilla/sessions
 - Logger writes to current.log file (JSON format)
-- All imports use codeberg.org/udison/veziizi/backend/internal/...
+- All imports use github.com/udisondev/veziizi/backend/internal/...
 
 ### 2025-12-15 - Phase 2 Completed
 - Organization aggregate with full event sourcing

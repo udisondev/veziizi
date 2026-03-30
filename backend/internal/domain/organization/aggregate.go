@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/entities"
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/aggregate"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/entities"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/pkg/aggregate"
 	"github.com/google/uuid"
 )
 

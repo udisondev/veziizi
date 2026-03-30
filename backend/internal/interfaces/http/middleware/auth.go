@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 )
 
 // Public paths that don't require authentication

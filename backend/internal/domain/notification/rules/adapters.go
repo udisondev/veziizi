@@ -3,8 +3,8 @@ package rules
 import (
 	"context"
 
-	frValues "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
 )
 

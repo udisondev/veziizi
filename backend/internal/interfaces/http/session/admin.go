@@ -3,7 +3,7 @@ package session
 import (
 	"net/http"
 
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
 )

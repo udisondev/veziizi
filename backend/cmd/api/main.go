@@ -8,21 +8,21 @@ import (
 	"strings"
 	"syscall"
 
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/events" // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"   // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/organization/events"   // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/review/events"         // register events
-	_ "codeberg.org/udison/veziizi/backend/internal/domain/support/events"        // register events
+	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events" // register events
+	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"   // register events
+	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"   // register events
+	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"         // register events
+	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"        // register events
 
-	adminRepo "codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/admin"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/handlers"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/middleware"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/factory"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/geoip"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/httputil"
+	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/middleware"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
+	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 )
 
 func main() {

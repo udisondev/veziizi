@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/notifications"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"

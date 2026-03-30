@@ -7,7 +7,7 @@ import (
 	"math"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
 )
 

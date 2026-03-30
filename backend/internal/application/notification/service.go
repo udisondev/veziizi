@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 )

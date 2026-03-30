@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

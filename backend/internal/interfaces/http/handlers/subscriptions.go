@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	frValues "codeberg.org/udison/veziizi/backend/internal/domain/freightrequest/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )

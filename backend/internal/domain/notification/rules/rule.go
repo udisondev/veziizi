@@ -3,8 +3,8 @@ package rules
 import (
 	"context"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/notification/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/google/uuid"
 )
 

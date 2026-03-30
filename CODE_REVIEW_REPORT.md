@@ -83,7 +83,7 @@ import (
 ```go
 import (
     // Event registration - CRITICAL for deserialization
-    _ "codeberg.org/udison/veziizi/backend/internal/domain/notification/events"
+    _ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"
 
     "context"
     "fmt"

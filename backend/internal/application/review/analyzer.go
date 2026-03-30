@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/review"
-	"codeberg.org/udison/veziizi/backend/internal/domain/review/events"
-	"codeberg.org/udison/veziizi/backend/internal/domain/review/values"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/domain/review"
+	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
+	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
 )
 

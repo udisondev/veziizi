@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"time"
 
-	supportApp "codeberg.org/udison/veziizi/backend/internal/application/support"
-	"codeberg.org/udison/veziizi/backend/internal/domain/support"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
+	supportApp "github.com/udisondev/veziizi/backend/internal/application/support"
+	"github.com/udisondev/veziizi/backend/internal/domain/support"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )

@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"codeberg.org/udison/veziizi/backend/internal/domain/organization/events"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
 // OrganizationFormatter форматирует события организации

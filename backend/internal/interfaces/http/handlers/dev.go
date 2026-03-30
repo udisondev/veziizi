@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"codeberg.org/udison/veziizi/backend/internal/application/organization"
-	"codeberg.org/udison/veziizi/backend/internal/infrastructure/projections"
-	"codeberg.org/udison/veziizi/backend/internal/interfaces/http/session"
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/application/organization"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )

@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	"codeberg.org/udison/veziizi/backend/internal/pkg/config"
-	"codeberg.org/udison/veziizi/backend/migrations"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/migrations"
 	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"

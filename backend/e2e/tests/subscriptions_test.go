@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"codeberg.org/udison/veziizi/backend/e2e/client"
-	"codeberg.org/udison/veziizi/backend/e2e/fixtures"
+	"github.com/udisondev/veziizi/backend/e2e/client"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
 )

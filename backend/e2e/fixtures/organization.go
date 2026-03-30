@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/udison/veziizi/backend/e2e/client"
+	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/google/uuid"
 )
 
