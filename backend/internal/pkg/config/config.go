@@ -68,6 +68,7 @@ type EmailConfig struct {
 type AppConfig struct {
 	Env      string `env:"APP_ENV" envDefault:"development" validate:"required,oneof=development production"`
 	LogLevel string `env:"LOG_LEVEL" envDefault:"debug" validate:"required,oneof=debug info warn error"`
+	LogFile  string `env:"LOG_FILE" envDefault:""` // Path to log file (empty = stdout only)
 	BaseURL  string `env:"APP_BASE_URL" envDefault:"http://localhost:5173"` // URL для ссылок в уведомлениях
 }
 
