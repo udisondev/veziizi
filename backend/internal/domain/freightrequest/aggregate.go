@@ -262,7 +262,11 @@ func (f *FreightRequest) Cancel(actorID uuid.UUID, reason string) error {
 	return nil
 }
 
-func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID) error {
+func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID, actorRole orgValues.MemberRole) error {
+	// Только owner/admin может переназначать
+	if actorRole != orgValues.MemberRoleOwner && actorRole != orgValues.MemberRoleAdministrator {
+		return ErrNotResponsibleMember
+	}
 	// Запрещаем переназначение только для терминальных статусов
 	if f.status == values.FreightRequestStatusCancelled ||
 		f.status == values.FreightRequestStatusCancelledAfterConfirmed ||
@@ -336,13 +340,19 @@ func (f *FreightRequest) MakeOffer(
 	return nil
 }
 
-func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorOrgID uuid.UUID, reason string) error {
+func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole orgValues.MemberRole, reason string) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
 	}
 	if offer.CarrierOrgID() != actorOrgID {
 		return ErrNotOfferOwner
+	}
+	// Создатель оффера или owner/admin организации
+	isCreator := offer.CarrierMemberID() == actorMemberID
+	isOwnerOrAdmin := actorRole == orgValues.MemberRoleOwner || actorRole == orgValues.MemberRoleAdministrator
+	if !isCreator && !isOwnerOrAdmin {
+		return ErrNotResponsibleMember
 	}
 	if !offer.IsPending() {
 		return ErrOfferNotPending
