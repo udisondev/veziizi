@@ -68,6 +68,10 @@ func (i Invitation) CanBeCancelled() bool {
 	return i.status.CanBeCancelled()
 }
 
+func (i Invitation) IsCancelled() bool {
+	return i.status.IsCancelled()
+}
+
 func (i *Invitation) Accept() {
 	i.status = values.InvitationStatusAccepted
 }

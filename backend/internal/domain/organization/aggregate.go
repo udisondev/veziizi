@@ -343,6 +343,9 @@ func (o *Organization) AcceptInvitation(
 		if inv.IsExpired() {
 			return ErrInvitationExpired
 		}
+		if inv.IsCancelled() {
+			return ErrInvitationCancelled
+		}
 		return ErrInvitationAlreadyUsed
 	}
 

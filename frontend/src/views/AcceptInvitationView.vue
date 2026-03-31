@@ -81,11 +81,13 @@ async function loadInvitation() {
       form.value.phone = data.phone
     }
 
-    // Check if expired or already accepted
+    // Check if expired, already accepted, or cancelled
     if (data.status === 'expired') {
       loadError.value = 'Приглашение истекло'
     } else if (data.status === 'accepted') {
       loadError.value = 'Приглашение уже использовано'
+    } else if (data.status === 'cancelled') {
+      loadError.value = 'Приглашение было отменено'
     }
   } catch (e: unknown) {
     if (e instanceof Error && 'status' in e && (e as { status: number }).status === 404) {
@@ -184,6 +186,8 @@ async function handleSubmit() {
     const message = e instanceof Error ? e.message : ''
     if (message.includes('expired')) {
       submitError.value = 'Приглашение истекло'
+    } else if (message.includes('cancelled')) {
+      submitError.value = 'Приглашение было отменено'
     } else if (message.includes('already')) {
       submitError.value = 'Приглашение уже использовано'
     } else {
