@@ -696,6 +696,8 @@ func handleDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "invitation not found")
 	case errors.Is(err, orgDomain.ErrInvitationExpired):
 		writeError(w, http.StatusGone, "invitation expired")
+	case errors.Is(err, orgDomain.ErrInvitationCancelled):
+		writeError(w, http.StatusGone, "invitation has been cancelled")
 	case errors.Is(err, orgDomain.ErrInvitationAlreadyUsed):
 		writeError(w, http.StatusConflict, "invitation already used")
 	case errors.Is(err, orgDomain.ErrInvitationCannotBeCancelled):

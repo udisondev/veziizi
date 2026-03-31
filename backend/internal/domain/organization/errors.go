@@ -13,6 +13,7 @@ var (
 	ErrInvitationNotFound          = errors.New("invitation not found")
 	ErrInvitationExpired           = errors.New("invitation has expired")
 	ErrInvitationAlreadyUsed       = errors.New("invitation already used")
+	ErrInvitationCancelled         = errors.New("invitation has been cancelled")
 	ErrInvitationCannotBeCancelled = errors.New("invitation cannot be cancelled")
 	ErrInsufficientPermissions  = errors.New("insufficient permissions")
 	ErrCannotChangeOwnRole      = errors.New("cannot change own role")
