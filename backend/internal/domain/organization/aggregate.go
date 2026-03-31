@@ -446,6 +446,10 @@ func (o *Organization) BlockMember(actorID, memberID uuid.UUID, reason string) e
 		return ErrMemberCannotBeRemoved
 	}
 
+	if !member.IsActive() {
+		return nil // already blocked, no-op
+	}
+
 	o.Apply(events.MemberBlocked{
 		BaseEvent: eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
 		MemberID:  memberID,
@@ -468,8 +472,13 @@ func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
 		return ErrInsufficientPermissions
 	}
 
-	if _, ok := o.members[memberID]; !ok {
+	member, ok := o.members[memberID]
+	if !ok {
 		return ErrMemberNotFound
+	}
+
+	if member.IsActive() {
+		return nil // already active, no-op
 	}
 
 	o.Apply(events.MemberUnblocked{
@@ -488,6 +497,10 @@ func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
 // - Cannot edit blocked members
 // - nil values mean "don't change"
 func (o *Organization) UpdateMemberInfo(actorID, memberID uuid.UUID, name, email, phone *string) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("update member info in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
+
 	actor, ok := o.members[actorID]
 	if !ok {
 		return ErrMemberNotFound
@@ -496,6 +509,11 @@ func (o *Organization) UpdateMemberInfo(actorID, memberID uuid.UUID, name, email
 	member, ok := o.members[memberID]
 	if !ok {
 		return ErrMemberNotFound
+	}
+
+	// Cannot edit blocked members
+	if !member.IsActive() {
+		return ErrMemberNotActive
 	}
 
 	// Owner can only be edited by themselves

@@ -85,6 +85,11 @@ func (h *OrganizationHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.OwnerPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
 	// Extract client metadata for fraud detection
 	meta := httputil.GetClientMetadata(r)
 
@@ -105,7 +110,19 @@ func (h *OrganizationHandler) Register(w http.ResponseWriter, r *http.Request) {
 		RegistrationUserAgent:   meta.UserAgent,
 	})
 	if err != nil {
-		slog.Error("failed to register organization", slog.String("error", err.Error()))
+		if errors.Is(err, orgDomain.ErrMemberAlreadyExists) {
+			writeError(w, http.StatusConflict, "email already registered")
+			return
+		}
+		if errors.Is(err, orgDomain.ErrDisposableEmail) {
+			writeError(w, http.StatusBadRequest, "disposable email addresses are not allowed")
+			return
+		}
+		if errors.Is(err, orgDomain.ErrRegistrationVelocity) {
+			writeError(w, http.StatusTooManyRequests, "too many registration attempts")
+			return
+		}
+		slog.Error("failed to register organization", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to register organization")
 		return
 	}
@@ -252,6 +269,11 @@ func (h *OrganizationHandler) AcceptInvitation(w http.ResponseWriter, r *http.Re
 	var req AcceptInvitationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
 		return
 	}
 

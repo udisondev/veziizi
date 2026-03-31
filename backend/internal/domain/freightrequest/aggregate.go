@@ -633,12 +633,20 @@ func (f *FreightRequest) LeaveReview(reviewID uuid.UUID, reviewerOrgID uuid.UUID
 		reviewedOrgID = f.customerOrgID
 	}
 
-	// Безопасное получение цены (может быть nil если заявка без ставки)
+	// Получаем цену из подтверждённого оффера (реальная согласованная цена)
 	var freightAmount int64
 	var freightCurrency string
-	if f.payment.Price != nil {
-		freightAmount = f.payment.Price.Amount
-		freightCurrency = string(f.payment.Price.Currency)
+	if f.confirmedOfferID != nil {
+		if offer, ok := f.offers[*f.confirmedOfferID]; ok {
+			freightAmount = offer.Price().Amount
+			freightCurrency = string(offer.Price().Currency)
+		}
+	}
+
+	// Используем реальное время завершения перевозки
+	var completedAt int64
+	if f.completedAt != nil {
+		completedAt = f.completedAt.Unix()
 	}
 
 	f.Apply(events.ReviewLeft{
@@ -651,7 +659,7 @@ func (f *FreightRequest) LeaveReview(reviewID uuid.UUID, reviewerOrgID uuid.UUID
 		FreightAmount:    freightAmount,
 		FreightCurrency:  freightCurrency,
 		FreightCreatedAt: f.createdAt.Unix(),
-		CompletedAt:      time.Now().Unix(),
+		CompletedAt:      completedAt,
 	})
 
 	return nil

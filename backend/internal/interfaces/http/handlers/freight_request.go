@@ -16,6 +16,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	orgDomain "github.com/udisondev/veziizi/backend/internal/domain/organization"
 	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
@@ -509,8 +510,12 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	fr, err := h.service.Get(r.Context(), id)
 	if err != nil {
-		slog.Error("failed to get freight request", slog.String("error", err.Error()))
-		writeError(w, http.StatusNotFound, "freight request not found")
+		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+			writeError(w, http.StatusNotFound, "freight request not found")
+			return
+		}
+		slog.Error("failed to get freight request", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 

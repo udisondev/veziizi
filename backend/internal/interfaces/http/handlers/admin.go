@@ -110,7 +110,7 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.session.SetAuth(r, w, adm.ID); err != nil {
+	if err := h.session.RegenerateAndSetAuth(r, w, adm.ID); err != nil {
 		slog.Error("failed to set session", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return

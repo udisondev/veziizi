@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	// Event registration - CRITICAL for deserialization of notification events
 	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"
@@ -120,8 +121,20 @@ func main() {
 	<-quit
 
 	slog.Info(fmt.Sprintf("shutting down %s worker...", workerName))
-	if err := router.Close(); err != nil {
-		slog.Error("failed to close router", slog.String("error", err.Error()))
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		if err := router.Close(); err != nil {
+			slog.Error("failed to close router", "error", err)
+		}
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+		slog.Info(fmt.Sprintf("%s worker stopped gracefully", workerName))
+	case <-time.After(30 * time.Second):
+		slog.Error(fmt.Sprintf("%s worker shutdown timed out", workerName))
 	}
 }
 

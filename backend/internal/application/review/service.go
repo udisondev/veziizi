@@ -231,15 +231,19 @@ func (s *Service) BatchDeactivate(ctx context.Context, reviewIDs []uuid.UUID, re
 
 func (s *Service) saveAndPublish(ctx context.Context, r *review.Review) error {
 	changes := r.Changes()
+	if len(changes) == 0 {
+		return nil
+	}
+
 	if err := s.eventStore.Save(ctx, changes...); err != nil {
 		return fmt.Errorf("save review: %w", err)
 	}
 
-	r.ClearChanges()
-
 	if err := s.publisher.Publish(ctx, "review.events", changes...); err != nil {
 		return fmt.Errorf("publish review events: %w", err)
 	}
+
+	r.ClearChanges()
 
 	return nil
 }
