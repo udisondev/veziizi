@@ -246,7 +246,7 @@ func (t *Ticket) apply(evt eventstore.Event) {
 		t.updatedAt = e.OccurredAt()
 
 	case events.TicketReopened:
-		t.status = values.TicketStatusAwaitingReply
+		t.status = values.TicketStatusOpen
 		t.closedAt = nil
 		t.updatedAt = e.OccurredAt()
 	}

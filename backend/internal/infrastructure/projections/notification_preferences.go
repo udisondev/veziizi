@@ -3,6 +3,7 @@ package projections
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,7 +12,20 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
+
+var errInvalidNotificationCategory = errors.New("invalid notification category")
+
+// validateCategory проверяет что category — допустимое значение (защита от SQL injection в JSONB path)
+func validateCategory(category values.NotificationCategory) error {
+	for _, c := range values.AllCategories() {
+		if c == category {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %s", errInvalidNotificationCategory, category)
+}
 
 type NotificationPreferencesProjection struct {
 	db   dbtx.TxManager
@@ -141,31 +155,17 @@ func (p *NotificationPreferencesProjection) UpdateCategories(ctx context.Context
 	}
 
 	query, args, err := p.psql.
-		Update("notification_preferences").
-		Set("enabled_categories", categoriesJSON).
-		Set("updated_at", time.Now()).
-		Where(squirrel.Eq{"member_id": memberID}).
+		Insert("notification_preferences").
+		Columns("member_id", "enabled_categories").
+		Values(memberID, categoriesJSON).
+		Suffix("ON CONFLICT (member_id) DO UPDATE SET enabled_categories = EXCLUDED.enabled_categories, updated_at = NOW()").
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
+		return fmt.Errorf("failed to build upsert query: %w", err)
 	}
 
-	result, err := p.db.Exec(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("failed to update notification preferences: %w", err)
-	}
-
-	if result.RowsAffected() == 0 {
-		// Запись не существует, создаем
-		_, err = p.GetOrCreateByMemberID(ctx, memberID)
-		if err != nil {
-			return fmt.Errorf("failed to create preferences: %w", err)
-		}
-		// Повторяем update
-		_, err = p.db.Exec(ctx, query, args...)
-		if err != nil {
-			return fmt.Errorf("failed to update notification preferences after create: %w", err)
-		}
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to upsert notification preferences: %w", err)
 	}
 
 	return nil
@@ -251,8 +251,10 @@ func (p *NotificationPreferencesProjection) IsChatIDConnected(ctx context.Contex
 
 	var exists int
 	if err := pgxscan.Get(ctx, p.db, &exists, query, args...); err != nil {
-		// Не найдено - не подключён
-		return false, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check chat connected: %w", err)
 	}
 
 	return true, nil
@@ -283,6 +285,10 @@ func (p *NotificationPreferencesProjection) GetMembersWithTelegramEnabled(ctx co
 		return nil, nil
 	}
 
+	if err := validateCategory(category); err != nil {
+		return nil, err
+	}
+
 	// Используем JSONB query для проверки настроек
 	jsonPath := fmt.Sprintf("enabled_categories->'%s'->>'telegram'", category)
 
@@ -309,6 +315,10 @@ func (p *NotificationPreferencesProjection) GetMembersWithTelegramEnabled(ctx co
 func (p *NotificationPreferencesProjection) GetMembersWithInAppEnabled(ctx context.Context, category values.NotificationCategory, memberIDs []uuid.UUID) ([]uuid.UUID, error) {
 	if len(memberIDs) == 0 {
 		return nil, nil
+	}
+
+	if err := validateCategory(category); err != nil {
+		return nil, err
 	}
 
 	// JSONB query для проверки настроек (или если нет записи - используем дефолт true)
@@ -492,7 +502,10 @@ func (p *NotificationPreferencesProjection) IsEmailVerified(ctx context.Context,
 
 	var verified bool
 	if err := pgxscan.Get(ctx, p.db, &verified, query, args...); err != nil {
-		return false, nil // запись не существует — не верифицирован
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check email verified: %w", err)
 	}
 
 	return verified, nil
@@ -502,6 +515,10 @@ func (p *NotificationPreferencesProjection) IsEmailVerified(ctx context.Context,
 func (p *NotificationPreferencesProjection) GetMembersWithEmailEnabled(ctx context.Context, category values.NotificationCategory, memberIDs []uuid.UUID) ([]uuid.UUID, error) {
 	if len(memberIDs) == 0 {
 		return nil, nil
+	}
+
+	if err := validateCategory(category); err != nil {
+		return nil, err
 	}
 
 	// JSONB query для проверки настроек + email должен быть верифицирован

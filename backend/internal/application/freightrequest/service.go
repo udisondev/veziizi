@@ -10,6 +10,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization"
 	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
@@ -284,8 +285,12 @@ func (s *Service) WithdrawOffer(ctx context.Context, input WithdrawOfferInput) e
 	// Get actor role for domain authorization
 	actorRole, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorMemberID)
 	if err != nil {
-		// If not admin/owner, still might be offer creator — pass employee role
-		actorRole = orgValues.MemberRoleEmployee
+		if errors.Is(err, organization.ErrMemberNotFound) || errors.Is(err, organization.ErrInsufficientPermissions) {
+			// Not admin/owner, still might be offer creator — pass employee role
+			actorRole = orgValues.MemberRoleEmployee
+		} else {
+			return fmt.Errorf("check member permissions: %w", err)
+		}
 	}
 
 	fr, err := s.Get(ctx, input.FreightRequestID)
@@ -552,7 +557,7 @@ func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.Freight
 		return nil
 	}
 
-	return s.db.InTx(ctx, func(ctx context.Context) error {
+	if err := s.db.InTx(ctx, func(ctx context.Context) error {
 		if err := s.eventStore.Save(ctx, changes...); err != nil {
 			slog.Error("failed to save freight request events",
 				slog.String("freight_request_id", fr.ID().String()),
@@ -569,7 +574,11 @@ func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.Freight
 			return fmt.Errorf("publish events: %w", err)
 		}
 
-		fr.ClearChanges()
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	fr.ClearChanges()
+	return nil
 }

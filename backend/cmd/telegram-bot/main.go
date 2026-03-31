@@ -68,7 +68,11 @@ func main() {
 	slog.Info("telegram bot started", slog.String("bot", cfg.Telegram.BotUsername))
 
 	// Start polling
-	go bot.StartPolling(ctx)
+	pollingDone := make(chan struct{})
+	go func() {
+		bot.StartPolling(ctx)
+		close(pollingDone)
+	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -76,6 +80,10 @@ func main() {
 
 	slog.Info("shutting down telegram bot...")
 	cancel()
+
+	// Ждём завершения polling goroutine
+	<-pollingDone
+	slog.Info("telegram bot stopped")
 }
 
 // Bot представляет Telegram бота

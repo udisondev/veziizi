@@ -89,6 +89,15 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+	if req.Password == "" {
+		writeError(w, http.StatusBadRequest, "password is required")
+		return
+	}
+
 	adm, err := h.adminRepo.GetByEmail(r.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -101,7 +110,7 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !adm.IsActive {
-		writeError(w, http.StatusForbidden, "account is disabled")
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
@@ -154,7 +163,7 @@ func (h *AdminHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !adm.IsActive {
-		writeError(w, http.StatusForbidden, "account is disabled")
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 

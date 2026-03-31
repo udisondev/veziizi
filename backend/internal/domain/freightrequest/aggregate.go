@@ -720,6 +720,17 @@ func (f *FreightRequest) CancelAfterConfirmed(orgID, memberID uuid.UUID, reason 
 		return ErrCannotCompleteNotParticipant
 	}
 
+	// Проверка что это ответственный участник
+	if isCustomer {
+		if f.customerMemberID != memberID {
+			return ErrNotResponsibleMember
+		}
+	} else {
+		if f.carrierMemberID == nil || *f.carrierMemberID != memberID {
+			return ErrNotResponsibleMember
+		}
+	}
+
 	role := "customer"
 	if isCarrier {
 		role = "carrier"
@@ -913,7 +924,7 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 		)
 		if e.ReviewerOrgID == f.customerOrgID {
 			f.customerReview = &review
-		} else {
+		} else if f.carrierOrgID != nil && e.ReviewerOrgID == *f.carrierOrgID {
 			f.carrierReview = &review
 		}
 
@@ -921,7 +932,7 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 		if e.ReviewerOrgID == f.customerOrgID && f.customerReview != nil {
 			updated := f.customerReview.WithUpdatedRatingAndComment(e.NewRating, e.NewComment)
 			f.customerReview = &updated
-		} else if f.carrierReview != nil {
+		} else if f.carrierOrgID != nil && e.ReviewerOrgID == *f.carrierOrgID && f.carrierReview != nil {
 			updated := f.carrierReview.WithUpdatedRatingAndComment(e.NewRating, e.NewComment)
 			f.carrierReview = &updated
 		}
@@ -1155,21 +1166,10 @@ func (f *FreightRequest) FromSnapshot(state any) error {
 	return nil
 }
 
-// restoreOfferStatus sets offer to target status
+// restoreOfferStatus sets offer to target status directly from snapshot
 func restoreOfferStatus(o *entities.Offer, target values.OfferStatus) {
-	switch target {
-	case values.OfferStatusSelected:
-		_ = o.Select()
-	case values.OfferStatusConfirmed:
-		_ = o.Select()
-		_ = o.Confirm()
-	case values.OfferStatusRejected:
-		_ = o.Reject()
-	case values.OfferStatusWithdrawn:
-		_ = o.Withdraw()
-	case values.OfferStatusDeclined:
-		_ = o.Select()
-		_ = o.Decline()
+	if target != values.OfferStatusPending {
+		o.RestoreStatus(target)
 	}
 }
 

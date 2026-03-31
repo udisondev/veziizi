@@ -537,6 +537,10 @@ func (o *Organization) UpdateMemberInfo(actorID, memberID uuid.UUID, name, email
 	newEmail := member.Email()
 	if email != nil {
 		newEmail = *email
+		// Проверяем уникальность email внутри организации
+		if existingMember, exists := o.GetMemberByEmail(newEmail); exists && existingMember.ID() != memberID {
+			return fmt.Errorf("update member info in org %s: %w", o.ID(), ErrMemberAlreadyExists)
+		}
 	}
 	newPhone := member.Phone()
 	if phone != nil {

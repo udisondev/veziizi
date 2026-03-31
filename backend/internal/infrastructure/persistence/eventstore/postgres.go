@@ -63,9 +63,7 @@ func (s *PostgresStore) Save(ctx context.Context, events ...Event) error {
 			grouped[key] = append(grouped[key], event)
 		}
 
-		for key, aggEvents := range grouped {
-			var lastVersion int64
-
+		for _, aggEvents := range grouped {
 			for _, event := range aggEvents {
 				envelope, err := NewEventEnvelope(event, nil)
 				if err != nil {
@@ -102,12 +100,6 @@ func (s *PostgresStore) Save(ctx context.Context, events ...Event) error {
 					}
 					return fmt.Errorf("failed to insert event: %w", err)
 				}
-
-				lastVersion = event.Version()
-			}
-
-			if err := s.maybeCreateSnapshot(ctx, key.ID, key.Type, lastVersion); err != nil {
-				return fmt.Errorf("failed to create snapshot: %w", err)
 			}
 		}
 
@@ -157,7 +149,10 @@ func (s *PostgresStore) Load(ctx context.Context, aggregateID uuid.UUID, aggrega
 
 	events := make([]Event, 0, len(dbRows))
 	for _, row := range dbRows {
-		envelope := row.toEnvelope()
+		envelope, err := row.toEnvelope()
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert event row: %w", err)
+		}
 		event, err := envelope.UnmarshalEvent()
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal event %s: %w", row.EventType, err)
@@ -197,30 +192,6 @@ func (s *PostgresStore) loadSnapshot(ctx context.Context, aggregateID uuid.UUID,
 	}
 
 	return &snapshots[0], nil
-}
-
-func (s *PostgresStore) maybeCreateSnapshot(ctx context.Context, aggregateID uuid.UUID, aggregateType string, currentVersion int64) error {
-	if currentVersion%s.snapshotThreshold != 0 {
-		return nil
-	}
-
-	// Create snapshot marker with version only (data stored via SaveWithState for state-based snapshots)
-	// This allows efficient skipping of old events while maintaining backward compatibility
-	query, args, err := s.psql.
-		Insert("snapshots").
-		Columns("aggregate_id", "aggregate_type", "version", "data", "created_at").
-		Values(aggregateID, aggregateType, currentVersion, []byte("{}"), squirrel.Expr("NOW()")).
-		Suffix("ON CONFLICT (aggregate_id) DO UPDATE SET version = EXCLUDED.version, created_at = NOW()").
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build snapshot upsert query: %w", err)
-	}
-
-	if _, err := s.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("upsert snapshot: %w", err)
-	}
-
-	return nil
 }
 
 // SaveWithState saves events and creates a state-based snapshot.
@@ -383,7 +354,10 @@ func (s *PostgresStore) LoadWithSnapshot(ctx context.Context, aggregateID uuid.U
 
 	events := make([]Event, 0, len(dbRows))
 	for _, row := range dbRows {
-		envelope := row.toEnvelope()
+		envelope, err := row.toEnvelope()
+		if err != nil {
+			return nil, fmt.Errorf("convert event row: %w", err)
+		}
 		event, err := envelope.UnmarshalEvent()
 		if err != nil {
 			return nil, fmt.Errorf("unmarshal event %s: %w", row.EventType, err)
@@ -425,7 +399,11 @@ func (s *PostgresStore) loadAllEnvelopes(ctx context.Context, aggregateID uuid.U
 
 	envelopes := make([]EventEnvelope, 0, len(dbRows))
 	for _, row := range dbRows {
-		envelopes = append(envelopes, row.toEnvelope())
+		envelope, err := row.toEnvelope()
+		if err != nil {
+			return nil, fmt.Errorf("convert event row: %w", err)
+		}
+		envelopes = append(envelopes, envelope)
 	}
 
 	return envelopes, nil
@@ -442,14 +420,11 @@ type eventRow struct {
 	OccurredAt    time.Time `db:"occurred_at"`
 }
 
-func (r eventRow) toEnvelope() EventEnvelope {
+func (r eventRow) toEnvelope() (EventEnvelope, error) {
 	var metadata map[string]string
 	if len(r.Metadata) > 0 {
-		// SEC-018: Логируем ошибки unmarshal вместо игнорирования
 		if err := json.Unmarshal(r.Metadata, &metadata); err != nil {
-			slog.Error("SEC-018: failed to unmarshal event metadata",
-				slog.String("event_id", r.ID.String()),
-				slog.String("error", err.Error()))
+			return EventEnvelope{}, fmt.Errorf("unmarshal metadata for event %s: %w", r.EventType, err)
 		}
 	}
 
@@ -462,7 +437,7 @@ func (r eventRow) toEnvelope() EventEnvelope {
 		Payload:       r.Data,
 		Metadata:      metadata,
 		OccurredAt:    r.OccurredAt,
-	}
+	}, nil
 }
 
 type Snapshot struct {
@@ -507,7 +482,10 @@ func (s *PostgresStore) LoadByIDs(ctx context.Context, aggregateIDs []uuid.UUID,
 	// Группируем события по aggregate_id
 	result := make(map[uuid.UUID][]Event, len(aggregateIDs))
 	for _, row := range dbRows {
-		envelope := row.toEnvelope()
+		envelope, err := row.toEnvelope()
+		if err != nil {
+			return nil, fmt.Errorf("convert event row: %w", err)
+		}
 		event, err := envelope.UnmarshalEvent()
 		if err != nil {
 			return nil, fmt.Errorf("unmarshal event %s for aggregate %s: %w", row.EventType, row.AggregateID, err)
@@ -570,7 +548,11 @@ func (s *PostgresStore) LoadPaginated(ctx context.Context, aggregateID uuid.UUID
 
 	envelopes := make([]EventEnvelope, 0, len(dbRows))
 	for _, row := range dbRows {
-		envelopes = append(envelopes, row.toEnvelope())
+		envelope, err := row.toEnvelope()
+		if err != nil {
+			return nil, 0, fmt.Errorf("convert event row: %w", err)
+		}
+		envelopes = append(envelopes, envelope)
 	}
 
 	return envelopes, total, nil

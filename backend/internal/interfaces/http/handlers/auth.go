@@ -104,7 +104,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to check account lockout", "error", err)
 	}
 	if locked {
-		writeError(w, http.StatusTooManyRequests, "account temporarily locked due to too many failed attempts")
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
@@ -116,7 +116,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		); err != nil {
 			slog.Error("failed to record login history", slog.String("error", err.Error()))
 		}
-		writeError(w, http.StatusForbidden, "account is blocked")
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
@@ -236,7 +236,11 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID, _ := h.session.GetOrganizationID(r)
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid session")
+		return
+	}
 
 	// Get member from projection
 	member, err := h.members.GetByID(r.Context(), memberID)

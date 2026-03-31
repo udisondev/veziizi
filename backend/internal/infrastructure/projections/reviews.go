@@ -88,6 +88,9 @@ func (p *ReviewsProjection) ListPendingModeration(ctx context.Context, limit, of
 		}
 		result = append(result, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	if len(result) == 0 {
 		return []ReviewForModeration{}, 0, nil
@@ -135,6 +138,9 @@ func (p *ReviewsProjection) getFraudSignals(ctx context.Context, reviewID uuid.U
 			return nil, fmt.Errorf("scan signal: %w", err)
 		}
 		signals = append(signals, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	return signals, nil
@@ -203,6 +209,9 @@ func (p *ReviewsProjection) ListReviewsForActivation(ctx context.Context, limit 
 		}
 		ids = append(ids, id)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return ids, nil
 }
@@ -261,6 +270,9 @@ func (p *ReviewsProjection) ListByReviewer(ctx context.Context, filter ReviewsBy
 		}
 		result = append(result, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	if len(result) == 0 {
 		return []ReviewListItem{}, 0, nil
@@ -299,6 +311,9 @@ func (p *ReviewsProjection) ListActiveReviewsByReviewer(ctx context.Context, rev
 			return nil, fmt.Errorf("scan id: %w", err)
 		}
 		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	return ids, nil

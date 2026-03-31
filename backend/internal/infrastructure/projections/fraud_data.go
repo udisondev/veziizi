@@ -139,7 +139,7 @@ func (p *FraudDataProjection) GetReviewerReputation(ctx context.Context, orgID u
 			"is_suspected_fraudster", "is_confirmed_fraudster",
 		).
 		From("org_reviewer_reputation").
-		Where(squirrel.Eq{"organization_id": orgID}).
+		Where(squirrel.Eq{"org_id": orgID}).
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build query: %w", err)
@@ -564,6 +564,9 @@ func (p *FraudDataProjection) ListFraudsters(ctx context.Context, limit, offset 
 		}
 		result = append(result, f)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return result, total, nil
 }
@@ -605,6 +608,9 @@ func (p *FraudDataProjection) GetRecentReviewTexts(ctx context.Context, reviewer
 		}
 		result = append(result, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return result, nil
 }
@@ -635,6 +641,9 @@ func (p *FraudDataProjection) GetReviewTimings(ctx context.Context, reviewerOrgI
 			return nil, fmt.Errorf("scan timing: %w", err)
 		}
 		result = append(result, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	return result, nil
