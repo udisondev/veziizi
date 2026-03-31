@@ -232,7 +232,7 @@ async function loadItems() {
     const params = buildParams()
     const response = await freightRequestsApi.list(params)
 
-    items.value = response.items
+    items.value = response.items ?? []
     filtersStore.setCursor(response.next_cursor)
     filtersStore.setHasMore(response.has_more)
   } catch (e) {
@@ -254,7 +254,7 @@ async function loadMoreItems() {
 
     const response = await freightRequestsApi.list(params)
 
-    items.value.push(...response.items)
+    items.value.push(...(response.items ?? []))
     filtersStore.setCursor(response.next_cursor)
     filtersStore.setHasMore(response.has_more)
   } catch (e) {

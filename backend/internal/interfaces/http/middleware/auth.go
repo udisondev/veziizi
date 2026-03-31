@@ -89,7 +89,7 @@ func RequireAuth(sessionManager *session.Manager) func(http.Handler) http.Handle
 func RequireAdminAuth(adminSession *session.AdminManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip for login endpoint
+			// Skip for login endpoint (path is relative to subrouter prefix /api/v1/admin)
 			if r.URL.Path == "/api/v1/admin/auth/login" && r.Method == http.MethodPost {
 				next.ServeHTTP(w, r)
 				return

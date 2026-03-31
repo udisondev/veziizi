@@ -36,10 +36,10 @@ func NewAdminSupportHandler(
 }
 
 func (h *AdminSupportHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/admin/support/tickets", h.ListTickets).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/support/tickets/{id}", h.GetTicket).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/support/tickets/{id}/messages", h.AddMessage).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/support/tickets/{id}/close", h.CloseTicket).Methods(http.MethodPost)
+	r.HandleFunc("/support/tickets", h.ListTickets).Methods(http.MethodGet)
+	r.HandleFunc("/support/tickets/{id}", h.GetTicket).Methods(http.MethodGet)
+	r.HandleFunc("/support/tickets/{id}/messages", h.AddMessage).Methods(http.MethodPost)
+	r.HandleFunc("/support/tickets/{id}/close", h.CloseTicket).Methods(http.MethodPost)
 }
 
 // ListTickets returns all tickets for admin
