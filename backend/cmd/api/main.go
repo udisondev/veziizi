@@ -109,9 +109,7 @@ func main() {
 	passwordResetHandler.RegisterRoutes(server.Router())
 
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
-	// Register login on main router (no admin auth required)
-	server.Router().HandleFunc("/api/v1/admin/auth/login", adminHandler.Login).Methods("POST")
-	// All other admin routes require admin auth
+	// Admin subrouter with RequireAdminAuth (login is skipped inside middleware)
 	adminRouter := server.Router().PathPrefix("/api/v1/admin").Subrouter()
 	adminRouter.Use(middleware.RequireAdminAuth(adminSessionManager))
 	adminHandler.RegisterRoutes(adminRouter)
