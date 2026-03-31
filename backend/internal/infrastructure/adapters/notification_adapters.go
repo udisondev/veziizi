@@ -1,17 +1,13 @@
-package rules
+package adapters
 
 import (
 	"context"
 
 	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/rules"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
 )
-
-// SubscriptionMatcher находит подписки, соответствующие заявке (opt-in модель)
-type SubscriptionMatcher interface {
-	FindMatchingSubscriptions(ctx context.Context, data frValues.FreightRequestMatchData, excludeMemberID uuid.UUID) ([]frValues.MatchedSubscription, error)
-}
 
 // FreightSubscriptionsAdapter адаптирует FreightSubscriptionsProjection (opt-in модель)
 type FreightSubscriptionsAdapter struct {
@@ -37,7 +33,7 @@ func NewFreightRequestsAdapter(projection *projections.FreightRequestsProjection
 	return &FreightRequestsAdapter{projection: projection}
 }
 
-func (a *FreightRequestsAdapter) GetByID(ctx context.Context, id uuid.UUID) (*FreightRequestInfo, error) {
+func (a *FreightRequestsAdapter) GetByID(ctx context.Context, id uuid.UUID) (*rules.FreightRequestInfo, error) {
 	item, err := a.projection.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -45,7 +41,7 @@ func (a *FreightRequestsAdapter) GetByID(ctx context.Context, id uuid.UUID) (*Fr
 	if item == nil {
 		return nil, nil
 	}
-	return &FreightRequestInfo{
+	return &rules.FreightRequestInfo{
 		ID:               item.ID,
 		RequestNumber:    item.RequestNumber,
 		CustomerMemberID: item.CustomerMemberID,
@@ -55,7 +51,7 @@ func (a *FreightRequestsAdapter) GetByID(ctx context.Context, id uuid.UUID) (*Fr
 	}, nil
 }
 
-func (a *FreightRequestsAdapter) GetOfferByID(ctx context.Context, id uuid.UUID) (*OfferInfo, error) {
+func (a *FreightRequestsAdapter) GetOfferByID(ctx context.Context, id uuid.UUID) (*rules.OfferInfo, error) {
 	item, err := a.projection.GetOfferByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -63,7 +59,7 @@ func (a *FreightRequestsAdapter) GetOfferByID(ctx context.Context, id uuid.UUID)
 	if item == nil {
 		return nil, nil
 	}
-	return &OfferInfo{
+	return &rules.OfferInfo{
 		ID:               item.ID,
 		FreightRequestID: item.FreightRequestID,
 		CarrierMemberID:  item.CarrierMemberID,
@@ -81,7 +77,7 @@ func NewMembersAdapter(projection *projections.MembersProjection) *MembersAdapte
 	return &MembersAdapter{projection: projection}
 }
 
-func (a *MembersAdapter) GetByID(ctx context.Context, id uuid.UUID) (*MemberInfo, error) {
+func (a *MembersAdapter) GetByID(ctx context.Context, id uuid.UUID) (*rules.MemberInfo, error) {
 	item, err := a.projection.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -89,7 +85,7 @@ func (a *MembersAdapter) GetByID(ctx context.Context, id uuid.UUID) (*MemberInfo
 	if item == nil {
 		return nil, nil
 	}
-	return &MemberInfo{
+	return &rules.MemberInfo{
 		ID:             item.ID,
 		OrganizationID: item.OrganizationID,
 	}, nil
