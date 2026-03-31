@@ -205,12 +205,11 @@ type ReassignInput struct {
 }
 
 func (s *Service) Reassign(ctx context.Context, input ReassignInput) error {
-	// Check actor has permission (admin or owner)
-	if _, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorID); err != nil {
+	// Verify actor and new member exist in organization
+	actorRole, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorID)
+	if err != nil {
 		return err
 	}
-
-	// Check new member exists in organization
 	if err := s.memberChecker.MemberExists(ctx, input.ActorOrgID, input.NewMemberID); err != nil {
 		return err
 	}
@@ -225,7 +224,7 @@ func (s *Service) Reassign(ctx context.Context, input ReassignInput) error {
 		return freightrequest.ErrNotFreightRequestOwner
 	}
 
-	if err := fr.Reassign(input.ActorID, input.NewMemberID); err != nil {
+	if err := fr.Reassign(input.ActorID, input.NewMemberID, actorRole); err != nil {
 		return err
 	}
 
@@ -282,26 +281,19 @@ type WithdrawOfferInput struct {
 }
 
 func (s *Service) WithdrawOffer(ctx context.Context, input WithdrawOfferInput) error {
+	// Get actor role for domain authorization
+	actorRole, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorMemberID)
+	if err != nil {
+		// If not admin/owner, still might be offer creator — pass employee role
+		actorRole = orgValues.MemberRoleEmployee
+	}
+
 	fr, err := s.Get(ctx, input.FreightRequestID)
 	if err != nil {
 		return err
 	}
 
-	// Получаем оффер для проверки прав
-	offer, ok := fr.GetOffer(input.OfferID)
-	if !ok {
-		return freightrequest.ErrOfferNotFound
-	}
-
-	// Проверка: создатель оффера или admin/owner организации
-	isOfferCreator := offer.CarrierMemberID() == input.ActorMemberID
-	if !isOfferCreator {
-		if _, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorMemberID); err != nil {
-			return err
-		}
-	}
-
-	if err := fr.WithdrawOffer(input.OfferID, input.ActorOrgID, input.Reason); err != nil {
+	if err := fr.WithdrawOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID, actorRole, input.Reason); err != nil {
 		return err
 	}
 
