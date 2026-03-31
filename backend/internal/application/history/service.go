@@ -93,18 +93,25 @@ var actorFieldMapping = map[string]string{
 	"invitation.cancelled": "cancelled_by",
 
 	// FreightRequest events
-	"freight_request.created":    "customer_member_id",
-	"freight_request.updated":    "updated_by",
-	"freight_request.reassigned": "reassigned_by",
-	"freight_request.cancelled":  "cancelled_by",
+	"freight_request.created":                 "customer_member_id",
+	"freight_request.updated":                 "updated_by",
+	"freight_request.reassigned":              "reassigned_by",
+	"freight_request.cancelled":               "cancelled_by",
+	"freight_request.customer_completed":      "completed_by",
+	"freight_request.carrier_completed":       "completed_by",
+	"freight_request.cancelled_after_confirmed": "cancelled_by",
+	"freight_request.carrier_member_reassigned": "reassigned_by",
+	"freight_request.review_left":             "reviewer_member_id",
+	"freight_request.review_edited":           "edited_by",
 
 	// Offer events
-	"offer.made":      "carrier_member_id",
-	"offer.withdrawn": "withdrawn_by",
-	"offer.selected":  "selected_by",
-	"offer.rejected":  "rejected_by",
-	"offer.confirmed": "confirmed_by",
-	"offer.declined":  "declined_by",
+	"offer.made":       "carrier_member_id",
+	"offer.withdrawn":  "withdrawn_by",
+	"offer.selected":   "selected_by",
+	"offer.rejected":   "rejected_by",
+	"offer.confirmed":  "confirmed_by",
+	"offer.declined":   "declined_by",
+	"offer.unselected": "unselected_by",
 
 	// Order events
 	"order.cancelled":          "cancelled_by_member_id",
@@ -152,16 +159,9 @@ func (s *Service) GetHistory(ctx context.Context, aggregateID uuid.UUID, aggrega
 		items = append(items, item)
 	}
 
-	// Adjust total if some events failed to convert (avoid len(items) < Total)
-	adjustedTotal := total
-	skipped := len(envelopes) - len(items)
-	if skipped > 0 {
-		adjustedTotal = total - skipped
-	}
-
 	return &EventHistoryPage{
 		Items: items,
-		Total: adjustedTotal,
+		Total: total,
 	}, nil
 }
 
@@ -263,15 +263,9 @@ func (s *Service) GetDisplayableHistory(ctx context.Context, aggregateID uuid.UU
 		items = append(items, item)
 	}
 
-	adjustedTotal := total
-	skipped := len(envelopes) - len(items)
-	if skipped > 0 {
-		adjustedTotal = total - skipped
-	}
-
 	return &DisplayableHistoryPage{
 		Items: items,
-		Total: adjustedTotal,
+		Total: total,
 	}, nil
 }
 

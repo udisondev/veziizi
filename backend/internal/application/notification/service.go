@@ -13,6 +13,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Errors
@@ -312,9 +313,12 @@ func (s *Service) CreateInApp(ctx context.Context, input CreateNotificationInput
 func (s *Service) ShouldNotify(ctx context.Context, memberID uuid.UUID, notifType values.NotificationType, channel values.NotificationChannel) (bool, error) {
 	pref, err := s.preferences.GetByMemberID(ctx, memberID)
 	if err != nil {
-		// Нет настроек - используем дефолт (in_app = true, telegram = false)
-		defaults := values.DefaultEnabledCategories()
-		return defaults.IsEnabled(notifType.Category(), channel), nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Нет настроек - используем дефолт (in_app = true, telegram = false)
+			defaults := values.DefaultEnabledCategories()
+			return defaults.IsEnabled(notifType.Category(), channel), nil
+		}
+		return false, fmt.Errorf("get preferences: %w", err)
 	}
 
 	categories, err := pref.ParseEnabledCategories()
@@ -494,34 +498,25 @@ func (s *Service) VerifyEmailByToken(ctx context.Context, token string) error {
 		return fmt.Errorf("validate token: %w", err)
 	}
 
-	// Проверяем что email в токене соответствует текущему email в preferences
-	pref, err := s.preferences.GetByMemberID(ctx, vToken.MemberID)
-	if err != nil {
-		return fmt.Errorf("get preferences: %w", err)
-	}
-
-	if pref.Email == nil || *pref.Email != vToken.Email {
-		// Email был изменен после создания токена
-		return ErrInvalidVerificationToken
-	}
-
-	// Атомарно: mark token + verify email + invalidate old tokens
 	return s.db.InTx(ctx, func(ctx context.Context) error {
+		// Проверяем email match внутри транзакции (TOCTOU fix)
+		pref, err := s.preferences.GetByMemberID(ctx, vToken.MemberID)
+		if err != nil {
+			return fmt.Errorf("get preferences: %w", err)
+		}
+		if pref.Email == nil || *pref.Email != vToken.Email {
+			return ErrInvalidVerificationToken
+		}
+
 		if err := s.emailVerification.MarkAsUsed(ctx, token); err != nil {
 			return fmt.Errorf("mark token as used: %w", err)
 		}
-
 		if err := s.preferences.VerifyEmail(ctx, vToken.MemberID); err != nil {
 			return fmt.Errorf("verify email: %w", err)
 		}
-
 		if err := s.emailVerification.InvalidateAllForMember(ctx, vToken.MemberID); err != nil {
-			slog.Warn("failed to invalidate old verification tokens",
-				slog.String("member_id", vToken.MemberID.String()),
-				slog.String("error", err.Error()),
-			)
+			return fmt.Errorf("invalidate old tokens: %w", err)
 		}
-
 		return nil
 	})
 }
@@ -571,7 +566,10 @@ func (s *Service) sendVerificationEmail(ctx context.Context, memberID uuid.UUID,
 func (s *Service) GetMemberEmail(ctx context.Context, memberID uuid.UUID) (*string, error) {
 	pref, err := s.preferences.GetByMemberID(ctx, memberID)
 	if err != nil {
-		return nil, nil // нет настроек — нет email
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil // нет настроек — нет email
+		}
+		return nil, fmt.Errorf("get preferences: %w", err)
 	}
 
 	if pref.Email == nil || !pref.EmailVerified {
@@ -586,7 +584,10 @@ func (s *Service) GetMemberEmail(ctx context.Context, memberID uuid.UUID) (*stri
 func (s *Service) ShouldSendEmail(ctx context.Context, memberID uuid.UUID, notifType values.NotificationType) (bool, error) {
 	pref, err := s.preferences.GetByMemberID(ctx, memberID)
 	if err != nil {
-		return false, nil // нет настроек — не отправляем
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil // нет настроек — не отправляем
+		}
+		return false, fmt.Errorf("get preferences: %w", err)
 	}
 
 	// Email должен быть установлен и верифицирован

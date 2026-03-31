@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
@@ -15,10 +16,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-var errInvalidNotificationCategory = errors.New("invalid notification category")
+var (
+	errInvalidNotificationCategory = errors.New("invalid notification category")
+	safeCategoryRe                 = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+)
 
 // validateCategory проверяет что category — допустимое значение (защита от SQL injection в JSONB path)
 func validateCategory(category values.NotificationCategory) error {
+	// Defense-in-depth: проверяем формат строки перед интерполяцией в SQL
+	if !safeCategoryRe.MatchString(string(category)) {
+		return fmt.Errorf("%w: unsafe characters in %q", errInvalidNotificationCategory, category)
+	}
 	for _, c := range values.AllCategories() {
 		if c == category {
 			return nil

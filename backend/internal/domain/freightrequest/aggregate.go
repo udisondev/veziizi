@@ -157,8 +157,8 @@ func (f *FreightRequest) IsExpired() bool {
 }
 
 func (f *FreightRequest) CanAcceptOffers() bool {
-	return f.status == values.FreightRequestStatusPublished ||
-		f.status == values.FreightRequestStatusSelected
+	return (f.status == values.FreightRequestStatusPublished ||
+		f.status == values.FreightRequestStatusSelected) && !f.IsExpired()
 }
 
 func (f *FreightRequest) HasSelectedOffer() bool {
@@ -271,7 +271,7 @@ func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID, acto
 	if f.status == values.FreightRequestStatusCancelled ||
 		f.status == values.FreightRequestStatusCancelledAfterConfirmed ||
 		f.status == values.FreightRequestStatusCompleted {
-		return ErrFreightRequestCancelled
+		return ErrFreightRequestTerminalStatus
 	}
 	if f.customerMemberID == newMemberID {
 		return nil // no-op
@@ -288,8 +288,17 @@ func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID, acto
 }
 
 func (f *FreightRequest) Expire() error {
-	if !f.IsPublished() {
+	if !f.IsPublished() && f.status != values.FreightRequestStatusSelected {
 		return ErrFreightRequestNotPublished
+	}
+
+	// Отменяем selected оффер (если есть) при истечении из статуса selected
+	if f.selectedOffer != nil {
+		f.Apply(events.OfferCancelledWithRequest{
+			BaseEvent: eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+			OfferID:   *f.selectedOffer,
+			Reason:    "freight request expired",
+		})
 	}
 
 	f.Apply(events.FreightRequestExpired{
@@ -308,11 +317,11 @@ func (f *FreightRequest) MakeOffer(
 	vatType values.VatType,
 	paymentMethod values.PaymentMethod,
 ) error {
-	if !f.CanAcceptOffers() {
-		return ErrFreightRequestNotPublished
-	}
 	if f.IsExpired() {
 		return ErrFreightRequestExpired
+	}
+	if !f.CanAcceptOffers() {
+		return ErrFreightRequestNotPublished
 	}
 	if f.customerOrgID == carrierOrgID {
 		return ErrCannotOfferOwnRequest
@@ -361,7 +370,7 @@ func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorMemberID uuid.UUI
 	f.Apply(events.OfferWithdrawn{
 		BaseEvent:   eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		OfferID:     offerID,
-		WithdrawnBy: actorOrgID,
+		WithdrawnBy: actorMemberID,
 		Reason:      reason,
 	})
 
@@ -453,7 +462,7 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	f.Apply(events.OfferConfirmed{
 		BaseEvent:   eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		OfferID:     offerID,
-		ConfirmedBy: actorOrgID,
+		ConfirmedBy: actorMemberID,
 	})
 
 	// Отклоняем все другие pending офферы
@@ -462,7 +471,7 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 			f.Apply(events.OfferRejected{
 				BaseEvent:  eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 				OfferID:    otherOfferID,
-				RejectedBy: actorOrgID,
+				RejectedBy: actorMemberID,
 				Reason:     "another offer was confirmed",
 			})
 		}
@@ -492,7 +501,7 @@ func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	f.Apply(events.OfferDeclined{
 		BaseEvent:  eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		OfferID:    offerID,
-		DeclinedBy: actorOrgID,
+		DeclinedBy: actorMemberID,
 		Reason:     reason,
 	})
 
@@ -644,15 +653,25 @@ func (f *FreightRequest) LeaveReview(reviewID uuid.UUID, reviewerOrgID uuid.UUID
 	}
 
 	// Используем реальное время завершения перевозки
+	// При partial completion (одна сторона завершила) completedAt ещё nil,
+	// поэтому берём время завершения конкретной стороны
 	var completedAt int64
-	if f.completedAt != nil {
+	switch {
+	case f.completedAt != nil:
 		completedAt = f.completedAt.Unix()
+	case isCustomer && f.customerCompletedAt != nil:
+		completedAt = f.customerCompletedAt.Unix()
+	case isCarrier && f.carrierCompletedAt != nil:
+		completedAt = f.carrierCompletedAt.Unix()
+	default:
+		completedAt = time.Now().Unix()
 	}
 
 	f.Apply(events.ReviewLeft{
 		BaseEvent:        eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		ReviewID:         reviewID,
 		ReviewerOrgID:    reviewerOrgID,
+		ReviewerMemberID: memberID,
 		ReviewedOrgID:    reviewedOrgID,
 		Rating:           rating,
 		Comment:          comment,
@@ -707,9 +726,9 @@ func (f *FreightRequest) EditReview(reviewerOrgID uuid.UUID, memberID uuid.UUID,
 	return nil
 }
 
-// CancelAfterConfirmed cancels freight after offer was confirmed
+// CancelAfterConfirmed cancels freight after offer was confirmed (only in confirmed status, not partially completed)
 func (f *FreightRequest) CancelAfterConfirmed(orgID, memberID uuid.UUID, reason string) error {
-	if !f.CanComplete() {
+	if !f.IsConfirmed() {
 		return ErrCannotCancelAfterConfirmed
 	}
 

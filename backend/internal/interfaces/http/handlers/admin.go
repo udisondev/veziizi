@@ -433,8 +433,12 @@ func (h *AdminHandler) GetReview(w http.ResponseWriter, r *http.Request) {
 
 	rev, err := h.reviewsProjection.GetReviewByID(r.Context(), reviewID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "review not found")
+			return
+		}
 		slog.Error("failed to get review", slog.String("error", err.Error()))
-		writeError(w, http.StatusNotFound, "review not found")
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -631,6 +635,11 @@ func (h *AdminHandler) UnmarkFraudster(w http.ResponseWriter, r *http.Request) {
 	var req UnmarkFraudsterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Reason == "" {
+		writeError(w, http.StatusBadRequest, "reason is required")
 		return
 	}
 

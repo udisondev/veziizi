@@ -52,8 +52,8 @@ func main() {
 		}()
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory IoC container - only needed dependencies will be lazily initialized
 	f := factory.New(cfg)
@@ -112,15 +112,13 @@ func main() {
 	go func() {
 		if err := router.Run(ctx); err != nil {
 			slog.Error("router error", slog.String("error", err.Error()))
-			cancel()
+			stop()
 		}
 	}()
 
 	slog.Info(fmt.Sprintf("%s worker started, listening to topic: %s", workerName, topic))
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
 	slog.Info(fmt.Sprintf("shutting down %s worker...", workerName))
 

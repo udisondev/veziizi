@@ -118,6 +118,38 @@ func (p *FraudDataProjection) IncrementReviewStats(ctx context.Context, reviewer
 	return nil
 }
 
+// AdjustReviewRatingDelta adjusts sum_rating in org_interaction_stats by a delta (new_rating - old_rating)
+func (p *FraudDataProjection) AdjustReviewRatingDelta(ctx context.Context, reviewerOrgID, reviewedOrgID uuid.UUID, ratingDelta int) error {
+	orgA, orgB := reviewerOrgID, reviewedOrgID
+	isAToB := true
+	if orgA.String() > orgB.String() {
+		orgA, orgB = orgB, orgA
+		isAToB = false
+	}
+
+	var query string
+	if isAToB {
+		query = `
+			UPDATE org_interaction_stats SET
+				sum_rating_a_to_b = sum_rating_a_to_b + $3,
+				last_interaction_at = NOW()
+			WHERE org_a = $1 AND org_b = $2
+		`
+	} else {
+		query = `
+			UPDATE org_interaction_stats SET
+				sum_rating_b_to_a = sum_rating_b_to_a + $3,
+				last_interaction_at = NOW()
+			WHERE org_a = $1 AND org_b = $2
+		`
+	}
+
+	if _, err := p.db.Exec(ctx, query, orgA, orgB, ratingDelta); err != nil {
+		return fmt.Errorf("adjust review rating delta: %w", err)
+	}
+	return nil
+}
+
 // ReviewerReputation holds reputation data for a reviewer organization
 type ReviewerReputation struct {
 	OrgID                uuid.UUID
@@ -751,7 +783,7 @@ type OrgActivityData struct {
 func (p *FraudDataProjection) GetOrgLastActivity(ctx context.Context, orgID uuid.UUID, recentDays int) (*OrgActivityData, error) {
 	query := `
 		SELECT
-			(SELECT MAX(created_at) FROM orders_lookup
+			(SELECT MAX(created_at) FROM freight_requests_lookup
 			 WHERE customer_org_id = $1 OR carrier_org_id = $1) as last_order,
 			(SELECT MAX(created_at) FROM reviews_lookup
 			 WHERE reviewer_org_id = $1) as last_review,

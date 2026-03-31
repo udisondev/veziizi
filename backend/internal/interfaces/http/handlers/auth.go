@@ -102,6 +102,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	locked, err := h.members.IsAccountLocked(r.Context(), member.ID)
 	if err != nil {
 		slog.Error("failed to check account lockout", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 	if locked {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")

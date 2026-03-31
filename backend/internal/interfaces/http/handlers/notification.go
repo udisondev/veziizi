@@ -258,7 +258,6 @@ func (h *NotificationHandler) GenerateLinkCode(w http.ResponseWriter, r *http.Re
 
 	slog.Info("telegram link code generated",
 		slog.String("member_id", memberID.String()),
-		slog.String("code", response.Code),
 	)
 
 	writeJSON(w, http.StatusOK, response)

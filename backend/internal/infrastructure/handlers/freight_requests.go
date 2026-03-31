@@ -346,7 +346,8 @@ func (h *FreightRequestsHandler) onOfferConfirmed(ctx context.Context, e events.
 	}
 
 	// Get carrier info from offer
-	var carrierOrgID, carrierMemberID uuid.UUID
+	var carrierOrgID uuid.UUID
+	var carrierMemberID *uuid.UUID
 	query, args, err := h.psql.
 		Select("carrier_org_id", "carrier_member_id").
 		From("offers_lookup").

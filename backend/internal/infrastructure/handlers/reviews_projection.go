@@ -57,6 +57,8 @@ func (h *ReviewsProjectionHandler) handleEvent(ctx context.Context, evt eventsto
 	switch e := evt.(type) {
 	case events.ReviewReceived:
 		return h.onReceived(ctx, e)
+	case events.ReviewEdited:
+		return h.onEdited(ctx, e)
 	case events.ReviewAnalyzed:
 		return h.onAnalyzed(ctx, e)
 	case events.ReviewApproved:
@@ -118,6 +120,44 @@ func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.Revi
 	}
 
 	return nil
+}
+
+func (h *ReviewsProjectionHandler) onEdited(ctx context.Context, e events.ReviewEdited) error {
+	slog.Info("review edited",
+		slog.String("review_id", e.AggregateID().String()),
+		slog.Int("old_rating", e.OldRating),
+		slog.Int("new_rating", e.NewRating),
+	)
+
+	return h.db.InTx(ctx, func(ctx context.Context) error {
+		// Update rating and comment in reviews_lookup
+		query := `
+			UPDATE reviews_lookup SET
+				rating = $2,
+				comment = $3
+			WHERE id = $1
+		`
+		if _, err := h.db.Exec(ctx, query,
+			e.AggregateID(), e.NewRating, e.NewComment,
+		); err != nil {
+			return fmt.Errorf("update review lookup: %w", err)
+		}
+
+		// If rating changed, adjust interaction stats
+		if e.OldRating != e.NewRating {
+			reviewData, err := h.getReviewData(ctx, e.AggregateID())
+			if err != nil {
+				return fmt.Errorf("get review data: %w", err)
+			}
+
+			ratingDelta := e.NewRating - e.OldRating
+			if err := h.fraudData.AdjustReviewRatingDelta(ctx, reviewData.ReviewerOrgID, reviewData.ReviewedOrgID, ratingDelta); err != nil {
+				return fmt.Errorf("adjust interaction stats rating: %w", err)
+			}
+		}
+
+		return nil
+	})
 }
 
 func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.ReviewAnalyzed) error {
