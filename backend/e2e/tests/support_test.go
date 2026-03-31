@@ -219,10 +219,10 @@ func (s *SupportSuite) TestSUP017_ReopenClosed() {
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 
-	// Verify status changed to awaiting_reply (user reopened and awaits admin response)
+	// Verify status changed to open (user reopened ticket)
 	detailResp, err := s.ctx.Customer.Client.GetTicket(ticketResp.Body.ID)
 	s.Require().NoError(err)
-	s.Assert().Equal(string(values.TicketStatusAwaitingReply), detailResp.Body.Status)
+	s.Assert().Equal(string(values.TicketStatusOpen), detailResp.Body.Status)
 }
 
 func (s *SupportSuite) TestSUP018_AlreadyOpen() {

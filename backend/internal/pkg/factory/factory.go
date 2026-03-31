@@ -18,6 +18,7 @@ import (
 	supportApp "github.com/udisondev/veziizi/backend/internal/application/support"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/rules"
 	frRules "github.com/udisondev/veziizi/backend/internal/domain/notification/rules/freightrequest"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/adapters"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
@@ -329,7 +330,8 @@ func (f *Factory) AdminService() *adminApp.Service {
 
 func (f *Factory) FreightRequestService() *frApp.Service {
 	f.frOnce.Do(func() {
-		f.frService = frApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.SequenceGenerator())
+		memberChecker := adapters.NewMemberCheckerAdapter(f.OrganizationService())
+		f.frService = frApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.SequenceGenerator(), memberChecker)
 	})
 	return f.frService
 }
@@ -355,6 +357,7 @@ func (f *Factory) ReviewService() *reviewApp.Service {
 func (f *Factory) NotificationService() *notifApp.Service {
 	f.notificationOnce.Do(func() {
 		f.notificationService = notifApp.NewService(
+			f.DB(),
 			f.NotificationPreferencesProjection(),
 			f.InAppNotificationsProjection(),
 			f.TelegramLinkProjection(),
@@ -565,12 +568,12 @@ func (f *Factory) NotificationRulesRegistry() *rules.Registry {
 
 		// Создаем зависимости для правил через адаптеры
 		deps := rules.Dependencies{
-			FreightRequests: rules.NewFreightRequestsAdapter(f.FreightRequestsProjection()),
-			Members:         rules.NewMembersAdapter(f.MembersProjection()),
+			FreightRequests: adapters.NewFreightRequestsAdapter(f.FreightRequestsProjection()),
+			Members:         adapters.NewMembersAdapter(f.MembersProjection()),
 		}
 
 		// Создаем matcher для подписок (opt-in модель)
-		subscriptionMatcher := rules.NewFreightSubscriptionsAdapter(f.FreightSubscriptionsProjection())
+		subscriptionMatcher := adapters.NewFreightSubscriptionsAdapter(f.FreightSubscriptionsProjection())
 
 		// Регистрируем правила FreightRequest
 		f.notificationRulesRegistry.Register(frRules.NewOfferMadeRule(deps))

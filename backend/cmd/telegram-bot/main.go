@@ -13,13 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 )
 
 const (
 	botName    = "telegram-bot"
-	logFile    = "telegram-bot.log"
 	pollPeriod = 1 * time.Second
 )
 
@@ -35,22 +36,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	file, err := setupLogger(cfg.App.LogLevel)
+	logFile, err := logging.Setup(cfg.App.LogLevel, cfg.App.LogFile)
 	if err != nil {
-		slog.Error("failed to setup logger", slog.String("error", err.Error()))
+		slog.Error("failed to setup logger", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			slog.Error("failed to close log file", slog.String("error", err.Error()))
-		}
-	}()
+	if logFile != nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("failed to close log file", "error", err)
+			}
+		}()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Create factory IoC container - only needed dependencies will be lazily initialized
-	// telegram-bot only uses NotificationService which doesn't require publisher
+	// telegram-bot only uses ConfirmLinkCode which needs telegramLink and preferences projections
+	// We avoid NotificationService() which pulls in a publisher (not needed here)
 	f := factory.New(cfg)
 	defer func() {
 		if err := f.Close(); err != nil {
@@ -60,13 +64,23 @@ func main() {
 
 	slog.Info("telegram bot connected to database")
 
+	// Create lightweight link confirmer instead of full NotificationService (avoids publisher init)
+	linkConfirmer := &telegramLinkConfirmer{
+		telegramLink: f.TelegramLinkProjection(),
+		preferences:  f.NotificationPreferencesProjection(),
+	}
+
 	// Create bot
-	bot := NewBot(cfg.Telegram.BotToken, f.NotificationService())
+	bot := NewBot(cfg.Telegram.BotToken, linkConfirmer)
 
 	slog.Info("telegram bot started", slog.String("bot", cfg.Telegram.BotUsername))
 
 	// Start polling
-	go bot.StartPolling(ctx)
+	pollingDone := make(chan struct{})
+	go func() {
+		bot.StartPolling(ctx)
+		close(pollingDone)
+	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -74,6 +88,14 @@ func main() {
 
 	slog.Info("shutting down telegram bot...")
 	cancel()
+
+	// Ждём завершения polling goroutine с таймаутом
+	select {
+	case <-pollingDone:
+		slog.Info("telegram bot stopped")
+	case <-time.After(30 * time.Second):
+		slog.Error("telegram bot shutdown timeout after 30s")
+	}
 }
 
 // Bot представляет Telegram бота
@@ -128,8 +150,10 @@ func (b *Bot) StartPolling(ctx context.Context) {
 				}
 				b.processedUpdates[update.UpdateID] = struct{}{}
 
-				// Очищаем старые записи (храним последние 1000)
-				if len(b.processedUpdates) > 1000 {
+				// Очищаем старые записи при большом накоплении
+				// Since maps are unordered in Go, we use offset-based eviction:
+				// keep only entries with update_id > current offset - threshold
+				if len(b.processedUpdates) > 10000 {
 					b.cleanupProcessedUpdates()
 				}
 
@@ -187,7 +211,11 @@ func (b *Bot) getUpdates(ctx context.Context) ([]Update, error) {
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("failed to close response body", "error", err)
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -287,7 +315,44 @@ func (b *Bot) sendMessage(chatID int64, text string) {
 		slog.Error("failed to send message", slog.String("error", err.Error()))
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("failed to close response body", "error", err)
+		}
+	}()
+}
+
+// telegramLinkConfirmer implements NotificationService using only the projections needed for ConfirmLinkCode.
+// This avoids initializing the full NotificationService which requires a watermill publisher.
+type telegramLinkConfirmer struct {
+	telegramLink *projections.TelegramLinkProjection
+	preferences  *projections.NotificationPreferencesProjection
+}
+
+func (c *telegramLinkConfirmer) ConfirmLinkCode(ctx context.Context, code string, chatID int64, username string) error {
+	linkCode, err := c.telegramLink.GetByCode(ctx, code)
+	if err != nil {
+		// Код не найден или истёк — проверяем, может chatID уже подключён (идемпотентность)
+		connected, checkErr := c.preferences.IsChatIDConnected(ctx, chatID)
+		if checkErr != nil {
+			slog.Error("check chat connected", "error", checkErr, "chat_id", chatID)
+			return fmt.Errorf("invalid or expired code")
+		}
+		if connected {
+			return nil
+		}
+		return fmt.Errorf("invalid or expired code")
+	}
+
+	if err := c.preferences.ConnectTelegram(ctx, linkCode.MemberID, chatID, username); err != nil {
+		return fmt.Errorf("connect telegram: %w", err)
+	}
+
+	if err := c.telegramLink.DeleteByCode(ctx, code); err != nil {
+		slog.Error("delete link code", "error", err, "code", code)
+	}
+
+	return nil
 }
 
 func isValidCode(s string) bool {
@@ -300,28 +365,13 @@ func isValidCode(s string) bool {
 }
 
 func (b *Bot) cleanupProcessedUpdates() {
-	// Оставляем только последние 500 записей
-	if len(b.processedUpdates) <= 500 {
-		return
+	// Keep only entries with update_id close to current offset
+	// Since we use long polling with offset, old update_ids will never repeat
+	threshold := b.offset - 1000
+	for id := range b.processedUpdates {
+		if id < threshold {
+			delete(b.processedUpdates, id)
+		}
 	}
-	b.processedUpdates = make(map[int64]struct{})
 }
 
-func setupLogger(levelStr string) (*os.File, error) {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(levelStr)); err != nil {
-		level = slog.LevelInfo
-	}
-
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	handler := slog.NewJSONHandler(file, &slog.HandlerOptions{
-		Level: level,
-	})
-	slog.SetDefault(slog.New(handler))
-
-	return file, nil
-}

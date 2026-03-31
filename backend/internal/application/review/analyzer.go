@@ -100,15 +100,15 @@ func (a *Analyzer) Analyze(ctx context.Context, r *review.Review) (*AnalysisResu
 	}
 
 	// Determine if moderation is required
-	requiresModeration := fraudScore >= values.FraudThresholds.ModerationScoreThreshold
+	requiresModeration := fraudScore >= values.FraudModerationScoreThreshold
 
 	// Calculate activation date
 	var activationDate time.Time
 	if requiresModeration || fraudScore > 0.1 {
 		// Suspicious reviews have longer delay
-		activationDate = time.Now().AddDate(0, 0, values.FraudThresholds.SuspiciousDelayDays)
+		activationDate = time.Now().AddDate(0, 0, values.FraudSuspiciousDelayDays)
 	} else {
-		activationDate = time.Now().AddDate(0, 0, values.FraudThresholds.ActivationDelayDays)
+		activationDate = time.Now().AddDate(0, 0, values.FraudActivationDelayDays)
 	}
 
 	slog.Info("fraud analysis completed",
@@ -289,14 +289,14 @@ func (a *Analyzer) detectFraudSignals(ctx context.Context, r *review.Review) ([]
 // checkFastCompletion checks if order was completed too quickly (<2 hours)
 func (a *Analyzer) checkFastCompletion(r *review.Review) *events.FraudSignal {
 	completionDuration := r.OrderCompletedAt().Sub(r.OrderCreatedAt())
-	thresholdHours := time.Duration(values.FraudThresholds.FastCompletionHours) * time.Hour
+	thresholdHours := time.Duration(values.FraudFastCompletionHours) * time.Hour
 
 	if completionDuration < thresholdHours {
 		signalType := values.SignalFastCompletion
 		return &events.FraudSignal{
 			Type:        signalType.String(),
 			Severity:    signalType.DefaultSeverity().String(),
-			Description: fmt.Sprintf("Order completed in %.1f hours (threshold: %d hours)", completionDuration.Hours(), values.FraudThresholds.FastCompletionHours),
+			Description: fmt.Sprintf("Order completed in %.1f hours (threshold: %d hours)", completionDuration.Hours(), values.FraudFastCompletionHours),
 			ScoreImpact: signalType.DefaultScoreImpact(),
 			Evidence:    fmt.Sprintf(`{"completion_hours": %.2f}`, completionDuration.Hours()),
 		}
@@ -314,12 +314,12 @@ func (a *Analyzer) checkMutualReviews(ctx context.Context, reviewerOrgID, review
 	}
 
 	totalMutual := aToB + bToA
-	if totalMutual >= values.FraudThresholds.MutualReviewsPerMonth {
+	if totalMutual >= values.FraudMutualReviewsPerMonth {
 		signalType := values.SignalMutualReviews
 		return &events.FraudSignal{
 			Type:        signalType.String(),
 			Severity:    signalType.DefaultSeverity().String(),
-			Description: fmt.Sprintf("Excessive mutual reviews: %d in last month (threshold: %d)", totalMutual, values.FraudThresholds.MutualReviewsPerMonth),
+			Description: fmt.Sprintf("Excessive mutual reviews: %d in last month (threshold: %d)", totalMutual, values.FraudMutualReviewsPerMonth),
 			ScoreImpact: signalType.DefaultScoreImpact(),
 			Evidence:    fmt.Sprintf(`{"a_to_b": %d, "b_to_a": %d, "total": %d}`, aToB, bToA, totalMutual),
 		}, nil
@@ -339,7 +339,7 @@ func (a *Analyzer) checkPerfectRatings(ctx context.Context, reviewerOrgID, revie
 	count++
 	sumRating += currentRating
 
-	if count > values.FraudThresholds.PerfectRatingsCount {
+	if count > values.FraudPerfectRatingsCount {
 		avgRating := float64(sumRating) / float64(count)
 		if avgRating == 5.0 {
 			signalType := values.SignalPerfectRatings
@@ -374,12 +374,12 @@ func (a *Analyzer) checkNewOrgBurst(ctx context.Context, reviewedOrgID uuid.UUID
 		return nil, fmt.Errorf("count reviews: %w", err)
 	}
 
-	if count >= values.FraudThresholds.NewOrgBurstReviewsPerWeek {
+	if count >= values.FraudNewOrgBurstReviewsPerWeek {
 		signalType := values.SignalNewOrgBurst
 		return &events.FraudSignal{
 			Type:        signalType.String(),
 			Severity:    signalType.DefaultSeverity().String(),
-			Description: fmt.Sprintf("New organization received %d reviews in first week (threshold: %d)", count, values.FraudThresholds.NewOrgBurstReviewsPerWeek),
+			Description: fmt.Sprintf("New organization received %d reviews in first week (threshold: %d)", count, values.FraudNewOrgBurstReviewsPerWeek),
 			ScoreImpact: signalType.DefaultScoreImpact(),
 			Evidence:    fmt.Sprintf(`{"org_age_hours": %.1f, "review_count": %d}`, orgAge.Hours(), count),
 		}, nil
@@ -491,12 +491,12 @@ func (a *Analyzer) checkSameFingerprint(ctx context.Context, reviewerOrgID, revi
 // checkTimingPattern checks if reviewer always posts reviews at the same time of day
 // This indicates potential bot behavior
 func (a *Analyzer) checkTimingPattern(ctx context.Context, reviewerOrgID uuid.UUID) (*events.FraudSignal, error) {
-	timings, err := a.fraudData.GetReviewTimings(ctx, reviewerOrgID, values.FraudThresholds.TimingPatternMinReviews)
+	timings, err := a.fraudData.GetReviewTimings(ctx, reviewerOrgID, values.FraudTimingPatternMinReviews)
 	if err != nil {
 		return nil, fmt.Errorf("get review timings: %w", err)
 	}
 
-	if len(timings) < values.FraudThresholds.TimingPatternMinReviews {
+	if len(timings) < values.FraudTimingPatternMinReviews {
 		return nil, nil
 	}
 
@@ -508,7 +508,7 @@ func (a *Analyzer) checkTimingPattern(ctx context.Context, reviewerOrgID uuid.UU
 	}
 
 	// Check if all reviews fall within a 2-hour window
-	windowSize := values.FraudThresholds.TimingPatternWindowHours
+	windowSize := values.FraudTimingPatternWindowHours
 	maxInWindow := 0
 	peakHour := 0
 
@@ -560,11 +560,11 @@ func (a *Analyzer) checkDormantReviewer(ctx context.Context, reviewerOrgID uuid.
 	}
 
 	// Check if org was dormant (no activity for X days)
-	dormantThreshold := time.Duration(values.FraudThresholds.DormantDays) * 24 * time.Hour
+	dormantThreshold := time.Duration(values.FraudDormantDays) * 24 * time.Hour
 	daysSinceActivity := time.Since(lastActivity)
 
 	// If org was dormant and now has burst of reviews
-	if daysSinceActivity > dormantThreshold && activity.RecentReviewsCount > values.FraudThresholds.DormantBurstCount {
+	if daysSinceActivity > dormantThreshold && activity.RecentReviewsCount > values.FraudDormantBurstCount {
 		signalType := values.SignalDormantReviewer
 		return &events.FraudSignal{
 			Type:        signalType.String(),
@@ -583,7 +583,7 @@ func (a *Analyzer) checkBurstAfterLow(ctx context.Context, reviewedOrgID uuid.UU
 	data, err := a.fraudData.GetBurstAfterLowRating(
 		ctx, reviewedOrgID,
 		2, // Low threshold (rating <= 2)
-		values.FraudThresholds.BurstAfterLowDays,
+		values.FraudBurstAfterLowDays,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get burst after low: %w", err)
@@ -593,14 +593,14 @@ func (a *Analyzer) checkBurstAfterLow(ctx context.Context, reviewedOrgID uuid.UU
 		return nil, nil // No low rating found
 	}
 
-	if data.FiveStarCountAfter >= values.FraudThresholds.BurstAfterLowCount {
+	if data.FiveStarCountAfter >= values.FraudBurstAfterLowCount {
 		signalType := values.SignalBurstAfterLow
 		return &events.FraudSignal{
 			Type:        signalType.String(),
 			Severity:    signalType.DefaultSeverity().String(),
-			Description: fmt.Sprintf("%d five-star reviews within %d days after low rating", data.FiveStarCountAfter, values.FraudThresholds.BurstAfterLowDays),
+			Description: fmt.Sprintf("%d five-star reviews within %d days after low rating", data.FiveStarCountAfter, values.FraudBurstAfterLowDays),
 			ScoreImpact: signalType.DefaultScoreImpact(),
-			Evidence:    fmt.Sprintf(`{"five_star_count": %d, "days_window": %d, "low_rating_at": "%s"}`, data.FiveStarCountAfter, values.FraudThresholds.BurstAfterLowDays, data.LastLowRatingAt.Format(time.RFC3339)),
+			Evidence:    fmt.Sprintf(`{"five_star_count": %d, "days_window": %d, "low_rating_at": "%s"}`, data.FiveStarCountAfter, values.FraudBurstAfterLowDays, data.LastLowRatingAt.Format(time.RFC3339)),
 		}, nil
 	}
 
@@ -611,7 +611,7 @@ func (a *Analyzer) checkBurstAfterLow(ctx context.Context, reviewedOrgID uuid.UU
 func (a *Analyzer) checkRatingManipulation(ctx context.Context, reviewerOrgID uuid.UUID) (*events.FraudSignal, error) {
 	data, err := a.fraudData.GetRatingPatternsByRelationship(
 		ctx, reviewerOrgID,
-		values.FraudThresholds.RatingManipMinFriendReviews,
+		values.FraudRatingManipMinFriendReviews,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get rating patterns: %w", err)
@@ -626,8 +626,8 @@ func (a *Analyzer) checkRatingManipulation(ctx context.Context, reviewerOrgID uu
 	othersAvg := float64(data.OthersRatingSum) / float64(data.OthersCount)
 
 	// Check for manipulation pattern
-	if friendsAvg >= values.FraudThresholds.RatingManipFriendAvgMin &&
-		othersAvg <= values.FraudThresholds.RatingManipOtherAvgMax {
+	if friendsAvg >= values.FraudRatingManipFriendAvgMin &&
+		othersAvg <= values.FraudRatingManipOtherAvgMax {
 		signalType := values.SignalRatingManipulation
 		return &events.FraudSignal{
 			Type:        signalType.String(),
@@ -663,19 +663,19 @@ func (a *Analyzer) checkTextSimilarity(ctx context.Context, reviewerOrgID uuid.U
 			continue
 		}
 		similarity := calculateTextSimilarity(currentComment, t.Comment)
-		if similarity >= values.FraudThresholds.TextSimilarityThreshold {
+		if similarity >= values.FraudTextSimilarityThreshold {
 			similarCount++
 		}
 	}
 
-	if similarCount >= values.FraudThresholds.TextSimilarityMinReviews {
+	if similarCount >= values.FraudTextSimilarityMinReviews {
 		signalType := values.SignalTextSimilarity
 		return &events.FraudSignal{
 			Type:        signalType.String(),
 			Severity:    signalType.DefaultSeverity().String(),
-			Description: fmt.Sprintf("Found %d reviews with >%.0f%% text similarity", similarCount, values.FraudThresholds.TextSimilarityThreshold*100),
+			Description: fmt.Sprintf("Found %d reviews with >%.0f%% text similarity", similarCount, values.FraudTextSimilarityThreshold*100),
 			ScoreImpact: signalType.DefaultScoreImpact(),
-			Evidence:    fmt.Sprintf(`{"similar_count": %d, "threshold": %.2f}`, similarCount, values.FraudThresholds.TextSimilarityThreshold),
+			Evidence:    fmt.Sprintf(`{"similar_count": %d, "threshold": %.2f}`, similarCount, values.FraudTextSimilarityThreshold),
 		}, nil
 	}
 

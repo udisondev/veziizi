@@ -38,14 +38,15 @@ func (h *ReviewReceiverHandler) Handle(msg *message.Message) error {
 		return fmt.Errorf("unmarshal event: %w", err)
 	}
 
-	// Only process ReviewLeft events
-	reviewLeft, ok := evt.(freightEvents.ReviewLeft)
-	if !ok {
+	switch e := evt.(type) {
+	case freightEvents.ReviewLeft:
+		return h.onReviewLeft(msg.Context(), e)
+	case freightEvents.ReviewEdited:
+		return h.onReviewEdited(msg.Context(), e)
+	default:
 		// Ignore other freight request events
 		return nil
 	}
-
-	return h.onReviewLeft(msg.Context(), reviewLeft)
 }
 
 func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvents.ReviewLeft) error {
@@ -79,6 +80,34 @@ func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvent
 	}
 
 	slog.Info("review created successfully",
+		slog.String("review_id", e.ReviewID.String()),
+	)
+
+	return nil
+}
+
+func (h *ReviewReceiverHandler) onReviewEdited(ctx context.Context, e freightEvents.ReviewEdited) error {
+	slog.Info("processing review edited event",
+		slog.String("freight_request_id", e.AggregateID().String()),
+		slog.String("review_id", e.ReviewID.String()),
+		slog.Int("old_rating", e.OldRating),
+		slog.Int("new_rating", e.NewRating),
+	)
+
+	if err := h.reviewService.EditReview(ctx, reviewApp.EditReviewInput{
+		ReviewID:   e.ReviewID,
+		NewRating:  e.NewRating,
+		NewComment: e.NewComment,
+	}); err != nil {
+		slog.Error("failed to edit review from freight request event",
+			slog.String("freight_request_id", e.AggregateID().String()),
+			slog.String("review_id", e.ReviewID.String()),
+			slog.String("error", err.Error()),
+		)
+		return fmt.Errorf("edit review: %w", err)
+	}
+
+	slog.Info("review edited successfully",
 		slog.String("review_id", e.ReviewID.String()),
 	)
 

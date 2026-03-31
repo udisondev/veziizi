@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 )
 
 // SEC-015: Ограничение размера request body
@@ -24,7 +25,7 @@ func BodyLimit() func(http.Handler) http.Handler {
 			var maxSize int64
 
 			// Для multipart/form-data (загрузка файлов) разрешаем больший размер
-			if len(contentType) >= 19 && contentType[:19] == "multipart/form-data" {
+			if strings.HasPrefix(contentType, "multipart/form-data") {
 				maxSize = maxFileUploadSize
 			} else {
 				maxSize = maxJSONBodySize

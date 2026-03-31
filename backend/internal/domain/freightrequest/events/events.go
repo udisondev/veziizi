@@ -223,16 +223,17 @@ func (e FreightRequestCompleted) EventType() string { return TypeFreightRequestC
 // ReviewLeft is emitted when a party leaves a review after completion
 type ReviewLeft struct {
 	eventstore.BaseEvent
-	ReviewID        uuid.UUID `json:"review_id"`
-	ReviewerOrgID   uuid.UUID `json:"reviewer_org_id"`
-	ReviewedOrgID   uuid.UUID `json:"reviewed_org_id"`
-	Rating          int       `json:"rating"`
-	Comment         string    `json:"comment,omitempty"`
+	ReviewID          uuid.UUID `json:"review_id"`
+	ReviewerOrgID     uuid.UUID `json:"reviewer_org_id"`
+	ReviewerMemberID  uuid.UUID `json:"reviewer_member_id"`
+	ReviewedOrgID     uuid.UUID `json:"reviewed_org_id"`
+	Rating            int       `json:"rating"`
+	Comment           string    `json:"comment,omitempty"`
 	// Context for Review aggregate (fraud analysis, weight calculation)
-	FreightAmount   int64  `json:"freight_amount"`
-	FreightCurrency string `json:"freight_currency"`
-	FreightCreatedAt int64 `json:"freight_created_at"`
-	CompletedAt      int64 `json:"completed_at"`
+	FreightAmount    int64  `json:"freight_amount"`
+	FreightCurrency  string `json:"freight_currency"`
+	FreightCreatedAt int64  `json:"freight_created_at"`
+	CompletedAt      int64  `json:"completed_at"`
 }
 
 func (e ReviewLeft) EventType() string { return TypeReviewLeft }

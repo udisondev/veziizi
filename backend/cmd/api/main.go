@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events" // register events
 	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"   // register events
@@ -23,6 +24,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
+	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 )
 
 func main() {
@@ -39,19 +41,21 @@ func main() {
 		slog.Info("trusted proxies configured", slog.Int("count", len(proxies)))
 	}
 
-	logFile, err := setupLogger(cfg.App.LogLevel)
+	logFile, err := logging.Setup(cfg.App.LogLevel, cfg.App.LogFile)
 	if err != nil {
-		slog.Error("failed to setup logger", slog.String("error", err.Error()))
+		slog.Error("failed to setup logger", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := logFile.Close(); err != nil {
-			slog.Error("failed to close log file", slog.String("error", err.Error()))
-		}
-	}()
+	if logFile != nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("failed to close log file", "error", err)
+			}
+		}()
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory IoC container - all dependencies are lazily initialized
 	f := factory.New(cfg)
@@ -108,7 +112,10 @@ func main() {
 	passwordResetHandler.RegisterRoutes(server.Router())
 
 	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
-	adminHandler.RegisterRoutes(server.Router())
+	// Admin subrouter with RequireAdminAuth (login is skipped inside middleware)
+	adminRouter := server.Router().PathPrefix("/api/v1/admin").Subrouter()
+	adminRouter.Use(middleware.RequireAdminAuth(adminSessionManager))
+	adminHandler.RegisterRoutes(adminRouter)
 
 	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), sessionManager)
 	frHandler.RegisterRoutes(server.Router())
@@ -152,14 +159,14 @@ func main() {
 		f.SupportTicketsProjection(),
 		adminSessionManager,
 	)
-	adminSupportHandler.RegisterRoutes(server.Router())
+	adminSupportHandler.RegisterRoutes(adminRouter)
 
 	// Admin email templates handler
 	adminEmailTemplatesHandler := handlers.NewAdminEmailTemplatesHandler(
 		f.EmailTemplatesProjection(),
 		adminSessionManager,
 	)
-	adminEmailTemplatesHandler.RegisterRoutes(server.Router())
+	adminEmailTemplatesHandler.RegisterRoutes(adminRouter)
 
 	// Dev handler (only in development mode)
 	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
@@ -174,39 +181,22 @@ func main() {
 	go func() {
 		if err := server.Start(); err != nil {
 			slog.Error("server error", slog.String("error", err.Error()))
-			cancel()
+			stop()
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
 	slog.Info("shutting down...")
 
 	// Stop rate limiter cleanup goroutine
 	middleware.StopRateLimiterCleanup()
 
-	if err := server.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("failed to shutdown server", slog.String("error", err.Error()))
 	}
 }
 
-func setupLogger(levelStr string) (*os.File, error) {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(levelStr)); err != nil {
-		level = slog.LevelInfo
-	}
-
-	file, err := os.OpenFile("current.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	handler := slog.NewJSONHandler(file, &slog.HandlerOptions{
-		Level: level,
-	})
-	slog.SetDefault(slog.New(handler))
-
-	return file, nil
-}

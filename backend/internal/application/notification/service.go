@@ -10,8 +10,10 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Errors
@@ -24,6 +26,7 @@ var (
 
 // Service предоставляет операции над уведомлениями
 type Service struct {
+	db                dbtx.TxManager
 	preferences       *projections.NotificationPreferencesProjection
 	inapp             *projections.InAppNotificationsProjection
 	telegramLink      *projections.TelegramLinkProjection
@@ -34,6 +37,7 @@ type Service struct {
 
 // NewService создает новый сервис уведомлений
 func NewService(
+	db dbtx.TxManager,
 	preferences *projections.NotificationPreferencesProjection,
 	inapp *projections.InAppNotificationsProjection,
 	telegramLink *projections.TelegramLinkProjection,
@@ -42,6 +46,7 @@ func NewService(
 	cfg *config.Config,
 ) *Service {
 	return &Service{
+		db:                db,
 		preferences:       preferences,
 		inapp:             inapp,
 		telegramLink:      telegramLink,
@@ -179,6 +184,7 @@ func (s *Service) ConfirmLinkCode(ctx context.Context, code string, chatID int64
 		// Код не найден или истёк — проверяем, может chatID уже подключён (идемпотентность)
 		connected, checkErr := s.preferences.IsChatIDConnected(ctx, chatID)
 		if checkErr != nil {
+			slog.Error("check chat connected", "error", checkErr, "chat_id", chatID)
 			return fmt.Errorf("invalid or expired code")
 		}
 		if connected {
@@ -188,13 +194,16 @@ func (s *Service) ConfirmLinkCode(ctx context.Context, code string, chatID int64
 		return fmt.Errorf("invalid or expired code")
 	}
 
-	// Сначала удаляем код (чтобы повторный запрос не прошёл до IsChatIDConnected)
-	// Ошибка удаления не критична — код всё равно истечёт по TTL
-	_ = s.telegramLink.DeleteByCode(ctx, code)
-
-	// Подключаем Telegram
+	// Сначала подключаем Telegram, потом удаляем код.
+	// Если ConnectTelegram упадёт — код останется валидным для retry.
 	if err := s.preferences.ConnectTelegram(ctx, linkCode.MemberID, chatID, username); err != nil {
 		return fmt.Errorf("connect telegram: %w", err)
+	}
+
+	// Удаляем код после успешного подключения.
+	// Ошибка удаления не критична — код истечёт по TTL.
+	if err := s.telegramLink.DeleteByCode(ctx, code); err != nil {
+		slog.Error("delete link code", "error", err, "code", code)
 	}
 
 	return nil
@@ -304,9 +313,12 @@ func (s *Service) CreateInApp(ctx context.Context, input CreateNotificationInput
 func (s *Service) ShouldNotify(ctx context.Context, memberID uuid.UUID, notifType values.NotificationType, channel values.NotificationChannel) (bool, error) {
 	pref, err := s.preferences.GetByMemberID(ctx, memberID)
 	if err != nil {
-		// Нет настроек - используем дефолт (in_app = true, telegram = false)
-		defaults := values.DefaultEnabledCategories()
-		return defaults.IsEnabled(notifType.Category(), channel), nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Нет настроек - используем дефолт (in_app = true, telegram = false)
+			defaults := values.DefaultEnabledCategories()
+			return defaults.IsEnabled(notifType.Category(), channel), nil
+		}
+		return false, fmt.Errorf("get preferences: %w", err)
 	}
 
 	categories, err := pref.ParseEnabledCategories()
@@ -381,18 +393,19 @@ func (s *Service) SetEmail(ctx context.Context, memberID uuid.UUID, input SetEma
 		return fmt.Errorf("check rate limit: %w", err)
 	}
 
-	// Сохраняем email (невалидированный)
-	if err := s.preferences.SetEmail(ctx, memberID, input.Email); err != nil {
-		return fmt.Errorf("set email: %w", err)
-	}
-
 	// Генерируем токен верификации
 	token, err := s.emailVerification.CreateToken(ctx, memberID, input.Email, input.IP, input.UserAgent)
 	if err != nil {
 		return fmt.Errorf("create verification token: %w", err)
 	}
 
-	// Отправляем email верификации
+	// Сохраняем email ДО отправки верификации,
+	// чтобы при ошибке отправки email уже был в БД для retry
+	if err := s.preferences.SetEmail(ctx, memberID, input.Email); err != nil {
+		return fmt.Errorf("set email: %w", err)
+	}
+
+	// Отправляем email верификации после сохранения
 	if err := s.sendVerificationEmail(ctx, memberID, input.Email, token); err != nil {
 		return fmt.Errorf("send verification email: %w", err)
 	}
@@ -474,7 +487,7 @@ func (s *Service) ResendEmailVerification(ctx context.Context, memberID uuid.UUI
 
 // VerifyEmailByToken проверяет токен и верифицирует email
 func (s *Service) VerifyEmailByToken(ctx context.Context, token string) error {
-	// Валидируем токен
+	// Валидируем токен (до транзакции — read-only операция)
 	vToken, err := s.emailVerification.ValidateToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, projections.ErrEmailVerificationTokenNotFound) ||
@@ -485,38 +498,27 @@ func (s *Service) VerifyEmailByToken(ctx context.Context, token string) error {
 		return fmt.Errorf("validate token: %w", err)
 	}
 
-	// Проверяем что email в токене соответствует текущему email в preferences
-	pref, err := s.preferences.GetByMemberID(ctx, vToken.MemberID)
-	if err != nil {
-		return fmt.Errorf("get preferences: %w", err)
-	}
+	return s.db.InTx(ctx, func(ctx context.Context) error {
+		// Проверяем email match внутри транзакции (TOCTOU fix)
+		pref, err := s.preferences.GetByMemberID(ctx, vToken.MemberID)
+		if err != nil {
+			return fmt.Errorf("get preferences: %w", err)
+		}
+		if pref.Email == nil || *pref.Email != vToken.Email {
+			return ErrInvalidVerificationToken
+		}
 
-	if pref.Email == nil || *pref.Email != vToken.Email {
-		// Email был изменен после создания токена
-		return ErrInvalidVerificationToken
-	}
-
-	// Помечаем токен как использованный
-	if err := s.emailVerification.MarkAsUsed(ctx, token); err != nil {
-		return fmt.Errorf("mark token as used: %w", err)
-	}
-
-	// Верифицируем email
-	if err := s.preferences.VerifyEmail(ctx, vToken.MemberID); err != nil {
-		return fmt.Errorf("verify email: %w", err)
-	}
-
-	// Инвалидируем все оставшиеся токены для этого member
-	if err := s.emailVerification.InvalidateAllForMember(ctx, vToken.MemberID); err != nil {
-		// Логируем но не возвращаем ошибку — верификация уже успешна
-		// Tokens будут очищены scheduled cleanup
-		slog.Warn("failed to invalidate old verification tokens",
-			slog.String("member_id", vToken.MemberID.String()),
-			slog.String("error", err.Error()),
-		)
-	}
-
-	return nil
+		if err := s.emailVerification.MarkAsUsed(ctx, token); err != nil {
+			return fmt.Errorf("mark token as used: %w", err)
+		}
+		if err := s.preferences.VerifyEmail(ctx, vToken.MemberID); err != nil {
+			return fmt.Errorf("verify email: %w", err)
+		}
+		if err := s.emailVerification.InvalidateAllForMember(ctx, vToken.MemberID); err != nil {
+			return fmt.Errorf("invalidate old tokens: %w", err)
+		}
+		return nil
+	})
 }
 
 // verificationEmailMessage структура для отправки email верификации
@@ -564,7 +566,10 @@ func (s *Service) sendVerificationEmail(ctx context.Context, memberID uuid.UUID,
 func (s *Service) GetMemberEmail(ctx context.Context, memberID uuid.UUID) (*string, error) {
 	pref, err := s.preferences.GetByMemberID(ctx, memberID)
 	if err != nil {
-		return nil, nil // нет настроек — нет email
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil // нет настроек — нет email
+		}
+		return nil, fmt.Errorf("get preferences: %w", err)
 	}
 
 	if pref.Email == nil || !pref.EmailVerified {
@@ -579,7 +584,10 @@ func (s *Service) GetMemberEmail(ctx context.Context, memberID uuid.UUID) (*stri
 func (s *Service) ShouldSendEmail(ctx context.Context, memberID uuid.UUID, notifType values.NotificationType) (bool, error) {
 	pref, err := s.preferences.GetByMemberID(ctx, memberID)
 	if err != nil {
-		return false, nil // нет настроек — не отправляем
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil // нет настроек — не отправляем
+		}
+		return false, fmt.Errorf("get preferences: %w", err)
 	}
 
 	// Email должен быть установлен и верифицирован

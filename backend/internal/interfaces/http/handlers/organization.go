@@ -85,6 +85,11 @@ func (h *OrganizationHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.OwnerPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
 	// Extract client metadata for fraud detection
 	meta := httputil.GetClientMetadata(r)
 
@@ -105,7 +110,19 @@ func (h *OrganizationHandler) Register(w http.ResponseWriter, r *http.Request) {
 		RegistrationUserAgent:   meta.UserAgent,
 	})
 	if err != nil {
-		slog.Error("failed to register organization", slog.String("error", err.Error()))
+		if errors.Is(err, orgDomain.ErrMemberAlreadyExists) {
+			writeError(w, http.StatusConflict, "email already registered")
+			return
+		}
+		if errors.Is(err, orgDomain.ErrDisposableEmail) {
+			writeError(w, http.StatusBadRequest, "disposable email addresses are not allowed")
+			return
+		}
+		if errors.Is(err, orgDomain.ErrRegistrationVelocity) {
+			writeError(w, http.StatusTooManyRequests, "too many registration attempts")
+			return
+		}
+		slog.Error("failed to register organization", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to register organization")
 		return
 	}
@@ -252,6 +269,11 @@ func (h *OrganizationHandler) AcceptInvitation(w http.ResponseWriter, r *http.Re
 	var req AcceptInvitationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
 		return
 	}
 
@@ -642,8 +664,20 @@ func (h *OrganizationHandler) UpdateMemberInfo(w http.ResponseWriter, r *http.Re
 
 // isValidEmail performs basic email format validation
 func isValidEmail(email string) bool {
+	if len(email) > 254 {
+		return false
+	}
 	at := strings.Index(email, "@")
 	if at < 1 {
+		return false
+	}
+	// Не должно быть несколько @
+	if strings.Count(email, "@") != 1 {
+		return false
+	}
+	domain := email[at+1:]
+	// Домен не должен начинаться/заканчиваться на точку и не содержать ".."
+	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") || strings.Contains(domain, "..") {
 		return false
 	}
 	dot := strings.LastIndex(email, ".")
@@ -654,12 +688,16 @@ func handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, orgDomain.ErrOrganizationNotFound):
 		writeError(w, http.StatusNotFound, "organization not found")
+	case errors.Is(err, orgDomain.ErrOrganizationNotActive):
+		writeError(w, http.StatusForbidden, "organization is not active")
 	case errors.Is(err, orgDomain.ErrMemberNotFound):
 		writeError(w, http.StatusNotFound, "member not found")
 	case errors.Is(err, orgDomain.ErrInvitationNotFound):
 		writeError(w, http.StatusNotFound, "invitation not found")
 	case errors.Is(err, orgDomain.ErrInvitationExpired):
 		writeError(w, http.StatusGone, "invitation expired")
+	case errors.Is(err, orgDomain.ErrInvitationCancelled):
+		writeError(w, http.StatusGone, "invitation has been cancelled")
 	case errors.Is(err, orgDomain.ErrInvitationAlreadyUsed):
 		writeError(w, http.StatusConflict, "invitation already used")
 	case errors.Is(err, orgDomain.ErrInvitationCannotBeCancelled):
@@ -744,8 +782,9 @@ func mapOrganizationToPublicResponse(org *orgDomain.Organization) PublicOrganiza
 }
 
 func mapOrganizationToResponse(org *orgDomain.Organization) OrganizationResponse {
-	members := make([]MemberResponse, 0, len(org.Members()))
-	for _, m := range org.Members() {
+	membersList := org.MembersList()
+	members := make([]MemberResponse, 0, len(membersList))
+	for _, m := range membersList {
 		members = append(members, MemberResponse{
 			ID:        m.ID().String(),
 			Email:     m.Email(),

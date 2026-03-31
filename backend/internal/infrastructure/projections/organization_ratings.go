@@ -199,6 +199,9 @@ func (p *OrganizationRatingsProjection) ListReviews(ctx context.Context, orgID u
 		}
 		result = append(result, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return result, total, nil
 }
@@ -269,6 +272,9 @@ func (p *OrganizationRatingsProjection) ListReviewsByCursor(ctx context.Context,
 		}
 		result = append(result, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	// Определяем hasMore и обрезаем до limit
 	hasMore := len(result) > limit
@@ -299,22 +305,23 @@ func (p *OrganizationRatingsProjection) AddWeightedRating(ctx context.Context, o
 
 	query := `
 		INSERT INTO organization_ratings (org_id, total_reviews, sum_rating, average_rating, weighted_sum, weight_total, weighted_average, updated_at)
-		VALUES ($1, 1, $2, $2, $3, $4, $2, NOW())
+		VALUES ($1, 1, $2, $3, $4, $5, $3, NOW())
 		ON CONFLICT (org_id) DO UPDATE SET
 			total_reviews = organization_ratings.total_reviews + 1,
 			sum_rating = organization_ratings.sum_rating + $2,
 			average_rating = (organization_ratings.sum_rating + $2)::numeric / (organization_ratings.total_reviews + 1),
-			weighted_sum = organization_ratings.weighted_sum + $3,
-			weight_total = organization_ratings.weight_total + $4,
+			weighted_sum = organization_ratings.weighted_sum + $4,
+			weight_total = organization_ratings.weight_total + $5,
 			weighted_average = CASE
-				WHEN organization_ratings.weight_total + $4 > 0
-				THEN (organization_ratings.weighted_sum + $3) / (organization_ratings.weight_total + $4)
+				WHEN organization_ratings.weight_total + $5 > 0
+				THEN (organization_ratings.weighted_sum + $4) / (organization_ratings.weight_total + $5)
 				ELSE 0
 			END,
 			updated_at = NOW()
 	`
 
-	if _, err := p.db.Exec(ctx, query, orgID, rating, weightedRating, weight); err != nil {
+	ratingFloat := float64(rating)
+	if _, err := p.db.Exec(ctx, query, orgID, rating, ratingFloat, weightedRating, weight); err != nil {
 		return fmt.Errorf("add weighted rating: %w", err)
 	}
 

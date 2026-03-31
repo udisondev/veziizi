@@ -13,3 +13,7 @@ func (s InvitationStatus) CanBeAccepted() bool {
 func (s InvitationStatus) CanBeCancelled() bool {
 	return s == InvitationStatusPending
 }
+
+func (s InvitationStatus) IsCancelled() bool {
+	return s == InvitationStatusCancelled
+}

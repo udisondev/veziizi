@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 
@@ -185,6 +186,8 @@ func (p *SessionFraudProjection) GetMemberSessionBehavior(ctx context.Context, m
 	if behavior.TypicalHoursJSON != nil {
 		behavior.TypicalHours = make(map[int]int)
 		if err := json.Unmarshal(behavior.TypicalHoursJSON, &behavior.TypicalHours); err != nil {
+			slog.Error("failed to unmarshal typical hours JSON",
+				slog.String("error", err.Error()))
 			behavior.TypicalHours = make(map[int]int)
 		}
 	}

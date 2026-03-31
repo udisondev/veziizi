@@ -141,7 +141,8 @@ func (p *GeoProjection) SearchCities(ctx context.Context, countryID int, search 
 
 	if search != "" {
 		// Search by both English and Russian names
-		builder = builder.Where("(c.name ILIKE ? OR c.name_ru ILIKE ?)", search+"%", search+"%")
+		escaped := EscapeLikePattern(search) + "%"
+		builder = builder.Where("(c.name ILIKE ? OR c.name_ru ILIKE ?)", escaped, escaped)
 	}
 
 	query, args, err := builder.ToSql()

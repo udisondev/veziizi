@@ -3,6 +3,7 @@ package projections
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -176,8 +178,10 @@ func (p *TelegramLinkProjection) codeExists(ctx context.Context, code string) (b
 	var exists int
 	err = pgxscan.Get(ctx, p.db, &exists, query, args...)
 	if err != nil {
-		// Если не найдено - код уникален
-		return false, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check code exists: %w", err)
 	}
 
 	return true, nil
