@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { usePermissions } from '@/composables/usePermissions'
@@ -50,6 +50,10 @@ const message = ref('')
 const submitting = ref(false)
 const error = ref('')
 const success = ref(false)
+
+watch([subject, message], () => {
+  if (error.value) error.value = ''
+})
 
 // Курсы обучения
 interface CourseInfo {
@@ -240,7 +244,7 @@ onMounted(() => {
       </div>
 
       <!-- Форма + последние обращения -->
-      <div class="space-y-6 lg:sticky lg:top-4 lg:self-start">
+      <div class="space-y-6 lg:top-4 lg:self-start">
         <!-- Create ticket form -->
         <Card>
           <CardHeader>
@@ -293,41 +297,37 @@ onMounted(() => {
         </Card>
 
         <!-- Recent tickets -->
-        <Card v-if="recentTickets.length > 0">
-          <CardHeader>
-            <div class="flex items-center justify-between">
-              <CardTitle class="text-base">Последние обращения</CardTitle>
-              <Button variant="ghost" size="sm" @click="router.push('/support/my-tickets')">
-                Все
-                <ChevronRight class="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div class="space-y-3">
-              <div
-                v-for="ticket in recentTickets"
-                :key="ticket.id"
-                class="p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                @click="router.push(`/support/tickets/${ticket.id}`)"
-              >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0 flex-1">
-                    <p class="font-medium text-sm truncate">#{{ ticket.ticket_number }}</p>
-                    <p class="text-sm text-muted-foreground truncate">{{ ticket.subject }}</p>
-                  </div>
-                  <Badge :variant="getStatusVariant(ticket.status)" class="shrink-0">
-                    {{ getStatusLabel(ticket.status) }}
-                  </Badge>
+        <div v-if="recentTickets.length > 0">
+          <div class="flex items-center justify-between mb-1">
+            <CardTitle class="text-base">Последние обращения</CardTitle>
+            <Button variant="ghost" size="sm" @click="router.push('/support/my-tickets')">
+              Все
+              <ChevronRight class="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+          <div class="space-y-3">
+            <div
+              v-for="ticket in recentTickets"
+              :key="ticket.id"
+              class="p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+              @click="router.push(`/support/tickets/${ticket.id}`)"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="font-medium text-sm truncate">#{{ ticket.ticket_number }}</p>
+                  <p class="text-sm text-muted-foreground truncate">{{ ticket.subject }}</p>
                 </div>
-                <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                  <Clock class="h-3 w-3" />
-                  {{ formatDate(ticket.updated_at) }}
-                </div>
+                <Badge :variant="getStatusVariant(ticket.status)" class="shrink-0">
+                  {{ getStatusLabel(ticket.status) }}
+                </Badge>
+              </div>
+              <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                <Clock class="h-3 w-3" />
+                {{ formatDate(ticket.updated_at) }}
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   </div>
