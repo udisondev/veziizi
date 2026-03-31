@@ -77,19 +77,21 @@ func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.Fr
 		return fmt.Errorf("update fraud reputation: %w", err)
 	}
 
-	// 2. Get all active reviews by this organization
-	activeReviewIDs, err := h.reviewsProjection.ListActiveReviewsByReviewer(ctx, orgID)
+	// 2. Get all active AND approved reviews by this organization
+	// Approved reviews must also be deactivated — otherwise they will be activated
+	// by review-activator later with their original (pre-fraudster) weight.
+	reviewIDs, err := h.reviewsProjection.ListDeactivatableReviewsByReviewer(ctx, orgID)
 	if err != nil {
-		slog.Error("failed to list active reviews",
+		slog.Error("failed to list deactivatable reviews",
 			slog.String("org_id", orgID.String()),
 			slog.String("error", err.Error()),
 		)
-		return fmt.Errorf("list active reviews: %w", err)
+		return fmt.Errorf("list deactivatable reviews: %w", err)
 	}
 
 	// 3. Batch deactivate reviews (параллельно с ограниченной конкурентностью)
 	reason := fmt.Sprintf("reviewer marked as fraudster: %s", e.Reason)
-	result := h.reviewService.BatchDeactivate(ctx, activeReviewIDs, reason)
+	result := h.reviewService.BatchDeactivate(ctx, reviewIDs, reason)
 
 	// Логируем ошибки если есть
 	for i, failedID := range result.FailedIDs {
@@ -101,10 +103,15 @@ func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.Fr
 
 	slog.Info("fraudster reviews deactivated",
 		slog.String("org_id", orgID.String()),
-		slog.Int("total_active", len(activeReviewIDs)),
+		slog.Int("total_found", len(reviewIDs)),
 		slog.Int("deactivated", result.SuccessCount),
 		slog.Int("failed", len(result.FailedIDs)),
 	)
+
+	if len(result.FailedIDs) > 0 {
+		return fmt.Errorf("failed to deactivate %d of %d reviews for fraudster %s",
+			len(result.FailedIDs), len(reviewIDs), orgID)
+	}
 
 	return nil
 }

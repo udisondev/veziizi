@@ -290,6 +290,28 @@ func (s *Suite) startEventHandlers() error {
 	fraudsterHandler := eventHandlers.NewFraudsterHandler(s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
 	router.AddNoPublisherHandler("fraudster", "organization.events", fraudsterSub, fraudsterHandler.Handle)
 
+	// Review event handlers
+	reviewReceiverSub, err := createSubscriber("e2e_review_receiver", "freightrequest.events")
+	if err != nil {
+		return err
+	}
+	reviewReceiverHandler := eventHandlers.NewReviewReceiverHandler(s.Factory.ReviewService())
+	router.AddNoPublisherHandler("review_receiver", "freightrequest.events", reviewReceiverSub, reviewReceiverHandler.Handle)
+
+	reviewAnalyzerSub, err := createSubscriber("e2e_review_analyzer", "review.events")
+	if err != nil {
+		return err
+	}
+	reviewAnalyzerHandler := eventHandlers.NewReviewAnalyzerHandler(s.Factory.ReviewService(), s.Factory.ReviewAnalyzer())
+	router.AddNoPublisherHandler("review_analyzer", "review.events", reviewAnalyzerSub, reviewAnalyzerHandler.Handle)
+
+	reviewsProjectionSub, err := createSubscriber("e2e_reviews_projection", "review.events")
+	if err != nil {
+		return err
+	}
+	reviewsProjectionHandler := eventHandlers.NewReviewsProjectionHandler(s.Factory.DB(), s.Factory.FraudDataProjection(), s.Factory.OrganizationRatingsProjection())
+	router.AddNoPublisherHandler("reviews_projection", "review.events", reviewsProjectionSub, reviewsProjectionHandler.Handle)
+
 	s.eventRouter = router
 
 	// Start router in background
