@@ -152,9 +152,16 @@ func (s *Service) GetHistory(ctx context.Context, aggregateID uuid.UUID, aggrega
 		items = append(items, item)
 	}
 
+	// Adjust total if some events failed to convert (avoid len(items) < Total)
+	adjustedTotal := total
+	skipped := len(envelopes) - len(items)
+	if skipped > 0 {
+		adjustedTotal = total - skipped
+	}
+
 	return &EventHistoryPage{
 		Items: items,
-		Total: total,
+		Total: adjustedTotal,
 	}, nil
 }
 
@@ -256,9 +263,15 @@ func (s *Service) GetDisplayableHistory(ctx context.Context, aggregateID uuid.UU
 		items = append(items, item)
 	}
 
+	adjustedTotal := total
+	skipped := len(envelopes) - len(items)
+	if skipped > 0 {
+		adjustedTotal = total - skipped
+	}
+
 	return &DisplayableHistoryPage{
 		Items: items,
-		Total: total,
+		Total: adjustedTotal,
 	}, nil
 }
 
