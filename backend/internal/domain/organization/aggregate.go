@@ -331,6 +331,10 @@ func (o *Organization) AcceptInvitation(
 	registrationFingerprint string,
 	registrationUserAgent string,
 ) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("accept invitation in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
+
 	inv, ok := o.invitations[invitationID]
 	if !ok {
 		return ErrInvitationNotFound
@@ -751,8 +755,10 @@ func (o *Organization) apply(evt eventstore.Event) {
 	case events.FraudsterMarked:
 		if e.IsConfirmed {
 			o.isConfirmedFraudster = true
+			o.isSuspectedFraudster = false
 		} else {
 			o.isSuspectedFraudster = true
+			o.isConfirmedFraudster = false
 		}
 		now := e.OccurredAt()
 		o.fraudsterMarkedAt = &now

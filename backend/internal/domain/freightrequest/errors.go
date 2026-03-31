@@ -21,6 +21,8 @@ var (
 	ErrFreightRequestNotSelected   = errors.New("freight request has no selected offer")
 	ErrFreightVersionMismatch      = errors.New("freight version mismatch")
 
+	ErrFreightRequestTerminalStatus = errors.New("freight request is in terminal status")
+
 	// Completion errors
 	ErrNotConfirmed                = errors.New("freight request is not confirmed")
 	ErrAlreadyCompleted            = errors.New("already completed by this party")

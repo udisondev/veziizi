@@ -3,6 +3,7 @@ package support
 import (
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
@@ -50,13 +51,13 @@ func New(
 	if subject == "" {
 		return nil, ErrEmptySubject
 	}
-	if len(subject) > MaxSubjectLength {
+	if utf8.RuneCountInString(subject) > MaxSubjectLength {
 		return nil, ErrSubjectTooLong
 	}
 	if initialMessage == "" {
 		return nil, ErrEmptyMessage
 	}
-	if len(initialMessage) > MaxMessageLength {
+	if utf8.RuneCountInString(initialMessage) > MaxMessageLength {
 		return nil, ErrMessageTooLong
 	}
 
@@ -144,7 +145,7 @@ func (t *Ticket) addMessage(senderType entities.SenderType, senderID uuid.UUID, 
 	if content == "" {
 		return ErrEmptyMessage
 	}
-	if len(content) > MaxMessageLength {
+	if utf8.RuneCountInString(content) > MaxMessageLength {
 		return ErrMessageTooLong
 	}
 

@@ -12,6 +12,7 @@ const AggregateType = "review"
 // Event type constants
 const (
 	TypeReviewReceived    = "review.received"
+	TypeReviewEdited      = "review.edited"
 	TypeReviewAnalyzed    = "review.analyzed"
 	TypeReviewApproved    = "review.approved"
 	TypeReviewRejected    = "review.rejected"
@@ -21,6 +22,7 @@ const (
 
 func init() {
 	eventstore.RegisterEventType[ReviewReceived](TypeReviewReceived)
+	eventstore.RegisterEventType[ReviewEdited](TypeReviewEdited)
 	eventstore.RegisterEventType[ReviewAnalyzed](TypeReviewAnalyzed)
 	eventstore.RegisterEventType[ReviewApproved](TypeReviewApproved)
 	eventstore.RegisterEventType[ReviewRejected](TypeReviewRejected)
@@ -52,6 +54,17 @@ type ReviewReceived struct {
 }
 
 func (e ReviewReceived) EventType() string { return TypeReviewReceived }
+
+// ReviewEdited is emitted when a review's rating/comment is edited (within 24h window)
+type ReviewEdited struct {
+	eventstore.BaseEvent
+	OldRating  int    `json:"old_rating"`
+	NewRating  int    `json:"new_rating"`
+	OldComment string `json:"old_comment,omitempty"`
+	NewComment string `json:"new_comment,omitempty"`
+}
+
+func (e ReviewEdited) EventType() string { return TypeReviewEdited }
 
 // ReviewAnalyzed is emitted after fraud analysis and weight calculation
 type ReviewAnalyzed struct {
