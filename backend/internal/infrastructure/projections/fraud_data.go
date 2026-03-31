@@ -331,6 +331,7 @@ func (p *FraudDataProjection) CountMutualReviewsInPeriod(ctx context.Context, or
 }
 
 // GetPreviousReviewsFromReviewer returns count and sum of ratings from reviewer to reviewed
+// Counts all non-terminal reviews (not just active) to prevent gaming via concurrent submissions
 func (p *FraudDataProjection) GetPreviousReviewsFromReviewer(ctx context.Context, reviewerOrgID, reviewedOrgID uuid.UUID) (count int, sumRating int, err error) {
 	query, args, err := p.psql.
 		Select("COUNT(*)", "COALESCE(SUM(rating), 0)").
@@ -338,7 +339,7 @@ func (p *FraudDataProjection) GetPreviousReviewsFromReviewer(ctx context.Context
 		Where(squirrel.And{
 			squirrel.Eq{"reviewer_org_id": reviewerOrgID},
 			squirrel.Eq{"reviewed_org_id": reviewedOrgID},
-			squirrel.Eq{"status": "active"},
+			squirrel.NotEq{"status": []string{"rejected", "deactivated"}},
 		}).
 		ToSql()
 	if err != nil {
@@ -754,7 +755,7 @@ func (p *FraudDataProjection) GetBurstAfterLowRating(ctx context.Context, review
 				   AND rating = 5
 				   AND status IN ('active', 'approved', 'pending_analysis', 'pending_moderation')
 				   AND created_at > (SELECT created_at FROM last_low)
-				   AND created_at <= (SELECT created_at FROM last_low) + ($3 || ' days')::interval
+				   AND created_at <= (SELECT created_at FROM last_low) + make_interval(days => $3)
 				), 0
 			) as five_star_count
 	`
@@ -779,17 +780,19 @@ type OrgActivityData struct {
 	RecentReviewsCount int
 }
 
-// GetOrgLastActivity returns last activity time and recent review count
+// GetOrgLastActivity returns last activity time (excluding recent burst) and recent review count
 func (p *FraudDataProjection) GetOrgLastActivity(ctx context.Context, orgID uuid.UUID, recentDays int) (*OrgActivityData, error) {
 	query := `
 		SELECT
 			(SELECT MAX(created_at) FROM freight_requests_lookup
-			 WHERE customer_org_id = $1 OR carrier_org_id = $1) as last_order,
+			 WHERE customer_org_id = $1
+			   AND created_at < NOW() - make_interval(days => $2)) as last_order,
 			(SELECT MAX(created_at) FROM reviews_lookup
-			 WHERE reviewer_org_id = $1) as last_review,
+			 WHERE reviewer_org_id = $1
+			   AND created_at < NOW() - make_interval(days => $2)) as last_review,
 			(SELECT COUNT(*) FROM reviews_lookup
 			 WHERE reviewer_org_id = $1
-			   AND created_at > NOW() - ($2 || ' days')::interval) as recent_reviews
+			   AND created_at > NOW() - make_interval(days => $2)) as recent_reviews
 	`
 
 	var data OrgActivityData
