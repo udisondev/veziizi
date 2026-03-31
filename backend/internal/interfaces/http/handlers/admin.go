@@ -49,26 +49,26 @@ func NewAdminHandler(
 
 func (h *AdminHandler) RegisterRoutes(r *mux.Router) {
 	// Auth
-	r.HandleFunc("/api/v1/admin/auth/login", h.Login).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/auth/logout", h.Logout).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/auth/me", h.Me).Methods(http.MethodGet)
+	r.HandleFunc("/auth/login", h.Login).Methods(http.MethodPost)
+	r.HandleFunc("/auth/logout", h.Logout).Methods(http.MethodPost)
+	r.HandleFunc("/auth/me", h.Me).Methods(http.MethodGet)
 
 	// Organizations
-	r.HandleFunc("/api/v1/admin/organizations", h.ListPending).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/organizations/{id}", h.GetOrganization).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/approve", h.Approve).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/reject", h.Reject).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/mark-fraudster", h.MarkFraudster).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/unmark-fraudster", h.UnmarkFraudster).Methods(http.MethodPost)
+	r.HandleFunc("/organizations", h.ListPending).Methods(http.MethodGet)
+	r.HandleFunc("/organizations/{id}", h.GetOrganization).Methods(http.MethodGet)
+	r.HandleFunc("/organizations/{id}/approve", h.Approve).Methods(http.MethodPost)
+	r.HandleFunc("/organizations/{id}/reject", h.Reject).Methods(http.MethodPost)
+	r.HandleFunc("/organizations/{id}/mark-fraudster", h.MarkFraudster).Methods(http.MethodPost)
+	r.HandleFunc("/organizations/{id}/unmark-fraudster", h.UnmarkFraudster).Methods(http.MethodPost)
 
 	// Fraudsters
-	r.HandleFunc("/api/v1/admin/fraudsters", h.ListFraudsters).Methods(http.MethodGet)
+	r.HandleFunc("/fraudsters", h.ListFraudsters).Methods(http.MethodGet)
 
 	// Reviews moderation
-	r.HandleFunc("/api/v1/admin/reviews", h.ListPendingReviews).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/reviews/{id}", h.GetReview).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/reviews/{id}/approve", h.ApproveReview).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/reviews/{id}/reject", h.RejectReview).Methods(http.MethodPost)
+	r.HandleFunc("/reviews", h.ListPendingReviews).Methods(http.MethodGet)
+	r.HandleFunc("/reviews/{id}", h.GetReview).Methods(http.MethodGet)
+	r.HandleFunc("/reviews/{id}/approve", h.ApproveReview).Methods(http.MethodPost)
+	r.HandleFunc("/reviews/{id}/reject", h.RejectReview).Methods(http.MethodPost)
 }
 
 type AdminLoginRequest struct {
