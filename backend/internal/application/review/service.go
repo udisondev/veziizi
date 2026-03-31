@@ -228,17 +228,15 @@ func (s *Service) BatchDeactivate(ctx context.Context, reviewIDs []uuid.UUID, re
 	// Запускаем горутины для параллельной деактивации
 	for _, id := range reviewIDs {
 		go func(reviewID uuid.UUID) {
-			// Захватываем семафор
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			// Проверяем отмену контекста
+			// Проверяем отмену контекста перед захватом семафора,
+			// чтобы горутины не блокировались на полном семафоре при отмене
 			select {
 			case <-ctx.Done():
 				results <- deactivateResult{id: reviewID, err: ctx.Err()}
 				return
-			default:
+			case sem <- struct{}{}:
 			}
+			defer func() { <-sem }()
 
 			err := s.Deactivate(ctx, reviewID, reason)
 			results <- deactivateResult{id: reviewID, err: err}
