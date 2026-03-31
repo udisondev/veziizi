@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 
+	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/google/uuid"
 )
 
@@ -22,6 +23,11 @@ type FreightRequestGetter interface {
 // MemberGetter интерфейс для получения данных о членах
 type MemberGetter interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*MemberInfo, error)
+}
+
+// SubscriptionMatcher находит подписки, соответствующие заявке (opt-in модель)
+type SubscriptionMatcher interface {
+	FindMatchingSubscriptions(ctx context.Context, data frValues.FreightRequestMatchData, excludeMemberID uuid.UUID) ([]frValues.MatchedSubscription, error)
 }
 
 // FreightRequestInfo минимальные данные заявки для уведомлений
