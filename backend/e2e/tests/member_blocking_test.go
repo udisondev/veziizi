@@ -35,8 +35,14 @@ func (s *MemberBlockingSuite) SetupSuite() {
 	s.baseURL = s.suite.BaseURL
 	s.c = client.New(s.baseURL)
 
-	// Create shared organization once
-	s.org = fixtures.NewOrganization(s.T(), s.c).Create()
+	// Setup admin client for approving organizations
+	adminClient := client.New(s.baseURL)
+	adminLogin, err := adminClient.AdminLogin("admin@veziizi.local", "admin123")
+	s.Require().NoError(err)
+	s.Require().Equal(200, adminLogin.StatusCode, "admin login failed")
+
+	// Create shared approved organization
+	s.org = fixtures.NewActiveOrganization(s.T(), s.c, adminClient).Create()
 }
 
 // Helper: блокировка member через прямое обновление БД

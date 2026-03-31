@@ -78,46 +78,6 @@ func (p *FraudDataProjection) GetInteractionStats(ctx context.Context, orgA, org
 }
 
 // UpsertInteractionStats creates or updates interaction statistics
-// DEPRECATED: Use IncrementReviewStats for atomic operations
-func (p *FraudDataProjection) UpsertInteractionStats(ctx context.Context, orgA, orgB uuid.UUID, update func(stats *OrgInteractionStats)) error {
-	// Ensure consistent ordering
-	if orgA.String() > orgB.String() {
-		orgA, orgB = orgB, orgA
-	}
-
-	stats, err := p.GetInteractionStats(ctx, orgA, orgB)
-	if err != nil {
-		return fmt.Errorf("get stats: %w", err)
-	}
-
-	update(stats)
-
-	query := `
-		INSERT INTO org_interaction_stats (
-			org_a, org_b, total_orders, completed_orders,
-			reviews_a_to_b, reviews_b_to_a, sum_rating_a_to_b, sum_rating_b_to_a,
-			last_interaction_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-		ON CONFLICT (org_a, org_b) DO UPDATE SET
-			total_orders = $3,
-			completed_orders = $4,
-			reviews_a_to_b = $5,
-			reviews_b_to_a = $6,
-			sum_rating_a_to_b = $7,
-			sum_rating_b_to_a = $8,
-			last_interaction_at = NOW()
-	`
-
-	if _, err := p.db.Exec(ctx, query,
-		stats.OrgA, stats.OrgB, stats.TotalOrders, stats.CompletedOrders,
-		stats.ReviewsAToB, stats.ReviewsBToA, stats.SumRatingAToB, stats.SumRatingBToA,
-	); err != nil {
-		return fmt.Errorf("upsert interaction stats: %w", err)
-	}
-
-	return nil
-}
-
 // IncrementReviewStats атомарно увеличивает счётчик отзывов и сумму рейтингов
 // reviewerOrgID - кто оставил отзыв, reviewedOrgID - кому оставлен отзыв, rating - рейтинг
 func (p *FraudDataProjection) IncrementReviewStats(ctx context.Context, reviewerOrgID, reviewedOrgID uuid.UUID, rating int) error {
@@ -154,6 +114,38 @@ func (p *FraudDataProjection) IncrementReviewStats(ctx context.Context, reviewer
 
 	if _, err := p.db.Exec(ctx, query, orgA, orgB, rating); err != nil {
 		return fmt.Errorf("increment review stats: %w", err)
+	}
+	return nil
+}
+
+// AdjustReviewRatingDelta adjusts sum_rating in org_interaction_stats by a delta (new_rating - old_rating)
+func (p *FraudDataProjection) AdjustReviewRatingDelta(ctx context.Context, reviewerOrgID, reviewedOrgID uuid.UUID, ratingDelta int) error {
+	orgA, orgB := reviewerOrgID, reviewedOrgID
+	isAToB := true
+	if orgA.String() > orgB.String() {
+		orgA, orgB = orgB, orgA
+		isAToB = false
+	}
+
+	var query string
+	if isAToB {
+		query = `
+			UPDATE org_interaction_stats SET
+				sum_rating_a_to_b = sum_rating_a_to_b + $3,
+				last_interaction_at = NOW()
+			WHERE org_a = $1 AND org_b = $2
+		`
+	} else {
+		query = `
+			UPDATE org_interaction_stats SET
+				sum_rating_b_to_a = sum_rating_b_to_a + $3,
+				last_interaction_at = NOW()
+			WHERE org_a = $1 AND org_b = $2
+		`
+	}
+
+	if _, err := p.db.Exec(ctx, query, orgA, orgB, ratingDelta); err != nil {
+		return fmt.Errorf("adjust review rating delta: %w", err)
 	}
 	return nil
 }
@@ -205,43 +197,6 @@ func (p *FraudDataProjection) GetReviewerReputation(ctx context.Context, orgID u
 }
 
 // UpsertReviewerReputation creates or updates reviewer reputation
-// DEPRECATED: Use atomic methods (IncrementTotalReviewsLeft, etc.) for better performance
-func (p *FraudDataProjection) UpsertReviewerReputation(ctx context.Context, orgID uuid.UUID, update func(rep *ReviewerReputation)) error {
-	rep, err := p.GetReviewerReputation(ctx, orgID)
-	if err != nil {
-		return fmt.Errorf("get reputation: %w", err)
-	}
-
-	update(rep)
-
-	query := `
-		INSERT INTO org_reviewer_reputation (
-			org_id, total_reviews_left, active_reviews_left,
-			rejected_reviews, deactivated_reviews, reputation_score,
-			is_suspected_fraudster, is_confirmed_fraudster, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-		ON CONFLICT (org_id) DO UPDATE SET
-			total_reviews_left = $2,
-			active_reviews_left = $3,
-			rejected_reviews = $4,
-			deactivated_reviews = $5,
-			reputation_score = $6,
-			is_suspected_fraudster = $7,
-			is_confirmed_fraudster = $8,
-			updated_at = NOW()
-	`
-
-	if _, err := p.db.Exec(ctx, query,
-		rep.OrgID, rep.TotalReviewsLeft, rep.ActiveReviewsLeft,
-		rep.RejectedReviews, rep.DeactivatedReviews, rep.ReputationScore,
-		rep.IsSuspectedFraudster, rep.IsConfirmedFraudster,
-	); err != nil {
-		return fmt.Errorf("upsert reviewer reputation: %w", err)
-	}
-
-	return nil
-}
-
 // IncrementTotalReviewsLeft атомарно увеличивает total_reviews_left на 1
 func (p *FraudDataProjection) IncrementTotalReviewsLeft(ctx context.Context, orgID uuid.UUID) error {
 	query := `
@@ -403,7 +358,7 @@ func (p *FraudDataProjection) GetOrgCreatedAt(ctx context.Context, orgID uuid.UU
 	query, args, err := p.psql.
 		Select("MIN(created_at)").
 		From("members_lookup").
-		Where(squirrel.Eq{"org_id": orgID}).
+		Where(squirrel.Eq{"organization_id": orgID}).
 		ToSql()
 	if err != nil {
 		return time.Time{}, fmt.Errorf("build query: %w", err)
@@ -641,6 +596,9 @@ func (p *FraudDataProjection) ListFraudsters(ctx context.Context, limit, offset 
 		}
 		result = append(result, f)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return result, total, nil
 }
@@ -682,6 +640,9 @@ func (p *FraudDataProjection) GetRecentReviewTexts(ctx context.Context, reviewer
 		}
 		result = append(result, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return result, nil
 }
@@ -712,6 +673,9 @@ func (p *FraudDataProjection) GetReviewTimings(ctx context.Context, reviewerOrgI
 			return nil, fmt.Errorf("scan timing: %w", err)
 		}
 		result = append(result, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	return result, nil
@@ -819,7 +783,7 @@ type OrgActivityData struct {
 func (p *FraudDataProjection) GetOrgLastActivity(ctx context.Context, orgID uuid.UUID, recentDays int) (*OrgActivityData, error) {
 	query := `
 		SELECT
-			(SELECT MAX(created_at) FROM orders_lookup
+			(SELECT MAX(created_at) FROM freight_requests_lookup
 			 WHERE customer_org_id = $1 OR carrier_org_id = $1) as last_order,
 			(SELECT MAX(created_at) FROM reviews_lookup
 			 WHERE reviewer_org_id = $1) as last_review,

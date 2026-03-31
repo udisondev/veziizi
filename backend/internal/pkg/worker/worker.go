@@ -11,6 +11,7 @@ import (
 
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -33,19 +34,21 @@ func Run(cfg Config) {
 		os.Exit(1)
 	}
 
-	logFile, err := setupLogger(appCfg.App.LogLevel, cfg.LogFile)
+	logFile, err := logging.Setup(appCfg.App.LogLevel, cfg.LogFile)
 	if err != nil {
-		slog.Error("failed to setup logger", slog.String("error", err.Error()))
+		slog.Error("failed to setup logger", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := logFile.Close(); err != nil {
-			slog.Error("failed to close log file", slog.String("error", err.Error()))
-		}
-	}()
+	if logFile != nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("failed to close log file", "error", err)
+			}
+		}()
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory - all dependencies are lazily initialized
 	f := factory.New(appCfg)
@@ -91,15 +94,13 @@ func Run(cfg Config) {
 	go func() {
 		if err := router.Run(ctx); err != nil {
 			slog.Error("router error", slog.String("error", err.Error()))
-			cancel()
+			stop()
 		}
 	}()
 
 	slog.Info(fmt.Sprintf("%s worker started", cfg.Name))
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
 	slog.Info(fmt.Sprintf("shutting down %s worker...", cfg.Name))
 
@@ -116,7 +117,8 @@ func Run(cfg Config) {
 	case <-shutdownDone:
 		slog.Info(fmt.Sprintf("%s worker shutdown complete", cfg.Name))
 	case <-time.After(30 * time.Second):
-		slog.Error(fmt.Sprintf("%s worker shutdown timed out", cfg.Name))
+		slog.Error(fmt.Sprintf("%s worker shutdown timed out, forcing exit", cfg.Name))
+		os.Exit(1)
 	}
 }
 
@@ -138,19 +140,21 @@ func RunScheduled(cfg ScheduledConfig) {
 		os.Exit(1)
 	}
 
-	logFile, err := setupLogger(appCfg.App.LogLevel, cfg.LogFile)
+	logFile, err := logging.Setup(appCfg.App.LogLevel, cfg.LogFile)
 	if err != nil {
-		slog.Error("failed to setup logger", slog.String("error", err.Error()))
+		slog.Error("failed to setup logger", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := logFile.Close(); err != nil {
-			slog.Error("failed to close log file", slog.String("error", err.Error()))
-		}
-	}()
+	if logFile != nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("failed to close log file", "error", err)
+			}
+		}()
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory - all dependencies are lazily initialized
 	f := factory.New(appCfg)
@@ -180,39 +184,16 @@ func RunScheduled(cfg ScheduledConfig) {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	for {
 		select {
 		case <-ticker.C:
 			if err := handler(ctx); err != nil {
 				slog.Error("handler error", slog.String("error", err.Error()))
 			}
-		case <-quit:
-			slog.Info(fmt.Sprintf("shutting down %s scheduled worker...", cfg.Name))
-			return
 		case <-ctx.Done():
+			slog.Info(fmt.Sprintf("shutting down %s scheduled worker...", cfg.Name))
 			return
 		}
 	}
 }
 
-func setupLogger(levelStr, logFile string) (*os.File, error) {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(levelStr)); err != nil {
-		level = slog.LevelInfo
-	}
-
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	handler := slog.NewJSONHandler(file, &slog.HandlerOptions{
-		Level: level,
-	})
-	slog.SetDefault(slog.New(handler))
-
-	return file, nil
-}

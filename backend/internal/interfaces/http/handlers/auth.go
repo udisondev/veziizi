@@ -98,6 +98,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check account lockout (brute-force protection)
+	locked, err := h.members.IsAccountLocked(r.Context(), member.ID)
+	if err != nil {
+		slog.Error("failed to check account lockout", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if locked {
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
 	if member.Status != "active" {
 		// Record failed login (blocked)
 		if err := h.members.RecordLoginHistory(
@@ -106,7 +118,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		); err != nil {
 			slog.Error("failed to record login history", slog.String("error", err.Error()))
 		}
-		writeError(w, http.StatusForbidden, "account is blocked")
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
@@ -116,7 +128,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			r.Context(), member.ID, member.OrganizationID,
 			meta.IP, meta.Fingerprint, meta.UserAgent, "failed_password",
 		); err != nil {
-			slog.Error("failed to record login history", slog.String("error", err.Error()))
+			slog.Error("failed to record login history", "error", err)
+		}
+		// Increment failed login counter (may trigger lockout)
+		if err := h.members.IncrementFailedLogin(r.Context(), member.ID); err != nil {
+			slog.Error("failed to increment failed login", "error", err)
 		}
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -130,9 +146,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to record login history", slog.String("error", err.Error()))
 	}
 
-	// Update last_login_* fields
+	// Update last_login_* fields and reset failed login counter
 	if err := h.members.RecordLogin(r.Context(), member.ID, meta.IP, meta.Fingerprint); err != nil {
-		slog.Error("failed to update last login", slog.String("error", err.Error()))
+		slog.Error("failed to update last login", "error", err)
+	}
+	if err := h.members.ResetFailedLogin(r.Context(), member.ID); err != nil {
+		slog.Error("failed to reset failed login counter", "error", err)
 	}
 
 	// Analyze login for fraud signals (geo jump, session anomaly)
@@ -170,7 +189,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.session.SetAuth(r, w, member.ID, member.OrganizationID, member.Role); err != nil {
+	if err := h.session.RegenerateAndSetAuth(r, w, member.ID, member.OrganizationID, member.Role); err != nil {
 		slog.Error("failed to set session", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -219,7 +238,11 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID, _ := h.session.GetOrganizationID(r)
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid session")
+		return
+	}
 
 	// Get member from projection
 	member, err := h.members.GetByID(r.Context(), memberID)

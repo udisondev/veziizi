@@ -49,26 +49,26 @@ func NewAdminHandler(
 
 func (h *AdminHandler) RegisterRoutes(r *mux.Router) {
 	// Auth
-	r.HandleFunc("/api/v1/admin/auth/login", h.Login).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/auth/logout", h.Logout).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/auth/me", h.Me).Methods(http.MethodGet)
+	r.HandleFunc("/auth/login", h.Login).Methods(http.MethodPost)
+	r.HandleFunc("/auth/logout", h.Logout).Methods(http.MethodPost)
+	r.HandleFunc("/auth/me", h.Me).Methods(http.MethodGet)
 
 	// Organizations
-	r.HandleFunc("/api/v1/admin/organizations", h.ListPending).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/organizations/{id}", h.GetOrganization).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/approve", h.Approve).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/reject", h.Reject).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/mark-fraudster", h.MarkFraudster).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/organizations/{id}/unmark-fraudster", h.UnmarkFraudster).Methods(http.MethodPost)
+	r.HandleFunc("/organizations", h.ListPending).Methods(http.MethodGet)
+	r.HandleFunc("/organizations/{id}", h.GetOrganization).Methods(http.MethodGet)
+	r.HandleFunc("/organizations/{id}/approve", h.Approve).Methods(http.MethodPost)
+	r.HandleFunc("/organizations/{id}/reject", h.Reject).Methods(http.MethodPost)
+	r.HandleFunc("/organizations/{id}/mark-fraudster", h.MarkFraudster).Methods(http.MethodPost)
+	r.HandleFunc("/organizations/{id}/unmark-fraudster", h.UnmarkFraudster).Methods(http.MethodPost)
 
 	// Fraudsters
-	r.HandleFunc("/api/v1/admin/fraudsters", h.ListFraudsters).Methods(http.MethodGet)
+	r.HandleFunc("/fraudsters", h.ListFraudsters).Methods(http.MethodGet)
 
 	// Reviews moderation
-	r.HandleFunc("/api/v1/admin/reviews", h.ListPendingReviews).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/reviews/{id}", h.GetReview).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/reviews/{id}/approve", h.ApproveReview).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/reviews/{id}/reject", h.RejectReview).Methods(http.MethodPost)
+	r.HandleFunc("/reviews", h.ListPendingReviews).Methods(http.MethodGet)
+	r.HandleFunc("/reviews/{id}", h.GetReview).Methods(http.MethodGet)
+	r.HandleFunc("/reviews/{id}/approve", h.ApproveReview).Methods(http.MethodPost)
+	r.HandleFunc("/reviews/{id}/reject", h.RejectReview).Methods(http.MethodPost)
 }
 
 type AdminLoginRequest struct {
@@ -89,6 +89,15 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+	if req.Password == "" {
+		writeError(w, http.StatusBadRequest, "password is required")
+		return
+	}
+
 	adm, err := h.adminRepo.GetByEmail(r.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -101,7 +110,7 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !adm.IsActive {
-		writeError(w, http.StatusForbidden, "account is disabled")
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
@@ -110,7 +119,7 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.session.SetAuth(r, w, adm.ID); err != nil {
+	if err := h.session.RegenerateAndSetAuth(r, w, adm.ID); err != nil {
 		slog.Error("failed to set session", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -154,7 +163,7 @@ func (h *AdminHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !adm.IsActive {
-		writeError(w, http.StatusForbidden, "account is disabled")
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
@@ -424,8 +433,12 @@ func (h *AdminHandler) GetReview(w http.ResponseWriter, r *http.Request) {
 
 	rev, err := h.reviewsProjection.GetReviewByID(r.Context(), reviewID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "review not found")
+			return
+		}
 		slog.Error("failed to get review", slog.String("error", err.Error()))
-		writeError(w, http.StatusNotFound, "review not found")
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -622,6 +635,11 @@ func (h *AdminHandler) UnmarkFraudster(w http.ResponseWriter, r *http.Request) {
 	var req UnmarkFraudsterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Reason == "" {
+		writeError(w, http.StatusBadRequest, "reason is required")
 		return
 	}
 

@@ -2,7 +2,9 @@ package review
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/review"
@@ -35,6 +37,12 @@ func NewService(
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*review.Review, error) {
 	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
 	if err != nil {
+		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+			return nil, review.ErrReviewNotFound
+		}
+		slog.Error("failed to load review",
+			slog.String("review_id", id.String()),
+			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("load review: %w", err)
 	}
 	return review.NewFromEvents(id, evts), nil
@@ -70,6 +78,29 @@ func (s *Service) CreateFromFreightReview(ctx context.Context, input CreateFromF
 			input.FreightCreatedAt,
 			input.CompletedAt,
 		)
+
+		return s.saveAndPublish(ctx, r)
+	})
+}
+
+// EditReviewInput contains data for editing a review
+type EditReviewInput struct {
+	ReviewID   uuid.UUID
+	NewRating  int
+	NewComment string
+}
+
+// EditReview propagates a review edit from FreightRequest.ReviewEdited
+func (s *Service) EditReview(ctx context.Context, input EditReviewInput) error {
+	return s.db.InTx(ctx, func(ctx context.Context) error {
+		r, err := s.Get(ctx, input.ReviewID)
+		if err != nil {
+			return fmt.Errorf("load review: %w", err)
+		}
+
+		if err := r.Edit(input.NewRating, input.NewComment); err != nil {
+			return fmt.Errorf("edit review: %w", err)
+		}
 
 		return s.saveAndPublish(ctx, r)
 	})
@@ -231,15 +262,24 @@ func (s *Service) BatchDeactivate(ctx context.Context, reviewIDs []uuid.UUID, re
 
 func (s *Service) saveAndPublish(ctx context.Context, r *review.Review) error {
 	changes := r.Changes()
-	if err := s.eventStore.Save(ctx, changes...); err != nil {
-		return fmt.Errorf("save review: %w", err)
+	if len(changes) == 0 {
+		return nil
 	}
 
-	for _, evt := range changes {
-		if err := s.publisher.Publish(ctx, "review.events", evt); err != nil {
-			return fmt.Errorf("publish event: %w", err)
+	if err := s.db.InTx(ctx, func(ctx context.Context) error {
+		if err := s.eventStore.Save(ctx, changes...); err != nil {
+			return fmt.Errorf("save review: %w", err)
 		}
+
+		if err := s.publisher.Publish(ctx, "review.events", changes...); err != nil {
+			return fmt.Errorf("publish review events: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return err
 	}
 
+	r.ClearChanges()
 	return nil
 }

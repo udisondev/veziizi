@@ -16,6 +16,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// restrictedFuncMap blocks dangerous template function calls
+var restrictedFuncMap = texttemplate.FuncMap{
+	"call":  func() string { return "" },
+	"html":  func() string { return "" },
+	"js":    func() string { return "" },
+	"print": func() string { return "" },
+}
+
 // EmailTemplatesProjection работает с таблицей email_templates
 type EmailTemplatesProjection struct {
 	db   dbtx.TxManager
@@ -80,8 +88,8 @@ type RenderedEmail struct {
 
 // Render рендерит шаблон с переданными данными
 func (t *EmailTemplateLookup) Render(data map[string]any) (*RenderedEmail, error) {
-	// Рендерим subject
-	subjectTpl, err := texttemplate.New("subject").Parse(t.Subject)
+	// Рендерим subject (restricted FuncMap to prevent SSTI)
+	subjectTpl, err := texttemplate.New("subject").Funcs(restrictedFuncMap).Parse(t.Subject)
 	if err != nil {
 		return nil, fmt.Errorf("parse subject template: %w", err)
 	}
@@ -90,8 +98,8 @@ func (t *EmailTemplateLookup) Render(data map[string]any) (*RenderedEmail, error
 		return nil, fmt.Errorf("execute subject template: %w", err)
 	}
 
-	// Рендерим HTML body
-	htmlTpl, err := htmltemplate.New("body_html").Parse(t.BodyHTML)
+	// Рендерим HTML body (html/template auto-escapes, restrictedFuncMap blocks dangerous calls)
+	htmlTpl, err := htmltemplate.New("body_html").Funcs(htmltemplate.FuncMap(restrictedFuncMap)).Parse(t.BodyHTML)
 	if err != nil {
 		return nil, fmt.Errorf("parse html template: %w", err)
 	}
@@ -100,8 +108,8 @@ func (t *EmailTemplateLookup) Render(data map[string]any) (*RenderedEmail, error
 		return nil, fmt.Errorf("execute html template: %w", err)
 	}
 
-	// Рендерим text body
-	textTpl, err := texttemplate.New("body_text").Parse(t.BodyText)
+	// Рендерим text body (restricted FuncMap to prevent SSTI)
+	textTpl, err := texttemplate.New("body_text").Funcs(restrictedFuncMap).Parse(t.BodyText)
 	if err != nil {
 		return nil, fmt.Errorf("parse text template: %w", err)
 	}
@@ -195,7 +203,7 @@ func (p *EmailTemplatesProjection) List(ctx context.Context, filter EmailTemplat
 		qb = qb.Where(squirrel.Eq{"is_system": *filter.IsSystem})
 	}
 	if filter.SearchText != "" {
-		searchPattern := "%" + filter.SearchText + "%"
+		searchPattern := "%" + EscapeLikePattern(filter.SearchText) + "%"
 		qb = qb.Where(squirrel.Or{
 			squirrel.ILike{"name": searchPattern},
 			squirrel.ILike{"slug": searchPattern},
@@ -381,7 +389,7 @@ func (p *EmailTemplatesProjection) Count(ctx context.Context, filter EmailTempla
 		qb = qb.Where(squirrel.Eq{"is_system": *filter.IsSystem})
 	}
 	if filter.SearchText != "" {
-		searchPattern := "%" + filter.SearchText + "%"
+		searchPattern := "%" + EscapeLikePattern(filter.SearchText) + "%"
 		qb = qb.Where(squirrel.Or{
 			squirrel.ILike{"name": searchPattern},
 			squirrel.ILike{"slug": searchPattern},

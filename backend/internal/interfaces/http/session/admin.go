@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
@@ -76,6 +77,27 @@ func (m *AdminManager) SetAuth(r *http.Request, w http.ResponseWriter, adminID u
 	session.Values[KeyAdminID] = adminID.String()
 
 	return m.Save(r, w, session)
+}
+
+// RegenerateAndSetAuth invalidates the old session and creates a new one.
+// Prevents session fixation attacks.
+func (m *AdminManager) RegenerateAndSetAuth(r *http.Request, w http.ResponseWriter, adminID uuid.UUID) error {
+	oldSession, err := m.Get(r)
+	if err == nil {
+		oldSession.Options.MaxAge = -1
+		if err := m.Save(r, w, oldSession); err != nil {
+			return fmt.Errorf("invalidate old admin session: %w", err)
+		}
+	}
+
+	newSession, err := m.store.New(r, m.name)
+	if err != nil {
+		return fmt.Errorf("create new admin session: %w", err)
+	}
+
+	newSession.Values[KeyAdminID] = adminID.String()
+
+	return m.Save(r, w, newSession)
 }
 
 func (m *AdminManager) Clear(r *http.Request, w http.ResponseWriter) error {

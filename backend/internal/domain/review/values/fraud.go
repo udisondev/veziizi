@@ -95,46 +95,24 @@ func (s FraudSignalType) DefaultScoreImpact() float64 {
 	}
 }
 
-// FraudThresholds contains configurable thresholds for fraud detection
-var FraudThresholds = struct {
-	MutualReviewsPerMonth     int     // >5 mutual reviews per month
-	FastCompletionHours       int     // <2 hours is suspicious
-	PerfectRatingsCount       int     // >3 perfect ratings from same reviewer
-	NewOrgBurstReviewsPerWeek int     // >10 reviews in first week
-	ModerationScoreThreshold  float64 // fraud_score > 0.3 requires moderation
-	ActivationDelayDays       int     // 7 days for normal reviews
-	SuspiciousDelayDays       int     // 14 days for suspicious reviews
-
-	// New thresholds
-	TextSimilarityThreshold   float64 // >0.8 similarity is suspicious
-	TextSimilarityMinReviews  int     // minimum reviews with similar text
-	TimingPatternWindowHours  int     // reviews within X hours window = bot
-	TimingPatternMinReviews   int     // minimum reviews to detect pattern
-	RatingManipFriendAvgMin   float64 // avg rating to "friends" >= 4.5
-	RatingManipOtherAvgMax    float64 // avg rating to "others" <= 2.5
-	RatingManipMinFriendReviews int   // min mutual reviews to be "friend"
-	BurstAfterLowDays         int     // check 5★ burst within X days after low
-	BurstAfterLowCount        int     // >5 five-star reviews = burst
-	DormantDays               int     // >90 days inactive = dormant
-	DormantBurstCount         int     // >5 reviews after dormancy = suspicious
-}{
-	MutualReviewsPerMonth:     5,
-	FastCompletionHours:       2,
-	PerfectRatingsCount:       3,
-	NewOrgBurstReviewsPerWeek: 10,
-	ModerationScoreThreshold:  0.3,
-	ActivationDelayDays:       7,
-	SuspiciousDelayDays:       14,
-
-	TextSimilarityThreshold:   0.8,
-	TextSimilarityMinReviews:  3,
-	TimingPatternWindowHours:  2,
-	TimingPatternMinReviews:   10,
-	RatingManipFriendAvgMin:   4.5,
-	RatingManipOtherAvgMax:    2.5,
-	RatingManipMinFriendReviews: 3,
-	BurstAfterLowDays:         7,
-	BurstAfterLowCount:        5,
-	DormantDays:               90,
-	DormantBurstCount:         5,
-}
+// Fraud detection thresholds
+const (
+	FraudMutualReviewsPerMonth       = 5    // >5 mutual reviews per month
+	FraudFastCompletionHours         = 2    // <2 hours is suspicious
+	FraudPerfectRatingsCount         = 3    // >3 perfect ratings from same reviewer
+	FraudNewOrgBurstReviewsPerWeek   = 10   // >10 reviews in first week
+	FraudModerationScoreThreshold    = 0.3  // fraud_score > 0.3 requires moderation
+	FraudActivationDelayDays         = 7    // 7 days for normal reviews
+	FraudSuspiciousDelayDays         = 14   // 14 days for suspicious reviews
+	FraudTextSimilarityThreshold     = 0.8  // >0.8 similarity is suspicious
+	FraudTextSimilarityMinReviews    = 3    // minimum reviews with similar text
+	FraudTimingPatternWindowHours    = 2    // reviews within X hours window = bot
+	FraudTimingPatternMinReviews     = 10   // minimum reviews to detect pattern
+	FraudRatingManipFriendAvgMin     = 4.5  // avg rating to "friends" >= 4.5
+	FraudRatingManipOtherAvgMax      = 2.5  // avg rating to "others" <= 2.5
+	FraudRatingManipMinFriendReviews = 3    // min mutual reviews to be "friend"
+	FraudBurstAfterLowDays           = 7    // check 5★ burst within X days after low
+	FraudBurstAfterLowCount          = 5    // >5 five-star reviews = burst
+	FraudDormantDays                 = 90   // >90 days inactive = dormant
+	FraudDormantBurstCount           = 5    // >5 reviews after dormancy = suspicious
+)

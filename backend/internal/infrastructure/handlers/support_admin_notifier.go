@@ -101,9 +101,7 @@ func (h *SupportAdminNotifierHandler) onTicketCreated(ctx context.Context, e eve
 func (h *SupportAdminNotifierHandler) onUserMessageAdded(ctx context.Context, e events.MessageAdded) error {
 	admins, err := h.adminRepo.GetAdminsWithTelegram(ctx)
 	if err != nil {
-		slog.Error("failed to get admins with telegram",
-			slog.String("error", err.Error()))
-		return nil
+		return fmt.Errorf("get admins with telegram: %w", err)
 	}
 
 	if len(admins) == 0 {

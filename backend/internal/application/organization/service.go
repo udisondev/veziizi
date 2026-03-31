@@ -17,6 +17,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -187,7 +188,10 @@ func (s *Service) GetMemberByID(ctx context.Context, memberID uuid.UUID) (*Membe
 	// 1. Получить org_id из проекции (lookup)
 	lookup, err := s.members.GetByID(ctx, memberID)
 	if err != nil {
-		return nil, organization.ErrMemberNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, organization.ErrMemberNotFound
+		}
+		return nil, fmt.Errorf("get member lookup: %w", err)
 	}
 
 	// 2. Загрузить organization из event store
@@ -292,7 +296,10 @@ type AcceptInvitationOutput struct {
 func (s *Service) AcceptInvitation(ctx context.Context, input AcceptInvitationInput) (*AcceptInvitationOutput, error) {
 	inv, err := s.invitations.GetByToken(ctx, input.Token)
 	if err != nil {
-		return nil, organization.ErrInvitationNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, organization.ErrInvitationNotFound
+		}
+		return nil, fmt.Errorf("get invitation by token: %w", err)
 	}
 
 	// Validate registration (email pattern + velocity)
@@ -353,7 +360,10 @@ type InvitationInfo struct {
 func (s *Service) GetInvitationByToken(ctx context.Context, token string) (*InvitationInfo, error) {
 	inv, err := s.invitations.GetByToken(ctx, token)
 	if err != nil {
-		return nil, organization.ErrInvitationNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, organization.ErrInvitationNotFound
+		}
+		return nil, fmt.Errorf("get invitation by token: %w", err)
 	}
 
 	// Получаем название организации
@@ -389,8 +399,9 @@ func (s *Service) ListInvitations(ctx context.Context, input ListInvitationsInpu
 		return nil, fmt.Errorf("failed to get organization: %w", err)
 	}
 
-	result := make([]InvitationInfo, 0, len(org.Invitations()))
-	for _, inv := range org.Invitations() {
+	invitations := org.InvitationsList()
+	result := make([]InvitationInfo, 0, len(invitations))
+	for _, inv := range invitations {
 		// Фильтр по статусу
 		if input.Status != nil && inv.Status().String() != *input.Status {
 			continue
@@ -574,12 +585,7 @@ func (s *Service) validateRegistration(ctx context.Context, email, ip, fingerpri
 	// 2. Check registration velocity (IP + fingerprint)
 	velocityResult, err := s.members.CheckRegistrationVelocity(ctx, ip, fingerprint)
 	if err != nil {
-		slog.Error("failed to check registration velocity",
-			slog.String("error", err.Error()),
-			slog.String("ip", ip),
-		)
-		// Don't block on error, just log
-		return nil
+		return fmt.Errorf("check registration velocity: %w", err)
 	}
 	if velocityResult.IsTooFast {
 		slog.Warn("registration blocked: velocity exceeded",
@@ -600,7 +606,7 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 		return nil
 	}
 
-	return s.db.InTx(ctx, func(ctx context.Context) error {
+	if err := s.db.InTx(ctx, func(ctx context.Context) error {
 		if err := s.eventStore.Save(ctx, changes...); err != nil {
 			slog.Error("failed to save organization events",
 				slog.String("organization_id", org.ID().String()),
@@ -618,7 +624,11 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 			return fmt.Errorf("publish events: %w", err)
 		}
 
-		org.ClearChanges()
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	org.ClearChanges()
+	return nil
 }

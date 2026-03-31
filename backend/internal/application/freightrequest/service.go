@@ -11,7 +11,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization"
-	orgEvents "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/sequence"
@@ -21,11 +21,18 @@ import (
 
 const defaultTTL = 30 * 24 * time.Hour // 30 days
 
+// MemberChecker проверяет принадлежность и права членов организации.
+type MemberChecker interface {
+	MemberExists(ctx context.Context, orgID, memberID uuid.UUID) error
+	CanManageMembers(ctx context.Context, orgID, memberID uuid.UUID) (orgValues.MemberRole, error)
+}
+
 type Service struct {
-	db         dbtx.TxManager
-	eventStore eventstore.Store
-	publisher  *messaging.EventPublisher
-	seqGen     *sequence.Generator
+	db            dbtx.TxManager
+	eventStore    eventstore.Store
+	publisher     *messaging.EventPublisher
+	seqGen        *sequence.Generator
+	memberChecker MemberChecker
 }
 
 func NewService(
@@ -33,12 +40,14 @@ func NewService(
 	eventStore eventstore.Store,
 	publisher *messaging.EventPublisher,
 	seqGen *sequence.Generator,
+	memberChecker MemberChecker,
 ) *Service {
 	return &Service{
-		db:         db,
-		eventStore: eventStore,
-		publisher:  publisher,
-		seqGen:     seqGen,
+		db:            db,
+		eventStore:    eventStore,
+		publisher:     publisher,
+		seqGen:        seqGen,
+		memberChecker: memberChecker,
 	}
 }
 
@@ -88,16 +97,6 @@ func (s *Service) GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]
 	return result, nil
 }
 
-func (s *Service) getOrganization(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
-	evts, err := s.eventStore.Load(ctx, id, orgEvents.AggregateType)
-	if err != nil {
-		slog.Error("failed to load organization",
-			slog.String("organization_id", id.String()),
-			slog.String("error", err.Error()))
-		return nil, fmt.Errorf("load organization: %w", err)
-	}
-	return organization.NewFromEvents(id, evts), nil
-}
 
 type CreateInput struct {
 	CustomerOrgID       uuid.UUID
@@ -207,23 +206,13 @@ type ReassignInput struct {
 }
 
 func (s *Service) Reassign(ctx context.Context, input ReassignInput) error {
-	// Check actor has permission (admin or owner)
-	org, err := s.getOrganization(ctx, input.ActorOrgID)
+	// Verify actor and new member exist in organization
+	actorRole, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorID)
 	if err != nil {
 		return err
 	}
-
-	actor, ok := org.GetMember(input.ActorID)
-	if !ok {
-		return organization.ErrMemberNotFound
-	}
-	if !actor.CanManageMembers() {
-		return organization.ErrInsufficientPermissions
-	}
-
-	// Check new member exists in organization
-	if _, ok := org.GetMember(input.NewMemberID); !ok {
-		return organization.ErrMemberNotFound
+	if err := s.memberChecker.MemberExists(ctx, input.ActorOrgID, input.NewMemberID); err != nil {
+		return err
 	}
 
 	fr, err := s.Get(ctx, input.ID)
@@ -236,7 +225,7 @@ func (s *Service) Reassign(ctx context.Context, input ReassignInput) error {
 		return freightrequest.ErrNotFreightRequestOwner
 	}
 
-	if err := fr.Reassign(input.ActorID, input.NewMemberID); err != nil {
+	if err := fr.Reassign(input.ActorID, input.NewMemberID, actorRole); err != nil {
 		return err
 	}
 
@@ -293,36 +282,23 @@ type WithdrawOfferInput struct {
 }
 
 func (s *Service) WithdrawOffer(ctx context.Context, input WithdrawOfferInput) error {
+	// Get actor role for domain authorization
+	actorRole, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorMemberID)
+	if err != nil {
+		if errors.Is(err, organization.ErrMemberNotFound) || errors.Is(err, organization.ErrInsufficientPermissions) {
+			// Not admin/owner, still might be offer creator — pass employee role
+			actorRole = orgValues.MemberRoleEmployee
+		} else {
+			return fmt.Errorf("check member permissions: %w", err)
+		}
+	}
+
 	fr, err := s.Get(ctx, input.FreightRequestID)
 	if err != nil {
 		return err
 	}
 
-	// Получаем оффер для проверки прав
-	offer, ok := fr.GetOffer(input.OfferID)
-	if !ok {
-		return freightrequest.ErrOfferNotFound
-	}
-
-	// Проверка: создатель оффера или admin/owner организации
-	isOfferCreator := offer.CarrierMemberID() == input.ActorMemberID
-	if !isOfferCreator {
-		org, err := s.getOrganization(ctx, input.ActorOrgID)
-		if err != nil {
-			return fmt.Errorf("failed to get organization: %w", err)
-		}
-
-		actor, ok := org.GetMember(input.ActorMemberID)
-		if !ok {
-			return organization.ErrMemberNotFound
-		}
-
-		if !actor.CanManageMembers() {
-			return organization.ErrInsufficientPermissions
-		}
-	}
-
-	if err := fr.WithdrawOffer(input.OfferID, input.ActorOrgID, input.Reason); err != nil {
+	if err := fr.WithdrawOffer(input.OfferID, input.ActorMemberID, input.ActorOrgID, actorRole, input.Reason); err != nil {
 		return err
 	}
 
@@ -375,7 +351,7 @@ type ConfirmOfferInput struct {
 	OfferID          uuid.UUID
 	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
-	ActorRole        string
+	ActorRole        orgValues.MemberRole
 }
 
 func (s *Service) ConfirmOffer(ctx context.Context, input ConfirmOfferInput) error {
@@ -405,7 +381,7 @@ type DeclineOfferInput struct {
 	OfferID          uuid.UUID
 	ActorMemberID    uuid.UUID
 	ActorOrgID       uuid.UUID
-	ActorRole        string
+	ActorRole        orgValues.MemberRole
 	Reason           string
 }
 
@@ -548,22 +524,14 @@ type ReassignCarrierMemberInput struct {
 // ReassignCarrierMember reassigns the carrier's responsible member
 func (s *Service) ReassignCarrierMember(ctx context.Context, input ReassignCarrierMemberInput) error {
 	// Check actor has permission (admin or owner)
-	org, err := s.getOrganization(ctx, input.ActorOrgID)
+	actorRole, err := s.memberChecker.CanManageMembers(ctx, input.ActorOrgID, input.ActorID)
 	if err != nil {
 		return err
 	}
 
-	actor, ok := org.GetMember(input.ActorID)
-	if !ok {
-		return organization.ErrMemberNotFound
-	}
-	if !actor.CanManageMembers() {
-		return organization.ErrInsufficientPermissions
-	}
-
 	// Check new member exists in organization
-	if _, ok := org.GetMember(input.NewMemberID); !ok {
-		return organization.ErrMemberNotFound
+	if err := s.memberChecker.MemberExists(ctx, input.ActorOrgID, input.NewMemberID); err != nil {
+		return err
 	}
 
 	fr, err := s.Get(ctx, input.FreightRequestID)
@@ -576,7 +544,7 @@ func (s *Service) ReassignCarrierMember(ctx context.Context, input ReassignCarri
 		return freightrequest.ErrNotConfirmed
 	}
 
-	if err := fr.ReassignCarrierMember(input.ActorID, input.NewMemberID, string(actor.Role())); err != nil {
+	if err := fr.ReassignCarrierMember(input.ActorID, input.NewMemberID, actorRole); err != nil {
 		return err
 	}
 
@@ -589,7 +557,7 @@ func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.Freight
 		return nil
 	}
 
-	return s.db.InTx(ctx, func(ctx context.Context) error {
+	if err := s.db.InTx(ctx, func(ctx context.Context) error {
 		if err := s.eventStore.Save(ctx, changes...); err != nil {
 			slog.Error("failed to save freight request events",
 				slog.String("freight_request_id", fr.ID().String()),
@@ -606,7 +574,11 @@ func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.Freight
 			return fmt.Errorf("publish events: %w", err)
 		}
 
-		fr.ClearChanges()
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	fr.ClearChanges()
+	return nil
 }

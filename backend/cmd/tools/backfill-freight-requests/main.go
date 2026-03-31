@@ -47,6 +47,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	defer rows.Close()
+
 	var ids []uuid.UUID
 	for rows.Next() {
 		var id uuid.UUID
@@ -56,7 +58,10 @@ func main() {
 		}
 		ids = append(ids, id)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		slog.Error("failed to iterate rows", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	slog.Info("found freight requests to backfill", slog.Int("count", len(ids)))
 

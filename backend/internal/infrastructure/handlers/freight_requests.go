@@ -119,10 +119,9 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 	var orgName, orgINN, orgCountry *string
 	orgEvts, err := h.eventStore.Load(ctx, e.CustomerOrgID, orgEvents.AggregateType)
 	if err != nil {
-		slog.Warn("failed to load organization for denormalization",
-			slog.String("org_id", e.CustomerOrgID.String()),
-			slog.String("error", err.Error()))
-	} else if len(orgEvts) > 0 {
+		return fmt.Errorf("load organization for denormalization: %w", err)
+	}
+	if len(orgEvts) > 0 {
 		org := organization.NewFromEvents(e.CustomerOrgID, orgEvts)
 		name := org.Name()
 		inn := org.INN()
@@ -347,7 +346,8 @@ func (h *FreightRequestsHandler) onOfferConfirmed(ctx context.Context, e events.
 	}
 
 	// Get carrier info from offer
-	var carrierOrgID, carrierMemberID uuid.UUID
+	var carrierOrgID uuid.UUID
+	var carrierMemberID *uuid.UUID
 	query, args, err := h.psql.
 		Select("carrier_org_id", "carrier_member_id").
 		From("offers_lookup").

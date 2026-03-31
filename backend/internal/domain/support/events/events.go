@@ -26,11 +26,12 @@ func init() {
 // TicketCreated is emitted when a new support ticket is created
 type TicketCreated struct {
 	eventstore.BaseEvent
-	TicketNumber   int64     `json:"ticket_number"`
-	MemberID       uuid.UUID `json:"member_id"`
-	OrgID          uuid.UUID `json:"org_id"`
-	Subject        string    `json:"subject"`
-	InitialMessage string    `json:"initial_message"`
+	TicketNumber     int64     `json:"ticket_number"`
+	MemberID         uuid.UUID `json:"member_id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	Subject          string    `json:"subject"`
+	InitialMessage   string    `json:"initial_message"`
+	InitialMessageID uuid.UUID `json:"initial_message_id"`
 }
 
 func (e TicketCreated) EventType() string { return TypeTicketCreated }

@@ -117,10 +117,7 @@ func (h *OrganizationsHandler) onUpdated(ctx context.Context, e events.Organizat
 		// Обновляем денормализованное имя в freight_requests_lookup
 		if h.freightRequestsProjection != nil {
 			if err := h.freightRequestsProjection.UpdateCustomerOrgName(ctx, e.AggregateID(), *e.Name); err != nil {
-				slog.Error("failed to update denormalized org name in freight requests",
-					slog.String("org_id", e.AggregateID().String()),
-					slog.String("error", err.Error()))
-				// Не возвращаем ошибку - основная проекция обновлена
+				return fmt.Errorf("update denormalized org name in freight requests: %w", err)
 			}
 		}
 

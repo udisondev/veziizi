@@ -3,6 +3,7 @@ package support
 import (
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
@@ -27,7 +28,8 @@ type Ticket struct {
 	subject      string
 	status       values.TicketStatus
 
-	messages map[uuid.UUID]*entities.Message
+	messages      map[uuid.UUID]*entities.Message
+	messagesCache []*entities.Message
 
 	createdAt time.Time
 	updatedAt time.Time
@@ -49,13 +51,13 @@ func New(
 	if subject == "" {
 		return nil, ErrEmptySubject
 	}
-	if len(subject) > MaxSubjectLength {
+	if utf8.RuneCountInString(subject) > MaxSubjectLength {
 		return nil, ErrSubjectTooLong
 	}
 	if initialMessage == "" {
 		return nil, ErrEmptyMessage
 	}
-	if len(initialMessage) > MaxMessageLength {
+	if utf8.RuneCountInString(initialMessage) > MaxMessageLength {
 		return nil, ErrMessageTooLong
 	}
 
@@ -65,12 +67,13 @@ func New(
 	}
 
 	t.Apply(events.TicketCreated{
-		BaseEvent:      eventstore.NewBaseEvent(id, events.AggregateType, t.Version()+1),
-		TicketNumber:   ticketNumber,
-		MemberID:       memberID,
-		OrgID:          orgID,
-		Subject:        subject,
-		InitialMessage: initialMessage,
+		BaseEvent:        eventstore.NewBaseEvent(id, events.AggregateType, t.Version()+1),
+		TicketNumber:     ticketNumber,
+		MemberID:         memberID,
+		OrgID:            orgID,
+		Subject:          subject,
+		InitialMessage:   initialMessage,
+		InitialMessageID: uuid.New(),
 	})
 
 	return t, nil
@@ -97,7 +100,15 @@ func (t *Ticket) MemberID() uuid.UUID            { return t.memberID }
 func (t *Ticket) OrgID() uuid.UUID               { return t.orgID }
 func (t *Ticket) Subject() string                { return t.subject }
 func (t *Ticket) Status() values.TicketStatus    { return t.status }
-func (t *Ticket) Messages() map[uuid.UUID]*entities.Message { return t.messages }
+func (t *Ticket) MessagesList() []*entities.Message {
+	if t.messagesCache == nil {
+		t.messagesCache = make([]*entities.Message, 0, len(t.messages))
+		for _, m := range t.messages {
+			t.messagesCache = append(t.messagesCache, m)
+		}
+	}
+	return t.messagesCache
+}
 func (t *Ticket) CreatedAt() time.Time           { return t.createdAt }
 func (t *Ticket) UpdatedAt() time.Time           { return t.updatedAt }
 func (t *Ticket) ClosedAt() *time.Time           { return t.closedAt }
@@ -134,7 +145,7 @@ func (t *Ticket) addMessage(senderType entities.SenderType, senderID uuid.UUID, 
 	if content == "" {
 		return ErrEmptyMessage
 	}
-	if len(content) > MaxMessageLength {
+	if utf8.RuneCountInString(content) > MaxMessageLength {
 		return ErrMessageTooLong
 	}
 
@@ -189,6 +200,8 @@ func (t *Ticket) Apply(evt eventstore.Event) {
 
 // apply updates state from event (used by both Apply and Replay)
 func (t *Ticket) apply(evt eventstore.Event) {
+	t.messagesCache = nil
+
 	switch e := evt.(type) {
 	case events.TicketCreated:
 		t.ticketNumber = e.TicketNumber
@@ -201,7 +214,7 @@ func (t *Ticket) apply(evt eventstore.Event) {
 
 		// Add initial message
 		msg := entities.NewMessage(
-			uuid.New(),
+			e.InitialMessageID,
 			entities.SenderTypeUser,
 			e.MemberID,
 			e.InitialMessage,
@@ -234,7 +247,7 @@ func (t *Ticket) apply(evt eventstore.Event) {
 		t.updatedAt = e.OccurredAt()
 
 	case events.TicketReopened:
-		t.status = values.TicketStatusAwaitingReply
+		t.status = values.TicketStatusOpen
 		t.closedAt = nil
 		t.updatedAt = e.OccurredAt()
 	}

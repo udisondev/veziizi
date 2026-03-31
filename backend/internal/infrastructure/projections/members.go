@@ -244,6 +244,76 @@ func (p *MembersProjection) GetLoginHistory(ctx context.Context, memberID uuid.U
 	return entries, nil
 }
 
+const (
+	MaxFailedLoginAttempts = 5
+	AccountLockoutDuration = 15 * time.Minute
+)
+
+// IncrementFailedLogin increments the failed login counter and locks account if threshold exceeded.
+func (p *MembersProjection) IncrementFailedLogin(ctx context.Context, memberID uuid.UUID) error {
+	query, args, err := p.psql.
+		Update("members_lookup").
+		Set("failed_login_count", squirrel.Expr("failed_login_count + 1")).
+		Set("last_failed_login_at", squirrel.Expr("NOW()")).
+		Set("locked_until", squirrel.Expr(
+			fmt.Sprintf("CASE WHEN failed_login_count + 1 >= %d THEN NOW() + INTERVAL '%d minutes' ELSE locked_until END",
+				MaxFailedLoginAttempts, int(AccountLockoutDuration.Minutes())),
+		)).
+		Where(squirrel.Eq{"id": memberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build increment failed login query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("increment failed login: %w", err)
+	}
+
+	return nil
+}
+
+// ResetFailedLogin resets the failed login counter after successful login.
+func (p *MembersProjection) ResetFailedLogin(ctx context.Context, memberID uuid.UUID) error {
+	query, args, err := p.psql.
+		Update("members_lookup").
+		Set("failed_login_count", 0).
+		Set("locked_until", nil).
+		Where(squirrel.Eq{"id": memberID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build reset failed login query: %w", err)
+	}
+
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("reset failed login: %w", err)
+	}
+
+	return nil
+}
+
+// IsAccountLocked checks if the account is currently locked due to failed login attempts.
+func (p *MembersProjection) IsAccountLocked(ctx context.Context, memberID uuid.UUID) (bool, error) {
+	query, args, err := p.psql.
+		Select("locked_until").
+		From("members_lookup").
+		Where(squirrel.Eq{"id": memberID}).
+		ToSql()
+	if err != nil {
+		return false, fmt.Errorf("build check locked query: %w", err)
+	}
+
+	var lockedUntil *time.Time
+	if err := p.db.QueryRow(ctx, query, args...).Scan(&lockedUntil); err != nil {
+		return false, fmt.Errorf("check account locked: %w", err)
+	}
+
+	if lockedUntil == nil {
+		return false, nil
+	}
+
+	return time.Now().Before(*lockedUntil), nil
+}
+
 // MemberMetadata contains registration and login metadata for a member
 type MemberMetadata struct {
 	MemberID                uuid.UUID  `db:"id"`

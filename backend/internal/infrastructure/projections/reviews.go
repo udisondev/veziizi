@@ -88,6 +88,9 @@ func (p *ReviewsProjection) ListPendingModeration(ctx context.Context, limit, of
 		}
 		result = append(result, r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	if len(result) == 0 {
 		return []ReviewForModeration{}, 0, nil
@@ -135,6 +138,9 @@ func (p *ReviewsProjection) getFraudSignals(ctx context.Context, reviewID uuid.U
 			return nil, fmt.Errorf("scan signal: %w", err)
 		}
 		signals = append(signals, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	return signals, nil
@@ -203,6 +209,9 @@ func (p *ReviewsProjection) ListReviewsForActivation(ctx context.Context, limit 
 		}
 		ids = append(ids, id)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return ids, nil
 }
@@ -217,29 +226,27 @@ type ReviewsByReviewerFilter struct {
 
 func (p *ReviewsProjection) ListByReviewer(ctx context.Context, filter ReviewsByReviewerFilter) ([]ReviewListItem, int, error) {
 	// Строим запрос с COUNT(*) OVER() для получения total в одном запросе
-	var statusFilter string
-	args := []any{filter.ReviewerOrgID}
-	argNum := 2
+	qb := p.psql.
+		Select(
+			"id", "order_id", "reviewer_org_id", "reviewed_org_id",
+			"rating", "comment", "status", "raw_weight", "final_weight",
+			"fraud_score", "activation_date", "created_at",
+			"COUNT(*) OVER() as total_count",
+		).
+		From("reviews_lookup").
+		Where(squirrel.Eq{"reviewer_org_id": filter.ReviewerOrgID}).
+		OrderBy("created_at DESC").
+		Limit(uint64(filter.Limit)).
+		Offset(uint64(filter.Offset))
 
 	if filter.Status != nil {
-		statusFilter = fmt.Sprintf(" AND status = $%d", argNum)
-		args = append(args, filter.Status.String())
-		argNum++
+		qb = qb.Where(squirrel.Eq{"status": filter.Status.String()})
 	}
 
-	query := fmt.Sprintf(`
-		SELECT
-			id, order_id, reviewer_org_id, reviewed_org_id,
-			rating, comment, status, raw_weight, final_weight,
-			fraud_score, activation_date, created_at,
-			COUNT(*) OVER() as total_count
-		FROM reviews_lookup
-		WHERE reviewer_org_id = $1%s
-		ORDER BY created_at DESC
-		LIMIT $%d OFFSET $%d
-	`, statusFilter, argNum, argNum+1)
-
-	args = append(args, filter.Limit, filter.Offset)
+	query, args, err := qb.ToSql()
+	if err != nil {
+		return nil, 0, fmt.Errorf("build query: %w", err)
+	}
 
 	rows, err := p.db.Query(ctx, query, args...)
 	if err != nil {
@@ -260,6 +267,9 @@ func (p *ReviewsProjection) ListByReviewer(ctx context.Context, filter ReviewsBy
 			return nil, 0, fmt.Errorf("scan row: %w", err)
 		}
 		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	if len(result) == 0 {
@@ -299,6 +309,9 @@ func (p *ReviewsProjection) ListActiveReviewsByReviewer(ctx context.Context, rev
 			return nil, fmt.Errorf("scan id: %w", err)
 		}
 		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	return ids, nil

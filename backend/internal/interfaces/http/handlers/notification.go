@@ -144,6 +144,10 @@ func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "notification_ids is required")
 		return
 	}
+	if len(req.NotificationIDs) > 100 {
+		writeError(w, http.StatusBadRequest, "too many notification_ids (max 100)")
+		return
+	}
 
 	input := notifApp.MarkAsReadInput{
 		NotificationIDs: req.NotificationIDs,
@@ -254,7 +258,6 @@ func (h *NotificationHandler) GenerateLinkCode(w http.ResponseWriter, r *http.Re
 
 	slog.Info("telegram link code generated",
 		slog.String("member_id", memberID.String()),
-		slog.String("code", response.Code),
 	)
 
 	writeJSON(w, http.StatusOK, response)

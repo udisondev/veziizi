@@ -7,6 +7,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
+	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/aggregate"
 	"github.com/google/uuid"
@@ -29,7 +30,8 @@ type FreightRequest struct {
 	createdAt           time.Time
 	cancelledAt         *time.Time
 
-	offers        map[uuid.UUID]*entities.Offer
+	offers      map[uuid.UUID]*entities.Offer
+	offersCache []*entities.Offer
 	selectedOffer *uuid.UUID
 
 	// After offer confirmed
@@ -118,7 +120,15 @@ func (f *FreightRequest) FreightVersion() int                       { return f.f
 func (f *FreightRequest) ExpiresAt() time.Time                      { return f.expiresAt }
 func (f *FreightRequest) CreatedAt() time.Time                      { return f.createdAt }
 func (f *FreightRequest) CancelledAt() *time.Time                   { return f.cancelledAt }
-func (f *FreightRequest) Offers() map[uuid.UUID]*entities.Offer     { return f.offers }
+func (f *FreightRequest) OffersList() []*entities.Offer {
+	if f.offersCache == nil {
+		f.offersCache = make([]*entities.Offer, 0, len(f.offers))
+		for _, o := range f.offers {
+			f.offersCache = append(f.offersCache, o)
+		}
+	}
+	return f.offersCache
+}
 func (f *FreightRequest) SelectedOfferID() *uuid.UUID               { return f.selectedOffer }
 func (f *FreightRequest) ConfirmedAt() *time.Time                   { return f.confirmedAt }
 func (f *FreightRequest) ConfirmedOfferID() *uuid.UUID              { return f.confirmedOfferID }
@@ -147,8 +157,8 @@ func (f *FreightRequest) IsExpired() bool {
 }
 
 func (f *FreightRequest) CanAcceptOffers() bool {
-	return f.status == values.FreightRequestStatusPublished ||
-		f.status == values.FreightRequestStatusSelected
+	return (f.status == values.FreightRequestStatusPublished ||
+		f.status == values.FreightRequestStatusSelected) && !f.IsExpired()
 }
 
 func (f *FreightRequest) HasSelectedOffer() bool {
@@ -252,12 +262,16 @@ func (f *FreightRequest) Cancel(actorID uuid.UUID, reason string) error {
 	return nil
 }
 
-func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID) error {
+func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID, actorRole orgValues.MemberRole) error {
+	// Только owner/admin может переназначать
+	if actorRole != orgValues.MemberRoleOwner && actorRole != orgValues.MemberRoleAdministrator {
+		return ErrNotResponsibleMember
+	}
 	// Запрещаем переназначение только для терминальных статусов
 	if f.status == values.FreightRequestStatusCancelled ||
 		f.status == values.FreightRequestStatusCancelledAfterConfirmed ||
 		f.status == values.FreightRequestStatusCompleted {
-		return ErrFreightRequestCancelled
+		return ErrFreightRequestTerminalStatus
 	}
 	if f.customerMemberID == newMemberID {
 		return nil // no-op
@@ -274,8 +288,17 @@ func (f *FreightRequest) Reassign(actorID uuid.UUID, newMemberID uuid.UUID) erro
 }
 
 func (f *FreightRequest) Expire() error {
-	if !f.IsPublished() {
+	if !f.IsPublished() && f.status != values.FreightRequestStatusSelected {
 		return ErrFreightRequestNotPublished
+	}
+
+	// Отменяем selected оффер (если есть) при истечении из статуса selected
+	if f.selectedOffer != nil {
+		f.Apply(events.OfferCancelledWithRequest{
+			BaseEvent: eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+			OfferID:   *f.selectedOffer,
+			Reason:    "freight request expired",
+		})
 	}
 
 	f.Apply(events.FreightRequestExpired{
@@ -294,11 +317,11 @@ func (f *FreightRequest) MakeOffer(
 	vatType values.VatType,
 	paymentMethod values.PaymentMethod,
 ) error {
-	if !f.CanAcceptOffers() {
-		return ErrFreightRequestNotPublished
-	}
 	if f.IsExpired() {
 		return ErrFreightRequestExpired
+	}
+	if !f.CanAcceptOffers() {
+		return ErrFreightRequestNotPublished
 	}
 	if f.customerOrgID == carrierOrgID {
 		return ErrCannotOfferOwnRequest
@@ -326,13 +349,19 @@ func (f *FreightRequest) MakeOffer(
 	return nil
 }
 
-func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorOrgID uuid.UUID, reason string) error {
+func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole orgValues.MemberRole, reason string) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
 	}
 	if offer.CarrierOrgID() != actorOrgID {
 		return ErrNotOfferOwner
+	}
+	// Создатель оффера или owner/admin организации
+	isCreator := offer.CarrierMemberID() == actorMemberID
+	isOwnerOrAdmin := actorRole == orgValues.MemberRoleOwner || actorRole == orgValues.MemberRoleAdministrator
+	if !isCreator && !isOwnerOrAdmin {
+		return ErrNotResponsibleMember
 	}
 	if !offer.IsPending() {
 		return ErrOfferNotPending
@@ -341,7 +370,7 @@ func (f *FreightRequest) WithdrawOffer(offerID uuid.UUID, actorOrgID uuid.UUID, 
 	f.Apply(events.OfferWithdrawn{
 		BaseEvent:   eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		OfferID:     offerID,
-		WithdrawnBy: actorOrgID,
+		WithdrawnBy: actorMemberID,
 		Reason:      reason,
 	})
 
@@ -412,7 +441,7 @@ func (f *FreightRequest) RejectOffer(offerID uuid.UUID, actorID uuid.UUID, actor
 	return nil
 }
 
-func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole string) error {
+func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole orgValues.MemberRole) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
@@ -421,7 +450,7 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 		return ErrNotOfferOwner
 	}
 	// Проверка: владелец, администратор организации или создатель предложения
-	isOwnerOrAdmin := actorRole == "owner" || actorRole == "administrator"
+	isOwnerOrAdmin := actorRole == orgValues.MemberRoleOwner || actorRole == orgValues.MemberRoleAdministrator
 	isCreator := offer.CarrierMemberID() == actorMemberID
 	if !isOwnerOrAdmin && !isCreator {
 		return ErrNotResponsibleMember
@@ -433,7 +462,7 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	f.Apply(events.OfferConfirmed{
 		BaseEvent:   eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		OfferID:     offerID,
-		ConfirmedBy: actorOrgID,
+		ConfirmedBy: actorMemberID,
 	})
 
 	// Отклоняем все другие pending офферы
@@ -442,7 +471,7 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 			f.Apply(events.OfferRejected{
 				BaseEvent:  eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 				OfferID:    otherOfferID,
-				RejectedBy: actorOrgID,
+				RejectedBy: actorMemberID,
 				Reason:     "another offer was confirmed",
 			})
 		}
@@ -451,7 +480,7 @@ func (f *FreightRequest) ConfirmOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	return nil
 }
 
-func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole string, reason string) error {
+func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID, actorOrgID uuid.UUID, actorRole orgValues.MemberRole, reason string) error {
 	offer, ok := f.offers[offerID]
 	if !ok {
 		return ErrOfferNotFound
@@ -460,7 +489,7 @@ func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 		return ErrNotOfferOwner
 	}
 	// Проверка: владелец, администратор организации или создатель предложения
-	isOwnerOrAdmin := actorRole == "owner" || actorRole == "administrator"
+	isOwnerOrAdmin := actorRole == orgValues.MemberRoleOwner || actorRole == orgValues.MemberRoleAdministrator
 	isCreator := offer.CarrierMemberID() == actorMemberID
 	if !isOwnerOrAdmin && !isCreator {
 		return ErrNotResponsibleMember
@@ -472,7 +501,7 @@ func (f *FreightRequest) DeclineOffer(offerID uuid.UUID, actorMemberID uuid.UUID
 	f.Apply(events.OfferDeclined{
 		BaseEvent:  eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		OfferID:    offerID,
-		DeclinedBy: actorOrgID,
+		DeclinedBy: actorMemberID,
 		Reason:     reason,
 	})
 
@@ -605,30 +634,51 @@ func (f *FreightRequest) LeaveReview(reviewID uuid.UUID, reviewerOrgID uuid.UUID
 
 	var reviewedOrgID uuid.UUID
 	if isCustomer {
+		if f.carrierOrgID == nil {
+			return ErrNotConfirmed
+		}
 		reviewedOrgID = *f.carrierOrgID
 	} else {
 		reviewedOrgID = f.customerOrgID
 	}
 
-	// Безопасное получение цены (может быть nil если заявка без ставки)
+	// Получаем цену из подтверждённого оффера (реальная согласованная цена)
 	var freightAmount int64
 	var freightCurrency string
-	if f.payment.Price != nil {
-		freightAmount = f.payment.Price.Amount
-		freightCurrency = string(f.payment.Price.Currency)
+	if f.confirmedOfferID != nil {
+		if offer, ok := f.offers[*f.confirmedOfferID]; ok {
+			freightAmount = offer.Price().Amount
+			freightCurrency = string(offer.Price().Currency)
+		}
+	}
+
+	// Используем реальное время завершения перевозки
+	// При partial completion (одна сторона завершила) completedAt ещё nil,
+	// поэтому берём время завершения конкретной стороны
+	var completedAt int64
+	switch {
+	case f.completedAt != nil:
+		completedAt = f.completedAt.Unix()
+	case isCustomer && f.customerCompletedAt != nil:
+		completedAt = f.customerCompletedAt.Unix()
+	case isCarrier && f.carrierCompletedAt != nil:
+		completedAt = f.carrierCompletedAt.Unix()
+	default:
+		completedAt = time.Now().Unix()
 	}
 
 	f.Apply(events.ReviewLeft{
 		BaseEvent:        eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
 		ReviewID:         reviewID,
 		ReviewerOrgID:    reviewerOrgID,
+		ReviewerMemberID: memberID,
 		ReviewedOrgID:    reviewedOrgID,
 		Rating:           rating,
 		Comment:          comment,
 		FreightAmount:    freightAmount,
 		FreightCurrency:  freightCurrency,
 		FreightCreatedAt: f.createdAt.Unix(),
-		CompletedAt:      time.Now().Unix(),
+		CompletedAt:      completedAt,
 	})
 
 	return nil
@@ -676,9 +726,9 @@ func (f *FreightRequest) EditReview(reviewerOrgID uuid.UUID, memberID uuid.UUID,
 	return nil
 }
 
-// CancelAfterConfirmed cancels freight after offer was confirmed
+// CancelAfterConfirmed cancels freight after offer was confirmed (only in confirmed status, not partially completed)
 func (f *FreightRequest) CancelAfterConfirmed(orgID, memberID uuid.UUID, reason string) error {
-	if !f.CanComplete() {
+	if !f.IsConfirmed() {
 		return ErrCannotCancelAfterConfirmed
 	}
 
@@ -687,6 +737,17 @@ func (f *FreightRequest) CancelAfterConfirmed(orgID, memberID uuid.UUID, reason 
 
 	if !isCustomer && !isCarrier {
 		return ErrCannotCompleteNotParticipant
+	}
+
+	// Проверка что это ответственный участник
+	if isCustomer {
+		if f.customerMemberID != memberID {
+			return ErrNotResponsibleMember
+		}
+	} else {
+		if f.carrierMemberID == nil || *f.carrierMemberID != memberID {
+			return ErrNotResponsibleMember
+		}
 	}
 
 	role := "customer"
@@ -705,7 +766,7 @@ func (f *FreightRequest) CancelAfterConfirmed(orgID, memberID uuid.UUID, reason 
 }
 
 // ReassignCarrierMember reassigns the carrier's responsible member
-func (f *FreightRequest) ReassignCarrierMember(actorID uuid.UUID, newMemberID uuid.UUID, actorRole string) error {
+func (f *FreightRequest) ReassignCarrierMember(actorID uuid.UUID, newMemberID uuid.UUID, actorRole orgValues.MemberRole) error {
 	if !f.CanComplete() {
 		return ErrNotConfirmed
 	}
@@ -717,7 +778,7 @@ func (f *FreightRequest) ReassignCarrierMember(actorID uuid.UUID, newMemberID uu
 	}
 
 	// Only owner/admin of carrier org can reassign
-	isOwnerOrAdmin := actorRole == "owner" || actorRole == "administrator"
+	isOwnerOrAdmin := actorRole == orgValues.MemberRoleOwner || actorRole == orgValues.MemberRoleAdministrator
 	if !isOwnerOrAdmin {
 		return ErrNotResponsibleMember
 	}
@@ -740,6 +801,8 @@ func (f *FreightRequest) Apply(evt eventstore.Event) {
 
 // apply updates state from event (used by both Apply and Replay)
 func (f *FreightRequest) apply(evt eventstore.Event) {
+	f.offersCache = nil
+
 	switch e := evt.(type) {
 	case events.FreightRequestCreated:
 		f.requestNumber = e.RequestNumber
@@ -880,7 +943,7 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 		)
 		if e.ReviewerOrgID == f.customerOrgID {
 			f.customerReview = &review
-		} else {
+		} else if f.carrierOrgID != nil && e.ReviewerOrgID == *f.carrierOrgID {
 			f.carrierReview = &review
 		}
 
@@ -888,7 +951,7 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 		if e.ReviewerOrgID == f.customerOrgID && f.customerReview != nil {
 			updated := f.customerReview.WithUpdatedRatingAndComment(e.NewRating, e.NewComment)
 			f.customerReview = &updated
-		} else if f.carrierReview != nil {
+		} else if f.carrierOrgID != nil && e.ReviewerOrgID == *f.carrierOrgID && f.carrierReview != nil {
 			updated := f.carrierReview.WithUpdatedRatingAndComment(e.NewRating, e.NewComment)
 			f.carrierReview = &updated
 		}
@@ -1122,21 +1185,10 @@ func (f *FreightRequest) FromSnapshot(state any) error {
 	return nil
 }
 
-// restoreOfferStatus sets offer to target status
+// restoreOfferStatus sets offer to target status directly from snapshot
 func restoreOfferStatus(o *entities.Offer, target values.OfferStatus) {
-	switch target {
-	case values.OfferStatusSelected:
-		_ = o.Select()
-	case values.OfferStatusConfirmed:
-		_ = o.Select()
-		_ = o.Confirm()
-	case values.OfferStatusRejected:
-		_ = o.Reject()
-	case values.OfferStatusWithdrawn:
-		_ = o.Withdraw()
-	case values.OfferStatusDeclined:
-		_ = o.Select()
-		_ = o.Decline()
+	if target != values.OfferStatusPending {
+		o.RestoreStatus(target)
 	}
 }
 

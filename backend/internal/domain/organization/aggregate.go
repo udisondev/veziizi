@@ -35,6 +35,9 @@ type Organization struct {
 
 	members     map[uuid.UUID]*entities.Member
 	invitations map[uuid.UUID]*entities.Invitation
+
+	membersCache     []entities.Member
+	invitationsCache []entities.Invitation
 }
 
 // New creates a new Organization (for registration)
@@ -129,12 +132,24 @@ func (o *Organization) FraudsterMarkedAt() *time.Time { return o.fraudsterMarked
 func (o *Organization) FraudsterMarkedBy() *uuid.UUID { return o.fraudsterMarkedBy }
 func (o *Organization) FraudsterReason() string       { return o.fraudsterReason }
 
-func (o *Organization) Members() map[uuid.UUID]*entities.Member {
-	return o.members
+func (o *Organization) MembersList() []entities.Member {
+	if o.membersCache == nil {
+		o.membersCache = make([]entities.Member, 0, len(o.members))
+		for _, m := range o.members {
+			o.membersCache = append(o.membersCache, *m)
+		}
+	}
+	return o.membersCache
 }
 
-func (o *Organization) Invitations() map[uuid.UUID]*entities.Invitation {
-	return o.invitations
+func (o *Organization) InvitationsList() []entities.Invitation {
+	if o.invitationsCache == nil {
+		o.invitationsCache = make([]entities.Invitation, 0, len(o.invitations))
+		for _, inv := range o.invitations {
+			o.invitationsCache = append(o.invitationsCache, *inv)
+		}
+	}
+	return o.invitationsCache
 }
 
 func (o *Organization) GetMember(id uuid.UUID) (*entities.Member, bool) {
@@ -209,6 +224,9 @@ func (o *Organization) Suspend(adminID uuid.UUID, reason string) error {
 }
 
 func (o *Organization) Update(actorID uuid.UUID, name, phone, email *string, address *values.Address) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("update organization %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
 		return fmt.Errorf("update organization %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
@@ -239,6 +257,9 @@ func (o *Organization) CreateInvitation(
 	name *string,
 	phone *string,
 ) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("create invitation in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
 		return fmt.Errorf("create invitation in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
@@ -277,18 +298,18 @@ func (o *Organization) CreateInvitation(
 func (o *Organization) CancelInvitation(actorID, invitationID uuid.UUID) error {
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("cancel invitation in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("cancel invitation in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	inv, ok := o.invitations[invitationID]
 	if !ok {
-		return ErrInvitationNotFound
+		return fmt.Errorf("cancel invitation %s in org %s: %w", invitationID, o.ID(), ErrInvitationNotFound)
 	}
 	if !inv.CanBeCancelled() {
-		return ErrInvitationCannotBeCancelled
+		return fmt.Errorf("cancel invitation %s in org %s: %w", invitationID, o.ID(), ErrInvitationCannotBeCancelled)
 	}
 
 	o.Apply(events.InvitationCancelled{
@@ -310,6 +331,10 @@ func (o *Organization) AcceptInvitation(
 	registrationFingerprint string,
 	registrationUserAgent string,
 ) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("accept invitation in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
+
 	inv, ok := o.invitations[invitationID]
 	if !ok {
 		return ErrInvitationNotFound
@@ -317,6 +342,9 @@ func (o *Organization) AcceptInvitation(
 	if !inv.CanBeAccepted() {
 		if inv.IsExpired() {
 			return ErrInvitationExpired
+		}
+		if inv.IsCancelled() {
+			return ErrInvitationCancelled
 		}
 		return ErrInvitationAlreadyUsed
 	}
@@ -365,25 +393,28 @@ func (o *Organization) AcceptInvitation(
 }
 
 func (o *Organization) ChangeMemberRole(actorID, memberID uuid.UUID, newRole values.MemberRole) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("change member role in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("change role in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("change role in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	member, ok := o.members[memberID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("change role for member %s in org %s: %w", memberID, o.ID(), ErrMemberNotFound)
 	}
 
 	if actorID == memberID {
-		return ErrCannotChangeOwnRole
+		return fmt.Errorf("change role in org %s: %w", o.ID(), ErrCannotChangeOwnRole)
 	}
 
 	if member.Role() == values.MemberRoleOwner {
-		return ErrMemberCannotBeRemoved
+		return fmt.Errorf("change role for member %s in org %s: %w", memberID, o.ID(), ErrMemberCannotBeRemoved)
 	}
 
 	o.Apply(events.MemberRoleChanged{
@@ -398,25 +429,32 @@ func (o *Organization) ChangeMemberRole(actorID, memberID uuid.UUID, newRole val
 }
 
 func (o *Organization) BlockMember(actorID, memberID uuid.UUID, reason string) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("block member in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("block member in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("block member in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	member, ok := o.members[memberID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("block member %s in org %s: %w", memberID, o.ID(), ErrMemberNotFound)
 	}
 
 	if actorID == memberID {
-		return ErrCannotBlockSelf
+		return fmt.Errorf("block member in org %s: %w", o.ID(), ErrCannotBlockSelf)
 	}
 
 	if member.Role() == values.MemberRoleOwner {
-		return ErrMemberCannotBeRemoved
+		return fmt.Errorf("block member %s in org %s: %w", memberID, o.ID(), ErrMemberCannotBeRemoved)
+	}
+
+	if !member.IsActive() {
+		return nil // already blocked, no-op
 	}
 
 	o.Apply(events.MemberBlocked{
@@ -430,16 +468,24 @@ func (o *Organization) BlockMember(actorID, memberID uuid.UUID, reason string) e
 }
 
 func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("unblock member in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("unblock member in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("unblock member in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
-	if _, ok := o.members[memberID]; !ok {
-		return ErrMemberNotFound
+	member, ok := o.members[memberID]
+	if !ok {
+		return fmt.Errorf("unblock member %s in org %s: %w", memberID, o.ID(), ErrMemberNotFound)
+	}
+
+	if member.IsActive() {
+		return nil // already active, no-op
 	}
 
 	o.Apply(events.MemberUnblocked{
@@ -458,6 +504,10 @@ func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
 // - Cannot edit blocked members
 // - nil values mean "don't change"
 func (o *Organization) UpdateMemberInfo(actorID, memberID uuid.UUID, name, email, phone *string) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("update member info in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
+
 	actor, ok := o.members[actorID]
 	if !ok {
 		return ErrMemberNotFound
@@ -466,6 +516,11 @@ func (o *Organization) UpdateMemberInfo(actorID, memberID uuid.UUID, name, email
 	member, ok := o.members[memberID]
 	if !ok {
 		return ErrMemberNotFound
+	}
+
+	// Cannot edit blocked members
+	if !member.IsActive() {
+		return ErrMemberNotActive
 	}
 
 	// Owner can only be edited by themselves
@@ -489,6 +544,10 @@ func (o *Organization) UpdateMemberInfo(actorID, memberID uuid.UUID, name, email
 	newEmail := member.Email()
 	if email != nil {
 		newEmail = *email
+		// Проверяем уникальность email внутри организации
+		if existingMember, exists := o.GetMemberByEmail(newEmail); exists && existingMember.ID() != memberID {
+			return fmt.Errorf("update member info in org %s: %w", o.ID(), ErrMemberAlreadyExists)
+		}
 	}
 	newPhone := member.Phone()
 	if phone != nil {
@@ -593,6 +652,9 @@ func (o *Organization) Apply(evt eventstore.Event) {
 
 // apply updates state from event (used by both Apply and Replay)
 func (o *Organization) apply(evt eventstore.Event) {
+	o.membersCache = nil
+	o.invitationsCache = nil
+
 	switch e := evt.(type) {
 	case events.OrganizationCreated:
 		o.name = e.Name
@@ -637,6 +699,7 @@ func (o *Organization) apply(evt eventstore.Event) {
 			e.Name,
 			e.Phone,
 			e.Role,
+			e.OccurredAt(),
 		)
 		o.members[e.MemberID] = &member
 
@@ -670,6 +733,7 @@ func (o *Organization) apply(evt eventstore.Event) {
 			e.Role,
 			e.Token,
 			e.CreatedBy,
+			e.OccurredAt(),
 			time.Unix(e.ExpiresAt, 0),
 			e.Name,
 			e.Phone,
@@ -694,8 +758,10 @@ func (o *Organization) apply(evt eventstore.Event) {
 	case events.FraudsterMarked:
 		if e.IsConfirmed {
 			o.isConfirmedFraudster = true
+			o.isSuspectedFraudster = false
 		} else {
 			o.isSuspectedFraudster = true
+			o.isConfirmedFraudster = false
 		}
 		now := e.OccurredAt()
 		o.fraudsterMarkedAt = &now

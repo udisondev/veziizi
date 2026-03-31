@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
@@ -92,6 +93,31 @@ func (m *Manager) SetAuth(r *http.Request, w http.ResponseWriter, memberID, orgI
 	session.Values[KeyRole] = role
 
 	return m.Save(r, w, session)
+}
+
+// RegenerateAndSetAuth invalidates the old session and creates a new one with auth data.
+// Prevents session fixation attacks.
+func (m *Manager) RegenerateAndSetAuth(r *http.Request, w http.ResponseWriter, memberID, orgID uuid.UUID, role string) error {
+	// Invalidate old session
+	oldSession, err := m.Get(r)
+	if err == nil {
+		oldSession.Options.MaxAge = -1
+		if err := m.Save(r, w, oldSession); err != nil {
+			return fmt.Errorf("invalidate old session: %w", err)
+		}
+	}
+
+	// Create new session with auth data
+	newSession, err := m.store.New(r, m.name)
+	if err != nil {
+		return fmt.Errorf("create new session: %w", err)
+	}
+
+	newSession.Values[KeyMemberID] = memberID.String()
+	newSession.Values[KeyOrganizationID] = orgID.String()
+	newSession.Values[KeyRole] = role
+
+	return m.Save(r, w, newSession)
 }
 
 func (m *Manager) GetRole(r *http.Request) (string, bool) {
