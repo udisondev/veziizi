@@ -298,18 +298,18 @@ func (o *Organization) CreateInvitation(
 func (o *Organization) CancelInvitation(actorID, invitationID uuid.UUID) error {
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("cancel invitation in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("cancel invitation in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	inv, ok := o.invitations[invitationID]
 	if !ok {
-		return ErrInvitationNotFound
+		return fmt.Errorf("cancel invitation %s in org %s: %w", invitationID, o.ID(), ErrInvitationNotFound)
 	}
 	if !inv.CanBeCancelled() {
-		return ErrInvitationCannotBeCancelled
+		return fmt.Errorf("cancel invitation %s in org %s: %w", invitationID, o.ID(), ErrInvitationCannotBeCancelled)
 	}
 
 	o.Apply(events.InvitationCancelled{
@@ -391,23 +391,23 @@ func (o *Organization) ChangeMemberRole(actorID, memberID uuid.UUID, newRole val
 	}
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("change role in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("change role in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	member, ok := o.members[memberID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("change role for member %s in org %s: %w", memberID, o.ID(), ErrMemberNotFound)
 	}
 
 	if actorID == memberID {
-		return ErrCannotChangeOwnRole
+		return fmt.Errorf("change role in org %s: %w", o.ID(), ErrCannotChangeOwnRole)
 	}
 
 	if member.Role() == values.MemberRoleOwner {
-		return ErrMemberCannotBeRemoved
+		return fmt.Errorf("change role for member %s in org %s: %w", memberID, o.ID(), ErrMemberCannotBeRemoved)
 	}
 
 	o.Apply(events.MemberRoleChanged{
@@ -427,23 +427,23 @@ func (o *Organization) BlockMember(actorID, memberID uuid.UUID, reason string) e
 	}
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("block member in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("block member in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	member, ok := o.members[memberID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("block member %s in org %s: %w", memberID, o.ID(), ErrMemberNotFound)
 	}
 
 	if actorID == memberID {
-		return ErrCannotBlockSelf
+		return fmt.Errorf("block member in org %s: %w", o.ID(), ErrCannotBlockSelf)
 	}
 
 	if member.Role() == values.MemberRoleOwner {
-		return ErrMemberCannotBeRemoved
+		return fmt.Errorf("block member %s in org %s: %w", memberID, o.ID(), ErrMemberCannotBeRemoved)
 	}
 
 	if !member.IsActive() {
@@ -466,15 +466,15 @@ func (o *Organization) UnblockMember(actorID, memberID uuid.UUID) error {
 	}
 	actor, ok := o.members[actorID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("unblock member in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
 	}
 	if !actor.CanManageMembers() {
-		return ErrInsufficientPermissions
+		return fmt.Errorf("unblock member in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
 	}
 
 	member, ok := o.members[memberID]
 	if !ok {
-		return ErrMemberNotFound
+		return fmt.Errorf("unblock member %s in org %s: %w", memberID, o.ID(), ErrMemberNotFound)
 	}
 
 	if member.IsActive() {

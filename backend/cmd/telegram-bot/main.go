@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 )
 
 const (
 	botName    = "telegram-bot"
-	logFile    = "telegram-bot.log"
 	pollPeriod = 1 * time.Second
 )
 
@@ -35,16 +35,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	file, err := setupLogger(cfg.App.LogLevel)
+	logFile, err := logging.Setup(cfg.App.LogLevel, cfg.App.LogFile)
 	if err != nil {
-		slog.Error("failed to setup logger", slog.String("error", err.Error()))
+		slog.Error("failed to setup logger", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			slog.Error("failed to close log file", slog.String("error", err.Error()))
-		}
-	}()
+	if logFile != nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("failed to close log file", "error", err)
+			}
+		}()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -187,7 +189,11 @@ func (b *Bot) getUpdates(ctx context.Context) ([]Update, error) {
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("failed to close response body", "error", err)
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -287,7 +293,11 @@ func (b *Bot) sendMessage(chatID int64, text string) {
 		slog.Error("failed to send message", slog.String("error", err.Error()))
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("failed to close response body", "error", err)
+		}
+	}()
 }
 
 func isValidCode(s string) bool {
@@ -307,21 +317,3 @@ func (b *Bot) cleanupProcessedUpdates() {
 	b.processedUpdates = make(map[int64]struct{})
 }
 
-func setupLogger(levelStr string) (*os.File, error) {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(levelStr)); err != nil {
-		level = slog.LevelInfo
-	}
-
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	handler := slog.NewJSONHandler(file, &slog.HandlerOptions{
-		Level: level,
-	})
-	slog.SetDefault(slog.New(handler))
-
-	return file, nil
-}

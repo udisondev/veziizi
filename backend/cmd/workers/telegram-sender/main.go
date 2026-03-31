@@ -14,6 +14,7 @@ import (
 
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
@@ -24,7 +25,6 @@ const (
 	workerName    = "telegram-sender"
 	consumerGroup = "telegram_sender"
 	topic         = "notification.telegram"
-	logFile       = "telegram-sender-worker.log"
 )
 
 func main() {
@@ -40,16 +40,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	file, err := setupLogger(cfg.App.LogLevel)
+	logFile, err := logging.Setup(cfg.App.LogLevel, cfg.App.LogFile)
 	if err != nil {
-		slog.Error("failed to setup logger", slog.String("error", err.Error()))
+		slog.Error("failed to setup logger", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			slog.Error("failed to close log file", slog.String("error", err.Error()))
-		}
-	}()
+	if logFile != nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("failed to close log file", "error", err)
+			}
+		}()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -140,21 +142,3 @@ func main() {
 	}
 }
 
-func setupLogger(levelStr string) (*os.File, error) {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(levelStr)); err != nil {
-		level = slog.LevelInfo
-	}
-
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	handler := slog.NewJSONHandler(file, &slog.HandlerOptions{
-		Level: level,
-	})
-	slog.SetDefault(slog.New(handler))
-
-	return file, nil
-}
