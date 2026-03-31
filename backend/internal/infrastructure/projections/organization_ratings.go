@@ -199,6 +199,9 @@ func (p *OrganizationRatingsProjection) ListReviews(ctx context.Context, orgID u
 		}
 		result = append(result, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return result, total, nil
 }
@@ -268,6 +271,9 @@ func (p *OrganizationRatingsProjection) ListReviewsByCursor(ctx context.Context,
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	// Определяем hasMore и обрезаем до limit

@@ -117,7 +117,8 @@ func Run(cfg Config) {
 	case <-shutdownDone:
 		slog.Info(fmt.Sprintf("%s worker shutdown complete", cfg.Name))
 	case <-time.After(30 * time.Second):
-		slog.Error(fmt.Sprintf("%s worker shutdown timed out", cfg.Name))
+		slog.Error(fmt.Sprintf("%s worker shutdown timed out, forcing exit", cfg.Name))
+		os.Exit(1)
 	}
 }
 

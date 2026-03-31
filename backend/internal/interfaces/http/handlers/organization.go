@@ -664,8 +664,20 @@ func (h *OrganizationHandler) UpdateMemberInfo(w http.ResponseWriter, r *http.Re
 
 // isValidEmail performs basic email format validation
 func isValidEmail(email string) bool {
+	if len(email) > 254 {
+		return false
+	}
 	at := strings.Index(email, "@")
 	if at < 1 {
+		return false
+	}
+	// Не должно быть несколько @
+	if strings.Count(email, "@") != 1 {
+		return false
+	}
+	domain := email[at+1:]
+	// Домен не должен начинаться/заканчиваться на точку и не содержать ".."
+	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") || strings.Contains(domain, "..") {
 		return false
 	}
 	dot := strings.LastIndex(email, ".")

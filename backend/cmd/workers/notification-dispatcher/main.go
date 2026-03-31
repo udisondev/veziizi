@@ -26,7 +26,6 @@ import (
 const (
 	workerName    = "notification-dispatcher"
 	consumerGroup = "notification_dispatcher"
-	logFile       = "notification-dispatcher-worker.log"
 )
 
 var topics = []string{

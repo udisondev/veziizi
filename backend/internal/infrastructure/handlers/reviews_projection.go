@@ -104,17 +104,17 @@ func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.Revi
 
 	// Increment pending reviews counter
 	if err := h.ratings.IncrementPendingReviews(ctx, e.ReviewedOrgID); err != nil {
-		slog.Error("failed to increment pending reviews", "error", err, "action", "skipped_retry")
+		return fmt.Errorf("increment pending reviews: %w", err)
 	}
 
 	// Update interaction stats (атомарный INSERT/UPDATE)
 	if err := h.fraudData.IncrementReviewStats(ctx, e.ReviewerOrgID, e.ReviewedOrgID, e.Rating); err != nil {
-		slog.Error("failed to update interaction stats", "error", err, "action", "skipped_retry")
+		return fmt.Errorf("update interaction stats: %w", err)
 	}
 
 	// Increment total reviews left by reviewer (атомарный INSERT/UPDATE)
 	if err := h.fraudData.IncrementTotalReviewsLeft(ctx, e.ReviewerOrgID); err != nil {
-		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
+		return fmt.Errorf("update reviewer reputation: %w", err)
 	}
 
 	return nil
@@ -128,54 +128,52 @@ func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.Revi
 		slog.Bool("requires_moderation", e.RequiresModeration),
 	)
 
-	// Determine status after analysis
-	status := values.StatusApproved.String()
-	if e.RequiresModeration {
-		status = values.StatusPendingModeration.String()
-	}
-
-	analyzedAt := e.OccurredAt()
-
-	// Update reviews_lookup
-	query := `
-		UPDATE reviews_lookup SET
-			raw_weight = $2,
-			fraud_score = $3,
-			requires_moderation = $4,
-			activation_date = $5,
-			analyzed_at = $6,
-			status = $7
-		WHERE id = $1
-	`
-	if _, err := h.db.Exec(ctx, query,
-		e.AggregateID(), e.RawWeight, e.FraudScore, e.RequiresModeration,
-		e.ActivationDate, analyzedAt, status,
-	); err != nil {
-		return fmt.Errorf("update review lookup: %w", err)
-	}
-
-	// Insert fraud signals (batch INSERT)
-	if len(e.FraudSignals) > 0 {
-		signals := make([]projections.FraudSignalInput, 0, len(e.FraudSignals))
-		for _, s := range e.FraudSignals {
-			signals = append(signals, projections.FraudSignalInput{
-				SignalType:  s.Type,
-				Severity:    s.Severity,
-				Description: s.Description,
-				ScoreImpact: s.ScoreImpact,
-				Evidence:    s.Evidence,
-			})
+	return h.db.InTx(ctx, func(ctx context.Context) error {
+		// Determine status after analysis
+		status := values.StatusApproved.String()
+		if e.RequiresModeration {
+			status = values.StatusPendingModeration.String()
 		}
-		if err := h.fraudData.InsertFraudSignalsBatch(ctx, e.AggregateID(), signals); err != nil {
-			slog.Error("failed to batch insert fraud signals",
-				slog.String("review_id", e.AggregateID().String()),
-				slog.Int("count", len(signals)),
-				slog.String("error", err.Error()),
-			)
-		}
-	}
 
-	return nil
+		analyzedAt := e.OccurredAt()
+
+		// Update reviews_lookup
+		query := `
+			UPDATE reviews_lookup SET
+				raw_weight = $2,
+				fraud_score = $3,
+				requires_moderation = $4,
+				activation_date = $5,
+				analyzed_at = $6,
+				status = $7
+			WHERE id = $1
+		`
+		if _, err := h.db.Exec(ctx, query,
+			e.AggregateID(), e.RawWeight, e.FraudScore, e.RequiresModeration,
+			e.ActivationDate, analyzedAt, status,
+		); err != nil {
+			return fmt.Errorf("update review lookup: %w", err)
+		}
+
+		// Insert fraud signals (batch INSERT)
+		if len(e.FraudSignals) > 0 {
+			signals := make([]projections.FraudSignalInput, 0, len(e.FraudSignals))
+			for _, s := range e.FraudSignals {
+				signals = append(signals, projections.FraudSignalInput{
+					SignalType:  s.Type,
+					Severity:    s.Severity,
+					Description: s.Description,
+					ScoreImpact: s.ScoreImpact,
+					Evidence:    s.Evidence,
+				})
+			}
+			if err := h.fraudData.InsertFraudSignalsBatch(ctx, e.AggregateID(), signals); err != nil {
+				return fmt.Errorf("insert fraud signals batch: %w", err)
+			}
+		}
+
+		return nil
+	})
 }
 
 func (h *ReviewsProjectionHandler) onApproved(ctx context.Context, e events.ReviewApproved) error {
@@ -184,34 +182,36 @@ func (h *ReviewsProjectionHandler) onApproved(ctx context.Context, e events.Revi
 		slog.Float64("final_weight", e.FinalWeight),
 	)
 
-	moderatedAt := e.OccurredAt()
+	return h.db.InTx(ctx, func(ctx context.Context) error {
+		moderatedAt := e.OccurredAt()
 
-	// Update reviews_lookup
-	query := `
-		UPDATE reviews_lookup SET
-			final_weight = $2,
-			moderated_at = $3,
-			moderated_by = $4,
-			status = $5
-		WHERE id = $1
-	`
-	if _, err := h.db.Exec(ctx, query,
-		e.AggregateID(), e.FinalWeight, moderatedAt, e.ApprovedBy, values.StatusApproved.String(),
-	); err != nil {
-		return fmt.Errorf("update review lookup: %w", err)
-	}
-
-	// Get reviewed org ID to decrement pending
-	reviewedOrgID, err := h.getReviewedOrgID(ctx, e.AggregateID())
-	if err != nil {
-		slog.Error("failed to get reviewed org id", "error", err, "action", "skipped_retry")
-	} else {
-		if err := h.ratings.DecrementPendingReviews(ctx, reviewedOrgID); err != nil {
-			slog.Error("failed to decrement pending reviews", "error", err, "action", "skipped_retry")
+		// Update reviews_lookup
+		query := `
+			UPDATE reviews_lookup SET
+				final_weight = $2,
+				moderated_at = $3,
+				moderated_by = $4,
+				status = $5
+			WHERE id = $1
+		`
+		if _, err := h.db.Exec(ctx, query,
+			e.AggregateID(), e.FinalWeight, moderatedAt, e.ApprovedBy, values.StatusApproved.String(),
+		); err != nil {
+			return fmt.Errorf("update review lookup: %w", err)
 		}
-	}
 
-	return nil
+		// Get reviewed org ID to decrement pending
+		reviewedOrgID, err := h.getReviewedOrgID(ctx, e.AggregateID())
+		if err != nil {
+			return fmt.Errorf("get reviewed org id: %w", err)
+		}
+
+		if err := h.ratings.DecrementPendingReviews(ctx, reviewedOrgID); err != nil {
+			return fmt.Errorf("decrement pending reviews: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.ReviewRejected) error {
@@ -220,45 +220,46 @@ func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.Revi
 		slog.String("reason", e.Reason),
 	)
 
-	moderatedAt := e.OccurredAt()
+	return h.db.InTx(ctx, func(ctx context.Context) error {
+		moderatedAt := e.OccurredAt()
 
-	// Update reviews_lookup
-	query := `
-		UPDATE reviews_lookup SET
-			moderated_at = $2,
-			moderated_by = $3,
-			status = $4
-		WHERE id = $1
-	`
-	if _, err := h.db.Exec(ctx, query,
-		e.AggregateID(), moderatedAt, e.RejectedBy, values.StatusRejected.String(),
-	); err != nil {
-		return fmt.Errorf("update review lookup: %w", err)
-	}
+		// Update reviews_lookup
+		query := `
+			UPDATE reviews_lookup SET
+				moderated_at = $2,
+				moderated_by = $3,
+				status = $4
+			WHERE id = $1
+		`
+		if _, err := h.db.Exec(ctx, query,
+			e.AggregateID(), moderatedAt, e.RejectedBy, values.StatusRejected.String(),
+		); err != nil {
+			return fmt.Errorf("update review lookup: %w", err)
+		}
 
-	// Get review data
-	reviewData, err := h.getReviewData(ctx, e.AggregateID())
-	if err != nil {
-		slog.Error("failed to get review data", "error", err, "action", "skipped_retry")
+		// Get review data
+		reviewData, err := h.getReviewData(ctx, e.AggregateID())
+		if err != nil {
+			return fmt.Errorf("get review data: %w", err)
+		}
+
+		// Decrement pending reviews
+		if err := h.ratings.DecrementPendingReviews(ctx, reviewData.ReviewedOrgID); err != nil {
+			return fmt.Errorf("decrement pending reviews: %w", err)
+		}
+
+		// Increment rejected reviews counter
+		if err := h.ratings.IncrementRejectedReviews(ctx, reviewData.ReviewedOrgID); err != nil {
+			return fmt.Errorf("increment rejected reviews: %w", err)
+		}
+
+		// Update reviewer reputation (атомарный INSERT/UPDATE)
+		if err := h.fraudData.IncrementRejectedReviews(ctx, reviewData.ReviewerOrgID, 0.1); err != nil {
+			return fmt.Errorf("update reviewer reputation: %w", err)
+		}
+
 		return nil
-	}
-
-	// Decrement pending reviews
-	if err := h.ratings.DecrementPendingReviews(ctx, reviewData.ReviewedOrgID); err != nil {
-		slog.Error("failed to decrement pending reviews", "error", err, "action", "skipped_retry")
-	}
-
-	// Increment rejected reviews counter
-	if err := h.ratings.IncrementRejectedReviews(ctx, reviewData.ReviewedOrgID); err != nil {
-		slog.Error("failed to increment rejected reviews", "error", err, "action", "skipped_retry")
-	}
-
-	// Update reviewer reputation (атомарный INSERT/UPDATE)
-	if err := h.fraudData.IncrementRejectedReviews(ctx, reviewData.ReviewerOrgID, 0.1); err != nil {
-		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
-	}
-
-	return nil
+	})
 }
 
 func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.ReviewActivated) error {
@@ -267,39 +268,41 @@ func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.Rev
 		slog.Float64("final_weight", e.FinalWeight),
 	)
 
-	activatedAt := e.OccurredAt()
+	return h.db.InTx(ctx, func(ctx context.Context) error {
+		activatedAt := e.OccurredAt()
 
-	// Update reviews_lookup
-	query := `
-		UPDATE reviews_lookup SET
-			activated_at = $2,
-			final_weight = $3,
-			status = $4
-		WHERE id = $1
-	`
-	if _, err := h.db.Exec(ctx, query,
-		e.AggregateID(), activatedAt, e.FinalWeight, values.StatusActive.String(),
-	); err != nil {
-		return fmt.Errorf("update review lookup: %w", err)
-	}
+		// Update reviews_lookup
+		query := `
+			UPDATE reviews_lookup SET
+				activated_at = $2,
+				final_weight = $3,
+				status = $4
+			WHERE id = $1
+		`
+		if _, err := h.db.Exec(ctx, query,
+			e.AggregateID(), activatedAt, e.FinalWeight, values.StatusActive.String(),
+		); err != nil {
+			return fmt.Errorf("update review lookup: %w", err)
+		}
 
-	// Get review data
-	reviewData, err := h.getReviewData(ctx, e.AggregateID())
-	if err != nil {
-		return fmt.Errorf("get review data: %w", err)
-	}
+		// Get review data
+		reviewData, err := h.getReviewData(ctx, e.AggregateID())
+		if err != nil {
+			return fmt.Errorf("get review data: %w", err)
+		}
 
-	// Add to organization ratings
-	if err := h.ratings.AddWeightedRating(ctx, reviewData.ReviewedOrgID, reviewData.Rating, e.FinalWeight); err != nil {
-		return fmt.Errorf("add weighted rating: %w", err)
-	}
+		// Add to organization ratings
+		if err := h.ratings.AddWeightedRating(ctx, reviewData.ReviewedOrgID, reviewData.Rating, e.FinalWeight); err != nil {
+			return fmt.Errorf("add weighted rating: %w", err)
+		}
 
-	// Update reviewer reputation (атомарный инкремент)
-	if err := h.fraudData.IncrementActiveReviewsLeft(ctx, reviewData.ReviewerOrgID); err != nil {
-		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
-	}
+		// Update reviewer reputation (атомарный инкремент)
+		if err := h.fraudData.IncrementActiveReviewsLeft(ctx, reviewData.ReviewerOrgID); err != nil {
+			return fmt.Errorf("update reviewer reputation: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func (h *ReviewsProjectionHandler) onDeactivated(ctx context.Context, e events.ReviewDeactivated) error {
@@ -308,38 +311,40 @@ func (h *ReviewsProjectionHandler) onDeactivated(ctx context.Context, e events.R
 		slog.String("reason", e.Reason),
 	)
 
-	// Get review data before updating
-	reviewData, err := h.getReviewData(ctx, e.AggregateID())
-	if err != nil {
-		return fmt.Errorf("get review data: %w", err)
-	}
-
-	// Check if was active (contributing to rating)
-	wasActive := reviewData.Status == values.StatusActive.String()
-
-	// Update reviews_lookup
-	query := `
-		UPDATE reviews_lookup SET
-			status = $2
-		WHERE id = $1
-	`
-	if _, err := h.db.Exec(ctx, query, e.AggregateID(), values.StatusDeactivated.String()); err != nil {
-		return fmt.Errorf("update review lookup: %w", err)
-	}
-
-	// If was active, remove from organization ratings
-	if wasActive {
-		if err := h.ratings.RemoveWeightedRating(ctx, reviewData.ReviewedOrgID, reviewData.Rating, reviewData.FinalWeight); err != nil {
-			slog.Error("failed to remove weighted rating", "error", err, "action", "skipped_retry")
+	return h.db.InTx(ctx, func(ctx context.Context) error {
+		// Get review data before updating
+		reviewData, err := h.getReviewData(ctx, e.AggregateID())
+		if err != nil {
+			return fmt.Errorf("get review data: %w", err)
 		}
-	}
 
-	// Update reviewer reputation (атомарный инкремент)
-	if err := h.fraudData.IncrementDeactivatedReviews(ctx, reviewData.ReviewerOrgID, wasActive); err != nil {
-		slog.Error("failed to update reviewer reputation", "error", err, "action", "skipped_retry")
-	}
+		// Check if was active (contributing to rating)
+		wasActive := reviewData.Status == values.StatusActive.String()
 
-	return nil
+		// Update reviews_lookup
+		query := `
+			UPDATE reviews_lookup SET
+				status = $2
+			WHERE id = $1
+		`
+		if _, err := h.db.Exec(ctx, query, e.AggregateID(), values.StatusDeactivated.String()); err != nil {
+			return fmt.Errorf("update review lookup: %w", err)
+		}
+
+		// If was active, remove from organization ratings
+		if wasActive {
+			if err := h.ratings.RemoveWeightedRating(ctx, reviewData.ReviewedOrgID, reviewData.Rating, reviewData.FinalWeight); err != nil {
+				return fmt.Errorf("remove weighted rating: %w", err)
+			}
+		}
+
+		// Update reviewer reputation (атомарный инкремент)
+		if err := h.fraudData.IncrementDeactivatedReviews(ctx, reviewData.ReviewerOrgID, wasActive); err != nil {
+			return fmt.Errorf("update reviewer deactivation reputation: %w", err)
+		}
+
+		return nil
+	})
 }
 
 type reviewDataRow struct {

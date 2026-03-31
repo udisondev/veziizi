@@ -34,7 +34,7 @@ type HTTPConfig struct {
 }
 
 type SessionConfig struct {
-	Secret      string `env:"SESSION_SECRET" validate:"required_if=App.Env production"`
+	Secret      string `env:"SESSION_SECRET"`
 	AdminSecret string `env:"SESSION_ADMIN_SECRET"` // SEC-006: Отдельный ключ для admin сессий
 	Name        string `env:"SESSION_NAME" envDefault:"veziizi_session" validate:"required"`
 	AdminName   string `env:"SESSION_ADMIN_NAME" envDefault:"veziizi_admin_session" validate:"required"`
@@ -100,6 +100,11 @@ func Load() (*Config, error) {
 	validate := validator.New()
 	if err := validate.Struct(cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	// SESSION_SECRET обязателен в production (required_if не работает кросс-struct)
+	if cfg.IsProduction() && cfg.Session.Secret == "" {
+		return nil, fmt.Errorf("config validation failed: SESSION_SECRET is required in production")
 	}
 
 	// SEC-013: Предупреждение о небезопасном SSL режиме в production

@@ -357,6 +357,7 @@ func (f *Factory) ReviewService() *reviewApp.Service {
 func (f *Factory) NotificationService() *notifApp.Service {
 	f.notificationOnce.Do(func() {
 		f.notificationService = notifApp.NewService(
+			f.DB(),
 			f.NotificationPreferencesProjection(),
 			f.InAppNotificationsProjection(),
 			f.TelegramLinkProjection(),

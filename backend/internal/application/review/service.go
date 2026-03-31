@@ -235,15 +235,20 @@ func (s *Service) saveAndPublish(ctx context.Context, r *review.Review) error {
 		return nil
 	}
 
-	if err := s.eventStore.Save(ctx, changes...); err != nil {
-		return fmt.Errorf("save review: %w", err)
-	}
+	if err := s.db.InTx(ctx, func(ctx context.Context) error {
+		if err := s.eventStore.Save(ctx, changes...); err != nil {
+			return fmt.Errorf("save review: %w", err)
+		}
 
-	if err := s.publisher.Publish(ctx, "review.events", changes...); err != nil {
-		return fmt.Errorf("publish review events: %w", err)
+		if err := s.publisher.Publish(ctx, "review.events", changes...); err != nil {
+			return fmt.Errorf("publish review events: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	r.ClearChanges()
-
 	return nil
 }

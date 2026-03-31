@@ -119,10 +119,9 @@ func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.Freight
 	var orgName, orgINN, orgCountry *string
 	orgEvts, err := h.eventStore.Load(ctx, e.CustomerOrgID, orgEvents.AggregateType)
 	if err != nil {
-		slog.Warn("failed to load organization for denormalization",
-			slog.String("org_id", e.CustomerOrgID.String()),
-			slog.String("error", err.Error()))
-	} else if len(orgEvts) > 0 {
+		return fmt.Errorf("load organization for denormalization: %w", err)
+	}
+	if len(orgEvts) > 0 {
 		org := organization.NewFromEvents(e.CustomerOrgID, orgEvts)
 		name := org.Name()
 		inn := org.INN()
