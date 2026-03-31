@@ -2,6 +2,7 @@ package review
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
@@ -21,6 +22,7 @@ var (
 	ErrReviewTerminalStatus    = errors.New("review is in terminal status")
 	ErrActivationDateNotPassed = errors.New("activation date has not passed yet")
 	ErrReviewNotEditable       = errors.New("review can only be edited before analysis")
+	ErrReviewInvalidTransition = errors.New("invalid status transition for deactivation")
 )
 
 // Review aggregate represents a review with fraud detection and weighted rating
@@ -168,13 +170,13 @@ func (r *Review) RecordAnalysis(
 		ActivationDate:     activationDate,
 	})
 
-	// Auto-approve if no moderation required
+	// Auto-approve if no moderation required (fraud score below threshold)
 	if !requiresModeration {
 		r.Apply(events.ReviewApproved{
 			BaseEvent:   eventstore.NewBaseEvent(r.ID(), events.AggregateType, r.Version()+1),
 			ApprovedBy:  nil, // auto-approved
 			FinalWeight: rawWeight,
-			Note:        "auto-approved: no fraud signals detected",
+			Note:        fmt.Sprintf("auto-approved: fraud score %.2f below moderation threshold", fraudScore),
 		})
 	}
 
@@ -234,8 +236,11 @@ func (r *Review) Activate() error {
 
 // Deactivate deactivates the review (e.g., reviewer marked as fraudster)
 func (r *Review) Deactivate(reason string) error {
-	if r.status.IsTerminal() {
-		return ErrReviewTerminalStatus
+	if !r.status.CanTransitionTo(values.StatusDeactivated) {
+		if r.status.IsTerminal() {
+			return ErrReviewTerminalStatus
+		}
+		return fmt.Errorf("%w: current status %s", ErrReviewInvalidTransition, r.status)
 	}
 
 	r.Apply(events.ReviewDeactivated{

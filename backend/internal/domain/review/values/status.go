@@ -38,7 +38,7 @@ func (s ReviewStatus) CanTransitionTo(target ReviewStatus) bool {
 	case StatusPendingAnalysis:
 		return target == StatusPendingModeration || target == StatusApproved
 	case StatusPendingModeration:
-		return target == StatusApproved || target == StatusRejected
+		return target == StatusApproved || target == StatusRejected || target == StatusDeactivated
 	case StatusApproved:
 		return target == StatusActive || target == StatusDeactivated
 	case StatusActive:

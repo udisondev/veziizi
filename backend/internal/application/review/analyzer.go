@@ -314,7 +314,7 @@ func (a *Analyzer) checkMutualReviews(ctx context.Context, reviewerOrgID, review
 	}
 
 	totalMutual := aToB + bToA
-	if totalMutual >= values.FraudMutualReviewsPerMonth {
+	if totalMutual > values.FraudMutualReviewsPerMonth {
 		signalType := values.SignalMutualReviews
 		return &events.FraudSignal{
 			Type:        signalType.String(),
@@ -374,7 +374,7 @@ func (a *Analyzer) checkNewOrgBurst(ctx context.Context, reviewedOrgID uuid.UUID
 		return nil, fmt.Errorf("count reviews: %w", err)
 	}
 
-	if count >= values.FraudNewOrgBurstReviewsPerWeek {
+	if count > values.FraudNewOrgBurstReviewsPerWeek {
 		signalType := values.SignalNewOrgBurst
 		return &events.FraudSignal{
 			Type:        signalType.String(),
@@ -696,9 +696,9 @@ func calculateTextSimilarity(s1, s2 string) float64 {
 		return 1.0
 	}
 
-	// Calculate Levenshtein distance
+	// Calculate Levenshtein distance (rune-based)
 	distance := levenshteinDistance(s1, s2)
-	maxLen := max(len(s1), len(s2))
+	maxLen := max(len([]rune(s1)), len([]rune(s2)))
 
 	if maxLen == 0 {
 		return 1.0
@@ -717,16 +717,15 @@ func normalizeText(s string) string {
 
 // levenshteinDistance calculates the Levenshtein distance between two strings
 func levenshteinDistance(s1, s2 string) int {
-	if len(s1) == 0 {
-		return len(s2)
-	}
-	if len(s2) == 0 {
-		return len(s1)
-	}
-
-	// Create matrix
 	r1 := []rune(s1)
 	r2 := []rune(s2)
+
+	if len(r1) == 0 {
+		return len(r2)
+	}
+	if len(r2) == 0 {
+		return len(r1)
+	}
 
 	d := make([][]int, len(r1)+1)
 	for i := range d {

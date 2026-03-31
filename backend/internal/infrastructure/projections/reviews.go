@@ -284,12 +284,25 @@ func (p *ReviewsProjection) ListByReviewer(ctx context.Context, filter ReviewsBy
 
 // ListActiveReviewsByReviewer returns IDs of active reviews by reviewer organization
 func (p *ReviewsProjection) ListActiveReviewsByReviewer(ctx context.Context, reviewerOrgID uuid.UUID) ([]uuid.UUID, error) {
+	return p.listReviewsByReviewerAndStatuses(ctx, reviewerOrgID, []string{values.StatusActive.String()})
+}
+
+// ListDeactivatableReviewsByReviewer returns IDs of active and approved reviews by reviewer organization.
+// Used by fraudster handler to deactivate all reviews that are or will contribute to ratings.
+func (p *ReviewsProjection) ListDeactivatableReviewsByReviewer(ctx context.Context, reviewerOrgID uuid.UUID) ([]uuid.UUID, error) {
+	return p.listReviewsByReviewerAndStatuses(ctx, reviewerOrgID, []string{
+		values.StatusActive.String(),
+		values.StatusApproved.String(),
+	})
+}
+
+func (p *ReviewsProjection) listReviewsByReviewerAndStatuses(ctx context.Context, reviewerOrgID uuid.UUID, statuses []string) ([]uuid.UUID, error) {
 	query, args, err := p.psql.
 		Select("id").
 		From("reviews_lookup").
 		Where(squirrel.And{
 			squirrel.Eq{"reviewer_org_id": reviewerOrgID},
-			squirrel.Eq{"status": values.StatusActive.String()},
+			squirrel.Eq{"status": statuses},
 		}).
 		ToSql()
 	if err != nil {

@@ -169,8 +169,10 @@ func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.Revi
 	)
 
 	return h.db.InTx(ctx, func(ctx context.Context) error {
-		// Determine status after analysis
-		status := values.StatusApproved.String()
+		// Determine status after analysis.
+		// If requires moderation → pending_moderation.
+		// If not → keep pending_analysis; ReviewApproved event (which follows immediately) will set approved.
+		status := values.StatusPendingAnalysis.String()
 		if e.RequiresModeration {
 			status = values.StatusPendingModeration.String()
 		}
