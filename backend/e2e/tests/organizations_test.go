@@ -33,9 +33,15 @@ func (s *OrganizationsSuite) SetupSuite() {
 	s.baseURL = testSuite.BaseURL
 	s.c = client.New(s.baseURL)
 
-	// Create shared organizations once
-	s.org = fixtures.NewOrganization(s.T(), s.c).Create()
-	s.otherOrg = fixtures.NewOrganization(s.T(), s.c).Create()
+	// Setup admin client for approving organizations
+	adminClient := client.New(s.baseURL)
+	adminLogin, err := adminClient.AdminLogin("admin@veziizi.local", "admin123")
+	s.Require().NoError(err)
+	s.Require().Equal(200, adminLogin.StatusCode, "admin login failed (run 'make create-admin-dev' first)")
+
+	// Create shared approved organizations
+	s.org = fixtures.NewActiveOrganization(s.T(), s.c, adminClient).Create()
+	s.otherOrg = fixtures.NewActiveOrganization(s.T(), s.c, adminClient).Create()
 }
 
 // ==================== POST /api/v1/organizations ====================

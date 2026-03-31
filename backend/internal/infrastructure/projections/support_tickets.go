@@ -146,6 +146,9 @@ func (p *SupportTicketsProjection) List(ctx context.Context, opts ...TicketFilte
 		}
 		result = append(result, item)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
 
 	return result, nil
 }

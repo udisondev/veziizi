@@ -15,6 +15,8 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	orgDomain "github.com/udisondev/veziizi/backend/internal/domain/organization"
+	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
@@ -296,6 +298,12 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Преаллокация: ~22 возможных фильтров + pagination
 	opts := make([]projections.FilterOption, 0, 25)
 
+	// Текущая организация пользователя (для авторизации фильтров)
+	currentOrgID, _ := h.session.GetOrganizationID(r)
+
+	// Определяем, запрашивает ли пользователь свои заявки
+	isOwnOrgFilter := false
+
 	// Опциональный фильтр по customer_org_id
 	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
 		orgID, err := uuid.Parse(orgIDStr)
@@ -304,6 +312,7 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithCustomerOrgID(orgID))
+		isOwnOrgFilter = orgID == currentOrgID
 	}
 
 	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
@@ -315,13 +324,20 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithCustomerMemberID(memberID))
 	}
 
-	// Опциональный фильтр по статусам (CSV)
-	if statuses := r.URL.Query().Get("statuses"); statuses != "" {
+	// SEC: Если пользователь не фильтрует по своей организации,
+	// показываем только published заявки (маркетплейс-режим)
+	if !isOwnOrgFilter {
+		opts = append(opts, projections.WithStatuses([]string{"published"}))
+	} else if statuses := r.URL.Query().Get("statuses"); statuses != "" {
+		// Свои заявки — разрешаем фильтр по статусам
 		statusList := splitComma(statuses)
 		if len(statusList) > 0 {
 			opts = append(opts, projections.WithStatuses(statusList))
 		}
 	}
+
+	// Опциональный фильтр по статусам (CSV) — только для своих заявок (обработан выше)
+	// Для чужих заявок статус принудительно "published"
 
 	if orgName := strings.TrimSpace(r.URL.Query().Get("org_name")); orgName != "" {
 		// Limit org_name search to 100 chars to prevent SQL abuse
@@ -508,8 +524,12 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	fr, err := h.service.Get(r.Context(), id)
 	if err != nil {
-		slog.Error("failed to get freight request", slog.String("error", err.Error()))
-		writeError(w, http.StatusNotFound, "freight request not found")
+		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+			writeError(w, http.StatusNotFound, "freight request not found")
+			return
+		}
+		slog.Error("failed to get freight request", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
@@ -644,10 +664,7 @@ func (h *FreightRequestHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req CancelFreightRequestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	if err := h.service.Cancel(r.Context(), freightrequest.CancelInput{
 		ID:      id,
@@ -794,7 +811,7 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 	// - Посторонние не видят ничего
 	isOwner := fr.CustomerOrgID() == currentOrgID
 	filteredOffers := make([]*entities.Offer, 0)
-	for _, offer := range fr.Offers() {
+	for _, offer := range fr.OffersList() {
 		if isOwner || offer.CarrierOrgID() == currentOrgID {
 			filteredOffers = append(filteredOffers, offer)
 		}
@@ -903,10 +920,7 @@ func (h *FreightRequestHandler) WithdrawOffer(w http.ResponseWriter, r *http.Req
 	}
 
 	var req WithdrawOfferRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	if err := h.service.WithdrawOffer(r.Context(), freightrequest.WithdrawOfferInput{
 		FreightRequestID: frID,
@@ -1039,7 +1053,7 @@ func (h *FreightRequestHandler) ConfirmOffer(w http.ResponseWriter, r *http.Requ
 		OfferID:          offerID,
 		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
-		ActorRole:        role,
+		ActorRole:        orgValues.MemberRole(role),
 	}); err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -1088,7 +1102,7 @@ func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Requ
 		OfferID:          offerID,
 		ActorMemberID:    memberID,
 		ActorOrgID:       orgID,
-		ActorRole:        role,
+		ActorRole:        orgValues.MemberRole(role),
 		Reason:           req.Reason,
 	}); err != nil {
 		h.handleDomainError(w, err)
@@ -1369,6 +1383,8 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 		writeError(w, http.StatusGone, "freight request has expired")
 	case errors.Is(err, frDomain.ErrFreightRequestCancelled):
 		writeError(w, http.StatusConflict, "freight request is cancelled")
+	case errors.Is(err, frDomain.ErrFreightRequestTerminalStatus):
+		writeError(w, http.StatusConflict, "freight request is in terminal status")
 	case errors.Is(err, frDomain.ErrFreightRequestConfirmed):
 		writeError(w, http.StatusConflict, "freight request is confirmed")
 	case errors.Is(err, frDomain.ErrCannotCancelFreightRequest):

@@ -244,51 +244,61 @@ func downloadAndParseCities(url string, tmpDir string) ([]City, error) {
 			continue
 		}
 
-		rc, err := file.Open()
+		parsed, err := parseCitiesFromZipFile(file)
 		if err != nil {
-			return nil, fmt.Errorf("open file in zip: %w", err)
+			return nil, err
+		}
+		cities = append(cities, parsed...)
+	}
+
+	return cities, nil
+}
+
+func parseCitiesFromZipFile(file *zip.File) ([]City, error) {
+	rc, err := file.Open()
+	if err != nil {
+		return nil, fmt.Errorf("open file in zip: %w", err)
+	}
+	defer rc.Close()
+
+	var cities []City
+	scanner := bufio.NewScanner(rc)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Split(line, "\t")
+		if len(fields) < 19 {
+			continue
 		}
 
-		scanner := bufio.NewScanner(rc)
-		buf := make([]byte, 0, 64*1024)
-		scanner.Buffer(buf, 1024*1024)
+		geonameID, _ := strconv.Atoi(fields[0])
+		lat, _ := strconv.ParseFloat(fields[4], 64)
+		lon, _ := strconv.ParseFloat(fields[5], 64)
+		pop, _ := strconv.ParseInt(fields[14], 10, 64)
 
-		for scanner.Scan() {
-			line := scanner.Text()
-			fields := strings.Split(line, "\t")
-			if len(fields) < 19 {
-				continue
-			}
-
-			geonameID, _ := strconv.Atoi(fields[0])
-			lat, _ := strconv.ParseFloat(fields[4], 64)
-			lon, _ := strconv.ParseFloat(fields[5], 64)
-			pop, _ := strconv.ParseInt(fields[14], 10, 64)
-
-			// Feature class P = populated place
-			if fields[6] != "P" {
-				continue
-			}
-
-			cities = append(cities, City{
-				GeonameID:   geonameID,
-				Name:        fields[1],
-				ASCIIName:   fields[2],
-				Latitude:    lat,
-				Longitude:   lon,
-				CountryCode: fields[8],
-				Admin1Code:  fields[10],
-				Admin1Name:  fields[10], // Will be updated if we have admin names
-				Population:  pop,
-				Timezone:    fields[17],
-			})
+		// Feature class P = populated place
+		if fields[6] != "P" {
+			continue
 		}
 
-		rc.Close()
+		cities = append(cities, City{
+			GeonameID:   geonameID,
+			Name:        fields[1],
+			ASCIIName:   fields[2],
+			Latitude:    lat,
+			Longitude:   lon,
+			CountryCode: fields[8],
+			Admin1Code:  fields[10],
+			Admin1Name:  fields[10], // Will be updated if we have admin names
+			Population:  pop,
+			Timezone:    fields[17],
+		})
+	}
 
-		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("scan cities: %w", err)
-		}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan cities: %w", err)
 	}
 
 	return cities, nil
@@ -319,52 +329,59 @@ func downloadAndParseAlternateNames(url string, tmpDir string, language string) 
 			continue
 		}
 
-		rc, err := file.Open()
-		if err != nil {
-			return nil, fmt.Errorf("open file in zip: %w", err)
-		}
-
-		scanner := bufio.NewScanner(rc)
-		buf := make([]byte, 0, 64*1024)
-		scanner.Buffer(buf, 1024*1024)
-
-		lineCount := 0
-		for scanner.Scan() {
-			line := scanner.Text()
-			fields := strings.Split(line, "\t")
-			if len(fields) < 4 {
-				continue
-			}
-
-			// Check if this is the language we want
-			if fields[2] != language {
-				continue
-			}
-
-			geonameID, _ := strconv.Atoi(fields[1])
-			name := fields[3]
-			isPreferred := len(fields) > 4 && fields[4] == "1"
-
-			// Prefer preferred names, otherwise take first one
-			if _, exists := names[geonameID]; !exists || (isPreferred && !preferred[geonameID]) {
-				names[geonameID] = name
-				preferred[geonameID] = isPreferred
-			}
-
-			lineCount++
-			if lineCount%1000000 == 0 {
-				slog.Info("processing alternate names", "lines", lineCount, "found", len(names))
-			}
-		}
-
-		rc.Close()
-
-		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("scan alternate names: %w", err)
+		if err := parseAlternateNamesFromZipFile(file, language, names, preferred); err != nil {
+			return nil, err
 		}
 	}
 
 	return names, nil
+}
+
+func parseAlternateNamesFromZipFile(file *zip.File, language string, names map[int]string, preferred map[int]bool) error {
+	rc, err := file.Open()
+	if err != nil {
+		return fmt.Errorf("open file in zip: %w", err)
+	}
+	defer rc.Close()
+
+	scanner := bufio.NewScanner(rc)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	lineCount := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Split(line, "\t")
+		if len(fields) < 4 {
+			continue
+		}
+
+		// Check if this is the language we want
+		if fields[2] != language {
+			continue
+		}
+
+		geonameID, _ := strconv.Atoi(fields[1])
+		name := fields[3]
+		isPreferred := len(fields) > 4 && fields[4] == "1"
+
+		// Prefer preferred names, otherwise take first one
+		if _, exists := names[geonameID]; !exists || (isPreferred && !preferred[geonameID]) {
+			names[geonameID] = name
+			preferred[geonameID] = isPreferred
+		}
+
+		lineCount++
+		if lineCount%1000000 == 0 {
+			slog.Info("processing alternate names", "lines", lineCount, "found", len(names))
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scan alternate names: %w", err)
+	}
+
+	return nil
 }
 
 func downloadFile(url string, destPath string) error {
@@ -445,6 +462,9 @@ func seedCities(ctx context.Context, pool *pgxpool.Pool, cities []City, countryC
 		countryIDByCode[iso2] = id
 	}
 	countryRows.Close()
+	if err := countryRows.Err(); err != nil {
+		return fmt.Errorf("iterate countries: %w", err)
+	}
 
 	// Seed in batches
 	for i := 0; i < len(cities); i += batchSize {

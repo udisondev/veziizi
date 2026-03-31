@@ -343,8 +343,9 @@ func (h *SupportHandler) ReopenTicket(w http.ResponseWriter, r *http.Request) {
 
 func (h *SupportHandler) buildTicketResponse(ticket *support.Ticket) TicketDetailResponse {
 	// Build messages
-	messages := make([]TicketMessageResponse, 0, len(ticket.Messages()))
-	for _, msg := range ticket.Messages() {
+	msgList := ticket.MessagesList()
+	messages := make([]TicketMessageResponse, 0, len(msgList))
+	for _, msg := range msgList {
 		messages = append(messages, TicketMessageResponse{
 			ID:         msg.ID(),
 			SenderType: string(msg.SenderType()),

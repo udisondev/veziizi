@@ -26,6 +26,7 @@ func NewInvitation(
 	role values.MemberRole,
 	token string,
 	createdBy uuid.UUID,
+	createdAt time.Time,
 	expiresAt time.Time,
 	name *string,
 	phone *string,
@@ -37,7 +38,7 @@ func NewInvitation(
 		token:     token,
 		status:    values.InvitationStatusPending,
 		createdBy: createdBy,
-		createdAt: time.Now().UTC(),
+		createdAt: createdAt,
 		expiresAt: expiresAt,
 		name:      name,
 		phone:     phone,
@@ -65,6 +66,10 @@ func (i Invitation) CanBeAccepted() bool {
 
 func (i Invitation) CanBeCancelled() bool {
 	return i.status.CanBeCancelled()
+}
+
+func (i Invitation) IsCancelled() bool {
+	return i.status.IsCancelled()
 }
 
 func (i *Invitation) Accept() {

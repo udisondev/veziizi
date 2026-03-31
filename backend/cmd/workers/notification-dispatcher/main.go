@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	// Event registration - CRITICAL
 	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
@@ -24,7 +26,6 @@ import (
 const (
 	workerName    = "notification-dispatcher"
 	consumerGroup = "notification_dispatcher"
-	logFile       = "notification-dispatcher-worker.log"
 )
 
 var topics = []string{
@@ -38,19 +39,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	file, err := setupLogger(cfg.App.LogLevel)
+	logFile, err := logging.Setup(cfg.App.LogLevel, cfg.App.LogFile)
 	if err != nil {
-		slog.Error("failed to setup logger", slog.String("error", err.Error()))
+		slog.Error("failed to setup logger", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			slog.Error("failed to close log file", slog.String("error", err.Error()))
-		}
-	}()
+	if logFile != nil {
+		defer func() {
+			if err := logFile.Close(); err != nil {
+				slog.Error("failed to close log file", "error", err)
+			}
+		}()
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create factory IoC container - all dependencies are lazily initialized
 	f := factory.New(cfg)
@@ -114,37 +117,29 @@ func main() {
 	go func() {
 		if err := router.Run(ctx); err != nil {
 			slog.Error("router error", slog.String("error", err.Error()))
-			cancel()
+			stop()
 		}
 	}()
 
 	slog.Info(fmt.Sprintf("%s worker started, listening to topics: %v", workerName, topics))
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
 	slog.Info(fmt.Sprintf("shutting down %s worker...", workerName))
-	if err := router.Close(); err != nil {
-		slog.Error("failed to close router", slog.String("error", err.Error()))
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		if err := router.Close(); err != nil {
+			slog.Error("failed to close router", "error", err)
+		}
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+		slog.Info(fmt.Sprintf("%s worker stopped gracefully", workerName))
+	case <-time.After(30 * time.Second):
+		slog.Error(fmt.Sprintf("%s worker shutdown timed out", workerName))
 	}
 }
 
-func setupLogger(levelStr string) (*os.File, error) {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(levelStr)); err != nil {
-		level = slog.LevelInfo
-	}
-
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	handler := slog.NewJSONHandler(file, &slog.HandlerOptions{
-		Level: level,
-	})
-	slog.SetDefault(slog.New(handler))
-
-	return file, nil
-}

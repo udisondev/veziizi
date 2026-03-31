@@ -64,6 +64,12 @@ func (o Offer) IsPending() bool   { return o.status == values.OfferStatusPending
 func (o Offer) IsSelected() bool  { return o.status == values.OfferStatusSelected }
 func (o Offer) IsConfirmed() bool { return o.status == values.OfferStatusConfirmed }
 
+// RestoreStatus directly sets the status without FSM validation.
+// Used only for snapshot restoration where the status is already validated.
+func (o *Offer) RestoreStatus(status values.OfferStatus) {
+	o.status = status
+}
+
 // Select transitions offer from pending to selected (customer selects offer)
 func (o *Offer) Select() error {
 	if !o.IsPending() {

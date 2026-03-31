@@ -36,10 +36,10 @@ func NewAdminSupportHandler(
 }
 
 func (h *AdminSupportHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/admin/support/tickets", h.ListTickets).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/support/tickets/{id}", h.GetTicket).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/support/tickets/{id}/messages", h.AddMessage).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/support/tickets/{id}/close", h.CloseTicket).Methods(http.MethodPost)
+	r.HandleFunc("/support/tickets", h.ListTickets).Methods(http.MethodGet)
+	r.HandleFunc("/support/tickets/{id}", h.GetTicket).Methods(http.MethodGet)
+	r.HandleFunc("/support/tickets/{id}/messages", h.AddMessage).Methods(http.MethodPost)
+	r.HandleFunc("/support/tickets/{id}/close", h.CloseTicket).Methods(http.MethodPost)
 }
 
 // ListTickets returns all tickets for admin
@@ -225,8 +225,9 @@ func (h *AdminSupportHandler) CloseTicket(w http.ResponseWriter, r *http.Request
 
 func (h *AdminSupportHandler) buildTicketResponse(ticket *support.Ticket) AdminTicketDetailResponse {
 	// Build messages
-	messages := make([]TicketMessageResponse, 0, len(ticket.Messages()))
-	for _, msg := range ticket.Messages() {
+	msgList := ticket.MessagesList()
+	messages := make([]TicketMessageResponse, 0, len(msgList))
+	for _, msg := range msgList {
 		messages = append(messages, TicketMessageResponse{
 			ID:         msg.ID(),
 			SenderType: string(msg.SenderType()),

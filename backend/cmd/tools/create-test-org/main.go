@@ -9,6 +9,7 @@ import (
 
 	"github.com/udisondev/veziizi/backend/internal/application/admin"
 	"github.com/udisondev/veziizi/backend/internal/application/organization"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"

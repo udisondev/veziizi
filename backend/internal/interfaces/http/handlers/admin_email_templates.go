@@ -31,12 +31,12 @@ func NewAdminEmailTemplatesHandler(
 
 // RegisterRoutes registers admin email templates routes
 func (h *AdminEmailTemplatesHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/admin/email-templates", h.List).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/email-templates", h.Create).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/email-templates/preview", h.Preview).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/admin/email-templates/{id}", h.Get).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/admin/email-templates/{id}", h.Update).Methods(http.MethodPatch)
-	r.HandleFunc("/api/v1/admin/email-templates/{id}", h.Delete).Methods(http.MethodDelete)
+	r.HandleFunc("/email-templates", h.List).Methods(http.MethodGet)
+	r.HandleFunc("/email-templates", h.Create).Methods(http.MethodPost)
+	r.HandleFunc("/email-templates/preview", h.Preview).Methods(http.MethodPost)
+	r.HandleFunc("/email-templates/{id}", h.Get).Methods(http.MethodGet)
+	r.HandleFunc("/email-templates/{id}", h.Update).Methods(http.MethodPatch)
+	r.HandleFunc("/email-templates/{id}", h.Delete).Methods(http.MethodDelete)
 }
 
 // EmailTemplateResponse represents a single email template

@@ -13,12 +13,14 @@ import (
 
 // Errors
 var (
+	ErrReviewNotFound          = errors.New("review not found")
 	ErrReviewAlreadyAnalyzed   = errors.New("review already analyzed")
 	ErrReviewNotPendingMod     = errors.New("review is not pending moderation")
 	ErrReviewNotApproved       = errors.New("review is not approved")
 	ErrReviewAlreadyActive     = errors.New("review is already active")
 	ErrReviewTerminalStatus    = errors.New("review is in terminal status")
 	ErrActivationDateNotPassed = errors.New("activation date has not passed yet")
+	ErrReviewNotEditable       = errors.New("review can only be edited before analysis")
 )
 
 // Review aggregate represents a review with fraud detection and weighted rating
@@ -128,6 +130,23 @@ func (r *Review) ActivatedAt() *time.Time      { return r.activatedAt }
 
 // Commands
 
+// Edit updates the review's rating and comment (only before analysis)
+func (r *Review) Edit(newRating int, newComment string) error {
+	if r.status != values.StatusPendingAnalysis {
+		return ErrReviewNotEditable
+	}
+
+	r.Apply(events.ReviewEdited{
+		BaseEvent:  eventstore.NewBaseEvent(r.ID(), events.AggregateType, r.Version()+1),
+		OldRating:  r.rating,
+		NewRating:  newRating,
+		OldComment: r.comment,
+		NewComment: newComment,
+	})
+
+	return nil
+}
+
 // RecordAnalysis records the fraud analysis results
 func (r *Review) RecordAnalysis(
 	rawWeight float64,
@@ -201,7 +220,7 @@ func (r *Review) Activate() error {
 	if r.status != values.StatusApproved {
 		return ErrReviewNotApproved
 	}
-	if r.activationDate != nil && time.Now().Before(*r.activationDate) {
+	if r.activationDate == nil || time.Now().Before(*r.activationDate) {
 		return ErrActivationDateNotPassed
 	}
 
@@ -248,6 +267,10 @@ func (r *Review) apply(evt eventstore.Event) {
 		r.orderCompletedAt = e.OrderCompletedAt
 		r.status = values.StatusPendingAnalysis
 		r.createdAt = e.OccurredAt()
+
+	case events.ReviewEdited:
+		r.rating = e.NewRating
+		r.comment = e.NewComment
 
 	case events.ReviewAnalyzed:
 		r.rawWeight = e.RawWeight
