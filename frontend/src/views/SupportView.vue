@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { usePermissions } from '@/composables/usePermissions'
@@ -50,6 +50,10 @@ const message = ref('')
 const submitting = ref(false)
 const error = ref('')
 const success = ref(false)
+
+watch([subject, message], () => {
+  if (error.value) error.value = ''
+})
 
 // Курсы обучения
 interface CourseInfo {
@@ -189,7 +193,7 @@ onMounted(() => {
 
 <template>
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <PageHeader title="Поддержка" class="mb-6">
+    <PageHeader title="Поддержка" class="mb-6 !flex-row !items-center !justify-between !gap-4">
       <template #actions>
         <Button variant="outline" @click="router.push('/support/my-tickets')">
           <Ticket class="mr-2 h-4 w-4" />
@@ -198,53 +202,49 @@ onMounted(() => {
       </template>
     </PageHeader>
 
-    <div class="grid gap-6 lg:grid-cols-3">
-      <!-- Left column: Мини-курсы -->
-      <div class="lg:col-span-2 space-y-6">
-        <Card>
-          <CardHeader>
-            <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <GraduationCap class="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <CardTitle>Мини-курсы</CardTitle>
-                <CardDescription>Интерактивное обучение работе с платформой</CardDescription>
+    <!-- Заголовок Мини-курсы -->
+    <div class="flex items-center gap-3 mb-6">
+      <div class="hidden lg:flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+        <GraduationCap class="h-5 w-5 text-primary" />
+      </div>
+      <div>
+        <CardTitle>Мини-курсы</CardTitle>
+        <CardDescription class="mt-1">Интерактивное обучение работе с платформой</CardDescription>
+      </div>
+    </div>
+
+    <div class="grid gap-10 lg:gap-5 lg:grid-cols-3">
+      <!-- Карточки курсов -->
+      <div class="lg:col-span-2 flex flex-col gap-3 content-start">
+        <Card
+          v-for="course in courses"
+          :key="course.id"
+          class="cursor-pointer transition-all hover:border-primary hover:shadow-md"
+          @click="startCourse(course.id)"
+        >
+          <CardHeader class="flex-row items-start gap-4 p-4">
+            <div :class="['flex h-12 w-12 shrink-0 items-center justify-center rounded-lg mb-0', course.color]">
+              <component :is="course.icon" class="h-6 w-6" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap items-start gap-x-2 gap-y-2">
+                <div class="flex-1 min-w-0">
+                  <CardTitle class="text-base">{{ course.title }}</CardTitle>
+                  <CardDescription class="mt-1 line-clamp-2">{{ course.description }}</CardDescription>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0 w-full lg:w-auto">
+                  <Badge variant="outline" class="text-xs">{{ course.duration }}</Badge>
+                  <Play v-if="!isCompleted(course.id)" class="h-3 w-3 text-muted-foreground" />
+                  <CheckCircle v-else class="h-4 w-4 text-green-500" />
+                </div>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div class="grid gap-3 sm:grid-cols-2">
-              <Card
-                v-for="course in courses"
-                :key="course.id"
-                class="cursor-pointer transition-all hover:border-primary hover:shadow-md"
-                @click="startCourse(course.id)"
-              >
-                <CardHeader class="flex-row items-start gap-4 p-4">
-                  <div :class="['flex h-12 w-12 shrink-0 items-center justify-center rounded-lg', course.color]">
-                    <component :is="course.icon" class="h-6 w-6" />
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                      <CardTitle class="text-base">{{ course.title }}</CardTitle>
-                      <CheckCircle v-if="isCompleted(course.id)" class="h-4 w-4 text-green-500 shrink-0" />
-                    </div>
-                    <CardDescription class="mt-1 line-clamp-2">{{ course.description }}</CardDescription>
-                    <div class="mt-2 flex items-center gap-2">
-                      <Badge variant="outline" class="text-xs">{{ course.duration }}</Badge>
-                      <Play v-if="!isCompleted(course.id)" class="h-3 w-3 text-muted-foreground" />
-                    </div>
-                  </div>
-                </CardHeader>
-              </Card>
-            </div>
-          </CardContent>
         </Card>
       </div>
 
-      <!-- Right column: Form + Recent tickets -->
-      <div class="space-y-6">
+      <!-- Форма + последние обращения -->
+      <div class="space-y-6 lg:top-4 lg:self-start">
         <!-- Create ticket form -->
         <Card>
           <CardHeader>
@@ -254,7 +254,7 @@ onMounted(() => {
               </div>
               <div>
                 <CardTitle>Написать нам</CardTitle>
-                <CardDescription>Создать новое обращение</CardDescription>
+                <CardDescription class="mt-1">Создать новое обращение</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -297,41 +297,37 @@ onMounted(() => {
         </Card>
 
         <!-- Recent tickets -->
-        <Card v-if="recentTickets.length > 0">
-          <CardHeader>
-            <div class="flex items-center justify-between">
-              <CardTitle class="text-base">Последние обращения</CardTitle>
-              <Button variant="ghost" size="sm" @click="router.push('/support/my-tickets')">
-                Все
-                <ChevronRight class="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div class="space-y-3">
-              <div
-                v-for="ticket in recentTickets"
-                :key="ticket.id"
-                class="p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                @click="router.push(`/support/tickets/${ticket.id}`)"
-              >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0 flex-1">
-                    <p class="font-medium text-sm truncate">#{{ ticket.ticket_number }}</p>
-                    <p class="text-sm text-muted-foreground truncate">{{ ticket.subject }}</p>
-                  </div>
-                  <Badge :variant="getStatusVariant(ticket.status)" class="shrink-0">
-                    {{ getStatusLabel(ticket.status) }}
-                  </Badge>
+        <div v-if="recentTickets.length > 0">
+          <div class="flex items-center justify-between mb-1">
+            <CardTitle class="text-base">Последние обращения</CardTitle>
+            <Button variant="ghost" size="sm" @click="router.push('/support/my-tickets')">
+              Все
+              <ChevronRight class="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+          <div class="space-y-3">
+            <div
+              v-for="ticket in recentTickets"
+              :key="ticket.id"
+              class="p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+              @click="router.push(`/support/tickets/${ticket.id}`)"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="font-medium text-sm truncate">#{{ ticket.ticket_number }}</p>
+                  <p class="text-sm text-muted-foreground truncate">{{ ticket.subject }}</p>
                 </div>
-                <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                  <Clock class="h-3 w-3" />
-                  {{ formatDate(ticket.updated_at) }}
-                </div>
+                <Badge :variant="getStatusVariant(ticket.status)" class="shrink-0">
+                  {{ getStatusLabel(ticket.status) }}
+                </Badge>
+              </div>
+              <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                <Clock class="h-3 w-3" />
+                {{ formatDate(ticket.updated_at) }}
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   </div>

@@ -125,14 +125,13 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
     const subscription = subscriptions.value.find(s => s.id === id)
     if (!subscription) return false
 
+    const newIsActive = !subscription.is_active
+    subscription.is_active = newIsActive
     try {
-      const updated = await subscriptionsApi.setActive(id, !subscription.is_active)
-      const index = subscriptions.value.findIndex(s => s.id === id)
-      if (index !== -1) {
-        subscriptions.value[index] = updated
-      }
+      await subscriptionsApi.setActive(id, newIsActive)
       return true
     } catch (e) {
+      subscription.is_active = !newIsActive
       logger.error('Failed to toggle subscription active', e)
       return false
     }
