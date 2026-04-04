@@ -15,7 +15,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -47,11 +47,11 @@ func NewAuthHandler(
 	}
 }
 
-func (h *AuthHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/auth/login", h.Login).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/auth/logout", h.Logout).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/auth/me", h.Me).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/members/{id}", h.GetMemberProfile).Methods(http.MethodGet)
+func (h *AuthHandler) RegisterRoutes(r chi.Router) {
+	r.Post("/api/v1/auth/login", h.Login)
+	r.Post("/api/v1/auth/logout", h.Logout)
+	r.Get("/api/v1/auth/me", h.Me)
+	r.Get("/api/v1/members/{id}", h.GetMemberProfile)
 }
 
 type LoginRequest struct {
@@ -290,8 +290,7 @@ type MemberProfileResponse struct {
 }
 
 func (h *AuthHandler) GetMemberProfile(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return

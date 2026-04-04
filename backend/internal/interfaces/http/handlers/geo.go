@@ -5,17 +5,18 @@ import (
 	"strconv"
 
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 // RegisterRoutes registers geo-related routes
-func (h *GeoHandler) RegisterRoutes(r *mux.Router) {
+func (h *GeoHandler) RegisterRoutes(r chi.Router) {
 	// Geo routes (public, no auth required)
-	geo := r.PathPrefix("/api/v1/geo").Subrouter()
-	geo.HandleFunc("/countries", h.ListCountries).Methods("GET")
-	geo.HandleFunc("/countries/{id:[0-9]+}", h.GetCountry).Methods("GET")
-	geo.HandleFunc("/countries/{id:[0-9]+}/cities", h.ListCities).Methods("GET")
-	geo.HandleFunc("/cities/{id:[0-9]+}", h.GetCity).Methods("GET")
+	r.Route("/api/v1/geo", func(r chi.Router) {
+		r.Get("/countries", h.ListCountries)
+		r.Get("/countries/{id:[0-9]+}", h.GetCountry)
+		r.Get("/countries/{id:[0-9]+}/cities", h.ListCities)
+		r.Get("/cities/{id:[0-9]+}", h.GetCity)
+	})
 }
 
 // GeoHandler handles geo-related HTTP requests (countries and cities)
@@ -45,8 +46,7 @@ func (h *GeoHandler) ListCountries(w http.ResponseWriter, r *http.Request) {
 // GetCountry returns a country by ID
 // GET /api/v1/geo/countries/{id}
 func (h *GeoHandler) GetCountry(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid country id")
 		return
@@ -80,8 +80,7 @@ var cyrillicCountries = map[string]bool{
 // ListCities returns cities for a country with optional search
 // GET /api/v1/geo/countries/{id}/cities?search=москва&limit=20
 func (h *GeoHandler) ListCities(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	countryID, err := strconv.Atoi(vars["id"])
+	countryID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid country id")
 		return
@@ -118,8 +117,7 @@ func (h *GeoHandler) ListCities(w http.ResponseWriter, r *http.Request) {
 // GetCity returns a city by ID with country info
 // GET /api/v1/geo/cities/{id}
 func (h *GeoHandler) GetCity(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid city id")
 		return

@@ -19,6 +19,7 @@ import (
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"
 
+	"github.com/go-chi/chi/v5"
 	eventHandlers "github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
@@ -337,59 +338,72 @@ func (s *Suite) startServer() {
 
 	server := httpServer.NewServer(s.Config)
 
-	// Apply middleware
-	server.Router().Use(middleware.SecurityHeaders(s.Config))
-	server.Router().Use(middleware.CORS(s.Config))
-	server.Router().Use(middleware.BodyLimit())
-	server.Router().Use(middleware.RequireAuth(sessionManager))
-	server.Router().Use(middleware.CheckMemberStatus(sessionManager, s.Factory.MembersProjection()))
-	server.Router().Use(middleware.RateLimiter(sessionManager, s.Factory.SessionAnalyzer()))
-	server.Router().Use(middleware.CSRFProtection())
+	// Health endpoints — без auth/CSRF/rate limiter
+	healthHandler := handlers.NewHealthHandler(s.Factory.MustPool())
+	server.Router().Group(func(r chi.Router) {
+		healthHandler.RegisterRoutes(r)
+	})
 
-	// Register handlers
-	orgHandler := handlers.NewOrganizationHandler(s.Factory.OrganizationService(), s.Factory.OrganizationRatingsProjection(), sessionManager)
-	orgHandler.RegisterRoutes(server.Router())
+	// API routes с полным middleware stack
+	server.Router().Group(func(r chi.Router) {
+		r.Use(middleware.SecurityHeaders(s.Config))
+		r.Use(middleware.CORS(s.Config))
+		r.Use(middleware.BodyLimit())
+		r.Use(middleware.RequireAuth(sessionManager))
+		r.Use(middleware.CheckMemberStatus(sessionManager, s.Factory.MembersProjection()))
+		r.Use(middleware.RateLimiter(sessionManager, s.Factory.SessionAnalyzer()))
+		r.Use(middleware.CSRFProtection())
 
-	authHandler := handlers.NewAuthHandler(s.Factory.MembersProjection(), s.Factory.FreightRequestsProjection(), s.Factory.OrganizationService(), sessionManager, s.Factory.SessionAnalyzer(), geoIPService)
-	authHandler.RegisterRoutes(server.Router())
+		orgHandler := handlers.NewOrganizationHandler(s.Factory.OrganizationService(), s.Factory.OrganizationRatingsProjection(), sessionManager)
+		orgHandler.RegisterRoutes(r)
 
-	adminHandler := handlers.NewAdminHandler(s.Factory.AdminService(), adminRepository, adminSessionManager, s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
-	adminHandler.RegisterRoutes(server.Router())
+		authHandler := handlers.NewAuthHandler(s.Factory.MembersProjection(), s.Factory.FreightRequestsProjection(), s.Factory.OrganizationService(), sessionManager, s.Factory.SessionAnalyzer(), geoIPService)
+		authHandler.RegisterRoutes(r)
 
-	frHandler := handlers.NewFreightRequestHandler(s.Factory.FreightRequestService(), s.Factory.OrganizationService(), s.Factory.FreightRequestsProjection(), s.Factory.MembersProjection(), sessionManager)
-	frHandler.RegisterRoutes(server.Router())
+		adminHandler := handlers.NewAdminHandler(s.Factory.AdminService(), adminRepository, adminSessionManager, s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
+		r.Route("/api/v1/admin", func(r chi.Router) {
+			r.Use(middleware.RequireAdminAuth(adminSessionManager))
+			adminHandler.RegisterRoutes(r)
 
-	historyHandler := handlers.NewHistoryHandler(s.Factory.HistoryService(), s.Factory.FreightRequestService(), sessionManager)
-	historyHandler.RegisterRoutes(server.Router())
+			adminSupportHandler := handlers.NewAdminSupportHandler(s.Factory.SupportService(), s.Factory.SupportTicketsProjection(), adminSessionManager)
+			adminSupportHandler.RegisterRoutes(r)
+		})
 
-	geoHandler := handlers.NewGeoHandler(s.Factory.GeoProjection())
-	geoHandler.RegisterRoutes(server.Router())
+		frHandler := handlers.NewFreightRequestHandler(s.Factory.FreightRequestService(), s.Factory.OrganizationService(), s.Factory.FreightRequestsProjection(), s.Factory.MembersProjection(), sessionManager)
+		frHandler.RegisterRoutes(r)
 
-	notificationHandler := handlers.NewNotificationHandler(s.Factory.NotificationService(), sessionManager, s.Config)
-	notificationHandler.RegisterRoutes(server.Router())
+		historyHandler := handlers.NewHistoryHandler(s.Factory.HistoryService(), s.Factory.FreightRequestService(), sessionManager)
+		historyHandler.RegisterRoutes(r)
 
-	subscriptionHandler := handlers.NewSubscriptionsHandler(s.Factory.FreightSubscriptionsProjection(), s.Factory.GeoProjection(), sessionManager)
-	subscriptionHandler.RegisterRoutes(server.Router())
+		geoHandler := handlers.NewGeoHandler(s.Factory.GeoProjection())
+		geoHandler.RegisterRoutes(r)
 
-	supportHandler := handlers.NewSupportHandler(s.Factory.SupportService(), s.Factory.SupportTicketsProjection(), sessionManager)
-	supportHandler.RegisterRoutes(server.Router())
+		notificationHandler := handlers.NewNotificationHandler(s.Factory.NotificationService(), sessionManager, s.Config)
+		notificationHandler.RegisterRoutes(r)
 
-	adminSupportHandler := handlers.NewAdminSupportHandler(s.Factory.SupportService(), s.Factory.SupportTicketsProjection(), adminSessionManager)
-	adminSupportHandler.RegisterRoutes(server.Router())
+		subscriptionHandler := handlers.NewSubscriptionsHandler(s.Factory.FreightSubscriptionsProjection(), s.Factory.GeoProjection(), sessionManager)
+		subscriptionHandler.RegisterRoutes(r)
 
-	passwordResetHandler := handlers.NewPasswordResetHandler(
-		s.Factory.MembersProjection(),
-		s.Factory.PasswordResetProjection(),
-		s.Factory.EmailTemplatesProjection(),
-		s.Factory.EmailProvider(),
-		s.Config,
-	)
-	passwordResetHandler.RegisterRoutes(server.Router())
+		supportHandler := handlers.NewSupportHandler(s.Factory.SupportService(), s.Factory.SupportTicketsProjection(), sessionManager)
+		supportHandler.RegisterRoutes(r)
 
-	if s.Config.IsDevelopment() {
-		devHandler := handlers.NewDevHandler(s.Config, s.Factory.MembersProjection(), s.Factory.OrganizationService(), sessionManager)
-		devHandler.RegisterRoutes(server.Router())
-	}
+		passwordResetHandler := handlers.NewPasswordResetHandler(
+			s.Factory.MembersProjection(),
+			s.Factory.PasswordResetProjection(),
+			s.Factory.EmailTemplatesProjection(),
+			s.Factory.EmailProvider(),
+			s.Config,
+		)
+		passwordResetHandler.RegisterRoutes(r)
+
+		if s.Config.IsDevelopment() {
+			r.Route("/api/v1/dev", func(r chi.Router) {
+				r.Use(middleware.DevOnly(s.Config))
+				devHandler := handlers.NewDevHandler(s.Config, s.Factory.MembersProjection(), s.Factory.OrganizationService(), sessionManager)
+				devHandler.RegisterRoutesWithRouter(r)
+			})
+		}
+	})
 
 	s.server = server
 

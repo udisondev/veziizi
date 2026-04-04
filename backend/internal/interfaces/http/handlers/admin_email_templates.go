@@ -9,7 +9,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 // AdminEmailTemplatesHandler handles admin email templates operations
@@ -30,13 +30,13 @@ func NewAdminEmailTemplatesHandler(
 }
 
 // RegisterRoutes registers admin email templates routes
-func (h *AdminEmailTemplatesHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/email-templates", h.List).Methods(http.MethodGet)
-	r.HandleFunc("/email-templates", h.Create).Methods(http.MethodPost)
-	r.HandleFunc("/email-templates/preview", h.Preview).Methods(http.MethodPost)
-	r.HandleFunc("/email-templates/{id}", h.Get).Methods(http.MethodGet)
-	r.HandleFunc("/email-templates/{id}", h.Update).Methods(http.MethodPatch)
-	r.HandleFunc("/email-templates/{id}", h.Delete).Methods(http.MethodDelete)
+func (h *AdminEmailTemplatesHandler) RegisterRoutes(r chi.Router) {
+	r.Get("/email-templates", h.List)
+	r.Post("/email-templates", h.Create)
+	r.Post("/email-templates/preview", h.Preview)
+	r.Get("/email-templates/{id}", h.Get)
+	r.Patch("/email-templates/{id}", h.Update)
+	r.Delete("/email-templates/{id}", h.Delete)
 }
 
 // EmailTemplateResponse represents a single email template
@@ -160,8 +160,7 @@ func (h *AdminEmailTemplatesHandler) Get(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid template id")
 		return
@@ -303,8 +302,7 @@ func (h *AdminEmailTemplatesHandler) Update(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid template id")
 		return
@@ -364,8 +362,7 @@ func (h *AdminEmailTemplatesHandler) Delete(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid template id")
 		return

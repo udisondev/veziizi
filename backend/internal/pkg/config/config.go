@@ -19,6 +19,12 @@ type Config struct {
 	App       AppConfig
 	GeoIP     GeoIPConfig
 	RateLimit RateLimitConfig
+	Metrics   MetricsConfig
+}
+
+type MetricsConfig struct {
+	Addr    string `env:"METRICS_ADDR" envDefault:":9090"`
+	Enabled bool   `env:"METRICS_ENABLED" envDefault:"true"`
 }
 
 type DatabaseConfig struct {

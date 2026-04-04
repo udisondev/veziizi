@@ -7,17 +7,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
-	"github.com/gorilla/mux"
 )
 
 type Server struct {
-	router *mux.Router
+	router chi.Router
 	srv    *http.Server
 }
 
 func NewServer(cfg *config.Config) *Server {
-	router := mux.NewRouter()
+	router := chi.NewRouter()
 
 	srv := &http.Server{
 		Addr:         cfg.HTTP.Addr,
@@ -33,7 +33,7 @@ func NewServer(cfg *config.Config) *Server {
 	}
 }
 
-func (s *Server) Router() *mux.Router {
+func (s *Server) Router() chi.Router {
 	return s.router
 }
 

@@ -9,7 +9,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 // SubscriptionsHandler обрабатывает запросы к подпискам на заявки
@@ -33,13 +33,13 @@ func NewSubscriptionsHandler(
 }
 
 // RegisterRoutes регистрирует роуты
-func (h *SubscriptionsHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/subscriptions", h.List).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/subscriptions", h.Create).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/subscriptions/{id}", h.Get).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/subscriptions/{id}", h.Update).Methods(http.MethodPut)
-	r.HandleFunc("/api/v1/subscriptions/{id}", h.Delete).Methods(http.MethodDelete)
-	r.HandleFunc("/api/v1/subscriptions/{id}/active", h.SetActive).Methods(http.MethodPatch)
+func (h *SubscriptionsHandler) RegisterRoutes(r chi.Router) {
+	r.Get("/api/v1/subscriptions", h.List)
+	r.Post("/api/v1/subscriptions", h.Create)
+	r.Get("/api/v1/subscriptions/{id}", h.Get)
+	r.Put("/api/v1/subscriptions/{id}", h.Update)
+	r.Delete("/api/v1/subscriptions/{id}", h.Delete)
+	r.Patch("/api/v1/subscriptions/{id}/active", h.SetActive)
 }
 
 // SubscriptionRequest запрос на создание/обновление подписки
@@ -164,7 +164,7 @@ func (h *SubscriptionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscriptionID, err := uuid.Parse(mux.Vars(r)["id"])
+	subscriptionID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid subscription id")
 		return
@@ -199,7 +199,7 @@ func (h *SubscriptionsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscriptionID, err := uuid.Parse(mux.Vars(r)["id"])
+	subscriptionID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid subscription id")
 		return
@@ -241,7 +241,7 @@ func (h *SubscriptionsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscriptionID, err := uuid.Parse(mux.Vars(r)["id"])
+	subscriptionID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid subscription id")
 		return
@@ -267,7 +267,7 @@ func (h *SubscriptionsHandler) SetActive(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	subscriptionID, err := uuid.Parse(mux.Vars(r)["id"])
+	subscriptionID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid subscription id")
 		return

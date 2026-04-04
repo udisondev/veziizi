@@ -14,7 +14,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type AdminSupportHandler struct {
@@ -35,11 +35,11 @@ func NewAdminSupportHandler(
 	}
 }
 
-func (h *AdminSupportHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/support/tickets", h.ListTickets).Methods(http.MethodGet)
-	r.HandleFunc("/support/tickets/{id}", h.GetTicket).Methods(http.MethodGet)
-	r.HandleFunc("/support/tickets/{id}/messages", h.AddMessage).Methods(http.MethodPost)
-	r.HandleFunc("/support/tickets/{id}/close", h.CloseTicket).Methods(http.MethodPost)
+func (h *AdminSupportHandler) RegisterRoutes(r chi.Router) {
+	r.Get("/support/tickets", h.ListTickets)
+	r.Get("/support/tickets/{id}", h.GetTicket)
+	r.Post("/support/tickets/{id}/messages", h.AddMessage)
+	r.Post("/support/tickets/{id}/close", h.CloseTicket)
 }
 
 // ListTickets returns all tickets for admin
@@ -101,8 +101,7 @@ func (h *AdminSupportHandler) GetTicket(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	vars := mux.Vars(r)
-	ticketID, err := uuid.Parse(vars["id"])
+	ticketID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ticket id")
 		return
@@ -138,8 +137,7 @@ func (h *AdminSupportHandler) AddMessage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	vars := mux.Vars(r)
-	ticketID, err := uuid.Parse(vars["id"])
+	ticketID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ticket id")
 		return
@@ -189,8 +187,7 @@ func (h *AdminSupportHandler) CloseTicket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	vars := mux.Vars(r)
-	ticketID, err := uuid.Parse(vars["id"])
+	ticketID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ticket id")
 		return

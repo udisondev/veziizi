@@ -21,7 +21,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type FreightRequestHandler struct {
@@ -201,29 +201,29 @@ func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer, orgName, 
 	return resp
 }
 
-func (h *FreightRequestHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/freight-requests", h.Create).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests", h.List).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/freight-requests/{id}", h.Get).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/freight-requests/{id}", h.Update).Methods(http.MethodPatch)
-	r.HandleFunc("/api/v1/freight-requests/{id}", h.Cancel).Methods(http.MethodDelete)
-	r.HandleFunc("/api/v1/freight-requests/{id}/reassign", h.Reassign).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers", h.MakeOffer).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers", h.ListOffers).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}", h.WithdrawOffer).Methods(http.MethodDelete)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/select", h.SelectOffer).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/reject", h.RejectOffer).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/confirm", h.ConfirmOffer).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/decline", h.DeclineOffer).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/offers/{offerId}/unselect", h.UnselectOffer).Methods(http.MethodPost)
+func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
+	r.Post("/api/v1/freight-requests", h.Create)
+	r.Get("/api/v1/freight-requests", h.List)
+	r.Get("/api/v1/freight-requests/{id}", h.Get)
+	r.Patch("/api/v1/freight-requests/{id}", h.Update)
+	r.Delete("/api/v1/freight-requests/{id}", h.Cancel)
+	r.Post("/api/v1/freight-requests/{id}/reassign", h.Reassign)
+	r.Post("/api/v1/freight-requests/{id}/offers", h.MakeOffer)
+	r.Get("/api/v1/freight-requests/{id}/offers", h.ListOffers)
+	r.Delete("/api/v1/freight-requests/{id}/offers/{offerId}", h.WithdrawOffer)
+	r.Post("/api/v1/freight-requests/{id}/offers/{offerId}/select", h.SelectOffer)
+	r.Post("/api/v1/freight-requests/{id}/offers/{offerId}/reject", h.RejectOffer)
+	r.Post("/api/v1/freight-requests/{id}/offers/{offerId}/confirm", h.ConfirmOffer)
+	r.Post("/api/v1/freight-requests/{id}/offers/{offerId}/decline", h.DeclineOffer)
+	r.Post("/api/v1/freight-requests/{id}/offers/{offerId}/unselect", h.UnselectOffer)
 	// Completion & reviews (after offer is confirmed)
-	r.HandleFunc("/api/v1/freight-requests/{id}/complete", h.Complete).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/review", h.LeaveReview).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/review", h.EditReview).Methods(http.MethodPatch)
-	r.HandleFunc("/api/v1/freight-requests/{id}/cancel-confirmed", h.CancelAfterConfirmed).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/freight-requests/{id}/reassign-carrier", h.ReassignCarrierMember).Methods(http.MethodPost)
+	r.Post("/api/v1/freight-requests/{id}/complete", h.Complete)
+	r.Post("/api/v1/freight-requests/{id}/review", h.LeaveReview)
+	r.Patch("/api/v1/freight-requests/{id}/review", h.EditReview)
+	r.Post("/api/v1/freight-requests/{id}/cancel-confirmed", h.CancelAfterConfirmed)
+	r.Post("/api/v1/freight-requests/{id}/reassign-carrier", h.ReassignCarrierMember)
 	// My offers (for current organization)
-	r.HandleFunc("/api/v1/offers", h.ListMyOffers).Methods(http.MethodGet)
+	r.Get("/api/v1/offers", h.ListMyOffers)
 }
 
 type CreateFreightRequestRequest struct {
@@ -512,8 +512,7 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -610,8 +609,7 @@ type UpdateFreightRequestRequest struct {
 }
 
 func (h *FreightRequestHandler) Update(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -650,8 +648,7 @@ type CancelFreightRequestRequest struct {
 }
 
 func (h *FreightRequestHandler) Cancel(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -683,8 +680,7 @@ type ReassignRequest struct {
 }
 
 func (h *FreightRequestHandler) Reassign(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -738,8 +734,7 @@ type MakeOfferResponse struct {
 }
 
 func (h *FreightRequestHandler) MakeOffer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -780,8 +775,7 @@ func (h *FreightRequestHandler) MakeOffer(w http.ResponseWriter, r *http.Request
 }
 
 func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -896,13 +890,12 @@ type WithdrawOfferRequest struct {
 }
 
 func (h *FreightRequestHandler) WithdrawOffer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	offerID, err := uuid.Parse(vars["offerId"])
+	offerID, err := uuid.Parse(chi.URLParam(r, "offerId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid offer id")
 		return
@@ -937,13 +930,12 @@ func (h *FreightRequestHandler) WithdrawOffer(w http.ResponseWriter, r *http.Req
 }
 
 func (h *FreightRequestHandler) SelectOffer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	offerID, err := uuid.Parse(vars["offerId"])
+	offerID, err := uuid.Parse(chi.URLParam(r, "offerId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid offer id")
 		return
@@ -979,13 +971,12 @@ type RejectOfferRequest struct {
 }
 
 func (h *FreightRequestHandler) RejectOffer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	offerID, err := uuid.Parse(vars["offerId"])
+	offerID, err := uuid.Parse(chi.URLParam(r, "offerId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid offer id")
 		return
@@ -1024,13 +1015,12 @@ func (h *FreightRequestHandler) RejectOffer(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *FreightRequestHandler) ConfirmOffer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	offerID, err := uuid.Parse(vars["offerId"])
+	offerID, err := uuid.Parse(chi.URLParam(r, "offerId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid offer id")
 		return
@@ -1067,13 +1057,12 @@ type DeclineOfferRequest struct {
 }
 
 func (h *FreightRequestHandler) DeclineOffer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	offerID, err := uuid.Parse(vars["offerId"])
+	offerID, err := uuid.Parse(chi.URLParam(r, "offerId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid offer id")
 		return
@@ -1117,13 +1106,12 @@ type UnselectOfferRequest struct {
 }
 
 func (h *FreightRequestHandler) UnselectOffer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	offerID, err := uuid.Parse(vars["offerId"])
+	offerID, err := uuid.Parse(chi.URLParam(r, "offerId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid offer id")
 		return
@@ -1159,8 +1147,7 @@ func (h *FreightRequestHandler) UnselectOffer(w http.ResponseWriter, r *http.Req
 
 // Complete marks the freight request as completed from the caller's side (customer or carrier)
 func (h *FreightRequestHandler) Complete(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -1200,8 +1187,7 @@ type FreightLeaveReviewResponse struct {
 
 // LeaveReview leaves a review for the counterparty after completion
 func (h *FreightRequestHandler) LeaveReview(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -1246,8 +1232,7 @@ type EditReviewRequest struct {
 
 // EditReview edits an existing review (only within 24h window)
 func (h *FreightRequestHandler) EditReview(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -1290,8 +1275,7 @@ type CancelAfterConfirmedRequest struct {
 
 // CancelAfterConfirmed cancels the freight request after offer was confirmed
 func (h *FreightRequestHandler) CancelAfterConfirmed(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
@@ -1330,8 +1314,7 @@ type ReassignCarrierMemberRequest struct {
 
 // ReassignCarrierMember reassigns the responsible member for the carrier organization
 func (h *FreightRequestHandler) ReassignCarrierMember(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return

@@ -12,7 +12,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -44,10 +44,10 @@ func NewPasswordResetHandler(
 }
 
 // RegisterRoutes registers password reset routes
-func (h *PasswordResetHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/auth/forgot-password", h.ForgotPassword).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/auth/reset-password", h.ResetPassword).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/auth/reset-password/{token}", h.ValidateToken).Methods(http.MethodGet)
+func (h *PasswordResetHandler) RegisterRoutes(r chi.Router) {
+	r.Post("/api/v1/auth/forgot-password", h.ForgotPassword)
+	r.Post("/api/v1/auth/reset-password", h.ResetPassword)
+	r.Get("/api/v1/auth/reset-password/{token}", h.ValidateToken)
 }
 
 // ForgotPasswordRequest is the request body for forgot password
@@ -230,8 +230,7 @@ func (h *PasswordResetHandler) ResetPassword(w http.ResponseWriter, r *http.Requ
 // ValidateToken checks if a token is valid (for frontend to show form)
 // GET /api/v1/auth/reset-password/{token}
 func (h *PasswordResetHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	token := vars["token"]
+	token := chi.URLParam(r, "token")
 
 	if token == "" {
 		writeError(w, http.StatusBadRequest, "token is required")

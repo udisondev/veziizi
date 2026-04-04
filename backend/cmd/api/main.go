@@ -15,6 +15,8 @@ import (
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"         // register events
 	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"        // register events
 
+	"github.com/go-chi/chi/v5"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
@@ -25,6 +27,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
+	"github.com/udisondev/veziizi/backend/internal/pkg/metrics"
 )
 
 func main() {
@@ -85,98 +88,130 @@ func main() {
 	// HTTP server and handlers
 	server := http.NewServer(cfg)
 
-	// Apply middleware to all routes
-	server.Router().Use(middleware.SecurityHeaders(cfg)) // SEC-011
-	server.Router().Use(middleware.CORS(cfg))            // SEC-010
-	server.Router().Use(middleware.BodyLimit())          // SEC-015
-	server.Router().Use(middleware.RequireAuth(sessionManager))
-	server.Router().Use(middleware.CheckMemberStatus(sessionManager, f.MembersProjection()))
-	server.Router().Use(middleware.EventMetaEnricher(sessionManager)) // Добавляем metadata для аудита событий
-	server.Router().Use(middleware.RateLimiter(sessionManager, f.SessionAnalyzer()))
-	server.Router().Use(middleware.CSRFProtection()) // SEC-005
-
-	orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), sessionManager)
-	orgHandler.RegisterRoutes(server.Router())
-
-	authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.FreightRequestsProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
-	authHandler.RegisterRoutes(server.Router())
-
-	// Password reset handler (public routes for forgot/reset password)
-	passwordResetHandler := handlers.NewPasswordResetHandler(
-		f.MembersProjection(),
-		f.PasswordResetProjection(),
-		f.EmailTemplatesProjection(),
-		f.EmailProvider(),
-		cfg,
-	)
-	passwordResetHandler.RegisterRoutes(server.Router())
-
-	adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
-	// Admin subrouter with RequireAdminAuth (login is skipped inside middleware)
-	adminRouter := server.Router().PathPrefix("/api/v1/admin").Subrouter()
-	adminRouter.Use(middleware.RequireAdminAuth(adminSessionManager))
-	adminHandler.RegisterRoutes(adminRouter)
-
-	frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), sessionManager)
-	frHandler.RegisterRoutes(server.Router())
-
-	historyHandler := handlers.NewHistoryHandler(f.HistoryService(), f.FreightRequestService(), sessionManager)
-	historyHandler.RegisterRoutes(server.Router())
-
-	geoHandler := handlers.NewGeoHandler(f.GeoProjection())
-	geoHandler.RegisterRoutes(server.Router())
-
-	// Notification handler
-	notificationHandler := handlers.NewNotificationHandler(
-		f.NotificationService(),
-		sessionManager,
-		cfg,
-	)
-	notificationHandler.RegisterRoutes(server.Router())
-	if cfg.Telegram.BotUsername != "" {
-		slog.Info("telegram notifications enabled", slog.String("bot", cfg.Telegram.BotUsername))
+	// Metrics server (Prometheus + pprof) на отдельном порту
+	if cfg.Metrics.Enabled {
+		metricsSrv := metrics.NewServer(cfg.Metrics.Addr)
+		go func() {
+			if err := metricsSrv.Start(); err != nil {
+				slog.Error("metrics server error", slog.String("error", err.Error()))
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+				slog.Error("failed to shutdown metrics server", slog.String("error", err.Error()))
+			}
+		}()
 	}
 
-	// Subscriptions handler (подписки на заявки)
-	subscriptionsHandler := handlers.NewSubscriptionsHandler(
-		f.FreightSubscriptionsProjection(),
-		f.GeoProjection(),
-		sessionManager,
-	)
-	subscriptionsHandler.RegisterRoutes(server.Router())
+	// Request ID + Recoverer + Metrics — на корневом роутере, общий для всех
+	server.Router().Use(chiMiddleware.RequestID)
+	server.Router().Use(chiMiddleware.Recoverer)
+	server.Router().Use(middleware.Metrics)
 
-	// Support handler (user tickets)
-	supportHandler := handlers.NewSupportHandler(
-		f.SupportService(),
-		f.SupportTicketsProjection(),
-		sessionManager,
-	)
-	supportHandler.RegisterRoutes(server.Router())
+	// Health endpoints — без auth/CSRF/rate limiter
+	healthHandler := handlers.NewHealthHandler(f.MustPool())
+	server.Router().Group(func(r chi.Router) {
+		healthHandler.RegisterRoutes(r)
+	})
 
-	// Admin support handler (admin tickets management)
-	adminSupportHandler := handlers.NewAdminSupportHandler(
-		f.SupportService(),
-		f.SupportTicketsProjection(),
-		adminSessionManager,
-	)
-	adminSupportHandler.RegisterRoutes(adminRouter)
+	// API routes с полным middleware stack
+	server.Router().Group(func(r chi.Router) {
+		r.Use(middleware.SecurityHeaders(cfg)) // SEC-011
+		r.Use(middleware.CORS(cfg))            // SEC-010
+		r.Use(middleware.BodyLimit())          // SEC-015
+		r.Use(middleware.RequireAuth(sessionManager))
+		r.Use(middleware.CheckMemberStatus(sessionManager, f.MembersProjection()))
+		r.Use(middleware.EventMetaEnricher(sessionManager)) // Добавляем metadata для аудита событий
+		r.Use(middleware.RateLimiter(sessionManager, f.SessionAnalyzer()))
+		r.Use(middleware.CSRFProtection()) // SEC-005
 
-	// Admin email templates handler
-	adminEmailTemplatesHandler := handlers.NewAdminEmailTemplatesHandler(
-		f.EmailTemplatesProjection(),
-		adminSessionManager,
-	)
-	adminEmailTemplatesHandler.RegisterRoutes(adminRouter)
+		orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), sessionManager)
+		orgHandler.RegisterRoutes(r)
 
-	// Dev handler (only in development mode)
-	// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
-	if cfg.IsDevelopment() {
-		devRouter := server.Router().PathPrefix("/api/v1/dev").Subrouter()
-		devRouter.Use(middleware.DevOnly(cfg))
-		devHandler := handlers.NewDevHandler(cfg, f.MembersProjection(), f.OrganizationService(), sessionManager)
-		devHandler.RegisterRoutesWithRouter(devRouter)
-		slog.Info("dev user switcher enabled (development mode only)")
-	}
+		authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.FreightRequestsProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
+		authHandler.RegisterRoutes(r)
+
+		// Password reset handler (public routes for forgot/reset password)
+		passwordResetHandler := handlers.NewPasswordResetHandler(
+			f.MembersProjection(),
+			f.PasswordResetProjection(),
+			f.EmailTemplatesProjection(),
+			f.EmailProvider(),
+			cfg,
+		)
+		passwordResetHandler.RegisterRoutes(r)
+
+		frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), sessionManager)
+		frHandler.RegisterRoutes(r)
+
+		historyHandler := handlers.NewHistoryHandler(f.HistoryService(), f.FreightRequestService(), sessionManager)
+		historyHandler.RegisterRoutes(r)
+
+		geoHandler := handlers.NewGeoHandler(f.GeoProjection())
+		geoHandler.RegisterRoutes(r)
+
+		// Notification handler
+		notificationHandler := handlers.NewNotificationHandler(
+			f.NotificationService(),
+			sessionManager,
+			cfg,
+		)
+		notificationHandler.RegisterRoutes(r)
+		if cfg.Telegram.BotUsername != "" {
+			slog.Info("telegram notifications enabled", slog.String("bot", cfg.Telegram.BotUsername))
+		}
+
+		// Subscriptions handler (подписки на заявки)
+		subscriptionsHandler := handlers.NewSubscriptionsHandler(
+			f.FreightSubscriptionsProjection(),
+			f.GeoProjection(),
+			sessionManager,
+		)
+		subscriptionsHandler.RegisterRoutes(r)
+
+		// Support handler (user tickets)
+		supportHandler := handlers.NewSupportHandler(
+			f.SupportService(),
+			f.SupportTicketsProjection(),
+			sessionManager,
+		)
+		supportHandler.RegisterRoutes(r)
+
+		// Admin subrouter with RequireAdminAuth
+		adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
+		r.Route("/api/v1/admin", func(r chi.Router) {
+			r.Use(middleware.RequireAdminAuth(adminSessionManager))
+			adminHandler.RegisterRoutes(r)
+
+			// Admin support handler
+			adminSupportHandler := handlers.NewAdminSupportHandler(
+				f.SupportService(),
+				f.SupportTicketsProjection(),
+				adminSessionManager,
+			)
+			adminSupportHandler.RegisterRoutes(r)
+
+			// Admin email templates handler
+			adminEmailTemplatesHandler := handlers.NewAdminEmailTemplatesHandler(
+				f.EmailTemplatesProjection(),
+				adminSessionManager,
+			)
+			adminEmailTemplatesHandler.RegisterRoutes(r)
+		})
+
+		// Dev handler (only in development mode)
+		// SEC-001: Двойная защита - проверка IsDevelopment() + DevOnly middleware
+		if cfg.IsDevelopment() {
+			r.Route("/api/v1/dev", func(r chi.Router) {
+				r.Use(middleware.DevOnly(cfg))
+				devHandler := handlers.NewDevHandler(cfg, f.MembersProjection(), f.OrganizationService(), sessionManager)
+				devHandler.RegisterRoutesWithRouter(r)
+			})
+			slog.Info("dev user switcher enabled (development mode only)")
+		}
+	})
 
 	go func() {
 		if err := server.Start(); err != nil {

@@ -15,7 +15,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -47,28 +47,28 @@ func NewAdminHandler(
 	}
 }
 
-func (h *AdminHandler) RegisterRoutes(r *mux.Router) {
+func (h *AdminHandler) RegisterRoutes(r chi.Router) {
 	// Auth
-	r.HandleFunc("/auth/login", h.Login).Methods(http.MethodPost)
-	r.HandleFunc("/auth/logout", h.Logout).Methods(http.MethodPost)
-	r.HandleFunc("/auth/me", h.Me).Methods(http.MethodGet)
+	r.Post("/auth/login", h.Login)
+	r.Post("/auth/logout", h.Logout)
+	r.Get("/auth/me", h.Me)
 
 	// Organizations
-	r.HandleFunc("/organizations", h.ListPending).Methods(http.MethodGet)
-	r.HandleFunc("/organizations/{id}", h.GetOrganization).Methods(http.MethodGet)
-	r.HandleFunc("/organizations/{id}/approve", h.Approve).Methods(http.MethodPost)
-	r.HandleFunc("/organizations/{id}/reject", h.Reject).Methods(http.MethodPost)
-	r.HandleFunc("/organizations/{id}/mark-fraudster", h.MarkFraudster).Methods(http.MethodPost)
-	r.HandleFunc("/organizations/{id}/unmark-fraudster", h.UnmarkFraudster).Methods(http.MethodPost)
+	r.Get("/organizations", h.ListPending)
+	r.Get("/organizations/{id}", h.GetOrganization)
+	r.Post("/organizations/{id}/approve", h.Approve)
+	r.Post("/organizations/{id}/reject", h.Reject)
+	r.Post("/organizations/{id}/mark-fraudster", h.MarkFraudster)
+	r.Post("/organizations/{id}/unmark-fraudster", h.UnmarkFraudster)
 
 	// Fraudsters
-	r.HandleFunc("/fraudsters", h.ListFraudsters).Methods(http.MethodGet)
+	r.Get("/fraudsters", h.ListFraudsters)
 
 	// Reviews moderation
-	r.HandleFunc("/reviews", h.ListPendingReviews).Methods(http.MethodGet)
-	r.HandleFunc("/reviews/{id}", h.GetReview).Methods(http.MethodGet)
-	r.HandleFunc("/reviews/{id}/approve", h.ApproveReview).Methods(http.MethodPost)
-	r.HandleFunc("/reviews/{id}/reject", h.RejectReview).Methods(http.MethodPost)
+	r.Get("/reviews", h.ListPendingReviews)
+	r.Get("/reviews/{id}", h.GetReview)
+	r.Post("/reviews/{id}/approve", h.ApproveReview)
+	r.Post("/reviews/{id}/reject", h.RejectReview)
 }
 
 type AdminLoginRequest struct {
@@ -221,8 +221,7 @@ func (h *AdminHandler) GetOrganization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -249,8 +248,7 @@ func (h *AdminHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -278,8 +276,7 @@ func (h *AdminHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -424,8 +421,7 @@ func (h *AdminHandler) GetReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	reviewID, err := uuid.Parse(vars["id"])
+	reviewID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid review id")
 		return
@@ -495,8 +491,7 @@ func (h *AdminHandler) ApproveReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	reviewID, err := uuid.Parse(vars["id"])
+	reviewID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid review id")
 		return
@@ -531,8 +526,7 @@ func (h *AdminHandler) RejectReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	reviewID, err := uuid.Parse(vars["id"])
+	reviewID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid review id")
 		return
@@ -583,8 +577,7 @@ func (h *AdminHandler) MarkFraudster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -625,8 +618,7 @@ func (h *AdminHandler) UnmarkFraudster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return

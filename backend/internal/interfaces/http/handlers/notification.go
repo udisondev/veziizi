@@ -13,7 +13,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type NotificationHandler struct {
@@ -34,27 +34,27 @@ func NewNotificationHandler(
 	}
 }
 
-func (h *NotificationHandler) RegisterRoutes(r *mux.Router) {
+func (h *NotificationHandler) RegisterRoutes(r chi.Router) {
 	// In-app notifications
-	r.HandleFunc("/api/v1/notifications", h.List).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/notifications/unread-count", h.GetUnreadCount).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/notifications/read", h.MarkAsRead).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/notifications/read-all", h.MarkAllAsRead).Methods(http.MethodPost)
+	r.Get("/api/v1/notifications", h.List)
+	r.Get("/api/v1/notifications/unread-count", h.GetUnreadCount)
+	r.Post("/api/v1/notifications/read", h.MarkAsRead)
+	r.Post("/api/v1/notifications/read-all", h.MarkAllAsRead)
 
 	// Preferences
-	r.HandleFunc("/api/v1/notifications/preferences", h.GetPreferences).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/notifications/preferences", h.UpdatePreferences).Methods(http.MethodPatch)
+	r.Get("/api/v1/notifications/preferences", h.GetPreferences)
+	r.Patch("/api/v1/notifications/preferences", h.UpdatePreferences)
 
 	// Telegram (привязка через бота)
-	r.HandleFunc("/api/v1/notifications/telegram/link-code", h.GenerateLinkCode).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/notifications/telegram", h.DisconnectTelegram).Methods(http.MethodDelete)
+	r.Post("/api/v1/notifications/telegram/link-code", h.GenerateLinkCode)
+	r.Delete("/api/v1/notifications/telegram", h.DisconnectTelegram)
 
 	// Email
-	r.HandleFunc("/api/v1/notifications/email", h.SetEmail).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/notifications/email", h.DisconnectEmail).Methods(http.MethodDelete)
-	r.HandleFunc("/api/v1/notifications/email/marketing", h.SetMarketingConsent).Methods(http.MethodPatch)
-	r.HandleFunc("/api/v1/notifications/email/resend-verification", h.ResendEmailVerification).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/notifications/email/verify", h.VerifyEmailByToken).Methods(http.MethodPost)
+	r.Post("/api/v1/notifications/email", h.SetEmail)
+	r.Delete("/api/v1/notifications/email", h.DisconnectEmail)
+	r.Patch("/api/v1/notifications/email/marketing", h.SetMarketingConsent)
+	r.Post("/api/v1/notifications/email/resend-verification", h.ResendEmailVerification)
+	r.Post("/api/v1/notifications/email/verify", h.VerifyEmailByToken)
 }
 
 // ===============================

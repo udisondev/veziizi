@@ -21,12 +21,11 @@ func CORS(cfg *config.Config) func(http.Handler) http.Handler {
 		"http://127.0.0.1:3000": true,
 	}
 
-	// В production добавляем production origin
+	// В production очищаем dev origins и добавляем production домен
 	if cfg.IsProduction() {
-		// Очищаем dev origins в production
 		allowedOrigins = map[string]bool{
-			// TODO: добавить production домен
-			// "https://veziizi.com": true,
+			"https://везиизи.рф":     true,
+			"https://xn--e1aebcghhi.xn--p1acf": true, // punycode для везиизи.рф
 		}
 	}
 

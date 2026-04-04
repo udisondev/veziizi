@@ -8,7 +8,7 @@ import (
 	historyApp "github.com/udisondev/veziizi/backend/internal/application/history"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -34,9 +34,9 @@ func NewHistoryHandler(
 	}
 }
 
-func (h *HistoryHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/organizations/{id}/history", h.GetOrganizationHistory).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/freight-requests/{id}/history", h.GetFreightRequestHistory).Methods(http.MethodGet)
+func (h *HistoryHandler) RegisterRoutes(r chi.Router) {
+	r.Get("/api/v1/organizations/{id}/history", h.GetOrganizationHistory)
+	r.Get("/api/v1/freight-requests/{id}/history", h.GetFreightRequestHistory)
 }
 
 // GetOrganizationHistory returns event history for an organization
@@ -48,8 +48,7 @@ func (h *HistoryHandler) GetOrganizationHistory(w http.ResponseWriter, r *http.R
 	}
 
 	// Get organization ID from URL
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "неверный формат ID организации")
 		return
@@ -84,8 +83,7 @@ func (h *HistoryHandler) GetFreightRequestHistory(w http.ResponseWriter, r *http
 	}
 
 	// Get freight request ID from URL
-	vars := mux.Vars(r)
-	frID, err := uuid.Parse(vars["id"])
+	frID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "неверный формат ID заявки")
 		return

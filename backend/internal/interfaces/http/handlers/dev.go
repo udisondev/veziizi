@@ -11,7 +11,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type DevHandler struct {
@@ -35,20 +35,20 @@ func NewDevHandler(
 	}
 }
 
-func (h *DevHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/dev/status", h.Status).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/dev/users", h.ListUsers).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/dev/switch", h.SwitchUser).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/dev/users/{id}", h.DeleteUser).Methods(http.MethodDelete)
+func (h *DevHandler) RegisterRoutes(r chi.Router) {
+	r.Get("/api/v1/dev/status", h.Status)
+	r.Get("/api/v1/dev/users", h.ListUsers)
+	r.Post("/api/v1/dev/switch", h.SwitchUser)
+	r.Delete("/api/v1/dev/users/{id}", h.DeleteUser)
 }
 
 // RegisterRoutesWithRouter registers dev routes on a subrouter (relative paths)
 // SEC-001: Use this with DevOnly middleware for additional protection
-func (h *DevHandler) RegisterRoutesWithRouter(r *mux.Router) {
-	r.HandleFunc("/status", h.Status).Methods(http.MethodGet)
-	r.HandleFunc("/users", h.ListUsers).Methods(http.MethodGet)
-	r.HandleFunc("/switch", h.SwitchUser).Methods(http.MethodPost)
-	r.HandleFunc("/users/{id}", h.DeleteUser).Methods(http.MethodDelete)
+func (h *DevHandler) RegisterRoutesWithRouter(r chi.Router) {
+	r.Get("/status", h.Status)
+	r.Get("/users", h.ListUsers)
+	r.Post("/switch", h.SwitchUser)
+	r.Delete("/users/{id}", h.DeleteUser)
 }
 
 type DevUserResponse struct {
@@ -186,8 +186,7 @@ func (h *DevHandler) SwitchUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DevHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	memberID, err := uuid.Parse(vars["id"])
+	memberID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid member id")
 		return

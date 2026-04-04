@@ -11,6 +11,7 @@ import (
 
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/pkg/heartbeat"
 	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
@@ -61,6 +62,13 @@ func Run(cfg Config) {
 	// Get pool for subscriber (triggers lazy initialization)
 	pool := f.MustPool()
 	slog.Info(fmt.Sprintf("%s worker connected to database", cfg.Name))
+
+	// Heartbeat
+	hb := heartbeat.New(pool, cfg.Name, "event")
+	if err := hb.Start(ctx); err != nil {
+		slog.Error("failed to start heartbeat", "error", err)
+	}
+	defer hb.Stop()
 
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 
@@ -165,8 +173,15 @@ func RunScheduled(cfg ScheduledConfig) {
 	}()
 
 	// Trigger pool initialization and log connection
-	_ = f.MustPool()
+	pool := f.MustPool()
 	slog.Info(fmt.Sprintf("%s scheduled worker connected to database", cfg.Name))
+
+	// Heartbeat
+	hb := heartbeat.New(pool, cfg.Name, "scheduled")
+	if err := hb.Start(ctx); err != nil {
+		slog.Error("failed to start heartbeat", "error", err)
+	}
+	defer hb.Stop()
 
 	// Get handler
 	handler := cfg.Handler(f)

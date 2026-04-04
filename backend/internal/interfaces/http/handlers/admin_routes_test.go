@@ -5,59 +5,52 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 // TestAdminRoutes_SubrouterPathPrefix проверяет, что admin-хендлеры корректно
-// регистрируют маршруты как относительные пути на subrouter с PathPrefix.
-//
-// Регрессионный тест для бага: маршруты регистрировались с полными путями
-// (например, "/api/v1/admin/auth/login") на subrouter с PathPrefix("/api/v1/admin"),
-// что приводило к удвоению префикса и 404 на все admin-эндпоинты.
-//
-// Фикс: маршруты используют относительные пути ("/auth/login").
+// регистрируют маршруты как относительные пути на subrouter с Route prefix.
 func TestAdminRoutes_SubrouterPathPrefix(t *testing.T) {
 	t.Parallel()
 
 	// Создаём роутер, имитирующий production setup из cmd/api/main.go
-	router := mux.NewRouter()
-	adminRouter := router.PathPrefix("/api/v1/admin").Subrouter()
+	router := chi.NewRouter()
 
-	// Регистрируем dummy-хендлер на admin subrouter с относительными путями
-	// (как это делает AdminHandler.RegisterRoutes)
 	dummyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Воспроизводим маршруты из AdminHandler.RegisterRoutes
-	adminRouter.HandleFunc("/auth/login", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/auth/logout", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/auth/me", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/organizations", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/organizations/{id}", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/organizations/{id}/approve", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/organizations/{id}/reject", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/organizations/{id}/mark-fraudster", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/organizations/{id}/unmark-fraudster", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/fraudsters", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/reviews", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/reviews/{id}", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/reviews/{id}/approve", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/reviews/{id}/reject", dummyHandler).Methods(http.MethodPost)
+	router.Route("/api/v1/admin", func(r chi.Router) {
+		// Воспроизводим маршруты из AdminHandler.RegisterRoutes
+		r.Post("/auth/login", dummyHandler)
+		r.Post("/auth/logout", dummyHandler)
+		r.Get("/auth/me", dummyHandler)
+		r.Get("/organizations", dummyHandler)
+		r.Get("/organizations/{id}", dummyHandler)
+		r.Post("/organizations/{id}/approve", dummyHandler)
+		r.Post("/organizations/{id}/reject", dummyHandler)
+		r.Post("/organizations/{id}/mark-fraudster", dummyHandler)
+		r.Post("/organizations/{id}/unmark-fraudster", dummyHandler)
+		r.Get("/fraudsters", dummyHandler)
+		r.Get("/reviews", dummyHandler)
+		r.Get("/reviews/{id}", dummyHandler)
+		r.Post("/reviews/{id}/approve", dummyHandler)
+		r.Post("/reviews/{id}/reject", dummyHandler)
 
-	// Воспроизводим маршруты из AdminSupportHandler.RegisterRoutes
-	adminRouter.HandleFunc("/support/tickets", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/support/tickets/{id}", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/support/tickets/{id}/messages", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/support/tickets/{id}/close", dummyHandler).Methods(http.MethodPost)
+		// Воспроизводим маршруты из AdminSupportHandler.RegisterRoutes
+		r.Get("/support/tickets", dummyHandler)
+		r.Get("/support/tickets/{id}", dummyHandler)
+		r.Post("/support/tickets/{id}/messages", dummyHandler)
+		r.Post("/support/tickets/{id}/close", dummyHandler)
 
-	// Воспроизводим маршруты из AdminEmailTemplatesHandler.RegisterRoutes
-	adminRouter.HandleFunc("/email-templates", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/email-templates", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/email-templates/preview", dummyHandler).Methods(http.MethodPost)
-	adminRouter.HandleFunc("/email-templates/{id}", dummyHandler).Methods(http.MethodGet)
-	adminRouter.HandleFunc("/email-templates/{id}", dummyHandler).Methods(http.MethodPatch)
-	adminRouter.HandleFunc("/email-templates/{id}", dummyHandler).Methods(http.MethodDelete)
+		// Воспроизводим маршруты из AdminEmailTemplatesHandler.RegisterRoutes
+		r.Get("/email-templates", dummyHandler)
+		r.Post("/email-templates", dummyHandler)
+		r.Post("/email-templates/preview", dummyHandler)
+		r.Get("/email-templates/{id}", dummyHandler)
+		r.Patch("/email-templates/{id}", dummyHandler)
+		r.Delete("/email-templates/{id}", dummyHandler)
+	})
 
 	tests := []struct {
 		name   string
@@ -105,40 +98,11 @@ func TestAdminRoutes_SubrouterPathPrefix(t *testing.T) {
 			router.ServeHTTP(rr, req)
 
 			if rr.Code == http.StatusNotFound {
-				t.Errorf("%s %s returned 404; route not matched (possible full-path-on-subrouter bug)", tt.method, tt.path)
+				t.Errorf("%s %s returned 404; route not matched", tt.method, tt.path)
 			}
-			// Ожидаем 200 OK, поскольку dummy handler всегда возвращает 200
 			if rr.Code != http.StatusOK {
 				t.Errorf("%s %s = %d; want %d", tt.method, tt.path, rr.Code, http.StatusOK)
 			}
 		})
-	}
-}
-
-// TestAdminRoutes_FullPathsOnSubrouter_Fail демонстрирует, что баг воспроизводился
-// при регистрации полных путей на subrouter. Это негативный тест — проверяет,
-// что полные пути действительно не матчатся (как было до фикса).
-func TestAdminRoutes_FullPathsOnSubrouter_Fail(t *testing.T) {
-	t.Parallel()
-
-	router := mux.NewRouter()
-	adminRouter := router.PathPrefix("/api/v1/admin").Subrouter()
-
-	dummyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	// Имитируем ОШИБОЧНУЮ регистрацию: полные пути на subrouter
-	adminRouter.HandleFunc("/api/v1/admin/auth/login", dummyHandler).Methods(http.MethodPost)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/auth/login", nil)
-	rr := httptest.NewRecorder()
-
-	router.ServeHTTP(rr, req)
-
-	// При полном пути на subrouter gorilla/mux пытается найти
-	// /api/v1/admin/api/v1/admin/auth/login — что возвращает 405 или 404
-	if rr.Code == http.StatusOK {
-		t.Error("full path on subrouter unexpectedly matched; test premise is wrong")
 	}
 }

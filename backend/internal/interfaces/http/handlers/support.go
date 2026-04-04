@@ -14,7 +14,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type SupportHandler struct {
@@ -35,14 +35,14 @@ func NewSupportHandler(
 	}
 }
 
-func (h *SupportHandler) RegisterRoutes(r *mux.Router) {
+func (h *SupportHandler) RegisterRoutes(r chi.Router) {
 	// User routes
-	r.HandleFunc("/api/v1/support/faq", h.GetFAQ).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/support/tickets", h.CreateTicket).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/support/tickets", h.ListMyTickets).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/support/tickets/{id}", h.GetTicket).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/support/tickets/{id}/messages", h.AddMessage).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/support/tickets/{id}/reopen", h.ReopenTicket).Methods(http.MethodPost)
+	r.Get("/api/v1/support/faq", h.GetFAQ)
+	r.Post("/api/v1/support/tickets", h.CreateTicket)
+	r.Get("/api/v1/support/tickets", h.ListMyTickets)
+	r.Get("/api/v1/support/tickets/{id}", h.GetTicket)
+	r.Post("/api/v1/support/tickets/{id}/messages", h.AddMessage)
+	r.Post("/api/v1/support/tickets/{id}/reopen", h.ReopenTicket)
 }
 
 // FAQItem represents a FAQ question and answer
@@ -224,8 +224,7 @@ func (h *SupportHandler) GetTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	ticketID, err := uuid.Parse(vars["id"])
+	ticketID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ticket id")
 		return
@@ -267,8 +266,7 @@ func (h *SupportHandler) AddMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	ticketID, err := uuid.Parse(vars["id"])
+	ticketID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ticket id")
 		return
@@ -315,8 +313,7 @@ func (h *SupportHandler) ReopenTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	ticketID, err := uuid.Parse(vars["id"])
+	ticketID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid ticket id")
 		return

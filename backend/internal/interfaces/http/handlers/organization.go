@@ -15,7 +15,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 )
 
 type OrganizationHandler struct {
@@ -36,21 +36,21 @@ func NewOrganizationHandler(
 	}
 }
 
-func (h *OrganizationHandler) RegisterRoutes(r *mux.Router) {
-	r.HandleFunc("/api/v1/organizations", h.Register).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/organizations/{id}", h.Get).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/organizations/{id}/full", h.GetFull).Methods(http.MethodGet) // SEC-019: полные данные только для членов
-	r.HandleFunc("/api/v1/organizations/{id}/rating", h.GetRating).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/organizations/{id}/reviews", h.ListReviews).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/organizations/{id}/invitations", h.CreateInvitation).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/organizations/{id}/invitations", h.ListInvitations).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/organizations/{id}/invitations/{invitationId}", h.CancelInvitation).Methods(http.MethodDelete)
-	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/role", h.ChangeMemberRole).Methods(http.MethodPatch)
-	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/block", h.BlockMember).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/unblock", h.UnblockMember).Methods(http.MethodPost)
-	r.HandleFunc("/api/v1/organizations/{id}/members/{memberId}/info", h.UpdateMemberInfo).Methods(http.MethodPatch)
-	r.HandleFunc("/api/v1/invitations/{token}", h.GetInvitation).Methods(http.MethodGet)
-	r.HandleFunc("/api/v1/invitations/{token}/accept", h.AcceptInvitation).Methods(http.MethodPost)
+func (h *OrganizationHandler) RegisterRoutes(r chi.Router) {
+	r.Post("/api/v1/organizations", h.Register)
+	r.Get("/api/v1/organizations/{id}", h.Get)
+	r.Get("/api/v1/organizations/{id}/full", h.GetFull) // SEC-019: полные данные только для членов
+	r.Get("/api/v1/organizations/{id}/rating", h.GetRating)
+	r.Get("/api/v1/organizations/{id}/reviews", h.ListReviews)
+	r.Post("/api/v1/organizations/{id}/invitations", h.CreateInvitation)
+	r.Get("/api/v1/organizations/{id}/invitations", h.ListInvitations)
+	r.Delete("/api/v1/organizations/{id}/invitations/{invitationId}", h.CancelInvitation)
+	r.Patch("/api/v1/organizations/{id}/members/{memberId}/role", h.ChangeMemberRole)
+	r.Post("/api/v1/organizations/{id}/members/{memberId}/block", h.BlockMember)
+	r.Post("/api/v1/organizations/{id}/members/{memberId}/unblock", h.UnblockMember)
+	r.Patch("/api/v1/organizations/{id}/members/{memberId}/info", h.UpdateMemberInfo)
+	r.Get("/api/v1/invitations/{token}", h.GetInvitation)
+	r.Post("/api/v1/invitations/{token}/accept", h.AcceptInvitation)
 }
 
 type RegisterRequest struct {
@@ -135,8 +135,7 @@ func (h *OrganizationHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 // Get возвращает публичный профиль организации (SEC-019: без персональных данных)
 func (h *OrganizationHandler) Get(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -159,8 +158,7 @@ func (h *OrganizationHandler) Get(w http.ResponseWriter, r *http.Request) {
 // GetFull возвращает полные данные организации (только для членов организации)
 // SEC-019: BOLA fix - проверяем принадлежность пользователя к организации
 func (h *OrganizationHandler) GetFull(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -207,8 +205,7 @@ type CreateInvitationResponse struct {
 }
 
 func (h *OrganizationHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -263,8 +260,7 @@ type AcceptInvitationResponse struct {
 }
 
 func (h *OrganizationHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	token := vars["token"]
+	token := chi.URLParam(r, "token")
 
 	var req AcceptInvitationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -314,8 +310,7 @@ type InvitationResponse struct {
 }
 
 func (h *OrganizationHandler) GetInvitation(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	token := vars["token"]
+	token := chi.URLParam(r, "token")
 
 	inv, err := h.service.GetInvitationByToken(r.Context(), token)
 	if err != nil {
@@ -353,8 +348,7 @@ type InvitationListResponse struct {
 }
 
 func (h *OrganizationHandler) ListInvitations(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -408,13 +402,12 @@ func (h *OrganizationHandler) ListInvitations(w http.ResponseWriter, r *http.Req
 }
 
 func (h *OrganizationHandler) CancelInvitation(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
 	}
-	invitationID, err := uuid.Parse(vars["invitationId"])
+	invitationID, err := uuid.Parse(chi.URLParam(r, "invitationId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid invitation id")
 		return
@@ -450,13 +443,12 @@ type ChangeMemberRoleRequest struct {
 }
 
 func (h *OrganizationHandler) ChangeMemberRole(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
 	}
-	memberID, err := uuid.Parse(vars["memberId"])
+	memberID, err := uuid.Parse(chi.URLParam(r, "memberId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid member id")
 		return
@@ -505,13 +497,12 @@ type BlockMemberRequest struct {
 }
 
 func (h *OrganizationHandler) BlockMember(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
 	}
-	memberID, err := uuid.Parse(vars["memberId"])
+	memberID, err := uuid.Parse(chi.URLParam(r, "memberId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid member id")
 		return
@@ -550,13 +541,12 @@ func (h *OrganizationHandler) BlockMember(w http.ResponseWriter, r *http.Request
 }
 
 func (h *OrganizationHandler) UnblockMember(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
 	}
-	memberID, err := uuid.Parse(vars["memberId"])
+	memberID, err := uuid.Parse(chi.URLParam(r, "memberId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid member id")
 		return
@@ -595,13 +585,12 @@ type UpdateMemberInfoRequest struct {
 }
 
 func (h *OrganizationHandler) UpdateMemberInfo(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	orgID, err := uuid.Parse(vars["id"])
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
 	}
-	memberID, err := uuid.Parse(vars["memberId"])
+	memberID, err := uuid.Parse(chi.URLParam(r, "memberId"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid member id")
 		return
@@ -839,8 +828,7 @@ type ReviewsListResponse struct {
 }
 
 func (h *OrganizationHandler) GetRating(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
@@ -862,8 +850,7 @@ func (h *OrganizationHandler) GetRating(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *OrganizationHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := uuid.Parse(vars["id"])
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid organization id")
 		return
