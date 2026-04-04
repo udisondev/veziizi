@@ -188,13 +188,25 @@ func TestNeedsCleanDB(t *testing.T) {
 
 ## Соответствие E2E_TESTS.md
 
-| Группа | Файл | Статус |
+| Группа | Файл | Тестов |
 |--------|------|--------|
-| Auth (AUTH-*) | auth_test.go | Частично |
-| Organizations (ORG-*) | organizations_test.go | Частично |
-| Freight Requests (FR-*) | freight_requests_test.go | Частично |
-| Orders (ORD-*) | orders_test.go | TODO |
-| Geo (GEO-*) | geo_test.go | TODO |
-| Admin (ADM-*) | admin_test.go | TODO |
-| Notifications (NOT-*) | notifications_test.go | TODO |
-| Support (SUP-*) | support_test.go | TODO |
+| Auth (AUTH-*) | auth_test.go | 13 |
+| Organizations (ORG-*) | organizations_test.go | 32 |
+| Freight Requests (FR-*) | freight_requests_test.go | 73 |
+| Geo (GEO-*) | geo_test.go | 13 |
+| Admin (ADM-*) | admin_test.go | 30 |
+| Notifications (NOT-*) | notifications_test.go | 19 |
+| Email Notifications (EML-*) | email_notifications_test.go | 15 |
+| Support (SUP-*) | support_test.go | 21 |
+| Admin Support (ASUP-*) | admin_support_test.go | 14 |
+| Subscriptions (SUB-*) | subscriptions_test.go | 15 |
+| Password Reset (PWD-*) | password_reset_test.go | 17 |
+| History (HIST-*) | history_test.go | 11 |
+| Health (HLT-*) | health_test.go | 12 |
+| Member Blocking (BLOCK-*) | member_blocking_test.go | 9 |
+| Session Fraud | session_fraud_test.go | 7 |
+| Review Lifecycle | review_lifecycle_test.go | 7 |
+| Org Ratings | organization_ratings_test.go | 6 |
+| Fraud Moderation | fraud_moderation_test.go | 6 |
+| Fraudster Handler | fraudster_handler_test.go | 5 |
+| Fraud Weight | fraud_weight_test.go | 5 |

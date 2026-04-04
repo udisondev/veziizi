@@ -72,6 +72,23 @@ func (s *AdminSuite) TestADM004_SuccessfulLogout() {
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 }
 
+// ==================== GET /api/v1/admin/auth/me ====================
+
+func (s *AdminSuite) TestADM005a_AdminMe_Authenticated() {
+	resp, err := s.ctx.AdminClient.AdminMe()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().NotEmpty(resp.Body.AdminID)
+	s.Assert().Equal("admin@veziizi.local", resp.Body.Email)
+}
+
+func (s *AdminSuite) TestADM005b_AdminMe_Unauthorized() {
+	anon := client.New(s.baseURL)
+	resp, err := anon.AdminMe()
+	s.Require().NoError(err)
+	s.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
 // ==================== GET /api/v1/admin/organizations ====================
 
 func (s *AdminSuite) TestADM005_ListPendingOrganizations() {

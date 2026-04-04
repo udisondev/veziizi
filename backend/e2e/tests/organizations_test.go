@@ -343,3 +343,51 @@ func (s *OrganizationsSuite) TestORG104_CannotBlockSelf() {
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
 	s.Assert().Contains(strings.ToLower(string(resp.RawBody)), "cannot block yourself")
 }
+
+// ==================== UPDATE MEMBER INFO ====================
+
+func (s *OrganizationsSuite) TestORG110_UpdateMemberInfo_Name() {
+	name := "Updated Name"
+	resp, err := s.org.Client.UpdateMemberInfo(s.org.OrganizationID, s.org.MemberID, client.UpdateMemberInfoRequest{
+		Name: &name,
+	})
+	s.Require().NoError(err)
+	s.Assert().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *OrganizationsSuite) TestORG111_UpdateMemberInfo_Phone() {
+	phone := "+79001234567"
+	resp, err := s.org.Client.UpdateMemberInfo(s.org.OrganizationID, s.org.MemberID, client.UpdateMemberInfoRequest{
+		Phone: &phone,
+	})
+	s.Require().NoError(err)
+	s.Assert().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *OrganizationsSuite) TestORG112_UpdateMemberInfo_EmptyName() {
+	empty := ""
+	resp, err := s.org.Client.UpdateMemberInfo(s.org.OrganizationID, s.org.MemberID, client.UpdateMemberInfoRequest{
+		Name: &empty,
+	})
+	s.Require().NoError(err)
+	s.Assert().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (s *OrganizationsSuite) TestORG113_UpdateMemberInfo_OtherOrg() {
+	name := "Hacker"
+	resp, err := s.otherOrg.Client.UpdateMemberInfo(s.org.OrganizationID, s.org.MemberID, client.UpdateMemberInfoRequest{
+		Name: &name,
+	})
+	s.Require().NoError(err)
+	s.Assert().Equal(http.StatusForbidden, resp.StatusCode)
+}
+
+func (s *OrganizationsSuite) TestORG114_UpdateMemberInfo_Unauthorized() {
+	anon := client.New(s.baseURL)
+	name := "Anon"
+	resp, err := anon.UpdateMemberInfo(s.org.OrganizationID, s.org.MemberID, client.UpdateMemberInfoRequest{
+		Name: &name,
+	})
+	s.Require().NoError(err)
+	s.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}

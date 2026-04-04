@@ -231,6 +231,11 @@ func (c *Client) UnblockMember(orgID, memberID uuid.UUID) (*Response[struct{}], 
 	return doRequest[struct{}](c, http.MethodPost, "/api/v1/organizations/"+orgID.String()+"/members/"+memberID.String()+"/unblock", nil, nil)
 }
 
+// UpdateMemberInfo updates member profile information.
+func (c *Client) UpdateMemberInfo(orgID, memberID uuid.UUID, req UpdateMemberInfoRequest) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPatch, "/api/v1/organizations/"+orgID.String()+"/members/"+memberID.String()+"/info", req, nil)
+}
+
 // --- Freight Request Methods ---
 
 // CreateFreightRequest creates a new freight request.
@@ -450,6 +455,11 @@ func (c *Client) AdminLogout() (*Response[struct{}], error) {
 	return doRequest[struct{}](c, http.MethodPost, "/api/v1/admin/auth/logout", nil, nil)
 }
 
+// AdminMe returns current admin info.
+func (c *Client) AdminMe() (*Response[AdminMeResponse], error) {
+	return doRequest[AdminMeResponse](c, http.MethodGet, "/api/v1/admin/auth/me", nil, nil)
+}
+
 // AdminGetOrganizations returns organizations with optional status filter.
 func (c *Client) AdminGetOrganizations(status string) (*Response[[]OrganizationResponse], error) {
 	path := "/api/v1/admin/organizations"
@@ -599,6 +609,37 @@ func (c *Client) GetTelegramLinkCode() (*Response[LinkCodeResponse], error) {
 // DisconnectTelegram disconnects Telegram from account.
 func (c *Client) DisconnectTelegram() (*Response[struct{}], error) {
 	return doRequest[struct{}](c, http.MethodDelete, "/api/v1/notifications/telegram", nil, nil)
+}
+
+// SetEmail sets email for notifications.
+func (c *Client) SetEmail(email string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/notifications/email", struct {
+		Email string `json:"email"`
+	}{Email: email}, nil)
+}
+
+// DisconnectEmail removes email notification.
+func (c *Client) DisconnectEmail() (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodDelete, "/api/v1/notifications/email", nil, nil)
+}
+
+// SetMarketingConsent updates marketing email consent.
+func (c *Client) SetMarketingConsent(consent bool) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPatch, "/api/v1/notifications/email/marketing", struct {
+		Consent bool `json:"consent"`
+	}{Consent: consent}, nil)
+}
+
+// ResendEmailVerification requests email verification resend.
+func (c *Client) ResendEmailVerification() (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/notifications/email/resend-verification", nil, nil)
+}
+
+// VerifyEmailByToken verifies email with token.
+func (c *Client) VerifyEmailByToken(token string) (*Response[struct{}], error) {
+	return doRequest[struct{}](c, http.MethodPost, "/api/v1/notifications/email/verify", struct {
+		Token string `json:"token"`
+	}{Token: token}, nil)
 }
 
 // --- Support Methods ---

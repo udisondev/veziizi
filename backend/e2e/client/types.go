@@ -572,3 +572,17 @@ type AdminTicketResponse struct {
 }
 
 // AdminTicketDetailResponse and AdminAddMessageRequest are aliased from handlers package above
+
+// UpdateMemberInfoRequest represents a request to update member profile information.
+type UpdateMemberInfoRequest struct {
+	Name  *string `json:"name,omitempty"`
+	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+}
+
+// AdminMeResponse represents admin session info.
+type AdminMeResponse struct {
+	AdminID string `json:"admin_id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+}
