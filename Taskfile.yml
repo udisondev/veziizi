@@ -121,7 +121,6 @@ tasks:
           go run ./backend/cmd/workers/$worker &
         done
         echo "All workers started in background"
-        wait
 
   # --- Testing ---
 
@@ -137,7 +136,7 @@ tasks:
       - go tool cover -html=coverage.out -o coverage.html
 
   test:e2e:setup:
-    desc: Setup E2E test database
+    internal: true
     deps: [up]
     cmds:
       - echo "Creating test database..."
@@ -202,7 +201,7 @@ tasks:
       - echo ".env created from .env.example - please edit it with your values"
 
   check-env:
-    desc: Check if .env exists
+    internal: true
     preconditions:
       - sh: test -f .env
         msg: "Error: .env file not found. Run 'task env:init' first"
@@ -210,24 +209,27 @@ tasks:
   # --- Development ---
 
   dev:setup:
-    desc: Install dev tools (goreman, air)
+    internal: true
     cmds:
       - command -v goreman >/dev/null 2>&1 || go install github.com/mattn/goreman@latest
       - command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest
-      - echo "Dev tools ready"
 
   dev:
     desc: Start DB + API only (without workers/frontend)
-    deps: [check-env, up]
     cmds:
+      - task: check-env
+      - task: up
       - task: migrate
       - task: seed:geo
       - task: run:api
 
   dev:all:
     desc: Start everything with hot-reload (API + workers + frontend)
-    deps: [check-env, dev:setup, up, build:workers]
     cmds:
+      - task: check-env
+      - task: dev:setup
+      - task: up
+      - task: build:workers
       - echo "Waiting for PostgreSQL..."
       - until docker exec veziizi-postgres pg_isready -U {{.POSTGRES_USER}} >/dev/null 2>&1; do sleep 1; done
       - echo "PostgreSQL ready, running migrations..."
