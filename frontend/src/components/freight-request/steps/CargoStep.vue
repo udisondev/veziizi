@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { CargoInfo, ADRClass } from '@/types/freightRequest'
 import { adrClassOptions } from '@/types/freightRequest'
 import {
@@ -8,6 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useBreakpoint } from '@/composables/useBreakpoint'
+import BottomSheet from '@/components/shared/BottomSheet.vue'
 
 interface Props {
   cargo: CargoInfo
@@ -21,6 +24,18 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const { isMobile } = useBreakpoint()
+const adrSheetOpen = ref(false)
+
+const selectedAdrLabel = computed(() =>
+  adrClassOptions.find(o => o.value === (props.cargo.adr_class || 'none'))?.label ?? null
+)
+
+function handleAdrSheetSelect(value: ADRClass) {
+  handleAdrClassChange(value)
+  adrSheetOpen.value = false
+}
 
 function updateField<K extends keyof CargoInfo>(field: K, value: CargoInfo[K]) {
   emit('update:cargo', { ...props.cargo, [field]: value })
@@ -192,19 +207,52 @@ const inputClass = (field: string) => [
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Класс опасности груза
       </label>
-      <Select
-        :model-value="cargo.adr_class || 'none'"
-        @update:model-value="handleAdrClassChange($event as ADRClass)"
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Не требуется" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="option in adrClassOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
+
+      <!-- Desktop -->
+      <template v-if="!isMobile()">
+        <Select
+          :model-value="cargo.adr_class || 'none'"
+          @update:model-value="handleAdrClassChange($event as ADRClass)"
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Не требуется" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="option in adrClassOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </template>
+
+      <!-- Mobile -->
+      <template v-else>
+        <button
+          type="button"
+          class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-left bg-white"
+          @click="adrSheetOpen = true"
+        >
+          <span class="text-gray-900">{{ selectedAdrLabel }}</span>
+        </button>
+
+        <BottomSheet v-model="adrSheetOpen" label="Класс опасности груза">
+          <div class="overflow-y-auto flex-1">
+            <button
+              v-for="option in adrClassOptions"
+              :key="option.value"
+              type="button"
+              :class="[
+                'w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100',
+                option.value === (cargo.adr_class || 'none') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900',
+              ]"
+              @click="handleAdrSheetSelect(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </BottomSheet>
+      </template>
+
       <p class="mt-1 text-sm text-gray-500">
         Выберите класс, если груз относится к опасным
       </p>

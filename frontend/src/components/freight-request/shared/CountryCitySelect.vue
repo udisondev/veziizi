@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import type { AcceptableValue } from 'reka-ui'
+import { useBreakpoint } from '@/composables/useBreakpoint'
+import BottomSheet from '@/components/shared/BottomSheet.vue'
 
 interface Props {
   countryId?: number
@@ -89,9 +91,9 @@ function calculateDropdownDirection() {
   }
 }
 
-// Recalculate direction when dropdown opens
+// Recalculate direction when dropdown opens (desktop only)
 watch(isCityDropdownOpen, (isOpen) => {
-  if (isOpen) {
+  if (isOpen && !isMobile()) {
     nextTick(() => calculateDropdownDirection())
   }
 })
@@ -196,6 +198,43 @@ function handleCitySelect(city: City) {
 onMounted(async () => {
   await fetchCountries()
 })
+
+const { isMobile } = useBreakpoint()
+
+const countrySheetOpen = ref(false)
+const citySheetOpen = ref(false)
+
+const selectedCountryName = computed(() => {
+  if (!selectedCountryId.value) return null
+  const country = countries.value.find(c => c.id === selectedCountryId.value)
+  return country ? (country.name_ru || country.name) : null
+})
+
+function openCountrySheet() {
+  countrySearch.value = ''
+  countrySheetOpen.value = true
+}
+
+function handleCountrySheetSelect(value: AcceptableValue) {
+  handleCountryChange(value)
+  countrySheetOpen.value = false
+}
+
+function openCitySheet() {
+  citySheetOpen.value = true
+  nextTick(() => {
+    cityInputRef.value?.focus()
+  })
+}
+
+watch(citySheetOpen, (open) => {
+  if (!open) closeCityDropdown()
+})
+
+function handleCitySheetSelect(city: City) {
+  handleCitySelect(city)
+  citySheetOpen.value = false
+}
 </script>
 
 <template>
@@ -203,155 +242,228 @@ onMounted(async () => {
     <!-- Country Select -->
     <div>
       <Label class="block text-sm font-medium text-gray-700 mb-1">Страна</Label>
-      <Select
-        :model-value="selectedCountryId?.toString()"
-        :disabled="disabled || isLoadingCountries"
-        @update:model-value="handleCountryChange"
-      >
-        <SelectTrigger :class="countryTriggerClass">
-          <SelectValue placeholder="Выберите страну" />
-        </SelectTrigger>
-        <SelectContent
-          class="!w-[var(--reka-select-trigger-width)] !min-w-0 !max-h-[50vh] overflow-hidden"
-          :side-offset="4"
+
+      <!-- Desktop -->
+      <template v-if="!isMobile()">
+        <Select
+          :model-value="selectedCountryId?.toString()"
+          :disabled="disabled || isLoadingCountries"
+          @update:model-value="handleCountryChange"
         >
-          <!-- Search input inside dropdown -->
-          <div class="px-2 py-1 bg-white border-b z-10">
+          <SelectTrigger :class="countryTriggerClass">
+            <SelectValue placeholder="Выберите страну" />
+          </SelectTrigger>
+          <SelectContent
+            class="!w-[var(--reka-select-trigger-width)] !min-w-0 !max-h-[50vh] overflow-hidden"
+            :side-offset="4"
+          >
+            <div class="px-2 py-1 bg-white border-b z-10">
+              <input
+                v-model="countrySearch"
+                type="text"
+                class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="Поиск страны..."
+                @click.stop
+                @keydown.stop
+              />
+            </div>
+            <div class="max-h-[40vh] overflow-y-auto">
+              <SelectItem
+                v-for="country in filteredCountries"
+                :key="country.id"
+                :value="country.id.toString()"
+              >
+                {{ country.name_ru || country.name }}
+                <span v-if="country.name_ru && country.name !== country.name_ru" class="text-gray-500 text-xs ml-1">
+                  ({{ country.name }})
+                </span>
+              </SelectItem>
+              <div v-if="filteredCountries.length === 0" class="px-2 py-3 text-sm text-gray-500 text-center">
+                Страны не найдены
+              </div>
+            </div>
+          </SelectContent>
+        </Select>
+      </template>
+
+      <!-- Mobile: триггер + bottom sheet -->
+      <template v-else>
+        <button
+          type="button"
+          :disabled="disabled || isLoadingCountries"
+          :class="[
+            'appearance-none block w-full px-3 py-2 border rounded-md text-sm text-left',
+            error && !selectedCountryId ? 'border-red-300' : 'border-gray-300',
+            disabled ? 'bg-gray-100 text-gray-400' : 'bg-white text-gray-900',
+          ]"
+          @click="openCountrySheet"
+        >
+          <span v-if="selectedCountryName">{{ selectedCountryName }}</span>
+          <span v-else class="text-gray-400">Выберите страну</span>
+        </button>
+
+        <BottomSheet v-model="countrySheetOpen" label="Выберите страну">
+          <div class="px-4 pt-3 pb-2 border-b border-gray-100">
             <input
               v-model="countrySearch"
               type="text"
-              class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="Поиск страны..."
-              @click.stop
-              @keydown.stop
             />
           </div>
-          <div class="max-h-[40vh] overflow-y-auto">
-          <SelectItem
-            v-for="country in filteredCountries"
-            :key="country.id"
-            :value="country.id.toString()"
-          >
-            {{ country.name_ru || country.name }}
-            <span v-if="country.name_ru && country.name !== country.name_ru" class="text-gray-500 text-xs ml-1">
-              ({{ country.name }})
-            </span>
-          </SelectItem>
-          <div v-if="filteredCountries.length === 0" class="px-2 py-3 text-sm text-gray-500 text-center">
-            Страны не найдены
+          <div class="overflow-y-auto flex-1">
+            <button
+              v-for="country in filteredCountries"
+              :key="country.id"
+              type="button"
+              class="w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100"
+              :class="country.id === selectedCountryId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900'"
+              @click="handleCountrySheetSelect(country.id)"
+            >
+              {{ country.name_ru || country.name }}
+              <span v-if="country.name_ru && country.name !== country.name_ru" class="text-gray-400 text-xs ml-1">
+                ({{ country.name }})
+              </span>
+            </button>
+            <div v-if="filteredCountries.length === 0" class="px-4 py-6 text-sm text-gray-500 text-center">
+              Страны не найдены
+            </div>
           </div>
-          </div>
-        </SelectContent>
-      </Select>
+        </BottomSheet>
+      </template>
     </div>
 
     <!-- City Autocomplete -->
     <div v-if="selectedCountryId">
       <Label class="block text-sm font-medium text-gray-700 mb-1">Город</Label>
-      <div class="relative">
-        <input
-          ref="cityInputRef"
-          type="text"
-          :value="citySearch"
+
+      <!-- Desktop -->
+      <template v-if="!isMobile()">
+        <div class="relative">
+          <input
+            ref="cityInputRef"
+            type="text"
+            :value="citySearch"
+            :disabled="disabled"
+            :class="[
+              'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+              error && !selectedCityId ? 'border-red-300' : 'border-gray-300',
+              disabled ? 'bg-gray-100 cursor-not-allowed' : '',
+            ]"
+            placeholder="Начните вводить город..."
+            autocomplete="off"
+            @input="handleCityInput"
+            @keydown="handleCityKeydown"
+            @focus="setCitySearch(citySearch)"
+          />
+
+          <div v-if="isLoadingCities" class="absolute right-3 top-1/2 -translate-y-1/2">
+            <svg class="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          </div>
+          <div v-else-if="selectedCityId" class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" title="Город выбран">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+            </svg>
+          </div>
+
+          <div
+            v-if="isCityDropdownOpen && cities.length > 0"
+            ref="cityDropdownRef"
+            data-tutorial-popup
+            :class="[
+              'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto',
+              dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
+            ]"
+          >
+            <button
+              v-for="(city, index) in cities"
+              :key="city.id"
+              type="button"
+              :class="['w-full px-3 py-2 text-left text-sm hover:bg-gray-100', index === highlightedIndex ? 'bg-blue-50' : '']"
+              @click="handleCitySelect(city)"
+              @mouseenter="highlightedIndex = index"
+            >
+              <div class="font-medium text-gray-900">{{ city.name_ru || city.name }}</div>
+              <div v-if="city.name_ru && city.name !== city.name_ru" class="text-gray-500 text-xs">{{ city.name }}</div>
+            </button>
+          </div>
+
+          <div
+            v-if="isCityDropdownOpen && cities.length === 0 && !isLoadingCities && citySearch.length > 0"
+            data-tutorial-popup
+            :class="[
+              'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg p-3 text-sm text-gray-500 text-center',
+              dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
+            ]"
+          >
+            Города не найдены
+          </div>
+        </div>
+      </template>
+
+      <!-- Mobile: триггер + bottom sheet -->
+      <template v-else>
+        <button
+          type="button"
           :disabled="disabled"
           :class="[
-            'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+            'appearance-none block w-full px-3 py-2 border rounded-md text-sm text-left',
             error && !selectedCityId ? 'border-red-300' : 'border-gray-300',
-            disabled ? 'bg-gray-100 cursor-not-allowed' : '',
+            disabled ? 'bg-gray-100 text-gray-400' : 'bg-white',
           ]"
-          placeholder="Начните вводить город..."
-          autocomplete="off"
-          @input="handleCityInput"
-          @keydown="handleCityKeydown"
-          @focus="setCitySearch(citySearch)"
-        />
-
-        <!-- Loading indicator -->
-        <div v-if="isLoadingCities" class="absolute right-3 top-1/2 -translate-y-1/2">
-          <svg
-            class="animate-spin h-5 w-5 text-gray-400"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            />
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-        </div>
-
-        <!-- Selected indicator -->
-        <div
-          v-else-if="selectedCityId"
-          class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"
-          title="Город выбран"
+          @click="openCitySheet"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </div>
+          <span v-if="citySearch" class="text-gray-900">{{ citySearch }}</span>
+          <span v-else class="text-gray-400">Начните вводить город...</span>
+        </button>
 
-        <!-- City dropdown -->
-        <div
-          v-if="isCityDropdownOpen && cities.length > 0"
-          ref="cityDropdownRef"
-          data-tutorial-popup
-          :class="[
-            'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto',
-            dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
-          ]"
-        >
-          <button
-            v-for="(city, index) in cities"
-            :key="city.id"
-            type="button"
-            :class="[
-              'w-full px-3 py-2 text-left text-sm hover:bg-gray-100',
-              index === highlightedIndex ? 'bg-blue-50' : '',
-            ]"
-            @click="handleCitySelect(city)"
-            @mouseenter="highlightedIndex = index"
-          >
-            <div class="font-medium text-gray-900">
-              {{ city.name_ru || city.name }}
+        <BottomSheet v-model="citySheetOpen" label="Выберите город">
+          <div class="px-4 pt-3 pb-2 border-b border-gray-100">
+            <input
+              ref="cityInputRef"
+              type="text"
+              :value="citySearch"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="Начните вводить город..."
+              autocomplete="off"
+              @input="handleCityInput"
+              @keydown="handleCityKeydown"
+            />
+          </div>
+          <div class="overflow-y-auto flex-1">
+            <div v-if="isLoadingCities" class="flex justify-center py-6">
+              <svg class="animate-spin h-6 w-6 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
             </div>
-            <div v-if="city.name_ru && city.name !== city.name_ru" class="text-gray-500 text-xs">
-              {{ city.name }}
-            </div>
-          </button>
-        </div>
-
-        <!-- No results -->
-        <div
-          v-if="isCityDropdownOpen && cities.length === 0 && !isLoadingCities && citySearch.length > 0"
-          data-tutorial-popup
-          :class="[
-            'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg p-3 text-sm text-gray-500 text-center',
-            dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
-          ]"
-        >
-          Города не найдены
-        </div>
-      </div>
+            <template v-else>
+              <button
+                v-for="(city, index) in cities"
+                :key="city.id"
+                type="button"
+                :class="[
+                  'w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100',
+                  index === highlightedIndex ? 'bg-blue-50' : 'text-gray-900',
+                ]"
+                @click="handleCitySheetSelect(city)"
+              >
+                <div class="font-medium">{{ city.name_ru || city.name }}</div>
+                <div v-if="city.name_ru && city.name !== city.name_ru" class="text-gray-400 text-xs">{{ city.name }}</div>
+              </button>
+              <div v-if="cities.length === 0 && citySearch.length > 0" class="px-4 py-6 text-sm text-gray-500 text-center">
+                Города не найдены
+              </div>
+              <div v-if="cities.length === 0 && citySearch.length === 0" class="px-4 py-6 text-sm text-gray-400 text-center">
+                Введите название города
+              </div>
+            </template>
+          </div>
+        </BottomSheet>
+      </template>
     </div>
 
     <!-- Error message -->
