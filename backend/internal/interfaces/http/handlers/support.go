@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	supportApp "github.com/udisondev/veziizi/backend/internal/application/support"
 	"github.com/udisondev/veziizi/backend/internal/domain/support"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
 )
 
 type SupportHandler struct {

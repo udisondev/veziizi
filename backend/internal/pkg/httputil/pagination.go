@@ -9,8 +9,8 @@ import (
 // Защита от DoS через большие limit и отрицательные offset
 
 const (
-	DefaultLimit = 20
-	MaxLimit     = 100
+	DefaultLimit  = 20
+	MaxLimit      = 100
 	DefaultOffset = 0
 )
 

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/e2e/client"
 )
 
 // GeoSuite combines all geo tests with shared context.

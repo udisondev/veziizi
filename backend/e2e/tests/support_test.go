@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/suite"
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/udisondev/veziizi/backend/e2e/helpers"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/values"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/suite"
 )
 
 // SupportSuite combines all support tests with shared context.

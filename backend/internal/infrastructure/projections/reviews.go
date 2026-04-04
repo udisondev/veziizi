@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 // ReviewsProjection provides read-side operations for reviews
@@ -26,22 +26,22 @@ func NewReviewsProjection(db dbtx.TxManager) *ReviewsProjection {
 
 // ReviewForModeration represents a review pending moderation
 type ReviewForModeration struct {
-	ID                uuid.UUID       `json:"id"`
-	OrderID           uuid.UUID       `json:"order_id"`
-	ReviewerOrgID     uuid.UUID       `json:"reviewer_org_id"`
-	ReviewerOrgName   string          `json:"reviewer_org_name,omitempty"`
-	ReviewedOrgID     uuid.UUID       `json:"reviewed_org_id"`
-	ReviewedOrgName   string          `json:"reviewed_org_name,omitempty"`
-	Rating            int             `json:"rating"`
-	Comment           string          `json:"comment"`
-	OrderAmount       int64           `json:"order_amount"`
-	OrderCurrency     string          `json:"order_currency"`
-	RawWeight         float64         `json:"raw_weight"`
-	FraudScore        float64         `json:"fraud_score"`
-	FraudSignals      []FraudSignalInfo `json:"fraud_signals"`
-	ActivationDate    *time.Time      `json:"activation_date"`
-	CreatedAt         time.Time       `json:"created_at"`
-	AnalyzedAt        *time.Time      `json:"analyzed_at"`
+	ID              uuid.UUID         `json:"id"`
+	OrderID         uuid.UUID         `json:"order_id"`
+	ReviewerOrgID   uuid.UUID         `json:"reviewer_org_id"`
+	ReviewerOrgName string            `json:"reviewer_org_name,omitempty"`
+	ReviewedOrgID   uuid.UUID         `json:"reviewed_org_id"`
+	ReviewedOrgName string            `json:"reviewed_org_name,omitempty"`
+	Rating          int               `json:"rating"`
+	Comment         string            `json:"comment"`
+	OrderAmount     int64             `json:"order_amount"`
+	OrderCurrency   string            `json:"order_currency"`
+	RawWeight       float64           `json:"raw_weight"`
+	FraudScore      float64           `json:"fraud_score"`
+	FraudSignals    []FraudSignalInfo `json:"fraud_signals"`
+	ActivationDate  *time.Time        `json:"activation_date"`
+	CreatedAt       time.Time         `json:"created_at"`
+	AnalyzedAt      *time.Time        `json:"analyzed_at"`
 }
 
 // FraudSignalInfo represents fraud signal details

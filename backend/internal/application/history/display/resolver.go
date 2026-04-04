@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
 // EntityResolver разрешает UUID сущностей в человекочитаемые имена

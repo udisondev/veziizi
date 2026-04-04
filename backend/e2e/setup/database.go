@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/config"
-	"github.com/udisondev/veziizi/backend/migrations"
 	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/migrations"
 	"golang.org/x/crypto/bcrypt"
 )
 

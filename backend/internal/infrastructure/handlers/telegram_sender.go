@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 // TelegramSenderHandler отправляет уведомления в Telegram
 type TelegramSenderHandler struct {
-	client    *notifications.TelegramClient
-	appConfig *config.Config
+	client      *notifications.TelegramClient
+	appConfig   *config.Config
 	deliveryLog *projections.NotificationDeliveryLogProjection
 }
 

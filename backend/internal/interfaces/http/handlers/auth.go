@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/udisondev/veziizi/backend/internal/application/organization"
 	sessionApp "github.com/udisondev/veziizi/backend/internal/application/session"
 	orgDomain "github.com/udisondev/veziizi/backend/internal/domain/organization"
@@ -14,9 +17,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -215,15 +215,15 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 type MeResponse struct {
-	MemberID       string               `json:"member_id"`
-	OrganizationID string               `json:"organization_id"`
-	Role           string               `json:"role"`
-	Email          string               `json:"email"`
-	Name           string               `json:"name"`
-	Phone          *string              `json:"phone,omitempty"`
-	TelegramID     *int64               `json:"telegram_id,omitempty"`
-	Status         string               `json:"status"`
-	Organization   *OrganizationBrief   `json:"organization,omitempty"`
+	MemberID       string             `json:"member_id"`
+	OrganizationID string             `json:"organization_id"`
+	Role           string             `json:"role"`
+	Email          string             `json:"email"`
+	Name           string             `json:"name"`
+	Phone          *string            `json:"phone,omitempty"`
+	TelegramID     *int64             `json:"telegram_id,omitempty"`
+	Status         string             `json:"status"`
+	Organization   *OrganizationBrief `json:"organization,omitempty"`
 }
 
 type OrganizationBrief struct {

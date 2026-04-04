@@ -3,8 +3,8 @@ package entities
 import (
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 )
 
 type Invitation struct {

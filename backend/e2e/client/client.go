@@ -511,16 +511,16 @@ func (c *Client) AdminListFraudsters() (*Response[FraudstersResponse], error) {
 
 // AdminReviewResponse represents a review in admin context.
 type AdminReviewResponse struct {
-	ID             uuid.UUID `json:"id"`
-	OrderID        uuid.UUID `json:"order_id"`
-	ReviewerOrgID  uuid.UUID `json:"reviewer_org_id"`
-	ReviewerOrgName string   `json:"reviewer_org_name"`
-	TargetOrgID    uuid.UUID `json:"target_org_id"`
-	TargetOrgName  string    `json:"target_org_name"`
-	Rating         int       `json:"rating"`
-	Comment        string    `json:"comment"`
-	Status         string    `json:"status"`
-	CreatedAt      string    `json:"created_at"`
+	ID              uuid.UUID `json:"id"`
+	OrderID         uuid.UUID `json:"order_id"`
+	ReviewerOrgID   uuid.UUID `json:"reviewer_org_id"`
+	ReviewerOrgName string    `json:"reviewer_org_name"`
+	TargetOrgID     uuid.UUID `json:"target_org_id"`
+	TargetOrgName   string    `json:"target_org_name"`
+	Rating          int       `json:"rating"`
+	Comment         string    `json:"comment"`
+	Status          string    `json:"status"`
+	CreatedAt       string    `json:"created_at"`
 }
 
 // AdminGetReviews returns reviews for moderation.

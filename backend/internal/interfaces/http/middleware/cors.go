@@ -24,7 +24,7 @@ func CORS(cfg *config.Config) func(http.Handler) http.Handler {
 	// В production очищаем dev origins и добавляем production домен
 	if cfg.IsProduction() {
 		allowedOrigins = map[string]bool{
-			"https://везиизи.рф":     true,
+			"https://везиизи.рф":               true,
 			"https://xn--e1aebcghhi.xn--p1acf": true, // punycode для везиизи.рф
 		}
 	}

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 // FraudDataProjection provides data access for fraud detection analysis
@@ -732,7 +732,7 @@ func (p *FraudDataProjection) GetRatingPatternsByRelationship(ctx context.Contex
 
 // BurstAfterLowData contains data for burst-after-low detection
 type BurstAfterLowData struct {
-	LastLowRatingAt  *time.Time
+	LastLowRatingAt    *time.Time
 	FiveStarCountAfter int
 }
 
@@ -775,8 +775,8 @@ func (p *FraudDataProjection) GetBurstAfterLowRating(ctx context.Context, review
 
 // OrgActivityData contains org's last activity data
 type OrgActivityData struct {
-	LastOrderAt      *time.Time
-	LastReviewLeftAt *time.Time
+	LastOrderAt        *time.Time
+	LastReviewLeftAt   *time.Time
 	RecentReviewsCount int
 }
 

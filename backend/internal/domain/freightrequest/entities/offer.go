@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 )
 
 // ErrInvalidStatusTransition is returned when an invalid offer status transition is attempted
@@ -49,16 +49,16 @@ func NewOffer(
 	}
 }
 
-func (o Offer) ID() uuid.UUID                      { return o.id }
-func (o Offer) CarrierOrgID() uuid.UUID            { return o.carrierOrgID }
-func (o Offer) CarrierMemberID() uuid.UUID         { return o.carrierMemberID }
-func (o Offer) Price() values.Money                { return o.price }
-func (o Offer) Comment() string                    { return o.comment }
-func (o Offer) FreightVersion() int                { return o.freightVersion }
-func (o Offer) VatType() values.VatType            { return o.vatType }
+func (o Offer) ID() uuid.UUID                       { return o.id }
+func (o Offer) CarrierOrgID() uuid.UUID             { return o.carrierOrgID }
+func (o Offer) CarrierMemberID() uuid.UUID          { return o.carrierMemberID }
+func (o Offer) Price() values.Money                 { return o.price }
+func (o Offer) Comment() string                     { return o.comment }
+func (o Offer) FreightVersion() int                 { return o.freightVersion }
+func (o Offer) VatType() values.VatType             { return o.vatType }
 func (o Offer) PaymentMethod() values.PaymentMethod { return o.paymentMethod }
-func (o Offer) Status() values.OfferStatus         { return o.status }
-func (o Offer) CreatedAt() time.Time               { return o.createdAt }
+func (o Offer) Status() values.OfferStatus          { return o.status }
+func (o Offer) CreatedAt() time.Time                { return o.createdAt }
 
 func (o Offer) IsPending() bool   { return o.status == values.OfferStatusPending }
 func (o Offer) IsSelected() bool  { return o.status == values.OfferStatusSelected }

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/e2e/client"
 )
 
 // OrganizationBuilder builds organization registration requests.

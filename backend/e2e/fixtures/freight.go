@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
-	"github.com/google/uuid"
 )
 
 // FreightRequestBuilder builds freight request creation requests.

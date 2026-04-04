@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
 )
 
 // AdminEmailTemplatesHandler handles admin email templates operations

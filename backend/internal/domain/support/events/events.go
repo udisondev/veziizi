@@ -1,9 +1,9 @@
 package events
 
 import (
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/google/uuid"
 )
 
 const AggregateType = "support_ticket"

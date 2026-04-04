@@ -1,9 +1,9 @@
 package events
 
 import (
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/google/uuid"
 )
 
 const AggregateType = "organization"
@@ -179,8 +179,8 @@ type InvitationCreated struct {
 	Email        string            `json:"email"`
 	Role         values.MemberRole `json:"role"`
 	Token        string            `json:"token"`
-	CreatedBy    uuid.UUID         `json:"created_by"` // member ID
-	ExpiresAt    int64             `json:"expires_at"` // unix timestamp
+	CreatedBy    uuid.UUID         `json:"created_by"`      // member ID
+	ExpiresAt    int64             `json:"expires_at"`      // unix timestamp
 	Name         *string           `json:"name,omitempty"`  // предзаполненное ФИО
 	Phone        *string           `json:"phone,omitempty"` // предзаполненный телефон
 }

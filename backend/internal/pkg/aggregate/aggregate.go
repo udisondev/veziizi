@@ -1,8 +1,8 @@
 package aggregate
 
 import (
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
 // Snapshotable defines interface for aggregates that support state snapshots.

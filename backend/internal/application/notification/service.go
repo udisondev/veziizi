@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // Errors

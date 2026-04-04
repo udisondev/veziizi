@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	reviewEvents "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 // ReviewAnalyzerHandler listens for Review.Received events

@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	freightEvents "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 // ReviewReceiverHandler listens for FreightRequest.ReviewLeft events

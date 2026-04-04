@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/suite"
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/udisondev/veziizi/backend/e2e/helpers"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/suite"
 )
 
 // OrganizationsSuite combines all organization tests with shared context.

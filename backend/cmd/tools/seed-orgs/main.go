@@ -8,6 +8,9 @@ import (
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udisondev/veziizi/backend/internal/application/admin"
 	"github.com/udisondev/veziizi/backend/internal/application/organization"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
@@ -16,9 +19,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type orgData struct {

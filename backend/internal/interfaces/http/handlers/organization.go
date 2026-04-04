@@ -8,14 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/application/organization"
 	orgDomain "github.com/udisondev/veziizi/backend/internal/domain/organization"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
 )
 
 type OrganizationHandler struct {

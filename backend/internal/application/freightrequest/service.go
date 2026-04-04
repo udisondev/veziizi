@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
@@ -16,7 +17,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/sequence"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/google/uuid"
 )
 
 const defaultTTL = 30 * 24 * time.Hour // 30 days
@@ -96,7 +96,6 @@ func (s *Service) GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]
 
 	return result, nil
 }
-
 
 type CreateInput struct {
 	CustomerOrgID       uuid.UUID

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/aggregate"
-	"github.com/google/uuid"
 )
 
 // Errors
@@ -108,27 +108,27 @@ func NewFromEvents(id uuid.UUID, evts []eventstore.Event) *Review {
 }
 
 // Getters
-func (r *Review) OrderID() uuid.UUID           { return r.orderID }
-func (r *Review) ReviewerOrgID() uuid.UUID     { return r.reviewerOrgID }
-func (r *Review) ReviewedOrgID() uuid.UUID     { return r.reviewedOrgID }
-func (r *Review) Rating() int                  { return r.rating }
-func (r *Review) Comment() string              { return r.comment }
-func (r *Review) OrderAmount() int64           { return r.orderAmount }
-func (r *Review) OrderCurrency() string        { return r.orderCurrency }
-func (r *Review) OrderCreatedAt() time.Time    { return r.orderCreatedAt }
-func (r *Review) OrderCompletedAt() time.Time  { return r.orderCompletedAt }
-func (r *Review) RawWeight() float64           { return r.rawWeight }
-func (r *Review) FinalWeight() float64         { return r.finalWeight }
+func (r *Review) OrderID() uuid.UUID                 { return r.orderID }
+func (r *Review) ReviewerOrgID() uuid.UUID           { return r.reviewerOrgID }
+func (r *Review) ReviewedOrgID() uuid.UUID           { return r.reviewedOrgID }
+func (r *Review) Rating() int                        { return r.rating }
+func (r *Review) Comment() string                    { return r.comment }
+func (r *Review) OrderAmount() int64                 { return r.orderAmount }
+func (r *Review) OrderCurrency() string              { return r.orderCurrency }
+func (r *Review) OrderCreatedAt() time.Time          { return r.orderCreatedAt }
+func (r *Review) OrderCompletedAt() time.Time        { return r.orderCompletedAt }
+func (r *Review) RawWeight() float64                 { return r.rawWeight }
+func (r *Review) FinalWeight() float64               { return r.finalWeight }
 func (r *Review) FraudSignals() []events.FraudSignal { return r.fraudSignals }
-func (r *Review) FraudScore() float64          { return r.fraudScore }
-func (r *Review) Status() values.ReviewStatus  { return r.status }
-func (r *Review) RequiresModeration() bool     { return r.requiresModeration }
-func (r *Review) ActivationDate() *time.Time   { return r.activationDate }
-func (r *Review) CreatedAt() time.Time         { return r.createdAt }
-func (r *Review) AnalyzedAt() *time.Time       { return r.analyzedAt }
-func (r *Review) ModeratedAt() *time.Time      { return r.moderatedAt }
-func (r *Review) ModeratedBy() *uuid.UUID      { return r.moderatedBy }
-func (r *Review) ActivatedAt() *time.Time      { return r.activatedAt }
+func (r *Review) FraudScore() float64                { return r.fraudScore }
+func (r *Review) Status() values.ReviewStatus        { return r.status }
+func (r *Review) RequiresModeration() bool           { return r.requiresModeration }
+func (r *Review) ActivationDate() *time.Time         { return r.activationDate }
+func (r *Review) CreatedAt() time.Time               { return r.createdAt }
+func (r *Review) AnalyzedAt() *time.Time             { return r.analyzedAt }
+func (r *Review) ModeratedAt() *time.Time            { return r.moderatedAt }
+func (r *Review) ModeratedBy() *uuid.UUID            { return r.moderatedBy }
+func (r *Review) ActivatedAt() *time.Time            { return r.activatedAt }
 
 // Commands
 
@@ -320,29 +320,29 @@ func (r *Review) apply(evt eventstore.Event) {
 
 // ReviewSnapshot represents serializable state of Review aggregate
 type ReviewSnapshot struct {
-	ID                 uuid.UUID             `json:"id"`
-	Version            int64                 `json:"version"`
-	OrderID            uuid.UUID             `json:"order_id"`
-	ReviewerOrgID      uuid.UUID             `json:"reviewer_org_id"`
-	ReviewedOrgID      uuid.UUID             `json:"reviewed_org_id"`
-	Rating             int                   `json:"rating"`
-	Comment            string                `json:"comment"`
-	OrderAmount        int64                 `json:"order_amount"`
-	OrderCurrency      string                `json:"order_currency"`
-	OrderCreatedAt     time.Time             `json:"order_created_at"`
-	OrderCompletedAt   time.Time             `json:"order_completed_at"`
-	RawWeight          float64               `json:"raw_weight"`
-	FinalWeight        float64               `json:"final_weight"`
-	FraudSignals       []events.FraudSignal  `json:"fraud_signals,omitempty"`
-	FraudScore         float64               `json:"fraud_score"`
-	Status             values.ReviewStatus   `json:"status"`
-	RequiresModeration bool                  `json:"requires_moderation"`
-	ActivationDate     *time.Time            `json:"activation_date,omitempty"`
-	CreatedAt          time.Time             `json:"created_at"`
-	AnalyzedAt         *time.Time            `json:"analyzed_at,omitempty"`
-	ModeratedAt        *time.Time            `json:"moderated_at,omitempty"`
-	ModeratedBy        *uuid.UUID            `json:"moderated_by,omitempty"`
-	ActivatedAt        *time.Time            `json:"activated_at,omitempty"`
+	ID                 uuid.UUID            `json:"id"`
+	Version            int64                `json:"version"`
+	OrderID            uuid.UUID            `json:"order_id"`
+	ReviewerOrgID      uuid.UUID            `json:"reviewer_org_id"`
+	ReviewedOrgID      uuid.UUID            `json:"reviewed_org_id"`
+	Rating             int                  `json:"rating"`
+	Comment            string               `json:"comment"`
+	OrderAmount        int64                `json:"order_amount"`
+	OrderCurrency      string               `json:"order_currency"`
+	OrderCreatedAt     time.Time            `json:"order_created_at"`
+	OrderCompletedAt   time.Time            `json:"order_completed_at"`
+	RawWeight          float64              `json:"raw_weight"`
+	FinalWeight        float64              `json:"final_weight"`
+	FraudSignals       []events.FraudSignal `json:"fraud_signals,omitempty"`
+	FraudScore         float64              `json:"fraud_score"`
+	Status             values.ReviewStatus  `json:"status"`
+	RequiresModeration bool                 `json:"requires_moderation"`
+	ActivationDate     *time.Time           `json:"activation_date,omitempty"`
+	CreatedAt          time.Time            `json:"created_at"`
+	AnalyzedAt         *time.Time           `json:"analyzed_at,omitempty"`
+	ModeratedAt        *time.Time           `json:"moderated_at,omitempty"`
+	ModeratedBy        *uuid.UUID           `json:"moderated_by,omitempty"`
+	ActivatedAt        *time.Time           `json:"activated_at,omitempty"`
 }
 
 // State returns current aggregate state for snapshot storage.

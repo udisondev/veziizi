@@ -1,35 +1,35 @@
 package events
 
 import (
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/google/uuid"
 )
 
 const AggregateType = "freight_request"
 
 // Event type constants
 const (
-	TypeFreightRequestCreated              = "freight_request.created"
-	TypeFreightRequestUpdated              = "freight_request.updated"
-	TypeFreightRequestReassigned           = "freight_request.reassigned"
-	TypeFreightRequestCancelled            = "freight_request.cancelled"
-	TypeFreightRequestExpired              = "freight_request.expired"
-	TypeCustomerCompleted                  = "freight_request.customer_completed"
-	TypeCarrierCompleted                   = "freight_request.carrier_completed"
-	TypeFreightRequestCompleted            = "freight_request.completed"
-	TypeReviewLeft                         = "freight_request.review_left"
-	TypeReviewEdited                       = "freight_request.review_edited"
-	TypeCancelledAfterConfirmed            = "freight_request.cancelled_after_confirmed"
-	TypeCarrierMemberReassigned            = "freight_request.carrier_member_reassigned"
-	TypeOfferMade                          = "offer.made"
-	TypeOfferWithdrawn                     = "offer.withdrawn"
-	TypeOfferSelected                      = "offer.selected"
-	TypeOfferRejected                      = "offer.rejected"
-	TypeOfferConfirmed                     = "offer.confirmed"
-	TypeOfferDeclined                      = "offer.declined"
-	TypeOfferUnselected                    = "offer.unselected"
-	TypeOfferCancelledWithRequest          = "offer.cancelled_with_request"
+	TypeFreightRequestCreated     = "freight_request.created"
+	TypeFreightRequestUpdated     = "freight_request.updated"
+	TypeFreightRequestReassigned  = "freight_request.reassigned"
+	TypeFreightRequestCancelled   = "freight_request.cancelled"
+	TypeFreightRequestExpired     = "freight_request.expired"
+	TypeCustomerCompleted         = "freight_request.customer_completed"
+	TypeCarrierCompleted          = "freight_request.carrier_completed"
+	TypeFreightRequestCompleted   = "freight_request.completed"
+	TypeReviewLeft                = "freight_request.review_left"
+	TypeReviewEdited              = "freight_request.review_edited"
+	TypeCancelledAfterConfirmed   = "freight_request.cancelled_after_confirmed"
+	TypeCarrierMemberReassigned   = "freight_request.carrier_member_reassigned"
+	TypeOfferMade                 = "offer.made"
+	TypeOfferWithdrawn            = "offer.withdrawn"
+	TypeOfferSelected             = "offer.selected"
+	TypeOfferRejected             = "offer.rejected"
+	TypeOfferConfirmed            = "offer.confirmed"
+	TypeOfferDeclined             = "offer.declined"
+	TypeOfferUnselected           = "offer.unselected"
+	TypeOfferCancelledWithRequest = "offer.cancelled_with_request"
 )
 
 func init() {
@@ -223,12 +223,12 @@ func (e FreightRequestCompleted) EventType() string { return TypeFreightRequestC
 // ReviewLeft is emitted when a party leaves a review after completion
 type ReviewLeft struct {
 	eventstore.BaseEvent
-	ReviewID          uuid.UUID `json:"review_id"`
-	ReviewerOrgID     uuid.UUID `json:"reviewer_org_id"`
-	ReviewerMemberID  uuid.UUID `json:"reviewer_member_id"`
-	ReviewedOrgID     uuid.UUID `json:"reviewed_org_id"`
-	Rating            int       `json:"rating"`
-	Comment           string    `json:"comment,omitempty"`
+	ReviewID         uuid.UUID `json:"review_id"`
+	ReviewerOrgID    uuid.UUID `json:"reviewer_org_id"`
+	ReviewerMemberID uuid.UUID `json:"reviewer_member_id"`
+	ReviewedOrgID    uuid.UUID `json:"reviewed_org_id"`
+	Rating           int       `json:"rating"`
+	Comment          string    `json:"comment,omitempty"`
 	// Context for Review aggregate (fraud analysis, weight calculation)
 	FreightAmount    int64  `json:"freight_amount"`
 	FreightCurrency  string `json:"freight_currency"`

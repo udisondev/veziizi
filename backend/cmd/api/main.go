@@ -234,4 +234,3 @@ func main() {
 		slog.Error("failed to shutdown server", slog.String("error", err.Error()))
 	}
 }
-

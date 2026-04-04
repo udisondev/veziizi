@@ -9,13 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/heartbeat"
 	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 type Config struct {
@@ -211,4 +211,3 @@ func RunScheduled(cfg ScheduledConfig) {
 		}
 	}
 }
-

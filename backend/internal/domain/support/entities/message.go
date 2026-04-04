@@ -41,8 +41,8 @@ func NewMessage(
 }
 
 // Getters
-func (m Message) ID() uuid.UUID         { return m.id }
+func (m Message) ID() uuid.UUID          { return m.id }
 func (m Message) SenderType() SenderType { return m.senderType }
-func (m Message) SenderID() uuid.UUID   { return m.senderID }
-func (m Message) Content() string       { return m.content }
-func (m Message) CreatedAt() time.Time  { return m.createdAt }
+func (m Message) SenderID() uuid.UUID    { return m.senderID }
+func (m Message) Content() string        { return m.content }
+func (m Message) CreatedAt() time.Time   { return m.createdAt }

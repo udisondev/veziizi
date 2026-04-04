@@ -7,9 +7,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"golang.org/x/crypto/bcrypt"
 )
 

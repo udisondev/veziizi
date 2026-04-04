@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 // GeoProjection provides read access to geo data (countries and cities)
@@ -38,17 +38,17 @@ type Country struct {
 
 // City represents a city from geo_cities table
 type City struct {
-	ID            int      `db:"id" json:"id"`
-	Name          string   `db:"name" json:"name"`
-	NameRu        *string  `db:"name_ru" json:"name_ru,omitempty"`
-	CountryID     int      `db:"country_id" json:"country_id"`
-	StateName     *string  `db:"state_name" json:"state_name,omitempty"`
-	StateCode     *string  `db:"state_code" json:"state_code,omitempty"`
-	Latitude      float64  `db:"latitude" json:"latitude"`
-	Longitude     float64  `db:"longitude" json:"longitude"`
-	CountryName   *string  `db:"country_name" json:"country_name,omitempty"`     // joined field
-	CountryNameRu *string  `db:"country_name_ru" json:"country_name_ru,omitempty"` // joined field
-	CountryISO2   *string  `db:"country_iso2" json:"country_iso2,omitempty"`     // joined field
+	ID            int     `db:"id" json:"id"`
+	Name          string  `db:"name" json:"name"`
+	NameRu        *string `db:"name_ru" json:"name_ru,omitempty"`
+	CountryID     int     `db:"country_id" json:"country_id"`
+	StateName     *string `db:"state_name" json:"state_name,omitempty"`
+	StateCode     *string `db:"state_code" json:"state_code,omitempty"`
+	Latitude      float64 `db:"latitude" json:"latitude"`
+	Longitude     float64 `db:"longitude" json:"longitude"`
+	CountryName   *string `db:"country_name" json:"country_name,omitempty"`       // joined field
+	CountryNameRu *string `db:"country_name_ru" json:"country_name_ru,omitempty"` // joined field
+	CountryISO2   *string `db:"country_iso2" json:"country_iso2,omitempty"`       // joined field
 }
 
 // ListCountries returns all countries ordered by Russian name (fallback to English)

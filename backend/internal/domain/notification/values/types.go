@@ -8,12 +8,12 @@ const (
 	TypeNewFreightRequest NotificationType = "new_freight_request" // Опубликована новая заявка
 
 	// Offers (предложения)
-	TypeNewOffer       NotificationType = "new_offer"        // Получено новое предложение на заявку
-	TypeOfferSelected  NotificationType = "offer_selected"   // Ваше предложение выбрано
-	TypeOfferRejected  NotificationType = "offer_rejected"   // Ваше предложение отклонено
-	TypeOfferConfirmed NotificationType = "offer_confirmed"  // Предложение подтверждено
-	TypeOfferDeclined  NotificationType = "offer_declined"   // Выбранное предложение отклонено перевозчиком
-	TypeOfferWithdrawn NotificationType = "offer_withdrawn"  // Предложение отозвано
+	TypeNewOffer       NotificationType = "new_offer"       // Получено новое предложение на заявку
+	TypeOfferSelected  NotificationType = "offer_selected"  // Ваше предложение выбрано
+	TypeOfferRejected  NotificationType = "offer_rejected"  // Ваше предложение отклонено
+	TypeOfferConfirmed NotificationType = "offer_confirmed" // Предложение подтверждено
+	TypeOfferDeclined  NotificationType = "offer_declined"  // Выбранное предложение отклонено перевозчиком
+	TypeOfferWithdrawn NotificationType = "offer_withdrawn" // Предложение отозвано
 
 	// Freight completion (завершение перевозки)
 	TypeFreightCompleted          NotificationType = "freight_completed"           // Перевозка завершена
@@ -30,8 +30,8 @@ const (
 	TypeReviewReceived NotificationType = "review_received" // Получен отзыв
 
 	// Organization (организация)
-	TypeMemberInvited   NotificationType = "member_invited"    // Приглашение в организацию
-	TypeMemberJoined    NotificationType = "member_joined"     // Сотрудник присоединился
+	TypeMemberInvited    NotificationType = "member_invited"     // Приглашение в организацию
+	TypeMemberJoined     NotificationType = "member_joined"      // Сотрудник присоединился
 	TypeOrgStatusChanged NotificationType = "org_status_changed" // Статус организации изменился
 )
 

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/go-chi/chi/v5"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
 // RegisterRoutes registers geo-related routes

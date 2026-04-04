@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/udisondev/veziizi/backend/e2e/client"
-	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/e2e/client"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 )
 
 // SubscriptionsSuite combines all subscriptions tests with shared context.

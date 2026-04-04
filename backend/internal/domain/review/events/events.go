@@ -3,8 +3,8 @@ package events
 import (
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
 const AggregateType = "review"

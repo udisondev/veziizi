@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 // EmailSenderHandler отправляет уведомления по Email

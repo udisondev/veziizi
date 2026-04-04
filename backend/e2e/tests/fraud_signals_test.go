@@ -93,8 +93,8 @@ func (s *FraudSignalsSuite) TestFRS001_FastCompletion() {
 		reviewerOrgID, reviewedOrgID,
 		4, "fast order",
 		10_000_000, "RUB",
-		time.Now().Add(-2*time.Hour),  // создан 2 часа назад
-		time.Now().Add(-1*time.Hour),  // завершён 1 час назад (duration = 1h < 2h)
+		time.Now().Add(-2*time.Hour), // создан 2 часа назад
+		time.Now().Add(-1*time.Hour), // завершён 1 час назад (duration = 1h < 2h)
 	)
 
 	result, err := s.analyzer.Analyze(context.Background(), r)
@@ -537,4 +537,3 @@ func (s *FraudSignalsSuite) TestFRS016_CleanReview() {
 	s.Assert().InDelta(0.0, result.FraudScore, 0.001,
 		"fraud score должен быть 0 для чистого отзыва")
 }
-

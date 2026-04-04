@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/suite"
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/udisondev/veziizi/backend/e2e/helpers"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/suite"
 )
 
 // AdminSuite combines all admin tests with shared context.
@@ -435,4 +435,3 @@ func (s *AdminSuite) TestADM032_FraudsterDeactivatesReviews() {
 	// Note: The fraudster-handler worker should deactivate reviews from this org
 	// This is an async process, so we just verify the mechanism is in place
 }
-

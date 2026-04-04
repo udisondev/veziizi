@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/udisondev/veziizi/backend/internal/application/admin"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	orgDomain "github.com/udisondev/veziizi/backend/internal/domain/organization"
@@ -14,9 +17,6 @@ import (
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -324,20 +324,20 @@ type PendingReviewsResponse struct {
 }
 
 type ReviewForModerationResponse struct {
-	ID             string               `json:"id"`
-	OrderID        string               `json:"order_id"`
-	ReviewerOrgID  string               `json:"reviewer_org_id"`
-	ReviewedOrgID  string               `json:"reviewed_org_id"`
-	Rating         int                  `json:"rating"`
-	Comment        string               `json:"comment"`
-	OrderAmount    int64                `json:"order_amount"`
-	OrderCurrency  string               `json:"order_currency"`
-	RawWeight      float64              `json:"raw_weight"`
-	FraudScore     float64              `json:"fraud_score"`
+	ID             string                `json:"id"`
+	OrderID        string                `json:"order_id"`
+	ReviewerOrgID  string                `json:"reviewer_org_id"`
+	ReviewedOrgID  string                `json:"reviewed_org_id"`
+	Rating         int                   `json:"rating"`
+	Comment        string                `json:"comment"`
+	OrderAmount    int64                 `json:"order_amount"`
+	OrderCurrency  string                `json:"order_currency"`
+	RawWeight      float64               `json:"raw_weight"`
+	FraudScore     float64               `json:"fraud_score"`
 	FraudSignals   []FraudSignalResponse `json:"fraud_signals"`
-	ActivationDate *string              `json:"activation_date,omitempty"`
-	CreatedAt      string               `json:"created_at"`
-	AnalyzedAt     *string              `json:"analyzed_at,omitempty"`
+	ActivationDate *string               `json:"activation_date,omitempty"`
+	CreatedAt      string                `json:"created_at"`
+	AnalyzedAt     *string               `json:"analyzed_at,omitempty"`
 }
 
 type FraudSignalResponse struct {

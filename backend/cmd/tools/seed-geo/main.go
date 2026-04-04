@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
 const (
@@ -61,9 +61,9 @@ type City struct {
 
 // AlternateName from GeoNames alternateNamesV2.txt
 type AlternateName struct {
-	GeonameID int
-	Language  string
-	Name      string
+	GeonameID   int
+	Language    string
+	Name        string
 	IsPreferred bool
 }
 

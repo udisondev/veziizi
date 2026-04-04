@@ -5,17 +5,17 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/aggregate"
-	"github.com/google/uuid"
 )
 
 const (
-	MaxSubjectLength  = 255
-	MaxMessageLength  = 10000
+	MaxSubjectLength = 255
+	MaxMessageLength = 10000
 )
 
 // Ticket represents a support ticket aggregate
@@ -95,11 +95,11 @@ func NewFromEvents(id uuid.UUID, evts []eventstore.Event) *Ticket {
 }
 
 // Getters
-func (t *Ticket) TicketNumber() int64            { return t.ticketNumber }
-func (t *Ticket) MemberID() uuid.UUID            { return t.memberID }
-func (t *Ticket) OrgID() uuid.UUID               { return t.orgID }
-func (t *Ticket) Subject() string                { return t.subject }
-func (t *Ticket) Status() values.TicketStatus    { return t.status }
+func (t *Ticket) TicketNumber() int64         { return t.ticketNumber }
+func (t *Ticket) MemberID() uuid.UUID         { return t.memberID }
+func (t *Ticket) OrgID() uuid.UUID            { return t.orgID }
+func (t *Ticket) Subject() string             { return t.subject }
+func (t *Ticket) Status() values.TicketStatus { return t.status }
 func (t *Ticket) MessagesList() []*entities.Message {
 	if t.messagesCache == nil {
 		t.messagesCache = make([]*entities.Message, 0, len(t.messages))
@@ -109,9 +109,9 @@ func (t *Ticket) MessagesList() []*entities.Message {
 	}
 	return t.messagesCache
 }
-func (t *Ticket) CreatedAt() time.Time           { return t.createdAt }
-func (t *Ticket) UpdatedAt() time.Time           { return t.updatedAt }
-func (t *Ticket) ClosedAt() *time.Time           { return t.closedAt }
+func (t *Ticket) CreatedAt() time.Time { return t.createdAt }
+func (t *Ticket) UpdatedAt() time.Time { return t.updatedAt }
+func (t *Ticket) ClosedAt() *time.Time { return t.closedAt }
 
 // CanUserAccess checks if a member can access this ticket
 func (t *Ticket) CanUserAccess(memberID uuid.UUID) bool {
@@ -259,26 +259,26 @@ func (t *Ticket) apply(evt eventstore.Event) {
 
 // TicketSnapshot represents serializable state of Ticket aggregate
 type TicketSnapshot struct {
-	ID           uuid.UUID                    `json:"id"`
-	Version      int64                        `json:"version"`
-	TicketNumber int64                        `json:"ticket_number"`
-	MemberID     uuid.UUID                    `json:"member_id"`
-	OrgID        uuid.UUID                    `json:"org_id"`
-	Subject      string                       `json:"subject"`
-	Status       values.TicketStatus          `json:"status"`
+	ID           uuid.UUID                     `json:"id"`
+	Version      int64                         `json:"version"`
+	TicketNumber int64                         `json:"ticket_number"`
+	MemberID     uuid.UUID                     `json:"member_id"`
+	OrgID        uuid.UUID                     `json:"org_id"`
+	Subject      string                        `json:"subject"`
+	Status       values.TicketStatus           `json:"status"`
 	Messages     map[uuid.UUID]MessageSnapshot `json:"messages"`
-	CreatedAt    time.Time                    `json:"created_at"`
-	UpdatedAt    time.Time                    `json:"updated_at"`
-	ClosedAt     *time.Time                   `json:"closed_at,omitempty"`
+	CreatedAt    time.Time                     `json:"created_at"`
+	UpdatedAt    time.Time                     `json:"updated_at"`
+	ClosedAt     *time.Time                    `json:"closed_at,omitempty"`
 }
 
 // MessageSnapshot represents serializable state of Message entity
 type MessageSnapshot struct {
-	ID         uuid.UUID            `json:"id"`
-	SenderType entities.SenderType  `json:"sender_type"`
-	SenderID   uuid.UUID            `json:"sender_id"`
-	Content    string               `json:"content"`
-	CreatedAt  time.Time            `json:"created_at"`
+	ID         uuid.UUID           `json:"id"`
+	SenderType entities.SenderType `json:"sender_type"`
+	SenderID   uuid.UUID           `json:"sender_id"`
+	Content    string              `json:"content"`
+	CreatedAt  time.Time           `json:"created_at"`
 }
 
 // State returns current aggregate state for snapshot storage.

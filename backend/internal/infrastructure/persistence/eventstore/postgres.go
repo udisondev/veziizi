@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 const (

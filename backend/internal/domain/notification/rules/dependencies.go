@@ -3,8 +3,8 @@ package rules
 import (
 	"context"
 
-	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/google/uuid"
+	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 )
 
 // Dependencies зависимости для правил уведомлений

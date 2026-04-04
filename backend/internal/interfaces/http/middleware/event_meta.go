@@ -3,9 +3,9 @@ package middleware
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
-	"github.com/google/uuid"
 )
 
 // EventMetaEnricher добавляет метаданные для аудита событий в контекст.

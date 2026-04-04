@@ -96,8 +96,8 @@ var VehicleSubTypeLabels = map[VehicleSubType]string{
 	VehicleSubTypeTowTruck:         "Эвакуатор",
 	VehicleSubTypeCraneTruck:       "Кран-манипулятор",
 	// light_truck
-	VehicleSubTypeCityVan:     "Городской фургон",
-	VehicleSubTypePickup:      "Пикап",
+	VehicleSubTypeCityVan:      "Городской фургон",
+	VehicleSubTypePickup:       "Пикап",
 	VehicleSubTypeMinivanCargo: "Грузовой минивэн",
 	// medium_truck
 	VehicleSubTypeMediumBox:     "Средний фургон",

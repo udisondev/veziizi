@@ -3,8 +3,8 @@ package entities
 import (
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 )
 
 type Member struct {
@@ -39,14 +39,14 @@ func NewMember(
 	}
 }
 
-func (m Member) ID() uuid.UUID   { return m.id }
-func (m Member) Email() string   { return m.email }
-func (m Member) Name() string    { return m.name }
-func (m Member) Phone() string              { return m.phone }
-func (m Member) TelegramID() *int64         { return m.telegramID }
-func (m Member) Role() values.MemberRole    { return m.role }
+func (m Member) ID() uuid.UUID               { return m.id }
+func (m Member) Email() string               { return m.email }
+func (m Member) Name() string                { return m.name }
+func (m Member) Phone() string               { return m.phone }
+func (m Member) TelegramID() *int64          { return m.telegramID }
+func (m Member) Role() values.MemberRole     { return m.role }
 func (m Member) Status() values.MemberStatus { return m.status }
-func (m Member) CreatedAt() time.Time       { return m.createdAt }
+func (m Member) CreatedAt() time.Time        { return m.createdAt }
 
 func (m Member) IsActive() bool {
 	return m.status.IsActive()

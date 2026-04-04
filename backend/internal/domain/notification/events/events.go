@@ -1,20 +1,20 @@
 package events
 
 import (
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/google/uuid"
 )
 
 const AggregateType = "notification"
 
 // Event type constants
 const (
-	TypeInAppCreated        = "notification.inapp_created"
-	TypeInAppRead           = "notification.inapp_read"
-	TypeInAppBatchRead      = "notification.inapp_batch_read"
-	TypePreferencesUpdated  = "notification.preferences_updated"
-	TypeTelegramConnected   = "notification.telegram_connected"
+	TypeInAppCreated         = "notification.inapp_created"
+	TypeInAppRead            = "notification.inapp_read"
+	TypeInAppBatchRead       = "notification.inapp_batch_read"
+	TypePreferencesUpdated   = "notification.preferences_updated"
+	TypeTelegramConnected    = "notification.telegram_connected"
 	TypeTelegramDisconnected = "notification.telegram_disconnected"
 )
 
@@ -30,15 +30,15 @@ func init() {
 // InAppCreated is emitted when a new in-app notification is created
 type InAppCreated struct {
 	eventstore.BaseEvent
-	NotificationID   uuid.UUID                `json:"notification_id"`
-	MemberID         uuid.UUID                `json:"member_id"`
-	OrganizationID   uuid.UUID                `json:"organization_id"`
-	NotificationType values.NotificationType  `json:"notification_type"`
-	Title            string                   `json:"title"`
-	Body             string                   `json:"body,omitempty"`
-	Link             string                   `json:"link,omitempty"`
-	EntityType       values.EntityType        `json:"entity_type,omitempty"`
-	EntityID         uuid.UUID                `json:"entity_id,omitempty"`
+	NotificationID   uuid.UUID               `json:"notification_id"`
+	MemberID         uuid.UUID               `json:"member_id"`
+	OrganizationID   uuid.UUID               `json:"organization_id"`
+	NotificationType values.NotificationType `json:"notification_type"`
+	Title            string                  `json:"title"`
+	Body             string                  `json:"body,omitempty"`
+	Link             string                  `json:"link,omitempty"`
+	EntityType       values.EntityType       `json:"entity_type,omitempty"`
+	EntityID         uuid.UUID               `json:"entity_id,omitempty"`
 }
 
 func (e InAppCreated) EventType() string { return TypeInAppCreated }

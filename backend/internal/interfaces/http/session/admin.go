@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
 const (

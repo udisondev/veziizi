@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	notifApp "github.com/udisondev/veziizi/backend/internal/application/notification"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
 )
 
 type NotificationHandler struct {

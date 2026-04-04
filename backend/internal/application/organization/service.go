@@ -9,6 +9,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
@@ -16,8 +18,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 

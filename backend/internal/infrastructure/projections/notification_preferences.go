@@ -8,12 +8,12 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 var (
@@ -75,10 +75,10 @@ func (p *PreferencesLookup) ParseEnabledCategories() (values.EnabledCategories, 
 
 // PreferencesResponse представляет настройки для API ответа
 type PreferencesResponse struct {
-	MemberID          uuid.UUID               `json:"member_id"`
+	MemberID          uuid.UUID                `json:"member_id"`
 	EnabledCategories values.EnabledCategories `json:"enabled_categories"`
-	Telegram          TelegramStatus          `json:"telegram"`
-	Email             EmailStatus             `json:"email"`
+	Telegram          TelegramStatus           `json:"telegram"`
+	Email             EmailStatus              `json:"email"`
 }
 
 // TelegramStatus представляет статус Telegram подключения

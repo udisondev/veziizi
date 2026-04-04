@@ -4,10 +4,10 @@ import (
 	// Event registration - CRITICAL for deserialization
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 func main() {

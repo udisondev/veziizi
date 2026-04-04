@@ -7,13 +7,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/e2e/helpers"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
-	"github.com/udisondev/veziizi/backend/e2e/helpers"
 )
 
 // ReviewLifecycleSuite тестирует полный жизненный цикл отзыва:

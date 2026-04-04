@@ -374,4 +374,3 @@ func (b *Bot) cleanupProcessedUpdates() {
 		}
 	}
 }
-

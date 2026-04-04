@@ -1,12 +1,12 @@
 package main
 
 import (
+	"github.com/ThreeDotsLabs/watermill/message"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 func main() {

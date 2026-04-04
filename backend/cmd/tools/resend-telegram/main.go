@@ -8,13 +8,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
-	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
 type notification struct {

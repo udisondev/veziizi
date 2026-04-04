@@ -136,9 +136,9 @@ func (s *OrganizationRatingsSuite) TestRAT005_MultipleAddsThenGetRating() {
 	orgID := uuid.New()
 
 	// Добавляем 3 оценки с разными весами
-	s.Require().NoError(projection.AddWeightedRating(context.Background(), orgID, 5, 1.0))   // weighted: 5.0
-	s.Require().NoError(projection.AddWeightedRating(context.Background(), orgID, 3, 0.5))   // weighted: 1.5
-	s.Require().NoError(projection.AddWeightedRating(context.Background(), orgID, 4, 0.75))  // weighted: 3.0
+	s.Require().NoError(projection.AddWeightedRating(context.Background(), orgID, 5, 1.0))  // weighted: 5.0
+	s.Require().NoError(projection.AddWeightedRating(context.Background(), orgID, 3, 0.5))  // weighted: 1.5
+	s.Require().NoError(projection.AddWeightedRating(context.Background(), orgID, 4, 0.75)) // weighted: 3.0
 
 	rating, err := projection.GetRating(context.Background(), orgID)
 	s.Require().NoError(err)

@@ -7,8 +7,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
 // SessionAnalyzer analyzes session events for fraud signals
@@ -39,10 +39,10 @@ type LoginAnalysisInput struct {
 
 // LoginAnalysisResult contains analysis results
 type LoginAnalysisResult struct {
-	IsSuspicious  bool
-	Signals       []string
-	BlockLogin    bool
-	BlockReason   string
+	IsSuspicious bool
+	Signals      []string
+	BlockLogin   bool
+	BlockReason  string
 }
 
 // AnalyzeLogin analyzes a login event for fraud signals

@@ -7,13 +7,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
+	"github.com/udisondev/veziizi/backend/e2e/helpers"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
-	"github.com/udisondev/veziizi/backend/e2e/fixtures"
-	"github.com/udisondev/veziizi/backend/e2e/helpers"
 )
 
 // FraudModerationSuite тестирует расчёт fraud score, пороги модерации и задержки активации.

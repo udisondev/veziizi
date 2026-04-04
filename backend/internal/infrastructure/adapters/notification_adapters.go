@@ -3,10 +3,10 @@ package adapters
 import (
 	"context"
 
+	"github.com/google/uuid"
 	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/rules"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
-	"github.com/google/uuid"
 )
 
 // FreightSubscriptionsAdapter адаптирует FreightSubscriptionsProjection (opt-in модель)

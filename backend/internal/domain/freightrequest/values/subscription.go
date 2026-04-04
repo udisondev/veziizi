@@ -12,9 +12,9 @@ const MaxSubscriptionsPerMember = 10
 
 // RoutePointCriteria критерий точки маршрута для subsequence matching
 type RoutePointCriteria struct {
-	CountryID int  `json:"country_id"`          // ID страны (обязательно)
-	CityID    *int `json:"city_id,omitempty"`   // ID города (nil = любой город в стране)
-	Order     int  `json:"order"`               // Порядок в последовательности (1, 2, 3...)
+	CountryID int  `json:"country_id"`        // ID страны (обязательно)
+	CityID    *int `json:"city_id,omitempty"` // ID города (nil = любой город в стране)
+	Order     int  `json:"order"`             // Порядок в последовательности (1, 2, 3...)
 }
 
 // SubscriptionCriteria критерии фильтрации заявок
@@ -33,8 +33,8 @@ type SubscriptionCriteria struct {
 	VehicleTypes    []VehicleType    `json:"vehicle_types,omitempty"`
 	VehicleSubTypes []VehicleSubType `json:"vehicle_subtypes,omitempty"`
 	PaymentMethods  []PaymentMethod  `json:"payment_methods,omitempty"`
-	PaymentTerms   []PaymentTerms  `json:"payment_terms,omitempty"`
-	VatTypes       []VatType       `json:"vat_types,omitempty"`
+	PaymentTerms    []PaymentTerms   `json:"payment_terms,omitempty"`
+	VatTypes        []VatType        `json:"vat_types,omitempty"`
 
 	// Маршрут для subsequence matching (пустой = любой маршрут)
 	RoutePoints []RoutePointCriteria `json:"route_points,omitempty"`

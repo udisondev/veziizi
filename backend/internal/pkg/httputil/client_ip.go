@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	trustedProxies     = map[string]struct{}{"127.0.0.1": {}, "::1": {}}
-	trustedProxiesMu   sync.RWMutex
+	trustedProxies   = map[string]struct{}{"127.0.0.1": {}, "::1": {}}
+	trustedProxiesMu sync.RWMutex
 )
 
 // SetTrustedProxies устанавливает список доверенных прокси-серверов.

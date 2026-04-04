@@ -4,13 +4,13 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/aggregate"
-	"github.com/google/uuid"
 )
 
 type FreightRequest struct {
@@ -30,8 +30,8 @@ type FreightRequest struct {
 	createdAt           time.Time
 	cancelledAt         *time.Time
 
-	offers      map[uuid.UUID]*entities.Offer
-	offersCache []*entities.Offer
+	offers        map[uuid.UUID]*entities.Offer
+	offersCache   []*entities.Offer
 	selectedOffer *uuid.UUID
 
 	// After offer confirmed
@@ -107,19 +107,21 @@ func NewFromEvents(id uuid.UUID, evts []eventstore.Event) *FreightRequest {
 }
 
 // Getters
-func (f *FreightRequest) RequestNumber() int64                      { return f.requestNumber }
-func (f *FreightRequest) CustomerOrgID() uuid.UUID                  { return f.customerOrgID }
-func (f *FreightRequest) CustomerMemberID() uuid.UUID               { return f.customerMemberID }
-func (f *FreightRequest) Route() values.Route                       { return f.route }
-func (f *FreightRequest) Cargo() values.CargoInfo                   { return f.cargo }
-func (f *FreightRequest) VehicleRequirements() values.VehicleRequirements { return f.vehicleRequirements }
-func (f *FreightRequest) Payment() values.Payment                   { return f.payment }
-func (f *FreightRequest) Comment() string                           { return f.comment }
-func (f *FreightRequest) Status() values.FreightRequestStatus       { return f.status }
-func (f *FreightRequest) FreightVersion() int                       { return f.freightVersion }
-func (f *FreightRequest) ExpiresAt() time.Time                      { return f.expiresAt }
-func (f *FreightRequest) CreatedAt() time.Time                      { return f.createdAt }
-func (f *FreightRequest) CancelledAt() *time.Time                   { return f.cancelledAt }
+func (f *FreightRequest) RequestNumber() int64        { return f.requestNumber }
+func (f *FreightRequest) CustomerOrgID() uuid.UUID    { return f.customerOrgID }
+func (f *FreightRequest) CustomerMemberID() uuid.UUID { return f.customerMemberID }
+func (f *FreightRequest) Route() values.Route         { return f.route }
+func (f *FreightRequest) Cargo() values.CargoInfo     { return f.cargo }
+func (f *FreightRequest) VehicleRequirements() values.VehicleRequirements {
+	return f.vehicleRequirements
+}
+func (f *FreightRequest) Payment() values.Payment             { return f.payment }
+func (f *FreightRequest) Comment() string                     { return f.comment }
+func (f *FreightRequest) Status() values.FreightRequestStatus { return f.status }
+func (f *FreightRequest) FreightVersion() int                 { return f.freightVersion }
+func (f *FreightRequest) ExpiresAt() time.Time                { return f.expiresAt }
+func (f *FreightRequest) CreatedAt() time.Time                { return f.createdAt }
+func (f *FreightRequest) CancelledAt() *time.Time             { return f.cancelledAt }
 func (f *FreightRequest) OffersList() []*entities.Offer {
 	if f.offersCache == nil {
 		f.offersCache = make([]*entities.Offer, 0, len(f.offers))
@@ -129,19 +131,19 @@ func (f *FreightRequest) OffersList() []*entities.Offer {
 	}
 	return f.offersCache
 }
-func (f *FreightRequest) SelectedOfferID() *uuid.UUID               { return f.selectedOffer }
-func (f *FreightRequest) ConfirmedAt() *time.Time                   { return f.confirmedAt }
-func (f *FreightRequest) ConfirmedOfferID() *uuid.UUID              { return f.confirmedOfferID }
-func (f *FreightRequest) CarrierOrgID() *uuid.UUID                  { return f.carrierOrgID }
-func (f *FreightRequest) CarrierMemberID() *uuid.UUID               { return f.carrierMemberID }
-func (f *FreightRequest) CustomerCompleted() bool                   { return f.customerCompleted }
-func (f *FreightRequest) CustomerCompletedAt() *time.Time           { return f.customerCompletedAt }
-func (f *FreightRequest) CarrierCompleted() bool                    { return f.carrierCompleted }
-func (f *FreightRequest) CarrierCompletedAt() *time.Time            { return f.carrierCompletedAt }
-func (f *FreightRequest) CompletedAt() *time.Time                   { return f.completedAt }
-func (f *FreightRequest) CancelledAfterConfirmedAt() *time.Time     { return f.cancelledAfterConfirmedAt }
-func (f *FreightRequest) CustomerReview() *entities.Review          { return f.customerReview }
-func (f *FreightRequest) CarrierReview() *entities.Review           { return f.carrierReview }
+func (f *FreightRequest) SelectedOfferID() *uuid.UUID           { return f.selectedOffer }
+func (f *FreightRequest) ConfirmedAt() *time.Time               { return f.confirmedAt }
+func (f *FreightRequest) ConfirmedOfferID() *uuid.UUID          { return f.confirmedOfferID }
+func (f *FreightRequest) CarrierOrgID() *uuid.UUID              { return f.carrierOrgID }
+func (f *FreightRequest) CarrierMemberID() *uuid.UUID           { return f.carrierMemberID }
+func (f *FreightRequest) CustomerCompleted() bool               { return f.customerCompleted }
+func (f *FreightRequest) CustomerCompletedAt() *time.Time       { return f.customerCompletedAt }
+func (f *FreightRequest) CarrierCompleted() bool                { return f.carrierCompleted }
+func (f *FreightRequest) CarrierCompletedAt() *time.Time        { return f.carrierCompletedAt }
+func (f *FreightRequest) CompletedAt() *time.Time               { return f.completedAt }
+func (f *FreightRequest) CancelledAfterConfirmedAt() *time.Time { return f.cancelledAfterConfirmedAt }
+func (f *FreightRequest) CustomerReview() *entities.Review      { return f.customerReview }
+func (f *FreightRequest) CarrierReview() *entities.Review       { return f.carrierReview }
 
 func (f *FreightRequest) GetOffer(id uuid.UUID) (*entities.Offer, bool) {
 	o, ok := f.offers[id]
@@ -974,37 +976,37 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 
 // FreightRequestSnapshot represents serializable state of FreightRequest aggregate
 type FreightRequestSnapshot struct {
-	ID                            uuid.UUID                      `json:"id"`
-	Version                       int64                          `json:"version"`
-	RequestNumber                 int64                          `json:"request_number"`
-	CustomerOrgID                 uuid.UUID                      `json:"customer_org_id"`
-	CustomerMemberID              uuid.UUID                      `json:"customer_member_id"`
-	Route                         values.Route                   `json:"route"`
-	Cargo                         values.CargoInfo               `json:"cargo"`
-	VehicleRequirements           values.VehicleRequirements     `json:"vehicle_requirements"`
-	Payment                       values.Payment                 `json:"payment"`
-	Comment                       string                         `json:"comment"`
-	Status                        values.FreightRequestStatus    `json:"status"`
-	FreightVersion                int                            `json:"freight_version"`
-	ExpiresAt                     time.Time                      `json:"expires_at"`
-	CreatedAt                     time.Time                      `json:"created_at"`
-	CancelledAt                   *time.Time                     `json:"cancelled_at,omitempty"`
-	Offers                        map[uuid.UUID]OfferSnapshot    `json:"offers"`
-	SelectedOffer                 *uuid.UUID                     `json:"selected_offer,omitempty"`
-	ConfirmedAt                   *time.Time                     `json:"confirmed_at,omitempty"`
-	ConfirmedOfferID              *uuid.UUID                     `json:"confirmed_offer_id,omitempty"`
-	CarrierOrgID                  *uuid.UUID                     `json:"carrier_org_id,omitempty"`
-	CarrierMemberID               *uuid.UUID                     `json:"carrier_member_id,omitempty"`
-	CustomerCompleted             bool                           `json:"customer_completed"`
-	CustomerCompletedAt           *time.Time                     `json:"customer_completed_at,omitempty"`
-	CarrierCompleted              bool                           `json:"carrier_completed"`
-	CarrierCompletedAt            *time.Time                     `json:"carrier_completed_at,omitempty"`
-	CompletedAt                   *time.Time                     `json:"completed_at,omitempty"`
-	CancelledAfterConfirmedAt     *time.Time                     `json:"cancelled_after_confirmed_at,omitempty"`
-	CancelledAfterConfirmedBy     *uuid.UUID                     `json:"cancelled_after_confirmed_by,omitempty"`
-	CancelledAfterConfirmedReason string                         `json:"cancelled_after_confirmed_reason,omitempty"`
-	CustomerReview                *ReviewSnapshot                `json:"customer_review,omitempty"`
-	CarrierReview                 *ReviewSnapshot                `json:"carrier_review,omitempty"`
+	ID                            uuid.UUID                   `json:"id"`
+	Version                       int64                       `json:"version"`
+	RequestNumber                 int64                       `json:"request_number"`
+	CustomerOrgID                 uuid.UUID                   `json:"customer_org_id"`
+	CustomerMemberID              uuid.UUID                   `json:"customer_member_id"`
+	Route                         values.Route                `json:"route"`
+	Cargo                         values.CargoInfo            `json:"cargo"`
+	VehicleRequirements           values.VehicleRequirements  `json:"vehicle_requirements"`
+	Payment                       values.Payment              `json:"payment"`
+	Comment                       string                      `json:"comment"`
+	Status                        values.FreightRequestStatus `json:"status"`
+	FreightVersion                int                         `json:"freight_version"`
+	ExpiresAt                     time.Time                   `json:"expires_at"`
+	CreatedAt                     time.Time                   `json:"created_at"`
+	CancelledAt                   *time.Time                  `json:"cancelled_at,omitempty"`
+	Offers                        map[uuid.UUID]OfferSnapshot `json:"offers"`
+	SelectedOffer                 *uuid.UUID                  `json:"selected_offer,omitempty"`
+	ConfirmedAt                   *time.Time                  `json:"confirmed_at,omitempty"`
+	ConfirmedOfferID              *uuid.UUID                  `json:"confirmed_offer_id,omitempty"`
+	CarrierOrgID                  *uuid.UUID                  `json:"carrier_org_id,omitempty"`
+	CarrierMemberID               *uuid.UUID                  `json:"carrier_member_id,omitempty"`
+	CustomerCompleted             bool                        `json:"customer_completed"`
+	CustomerCompletedAt           *time.Time                  `json:"customer_completed_at,omitempty"`
+	CarrierCompleted              bool                        `json:"carrier_completed"`
+	CarrierCompletedAt            *time.Time                  `json:"carrier_completed_at,omitempty"`
+	CompletedAt                   *time.Time                  `json:"completed_at,omitempty"`
+	CancelledAfterConfirmedAt     *time.Time                  `json:"cancelled_after_confirmed_at,omitempty"`
+	CancelledAfterConfirmedBy     *uuid.UUID                  `json:"cancelled_after_confirmed_by,omitempty"`
+	CancelledAfterConfirmedReason string                      `json:"cancelled_after_confirmed_reason,omitempty"`
+	CustomerReview                *ReviewSnapshot             `json:"customer_review,omitempty"`
+	CarrierReview                 *ReviewSnapshot             `json:"carrier_review,omitempty"`
 }
 
 // OfferSnapshot represents serializable state of Offer entity

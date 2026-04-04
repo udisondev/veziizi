@@ -32,10 +32,10 @@ func NewBaseEvent(aggregateID uuid.UUID, aggregateType string, version int64) Ba
 	}
 }
 
-func (e BaseEvent) AggregateID() uuid.UUID   { return e.AggregateIDField }
-func (e BaseEvent) AggregateType() string    { return e.AggregateTypeField }
-func (e BaseEvent) Version() int64           { return e.VersionField }
-func (e BaseEvent) OccurredAt() time.Time    { return e.OccurredAtField }
+func (e BaseEvent) AggregateID() uuid.UUID { return e.AggregateIDField }
+func (e BaseEvent) AggregateType() string  { return e.AggregateTypeField }
+func (e BaseEvent) Version() int64         { return e.VersionField }
+func (e BaseEvent) OccurredAt() time.Time  { return e.OccurredAtField }
 
 type EventEnvelope struct {
 	ID            uuid.UUID         `json:"id"`

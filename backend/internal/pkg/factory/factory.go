@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/jackc/pgx/v5/pgxpool"
 	adminApp "github.com/udisondev/veziizi/backend/internal/application/admin"
 	frApp "github.com/udisondev/veziizi/backend/internal/application/freightrequest"
 	historyApp "github.com/udisondev/veziizi/backend/internal/application/history"
@@ -27,8 +29,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Factory is an IoC container that lazily creates and caches all dependencies.
@@ -42,8 +42,8 @@ type Factory struct {
 	poolOnce sync.Once
 	poolErr  error
 
-	txManager   dbtx.TxManager
-	txOnce      sync.Once
+	txManager dbtx.TxManager
+	txOnce    sync.Once
 
 	eventStore     eventstore.Store
 	eventStoreOnce sync.Once

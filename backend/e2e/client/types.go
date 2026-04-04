@@ -4,8 +4,8 @@ package client
 import (
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
 )
 
 // Re-export types from handlers to avoid duplication
@@ -130,16 +130,16 @@ type RegisterOrganizationResponse struct {
 }
 
 type OrganizationResponse struct {
-	ID       uuid.UUID `json:"id"`
-	Name     string    `json:"name"`
-	Email    string    `json:"email"`
-	Phone    string    `json:"phone"`
-	INN      string    `json:"inn"`
-	Country  string    `json:"country"`
-	Address  string    `json:"address"`
-	Status   string    `json:"status"`
-	IsFraud  bool      `json:"is_fraud"`
-	Version  int       `json:"version"`
+	ID      uuid.UUID `json:"id"`
+	Name    string    `json:"name"`
+	Email   string    `json:"email"`
+	Phone   string    `json:"phone"`
+	INN     string    `json:"inn"`
+	Country string    `json:"country"`
+	Address string    `json:"address"`
+	Status  string    `json:"status"`
+	IsFraud bool      `json:"is_fraud"`
+	Version int       `json:"version"`
 }
 
 // OrganizationMemberDetail is a member in organization full response
@@ -183,15 +183,15 @@ type CreateInvitationRequest struct {
 }
 
 type InvitationResponse struct {
-	ID             uuid.UUID  `json:"id"`
-	OrganizationID uuid.UUID  `json:"organization_id"`
-	Email          string     `json:"email"`
-	Role           string     `json:"role"`
-	Status         string     `json:"status"`
-	Token          string     `json:"token,omitempty"`
-	Name           *string    `json:"name,omitempty"`
-	Phone          *string    `json:"phone,omitempty"`
-	ExpiresAt      time.Time  `json:"expires_at"`
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Email          string    `json:"email"`
+	Role           string    `json:"role"`
+	Status         string    `json:"status"`
+	Token          string    `json:"token,omitempty"`
+	Name           *string   `json:"name,omitempty"`
+	Phone          *string   `json:"phone,omitempty"`
+	ExpiresAt      time.Time `json:"expires_at"`
 }
 
 type AcceptInvitationRequest struct {
@@ -314,10 +314,10 @@ type FreightRequestListResponse struct {
 }
 
 type CreateOfferRequest struct {
-	Price         Money   `json:"price"`
-	Comment       string  `json:"comment,omitempty"`
-	VATType       string  `json:"vat_type"`
-	PaymentMethod string  `json:"payment_method"`
+	Price         Money  `json:"price"`
+	Comment       string `json:"comment,omitempty"`
+	VATType       string `json:"vat_type"`
+	PaymentMethod string `json:"payment_method"`
 }
 
 // CreateOfferResponse is the response from POST /api/v1/freight-requests/{id}/offers
@@ -497,24 +497,24 @@ type FAQResponse struct {
 // Subscription types
 
 type SubscriptionResponse struct {
-	ID              uuid.UUID                  `json:"id"`
-	MemberID        uuid.UUID                  `json:"member_id"`
-	Name            string                     `json:"name"`
-	MinWeight       *float64                   `json:"min_weight,omitempty"`
-	MaxWeight       *float64                   `json:"max_weight,omitempty"`
-	MinPrice        *int64                     `json:"min_price,omitempty"`
-	MaxPrice        *int64                     `json:"max_price,omitempty"`
-	MinVolume       *float64                   `json:"min_volume,omitempty"`
-	MaxVolume       *float64                   `json:"max_volume,omitempty"`
-	VehicleTypes    []string                   `json:"vehicle_types,omitempty"`
-	VehicleSubTypes []string                   `json:"vehicle_subtypes,omitempty"`
-	PaymentMethods  []string                   `json:"payment_methods,omitempty"`
-	PaymentTerms    []string                   `json:"payment_terms,omitempty"`
-	VatTypes        []string                   `json:"vat_types,omitempty"`
+	ID              uuid.UUID                    `json:"id"`
+	MemberID        uuid.UUID                    `json:"member_id"`
+	Name            string                       `json:"name"`
+	MinWeight       *float64                     `json:"min_weight,omitempty"`
+	MaxWeight       *float64                     `json:"max_weight,omitempty"`
+	MinPrice        *int64                       `json:"min_price,omitempty"`
+	MaxPrice        *int64                       `json:"max_price,omitempty"`
+	MinVolume       *float64                     `json:"min_volume,omitempty"`
+	MaxVolume       *float64                     `json:"max_volume,omitempty"`
+	VehicleTypes    []string                     `json:"vehicle_types,omitempty"`
+	VehicleSubTypes []string                     `json:"vehicle_subtypes,omitempty"`
+	PaymentMethods  []string                     `json:"payment_methods,omitempty"`
+	PaymentTerms    []string                     `json:"payment_terms,omitempty"`
+	VatTypes        []string                     `json:"vat_types,omitempty"`
 	RoutePoints     []RoutePointCriteriaResponse `json:"route_points,omitempty"`
-	IsActive        bool                       `json:"is_active"`
-	CreatedAt       string                     `json:"created_at"`
-	UpdatedAt       string                     `json:"updated_at"`
+	IsActive        bool                         `json:"is_active"`
+	CreatedAt       string                       `json:"created_at"`
+	UpdatedAt       string                       `json:"updated_at"`
 }
 
 type RoutePointCriteriaResponse struct {
@@ -526,20 +526,20 @@ type RoutePointCriteriaResponse struct {
 }
 
 type CreateSubscriptionRequest struct {
-	Name            string                    `json:"name"`
-	MinWeight       *float64                  `json:"min_weight,omitempty"`
-	MaxWeight       *float64                  `json:"max_weight,omitempty"`
-	MinPrice        *int64                    `json:"min_price,omitempty"`
-	MaxPrice        *int64                    `json:"max_price,omitempty"`
-	MinVolume       *float64                  `json:"min_volume,omitempty"`
-	MaxVolume       *float64                  `json:"max_volume,omitempty"`
-	VehicleTypes    []string                  `json:"vehicle_types,omitempty"`
-	VehicleSubTypes []string                  `json:"vehicle_subtypes,omitempty"`
-	PaymentMethods  []string                  `json:"payment_methods,omitempty"`
-	PaymentTerms    []string                  `json:"payment_terms,omitempty"`
-	VatTypes        []string                  `json:"vat_types,omitempty"`
+	Name            string                      `json:"name"`
+	MinWeight       *float64                    `json:"min_weight,omitempty"`
+	MaxWeight       *float64                    `json:"max_weight,omitempty"`
+	MinPrice        *int64                      `json:"min_price,omitempty"`
+	MaxPrice        *int64                      `json:"max_price,omitempty"`
+	MinVolume       *float64                    `json:"min_volume,omitempty"`
+	MaxVolume       *float64                    `json:"max_volume,omitempty"`
+	VehicleTypes    []string                    `json:"vehicle_types,omitempty"`
+	VehicleSubTypes []string                    `json:"vehicle_subtypes,omitempty"`
+	PaymentMethods  []string                    `json:"payment_methods,omitempty"`
+	PaymentTerms    []string                    `json:"payment_terms,omitempty"`
+	VatTypes        []string                    `json:"vat_types,omitempty"`
 	RoutePoints     []RoutePointCriteriaRequest `json:"route_points,omitempty"`
-	IsActive        bool                      `json:"is_active"`
+	IsActive        bool                        `json:"is_active"`
 }
 
 type RoutePointCriteriaRequest struct {

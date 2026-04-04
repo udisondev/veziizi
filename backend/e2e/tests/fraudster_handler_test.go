@@ -7,13 +7,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
+	"github.com/udisondev/veziizi/backend/e2e/helpers"
+	"github.com/udisondev/veziizi/backend/e2e/setup"
 	adminApp "github.com/udisondev/veziizi/backend/internal/application/admin"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
-	"github.com/udisondev/veziizi/backend/e2e/fixtures"
-	"github.com/udisondev/veziizi/backend/e2e/helpers"
-	"github.com/udisondev/veziizi/backend/e2e/setup"
 )
 
 // FraudsterHandlerSuite тестирует поведение FraudsterHandler при пометке/снятии

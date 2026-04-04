@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+	orgApp "github.com/udisondev/veziizi/backend/internal/application/organization"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization"
 	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
-	orgApp "github.com/udisondev/veziizi/backend/internal/application/organization"
-	"github.com/google/uuid"
 )
 
 // MemberCheckerAdapter проверяет принадлежность и права членов организации

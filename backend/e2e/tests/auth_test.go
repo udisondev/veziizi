@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
-	"github.com/stretchr/testify/suite"
 )
 
 // AuthSuite combines all authentication tests with shared context.

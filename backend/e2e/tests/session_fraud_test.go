@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/application/session"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/internal/application/session"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
 // SessionFraudSuite тестирует детекцию фрода сессий: impossible travel,
@@ -217,7 +217,7 @@ func (s *SessionFraudSuite) TestSFR005_CountryChangeWithin24h() {
 		IPAddress:      "5.6.7.8",
 		GeoCountry:     "KZ",
 		GeoCity:        "Aktau",
-		GeoLat:         55.80,  // близко к предыдущему — не geo jump
+		GeoLat:         55.80, // близко к предыдущему — не geo jump
 		GeoLon:         37.70,
 		LoginTime:      time.Now(),
 	})

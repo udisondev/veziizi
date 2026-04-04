@@ -8,10 +8,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/application/history/display"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
-	"github.com/google/uuid"
 )
 
 // ActorInfo represents information about the user who initiated an event
@@ -39,11 +39,11 @@ type EventHistoryPage struct {
 
 // DisplayableHistoryItem extends EventHistoryItem with human-readable display
 type DisplayableHistoryItem struct {
-	ID         uuid.UUID       `json:"id"`
-	EventType  string          `json:"event_type"`
-	Version    int64           `json:"version"`
-	OccurredAt time.Time       `json:"occurred_at"`
-	Actor      *ActorInfo      `json:"actor,omitempty"`
+	ID         uuid.UUID           `json:"id"`
+	EventType  string              `json:"event_type"`
+	Version    int64               `json:"version"`
+	OccurredAt time.Time           `json:"occurred_at"`
+	Actor      *ActorInfo          `json:"actor,omitempty"`
 	Display    display.DisplayView `json:"display"`
 }
 
@@ -93,16 +93,16 @@ var actorFieldMapping = map[string]string{
 	"invitation.cancelled": "cancelled_by",
 
 	// FreightRequest events
-	"freight_request.created":                 "customer_member_id",
-	"freight_request.updated":                 "updated_by",
-	"freight_request.reassigned":              "reassigned_by",
-	"freight_request.cancelled":               "cancelled_by",
-	"freight_request.customer_completed":      "completed_by",
-	"freight_request.carrier_completed":       "completed_by",
+	"freight_request.created":                   "customer_member_id",
+	"freight_request.updated":                   "updated_by",
+	"freight_request.reassigned":                "reassigned_by",
+	"freight_request.cancelled":                 "cancelled_by",
+	"freight_request.customer_completed":        "completed_by",
+	"freight_request.carrier_completed":         "completed_by",
 	"freight_request.cancelled_after_confirmed": "cancelled_by",
 	"freight_request.carrier_member_reassigned": "reassigned_by",
-	"freight_request.review_left":             "reviewer_member_id",
-	"freight_request.review_edited":           "edited_by",
+	"freight_request.review_left":               "reviewer_member_id",
+	"freight_request.review_edited":             "edited_by",
 
 	// Offer events
 	"offer.made":       "carrier_member_id",

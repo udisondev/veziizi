@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/e2e/client"
 )
 
 // TestContext holds common test context with pre-created entities.

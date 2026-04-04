@@ -3,9 +3,9 @@ package rules
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/google/uuid"
 )
 
 // NotificationRule определяет правило создания уведомлений для события

@@ -7,13 +7,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/lib/pq"
+	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 var _ = pgx.ErrNoRows // используется для проверки ErrNoRows
@@ -34,23 +34,23 @@ func NewFreightSubscriptionsProjection(db dbtx.TxManager) *FreightSubscriptionsP
 
 // SubscriptionRow представляет запись в БД
 type SubscriptionRow struct {
-	ID              uuid.UUID  `db:"id"`
-	MemberID        uuid.UUID  `db:"member_id"`
-	Name            string     `db:"name"`
-	MinWeight       *float64   `db:"min_weight"`
-	MaxWeight       *float64   `db:"max_weight"`
-	MinPrice        *int64     `db:"min_price"`
-	MaxPrice        *int64     `db:"max_price"`
-	MinVolume       *float64   `db:"min_volume"`
-	MaxVolume       *float64   `db:"max_volume"`
-	VehicleTypes    []string   `db:"vehicle_types"`
-	VehicleSubTypes []string   `db:"vehicle_subtypes"`
-	PaymentMethods  []string   `db:"payment_methods"`
-	PaymentTerms    []string   `db:"payment_terms"`
-	VatTypes        []string   `db:"vat_types"`
-	IsActive        bool       `db:"is_active"`
-	CreatedAt       time.Time  `db:"created_at"`
-	UpdatedAt       time.Time  `db:"updated_at"`
+	ID              uuid.UUID `db:"id"`
+	MemberID        uuid.UUID `db:"member_id"`
+	Name            string    `db:"name"`
+	MinWeight       *float64  `db:"min_weight"`
+	MaxWeight       *float64  `db:"max_weight"`
+	MinPrice        *int64    `db:"min_price"`
+	MaxPrice        *int64    `db:"max_price"`
+	MinVolume       *float64  `db:"min_volume"`
+	MaxVolume       *float64  `db:"max_volume"`
+	VehicleTypes    []string  `db:"vehicle_types"`
+	VehicleSubTypes []string  `db:"vehicle_subtypes"`
+	PaymentMethods  []string  `db:"payment_methods"`
+	PaymentTerms    []string  `db:"payment_terms"`
+	VatTypes        []string  `db:"vat_types"`
+	IsActive        bool      `db:"is_active"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 // RoutePointRow представляет точку маршрута в БД

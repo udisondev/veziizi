@@ -4,27 +4,27 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/aggregate"
-	"github.com/google/uuid"
 )
 
 type Organization struct {
 	aggregate.Base
 
-	name           string
-	inn            string
-	legalName      string
-	country        values.Country
-	phone          string
-	email          string
-	address   values.Address
-	status    values.OrganizationStatus
-	createdAt time.Time
-	suspendedAt    *time.Time
+	name        string
+	inn         string
+	legalName   string
+	country     values.Country
+	phone       string
+	email       string
+	address     values.Address
+	status      values.OrganizationStatus
+	createdAt   time.Time
+	suspendedAt *time.Time
 
 	// Fraudster status
 	isConfirmedFraudster bool
@@ -113,21 +113,21 @@ func NewFromEvents(id uuid.UUID, evts []eventstore.Event) *Organization {
 }
 
 // Getters
-func (o *Organization) Name() string                        { return o.name }
-func (o *Organization) INN() string                         { return o.inn }
-func (o *Organization) LegalName() string                   { return o.legalName }
-func (o *Organization) Country() values.Country             { return o.country }
-func (o *Organization) Phone() string                       { return o.phone }
-func (o *Organization) Email() string                       { return o.email }
+func (o *Organization) Name() string                      { return o.name }
+func (o *Organization) INN() string                       { return o.inn }
+func (o *Organization) LegalName() string                 { return o.legalName }
+func (o *Organization) Country() values.Country           { return o.country }
+func (o *Organization) Phone() string                     { return o.phone }
+func (o *Organization) Email() string                     { return o.email }
 func (o *Organization) Address() values.Address           { return o.address }
 func (o *Organization) Status() values.OrganizationStatus { return o.status }
 func (o *Organization) CreatedAt() time.Time              { return o.createdAt }
 func (o *Organization) SuspendedAt() *time.Time           { return o.suspendedAt }
 
 // Fraudster getters
-func (o *Organization) IsConfirmedFraudster() bool   { return o.isConfirmedFraudster }
-func (o *Organization) IsSuspectedFraudster() bool   { return o.isSuspectedFraudster }
-func (o *Organization) IsFraudster() bool            { return o.isConfirmedFraudster || o.isSuspectedFraudster }
+func (o *Organization) IsConfirmedFraudster() bool    { return o.isConfirmedFraudster }
+func (o *Organization) IsSuspectedFraudster() bool    { return o.isSuspectedFraudster }
+func (o *Organization) IsFraudster() bool             { return o.isConfirmedFraudster || o.isSuspectedFraudster }
 func (o *Organization) FraudsterMarkedAt() *time.Time { return o.fraudsterMarkedAt }
 func (o *Organization) FraudsterMarkedBy() *uuid.UUID { return o.fraudsterMarkedBy }
 func (o *Organization) FraudsterReason() string       { return o.fraudsterReason }
@@ -787,23 +787,23 @@ func ptr[T any](v T) *T {
 
 // OrganizationSnapshot represents serializable state of Organization aggregate
 type OrganizationSnapshot struct {
-	ID                   uuid.UUID                  `json:"id"`
-	Version              int64                      `json:"version"`
-	Name                 string                     `json:"name"`
-	INN                  string                     `json:"inn"`
-	LegalName            string                     `json:"legal_name"`
-	Country              values.Country             `json:"country"`
-	Phone                string                     `json:"phone"`
-	Email                string                     `json:"email"`
-	Address              values.Address             `json:"address"`
-	Status               values.OrganizationStatus  `json:"status"`
-	CreatedAt            time.Time                  `json:"created_at"`
-	SuspendedAt          *time.Time                 `json:"suspended_at,omitempty"`
-	IsConfirmedFraudster bool                       `json:"is_confirmed_fraudster"`
-	IsSuspectedFraudster bool                       `json:"is_suspected_fraudster"`
-	FraudsterMarkedAt    *time.Time                 `json:"fraudster_marked_at,omitempty"`
-	FraudsterMarkedBy    *uuid.UUID                 `json:"fraudster_marked_by,omitempty"`
-	FraudsterReason      string                     `json:"fraudster_reason,omitempty"`
+	ID                   uuid.UUID                        `json:"id"`
+	Version              int64                            `json:"version"`
+	Name                 string                           `json:"name"`
+	INN                  string                           `json:"inn"`
+	LegalName            string                           `json:"legal_name"`
+	Country              values.Country                   `json:"country"`
+	Phone                string                           `json:"phone"`
+	Email                string                           `json:"email"`
+	Address              values.Address                   `json:"address"`
+	Status               values.OrganizationStatus        `json:"status"`
+	CreatedAt            time.Time                        `json:"created_at"`
+	SuspendedAt          *time.Time                       `json:"suspended_at,omitempty"`
+	IsConfirmedFraudster bool                             `json:"is_confirmed_fraudster"`
+	IsSuspectedFraudster bool                             `json:"is_suspected_fraudster"`
+	FraudsterMarkedAt    *time.Time                       `json:"fraudster_marked_at,omitempty"`
+	FraudsterMarkedBy    *uuid.UUID                       `json:"fraudster_marked_by,omitempty"`
+	FraudsterReason      string                           `json:"fraudster_reason,omitempty"`
 	Members              map[uuid.UUID]MemberSnapshot     `json:"members"`
 	Invitations          map[uuid.UUID]InvitationSnapshot `json:"invitations"`
 }

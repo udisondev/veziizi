@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	frValues "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
 )
 
 // SubscriptionsHandler обрабатывает запросы к подпискам на заявки

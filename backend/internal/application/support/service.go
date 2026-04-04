@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/support"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
@@ -12,7 +13,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/sequence"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/google/uuid"
 )
 
 type Service struct {

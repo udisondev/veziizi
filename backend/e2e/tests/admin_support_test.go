@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/udisondev/veziizi/backend/e2e/fixtures"
-	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
+	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 )
 
 // AdminSupportSuite combines all admin support tests with shared context.

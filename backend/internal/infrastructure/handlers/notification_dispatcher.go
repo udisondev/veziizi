@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/google/uuid"
 	notifApp "github.com/udisondev/veziizi/backend/internal/application/notification"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/rules"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/google/uuid"
 )
 
 // TelegramNotification представляет сообщение для отправки в Telegram

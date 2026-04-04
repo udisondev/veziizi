@@ -19,6 +19,9 @@ import (
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"
 
+	"github.com/ThreeDotsLabs/watermill"
+	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
 	eventHandlers "github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
@@ -30,9 +33,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
-	"github.com/ThreeDotsLabs/watermill"
-	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 // Suite represents a test suite with shared infrastructure.

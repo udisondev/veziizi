@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 type SupportTicketsProjection struct {

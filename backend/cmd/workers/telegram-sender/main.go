@@ -12,13 +12,13 @@ import (
 	// Event registration - CRITICAL for deserialization of notification events
 	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"
 
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
-	"github.com/udisondev/veziizi/backend/internal/pkg/config"
-	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
-	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
+	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
+	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
 )
 
 const (
@@ -139,4 +139,3 @@ func main() {
 		slog.Error(fmt.Sprintf("%s worker shutdown timed out", workerName))
 	}
 }
-

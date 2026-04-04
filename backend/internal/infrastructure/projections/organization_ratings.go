@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 type OrganizationRatingsProjection struct {

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/application/freightrequest"
 	"github.com/udisondev/veziizi/backend/internal/application/organization"
 	frDomain "github.com/udisondev/veziizi/backend/internal/domain/freightrequest"
@@ -20,8 +22,6 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
 )
 
 type FreightRequestHandler struct {
@@ -1467,4 +1467,3 @@ func splitCommaInt(s string) []int {
 	}
 	return result
 }
-

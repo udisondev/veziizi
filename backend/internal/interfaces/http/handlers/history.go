@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	frApp "github.com/udisondev/veziizi/backend/internal/application/freightrequest"
 	historyApp "github.com/udisondev/veziizi/backend/internal/application/history"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
-	"github.com/google/uuid"
-	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -145,4 +145,3 @@ func (h *HistoryHandler) parsePagination(r *http.Request) (limit, offset int) {
 
 	return limit, offset
 }
-

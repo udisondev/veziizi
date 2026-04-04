@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/suite"
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/udisondev/veziizi/backend/e2e/setup"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/suite"
 )
 
 // PasswordResetSuite combines all password reset tests with shared context.

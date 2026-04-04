@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 )
 
 // HistorySuite combines all history tests with shared context.

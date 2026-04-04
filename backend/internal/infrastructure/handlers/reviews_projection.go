@@ -6,22 +6,22 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/Masterminds/squirrel"
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/google/uuid"
 )
 
 // ReviewsProjectionHandler handles review events and updates lookup tables
 type ReviewsProjectionHandler struct {
-	db         dbtx.TxManager
-	psql       squirrel.StatementBuilderType
-	fraudData  *projections.FraudDataProjection
-	ratings    *projections.OrganizationRatingsProjection
+	db        dbtx.TxManager
+	psql      squirrel.StatementBuilderType
+	fraudData *projections.FraudDataProjection
+	ratings   *projections.OrganizationRatingsProjection
 }
 
 func NewReviewsProjectionHandler(
@@ -82,22 +82,22 @@ func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.Revi
 
 	// Insert into reviews_lookup
 	row := &projections.ReviewLookupRow{
-		ID:               e.AggregateID(),
-		OrderID:          e.OrderID,
-		ReviewerOrgID:    e.ReviewerOrgID,
-		ReviewedOrgID:    e.ReviewedOrgID,
-		Rating:           e.Rating,
-		Comment:          e.Comment,
-		OrderAmount:      e.OrderAmount,
-		OrderCurrency:    e.OrderCurrency,
-		OrderCreatedAt:   e.OrderCreatedAt,
-		OrderCompletedAt: e.OrderCompletedAt,
-		RawWeight:        1.0,
-		FinalWeight:      0.0,
-		FraudScore:       0.0,
+		ID:                 e.AggregateID(),
+		OrderID:            e.OrderID,
+		ReviewerOrgID:      e.ReviewerOrgID,
+		ReviewedOrgID:      e.ReviewedOrgID,
+		Rating:             e.Rating,
+		Comment:            e.Comment,
+		OrderAmount:        e.OrderAmount,
+		OrderCurrency:      e.OrderCurrency,
+		OrderCreatedAt:     e.OrderCreatedAt,
+		OrderCompletedAt:   e.OrderCompletedAt,
+		RawWeight:          1.0,
+		FinalWeight:        0.0,
+		FraudScore:         0.0,
 		RequiresModeration: false,
-		Status:           values.StatusPendingAnalysis.String(),
-		CreatedAt:        e.OccurredAt(),
+		Status:             values.StatusPendingAnalysis.String(),
+		CreatedAt:          e.OccurredAt(),
 	}
 
 	if err := h.fraudData.UpsertReviewLookup(ctx, row); err != nil {
@@ -434,4 +434,3 @@ func (h *ReviewsProjectionHandler) getReviewedOrgID(ctx context.Context, reviewI
 
 	return orgID, nil
 }
-

@@ -9,11 +9,11 @@ import (
 	texttemplate "text/template"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 // restrictedFuncMap blocks dangerous template function calls

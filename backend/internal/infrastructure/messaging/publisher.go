@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
-	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
+	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 )
 
 type EventPublisher struct {

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 type MembersProjection struct {
@@ -396,19 +396,19 @@ func (p *MembersProjection) GetMemberMetadata(ctx context.Context, orgID uuid.UU
 
 // RegistrationVelocity contains velocity check thresholds
 var RegistrationVelocity = struct {
-	MaxRegistrationsPerIPPerHour           int
-	MaxRegistrationsPerFingerprintPer24h   int
+	MaxRegistrationsPerIPPerHour         int
+	MaxRegistrationsPerFingerprintPer24h int
 }{
-	MaxRegistrationsPerIPPerHour:           3,
-	MaxRegistrationsPerFingerprintPer24h:   2,
+	MaxRegistrationsPerIPPerHour:         3,
+	MaxRegistrationsPerFingerprintPer24h: 2,
 }
 
 // RegistrationVelocityResult contains velocity check result
 type RegistrationVelocityResult struct {
-	IsTooFast           bool
-	IPRegistrations     int
-	FPRegistrations     int
-	BlockReason         string
+	IsTooFast       bool
+	IPRegistrations int
+	FPRegistrations int
+	BlockReason     string
 }
 
 // CheckRegistrationVelocity checks if registration is happening too fast from same IP/fingerprint

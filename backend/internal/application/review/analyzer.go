@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
-	"github.com/google/uuid"
 )
 
 // Analyzer performs fraud detection and weight calculation for reviews

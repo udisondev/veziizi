@@ -8,10 +8,10 @@ import (
 	"math"
 	"time"
 
-	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 // Session fraud signal types
@@ -24,25 +24,25 @@ const (
 // Session fraud thresholds
 var SessionFraudThresholds = struct {
 	// login_geo_jump
-	MaxKmPerHour           float64 // impossible travel speed
-	MinDistanceForCheck    float64 // minimum km to check
+	MaxKmPerHour        float64 // impossible travel speed
+	MinDistanceForCheck float64 // minimum km to check
 	// session_anomaly
-	UnusualHourThreshold   int     // hours outside typical range
-	MinLoginsForPattern    int     // minimum logins to establish pattern
+	UnusualHourThreshold int // hours outside typical range
+	MinLoginsForPattern  int // minimum logins to establish pattern
 	// api_abuse
-	MaxRequestsPerMinute   int
-	MaxRequestsPerHour     int
-	BlockDurationMinutes   int
-	ScrapingThreshold      int     // GET requests without actions
+	MaxRequestsPerMinute int
+	MaxRequestsPerHour   int
+	BlockDurationMinutes int
+	ScrapingThreshold    int // GET requests without actions
 }{
-	MaxKmPerHour:           900,   // ~airplane speed
-	MinDistanceForCheck:    100,   // 100km minimum
-	UnusualHourThreshold:   3,     // 3+ hours from typical
-	MinLoginsForPattern:    5,     // need 5+ logins for pattern
-	MaxRequestsPerMinute:   100,
-	MaxRequestsPerHour:     1000,
-	BlockDurationMinutes:   15,
-	ScrapingThreshold:      50,    // 50 GETs without POST/PUT
+	MaxKmPerHour:         900, // ~airplane speed
+	MinDistanceForCheck:  100, // 100km minimum
+	UnusualHourThreshold: 3,   // 3+ hours from typical
+	MinLoginsForPattern:  5,   // need 5+ logins for pattern
+	MaxRequestsPerMinute: 100,
+	MaxRequestsPerHour:   1000,
+	BlockDurationMinutes: 15,
+	ScrapingThreshold:    50, // 50 GETs without POST/PUT
 }
 
 // SetSessionFraudLimits allows configuring session fraud limits for testing.
@@ -65,19 +65,19 @@ func NewSessionFraudProjection(db dbtx.TxManager) *SessionFraudProjection {
 
 // SessionEvent represents a session event
 type SessionEvent struct {
-	ID             uuid.UUID  `db:"id"`
-	MemberID       uuid.UUID  `db:"member_id"`
-	OrganizationID uuid.UUID  `db:"organization_id"`
-	EventType      string     `db:"event_type"`
-	IPAddress      *string    `db:"ip_address"`
-	Fingerprint    *string    `db:"fingerprint"`
-	UserAgent      *string    `db:"user_agent"`
-	GeoCountry     *string    `db:"geo_country"`
-	GeoCity        *string    `db:"geo_city"`
-	GeoLat         *float64   `db:"geo_lat"`
-	GeoLon         *float64   `db:"geo_lon"`
-	Endpoint       *string    `db:"endpoint"`
-	CreatedAt      time.Time  `db:"created_at"`
+	ID             uuid.UUID `db:"id"`
+	MemberID       uuid.UUID `db:"member_id"`
+	OrganizationID uuid.UUID `db:"organization_id"`
+	EventType      string    `db:"event_type"`
+	IPAddress      *string   `db:"ip_address"`
+	Fingerprint    *string   `db:"fingerprint"`
+	UserAgent      *string   `db:"user_agent"`
+	GeoCountry     *string   `db:"geo_country"`
+	GeoCity        *string   `db:"geo_city"`
+	GeoLat         *float64  `db:"geo_lat"`
+	GeoLon         *float64  `db:"geo_lon"`
+	Endpoint       *string   `db:"endpoint"`
+	CreatedAt      time.Time `db:"created_at"`
 }
 
 // RecordSessionEvent records a session event
@@ -141,21 +141,21 @@ func (p *SessionFraudProjection) InsertSessionFraudSignal(ctx context.Context, s
 
 // MemberSessionBehavior tracks typical behavior for anomaly detection
 type MemberSessionBehavior struct {
-	MemberID         uuid.UUID          `db:"member_id"`
-	TypicalHours     map[int]int        `db:"-"` // hour -> count
-	TypicalHoursJSON json.RawMessage    `db:"typical_login_hours"`
-	TypicalCountries []string           `db:"typical_countries"`
-	TypicalIPs       []string           `db:"typical_ips"`
-	LastLoginAt      *time.Time         `db:"last_login_at"`
-	LastLoginIP      *string            `db:"last_login_ip"`
-	LastLoginCountry *string            `db:"last_login_country"`
-	LastLoginLat     *float64           `db:"last_login_lat"`
-	LastLoginLon     *float64           `db:"last_login_lon"`
-	TotalLogins      int                `db:"total_logins"`
-	SuspiciousLogins int                `db:"suspicious_logins"`
-	IsSuspicious     bool               `db:"is_suspicious"`
-	SuspiciousReason *string            `db:"suspicious_reason"`
-	UpdatedAt        time.Time          `db:"updated_at"`
+	MemberID         uuid.UUID       `db:"member_id"`
+	TypicalHours     map[int]int     `db:"-"` // hour -> count
+	TypicalHoursJSON json.RawMessage `db:"typical_login_hours"`
+	TypicalCountries []string        `db:"typical_countries"`
+	TypicalIPs       []string        `db:"typical_ips"`
+	LastLoginAt      *time.Time      `db:"last_login_at"`
+	LastLoginIP      *string         `db:"last_login_ip"`
+	LastLoginCountry *string         `db:"last_login_country"`
+	LastLoginLat     *float64        `db:"last_login_lat"`
+	LastLoginLon     *float64        `db:"last_login_lon"`
+	TotalLogins      int             `db:"total_logins"`
+	SuspiciousLogins int             `db:"suspicious_logins"`
+	IsSuspicious     bool            `db:"is_suspicious"`
+	SuspiciousReason *string         `db:"suspicious_reason"`
+	UpdatedAt        time.Time       `db:"updated_at"`
 }
 
 // GetMemberSessionBehavior retrieves behavior data for a member
@@ -271,10 +271,10 @@ func (p *SessionFraudProjection) GetLastLogin(ctx context.Context, memberID uuid
 
 // RateLimitResult contains rate limit check result
 type RateLimitResult struct {
-	IsBlocked      bool
-	RequestCount   int
-	BlockedUntil   *time.Time
-	Reason         string
+	IsBlocked    bool
+	RequestCount int
+	BlockedUntil *time.Time
+	Reason       string
 }
 
 // CheckRateLimit checks if request should be rate limited
@@ -430,9 +430,9 @@ func (p *SessionFraudProjection) GetTypicalLoginHour(ctx context.Context, member
 
 // GetRecentAPIActivity returns recent API activity for scraping detection
 type APIActivitySummary struct {
-	GetRequests    int `db:"get_requests"`
-	PostRequests   int `db:"post_requests"`
-	TotalRequests  int `db:"total_requests"`
+	GetRequests   int `db:"get_requests"`
+	PostRequests  int `db:"post_requests"`
+	TotalRequests int `db:"total_requests"`
 }
 
 func (p *SessionFraudProjection) GetRecentAPIActivity(ctx context.Context, memberID uuid.UUID, minutes int) (*APIActivitySummary, error) {
