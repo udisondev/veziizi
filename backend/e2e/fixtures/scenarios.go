@@ -187,7 +187,7 @@ func (ctx *TestContext) AddMemberToOrg(org *CreatedOrganization, role string) *c
 	// Wait for member with exponential backoff
 	memberClient := ctx.AnonClient.Clone()
 	backoff = 10 * time.Millisecond
-	deadline = time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(10 * time.Second)
 
 	for time.Now().Before(deadline) {
 		loginResp, err := memberClient.Login(email, "password123")

@@ -1048,7 +1048,6 @@ func (s *FreightRequestsSuite) TestFR233_CancelConfirmed_NotParticipant() {
 // ============================================================================
 
 func (s *FreightRequestsSuite) TestFR240_ReassignCarrier_Success() {
-	s.T().Skip("TODO: Fix projection sync timing issues")
 	fr, _ := s.ctx.CreateConfirmedFreightRequest()
 
 	// Add new member to carrier organization
@@ -1065,7 +1064,6 @@ func (s *FreightRequestsSuite) TestFR240_ReassignCarrier_Success() {
 }
 
 func (s *FreightRequestsSuite) TestFR241_ReassignCarrier_NotOwner() {
-	s.T().Skip("TODO: Fix projection sync timing issues")
 	fr, _ := s.ctx.CreateConfirmedFreightRequest()
 
 	// Add new member to carrier as employee (not owner/admin)
@@ -1082,7 +1080,6 @@ func (s *FreightRequestsSuite) TestFR241_ReassignCarrier_NotOwner() {
 }
 
 func (s *FreightRequestsSuite) TestFR242_ReassignCarrier_NotConfirmed() {
-	s.T().Skip("TODO: Fix projection sync timing issues")
 	fr, _ := s.ctx.CreateSelectedOffer()
 
 	// Add new member to carrier organization

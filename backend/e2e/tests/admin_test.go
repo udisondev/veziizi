@@ -3,6 +3,7 @@ package tests
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
@@ -295,7 +296,6 @@ func (s *AdminSuite) TestUserSessionCannotAccessListReviews() {
 // ==================== Review Full Cycle Tests ====================
 
 func (s *AdminSuite) TestADM030_ReviewFullCycle_Approve() {
-	s.T().Skip("TODO: Requires review-analyzer and reviews-projection workers to be running")
 	// Create a completed FR and leave a review
 	completed := s.ctx.CreateFullyCompletedFreightRequest()
 
@@ -305,43 +305,26 @@ func (s *AdminSuite) TestADM030_ReviewFullCycle_Approve() {
 	s.Require().Equal(http.StatusCreated, reviewResp.StatusCode)
 	reviewID := reviewResp.Body.ReviewID
 
-	// Wait for review to appear in admin list (pending_analysis → pending_moderation)
-	// Note: review-analyzer worker processes it, may auto-approve or send to moderation
-	helpers.Wait(s.T(), func() bool {
-		resp, err := s.ctx.AdminClient.AdminGetReviews("pending_moderation")
-		if err != nil || resp.StatusCode != http.StatusOK {
-			return false
-		}
-		for _, r := range resp.Body {
-			if r.ID == reviewID {
-				return true
-			}
-		}
-		// Check if already auto-approved
-		resp, err = s.ctx.AdminClient.AdminGetReviews("approved")
-		if err != nil || resp.StatusCode != http.StatusOK {
-			return false
-		}
-		for _, r := range resp.Body {
-			if r.ID == reviewID {
-				return true // already approved (auto)
-			}
-		}
-		return false
-	}, "review should appear in admin list (pending_moderation or approved)")
+	// Wait for review to be processed (review-receiver → review-analyzer → reviews-projection)
+	helpers.WaitWithConfig(s.T(), helpers.WaitConfig{Timeout: 30 * time.Second, Interval: 200 * time.Millisecond}, func() bool {
+		resp, err := s.ctx.AdminClient.AdminGetReview(reviewID)
+		return err == nil && resp.StatusCode == http.StatusOK
+	}, "review should be accessible via admin API")
 
-	// Try to get the review and approve if pending
+	// Get review and approve if still pending
 	getResp, err := s.ctx.AdminClient.AdminGetReview(reviewID)
 	s.Require().NoError(err)
-	if getResp.StatusCode == http.StatusOK && getResp.Body.Status == "pending_moderation" {
+	s.Require().Equal(http.StatusOK, getResp.StatusCode)
+
+	if getResp.Body.Status == "pending_moderation" {
 		approveResp, err := s.ctx.AdminClient.AdminApproveReview(reviewID)
 		s.Require().NoError(err)
 		s.Require().Equal(http.StatusNoContent, approveResp.StatusCode, "should approve review successfully")
 	}
+	// If already auto-approved — that's fine too
 }
 
 func (s *AdminSuite) TestADM031_ReviewReject() {
-	s.T().Skip("TODO: Requires review-analyzer and reviews-projection workers to be running")
 	// Create a completed FR and leave a review
 	completed := s.ctx.CreateFullyCompletedFreightRequest()
 
@@ -351,30 +334,20 @@ func (s *AdminSuite) TestADM031_ReviewReject() {
 	s.Require().Equal(http.StatusCreated, reviewResp.StatusCode)
 	reviewID := reviewResp.Body.ReviewID
 
-	// Wait for review to appear in admin list
-	helpers.Wait(s.T(), func() bool {
-		resp, err := s.ctx.AdminClient.AdminGetReviews("pending_moderation")
-		if err != nil || resp.StatusCode != http.StatusOK {
-			return false
-		}
-		for _, r := range resp.Body {
-			if r.ID == reviewID {
-				return true
-			}
-		}
-		return false
-	}, "review should appear in pending_moderation")
+	// Wait for review to be processed
+	helpers.WaitWithConfig(s.T(), helpers.WaitConfig{Timeout: 30 * time.Second, Interval: 200 * time.Millisecond}, func() bool {
+		resp, err := s.ctx.AdminClient.AdminGetReview(reviewID)
+		return err == nil && resp.StatusCode == http.StatusOK
+	}, "review should be accessible via admin API")
 
-	// Reject the review
+	// Reject the review (may already be auto-approved → 409)
 	rejectResp, err := s.ctx.AdminClient.AdminRejectReview(reviewID, "Fake review detected")
 	s.Require().NoError(err)
-	// May already be auto-approved, so accept either 204 or 409
 	s.Require().True(rejectResp.StatusCode == http.StatusNoContent || rejectResp.StatusCode == http.StatusConflict,
 		"should reject or conflict, got %d", rejectResp.StatusCode)
 }
 
 func (s *AdminSuite) TestADM032_FraudsterDeactivatesReviews() {
-	s.T().Skip("TODO: Requires review-analyzer, reviews-projection and fraudster-handler workers to be running")
 	// Create a new org that will become a fraudster
 	fraudOrg := fixtures.NewActiveOrganization(s.T(), s.ctx.AnonClient, s.ctx.AdminClient).Create()
 
