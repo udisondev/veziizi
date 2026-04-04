@@ -1,0 +1,305 @@
+version: '3'
+
+dotenv: ['.env?']
+
+vars:
+  POSTGRES_USER: '{{.POSTGRES_USER | default "veziizi"}}'
+  POSTGRES_PASSWORD: '{{.POSTGRES_PASSWORD | default "veziizi"}}'
+  POSTGRES_DB: '{{.POSTGRES_DB | default "veziizi"}}'
+  POSTGRES_HOST: '{{.POSTGRES_HOST | default "localhost"}}'
+  POSTGRES_PORT: '{{.POSTGRES_PORT | default "5432"}}'
+  DATABASE_URL: 'postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_DB}}?sslmode=disable'
+  TEST_DATABASE_URL: 'postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/veziizi_test?sslmode=disable'
+  WORKERS: members invitations pending-organizations organizations freight-requests review-receiver review-analyzer reviews-projection review-activator fraudster-handler notification-dispatcher telegram-sender email-sender support-tickets rate-limiter-cleanup
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+
+  # --- Docker ---
+
+  up:
+    desc: Start all services
+    cmds:
+      - docker compose up -d
+
+  down:
+    desc: Stop all services
+    cmds:
+      - docker compose down
+
+  logs:
+    desc: Show logs
+    interactive: true
+    cmds:
+      - docker compose logs -f
+
+  db-shell:
+    desc: Connect to PostgreSQL shell
+    interactive: true
+    cmds:
+      - docker compose exec postgres psql -U {{.POSTGRES_USER}} -d {{.POSTGRES_DB}}
+
+  # --- Migrations ---
+
+  migrate:
+    desc: Run migrations up
+    cmds:
+      - goose -dir backend/migrations postgres "{{.DATABASE_URL}}" up
+
+  migrate:down:
+    desc: Run migrations down (one step)
+    cmds:
+      - goose -dir backend/migrations postgres "{{.DATABASE_URL}}" down
+
+  migrate:status:
+    desc: Show migration status
+    cmds:
+      - goose -dir backend/migrations postgres "{{.DATABASE_URL}}" status
+
+  migrate:create:
+    desc: Create new migration (use -- migration_name)
+    preconditions:
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: "Usage: task migrate:create -- migration_name"
+    cmds:
+      - goose -dir backend/migrations create {{.CLI_ARGS}} sql
+
+  # --- Build ---
+
+  build:
+    desc: Build all binaries
+    deps: [build:api, build:telegram-bot, build:workers]
+
+  build:api:
+    desc: Build API server
+    cmds:
+      - go build -o bin/api ./backend/cmd/api
+    sources:
+      - backend/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - bin/api
+
+  build:telegram-bot:
+    desc: Build Telegram bot
+    cmds:
+      - go build -o bin/telegram-bot ./backend/cmd/telegram-bot
+    sources:
+      - backend/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - bin/telegram-bot
+
+  build:workers:
+    desc: Build all workers
+    cmds:
+      - for: {var: WORKERS}
+        cmd: go build -o bin/worker-{{.ITEM}} ./backend/cmd/workers/{{.ITEM}}
+
+  # --- Run ---
+
+  run:api:
+    desc: Run API server
+    cmds:
+      - go run ./backend/cmd/api
+
+  run:telegram-bot:
+    desc: Run Telegram bot for link code handling
+    cmds:
+      - go run ./backend/cmd/telegram-bot
+
+  run:workers:
+    desc: Run all workers in background
+    cmds:
+      - |
+        for worker in {{.WORKERS}}; do
+          go run ./backend/cmd/workers/$worker &
+        done
+        echo "All workers started in background"
+        wait
+
+  # --- Testing ---
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test -v ./backend/internal/...
+
+  test:cover:
+    desc: Run tests with coverage
+    cmds:
+      - go test -v -coverprofile=coverage.out ./backend/internal/...
+      - go tool cover -html=coverage.out -o coverage.html
+
+  test:e2e:setup:
+    desc: Setup E2E test database
+    deps: [up]
+    cmds:
+      - echo "Creating test database..."
+      - docker exec veziizi-postgres psql -U {{.POSTGRES_USER}} -c "DROP DATABASE IF EXISTS veziizi_test" || true
+      - docker exec veziizi-postgres psql -U {{.POSTGRES_USER}} -c "CREATE DATABASE veziizi_test"
+      - echo "Running migrations on test database..."
+      - goose -dir backend/migrations postgres "{{.TEST_DATABASE_URL}}" up
+      - echo "Seeding geo data..."
+      - TEST_DATABASE_URL="{{.TEST_DATABASE_URL}}" go run ./backend/cmd/tools/seed-geo
+      - echo "Creating test admin..."
+      - DATABASE_URL="{{.TEST_DATABASE_URL}}" go run ./backend/cmd/tools/create-admin --email="admin@veziizi.local" --name="Admin" --password="admin123" || true
+      - echo "E2E test database ready"
+
+  test:e2e:
+    desc: Run E2E tests (uses docker-compose DB)
+    deps: [test:e2e:setup]
+    cmds:
+      - TEST_DATABASE_URL="{{.TEST_DATABASE_URL}}" go test -v -count=1 -p=1 ./backend/e2e/tests/...
+
+  test:e2e:parallel:
+    desc: Run E2E tests in parallel (uses docker-compose DB)
+    deps: [test:e2e:setup]
+    cmds:
+      - TEST_DATABASE_URL="{{.TEST_DATABASE_URL}}" go test -v -count=1 ./backend/e2e/tests/...
+
+  test:e2e:containers:
+    desc: Run E2E tests with testcontainers (requires Docker)
+    cmds:
+      - go test -v -count=1 -p=1 ./backend/e2e/tests/...
+
+  # --- Code Quality ---
+
+  lint:
+    desc: Run linter
+    cmds:
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+      - goimports -w .
+
+  tidy:
+    desc: Tidy go modules
+    cmds:
+      - go mod tidy
+
+  generate:
+    desc: Run go generate
+    cmds:
+      - go generate ./...
+
+  # --- Environment ---
+
+  env:init:
+    desc: Create .env from .env.example if not exists
+    status:
+      - test -f .env
+    cmds:
+      - cp .env.example .env
+      - echo ".env created from .env.example - please edit it with your values"
+
+  check-env:
+    desc: Check if .env exists
+    preconditions:
+      - sh: test -f .env
+        msg: "Error: .env file not found. Run 'task env:init' first"
+
+  # --- Development ---
+
+  dev:setup:
+    desc: Install dev tools (goreman, air)
+    cmds:
+      - command -v goreman >/dev/null 2>&1 || go install github.com/mattn/goreman@latest
+      - command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest
+      - echo "Dev tools ready"
+
+  dev:
+    desc: Start DB + API only (without workers/frontend)
+    deps: [check-env, up]
+    cmds:
+      - task: migrate
+      - task: seed:geo
+      - task: run:api
+
+  dev:all:
+    desc: Start everything with hot-reload (API + workers + frontend)
+    deps: [check-env, dev:setup, up, build:workers]
+    cmds:
+      - echo "Waiting for PostgreSQL..."
+      - until docker exec veziizi-postgres pg_isready -U {{.POSTGRES_USER}} >/dev/null 2>&1; do sleep 1; done
+      - echo "PostgreSQL ready, running migrations..."
+      - task: migrate
+      - echo "Seeding geo data..."
+      - task: seed:geo
+      - echo "Starting all services..."
+      - goreman -f Procfile.dev start
+
+  back:dev:
+    desc: Run backend with air (hot-reload)
+    deps: [check-env]
+    cmds:
+      - air
+
+  # --- Admin Management ---
+
+  create:admin:
+    desc: Create platform admin (interactive)
+    deps: [check-env]
+    interactive: true
+    cmds:
+      - |
+        read -p "Email: " email
+        read -p "Name: " name
+        read -s -p "Password: " password
+        echo
+        go run ./backend/cmd/tools/create-admin \
+          --email="$email" \
+          --name="$name" \
+          --password="$password"
+
+  create:admin:dev:
+    desc: Create dev admin (admin@veziizi.local / admin123)
+    deps: [check-env]
+    cmds:
+      - go run ./backend/cmd/tools/create-admin --email="admin@veziizi.local" --name="Admin" --password="admin123"
+
+  create:test-org:
+    desc: Create test org with owner (owner@test.local / test123)
+    deps: [check-env]
+    cmds:
+      - >-
+        go run ./backend/cmd/tools/create-test-org
+        --email="owner@test.local"
+        --password="test123"
+        --name="Test Owner"
+        --org="Test Organization"
+        --approve=true
+
+  # --- Seed & Tools ---
+
+  seed:geo:
+    desc: Seed geo data (countries and cities)
+    deps: [check-env]
+    cmds:
+      - go run ./backend/cmd/tools/seed-geo
+
+  seed:orgs:
+    desc: Seed test organizations
+    deps: [check-env]
+    cmds:
+      - go run ./backend/cmd/tools/seed-orgs
+
+  resend:telegram:
+    desc: Resend failed telegram notifications
+    deps: [check-env]
+    cmds:
+      - go run ./backend/cmd/tools/resend-telegram
+
+  backfill:freight-requests:
+    desc: Backfill freight requests projection
+    deps: [check-env]
+    cmds:
+      - go run ./backend/cmd/tools/backfill-freight-requests
