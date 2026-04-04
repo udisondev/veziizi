@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import type { Payment, Currency, VatType, PaymentMethod, PaymentTerms } from '@/types/freightRequest'
 import {
   currencyOptions,
@@ -15,6 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useBreakpoint } from '@/composables/useBreakpoint'
+import BottomSheet from '@/components/shared/BottomSheet.vue'
 
 interface Props {
   payment: Payment
@@ -28,6 +30,26 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const { isMobile } = useBreakpoint()
+
+const currencySheetOpen = ref(false)
+const vatSheetOpen = ref(false)
+const methodSheetOpen = ref(false)
+const termsSheetOpen = ref(false)
+
+const selectedCurrencyLabel = computed(() =>
+  currencyOptions.find(o => o.value === (props.payment.price?.currency || 'RUB'))?.label
+)
+const selectedVatLabel = computed(() =>
+  vatTypeOptions.find(o => o.value === props.payment.vat_type)?.label ?? null
+)
+const selectedMethodLabel = computed(() =>
+  paymentMethodOptions.find(o => o.value === props.payment.method)?.label ?? null
+)
+const selectedTermsLabel = computed(() =>
+  paymentTermsOptions.find(o => o.value === props.payment.terms)?.label ?? null
+)
 
 function updateField<K extends keyof Payment>(field: K, value: Payment[K]) {
   emit('update:payment', { ...props.payment, [field]: value })
@@ -66,6 +88,26 @@ function handleVatTypeChange(vatType: VatType) {
 
 function handleMethodChange(method: PaymentMethod) {
   updateField('method', method)
+}
+
+function handleCurrencySheetSelect(currency: Currency) {
+  handleCurrencyChange(currency)
+  currencySheetOpen.value = false
+}
+
+function handleVatSheetSelect(vatType: VatType) {
+  handleVatTypeChange(vatType)
+  vatSheetOpen.value = false
+}
+
+function handleMethodSheetSelect(method: PaymentMethod) {
+  handleMethodChange(method)
+  methodSheetOpen.value = false
+}
+
+function handleTermsSheetSelect(terms: PaymentTerms) {
+  handleTermsChange(terms)
+  termsSheetOpen.value = false
 }
 
 function handleTermsChange(terms: PaymentTerms) {
@@ -144,84 +186,104 @@ const inputClass = (field: string) => [
 
     <!-- Currency -->
     <div v-if="!payment.no_price" data-tutorial="payment-currency">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Валюта
-      </label>
-      <Select
-        :model-value="payment.price?.currency || 'RUB'"
-        @update:model-value="handleCurrencyChange($event as Currency)"
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Выберите валюту" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="option in currencyOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Валюта</label>
+      <template v-if="!isMobile()">
+        <Select :model-value="payment.price?.currency || 'RUB'" @update:model-value="handleCurrencyChange($event as Currency)">
+          <SelectTrigger><SelectValue placeholder="Выберите валюту" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="o in currencyOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </template>
+      <template v-else>
+        <button type="button" class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-left bg-white" @click="currencySheetOpen = true">
+          <span class="text-gray-900">{{ selectedCurrencyLabel }}</span>
+        </button>
+        <BottomSheet v-model="currencySheetOpen" label="Валюта">
+          <div class="overflow-y-auto flex-1">
+            <button v-for="o in currencyOptions" :key="o.value" type="button"
+              :class="['w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100', o.value === (payment.price?.currency || 'RUB') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900']"
+              @click="handleCurrencySheetSelect(o.value)">{{ o.label }}</button>
+          </div>
+        </BottomSheet>
+      </template>
     </div>
 
     <!-- Все остальные поля оплаты показываем только если цена указывается -->
     <template v-if="!payment.no_price">
       <!-- VAT type -->
       <div data-tutorial="payment-vat">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          НДС
-        </label>
-        <Select
-          :model-value="payment.vat_type"
-          @update:model-value="handleVatTypeChange($event as VatType)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите тип НДС" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in vatTypeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <label class="block text-sm font-medium text-gray-700 mb-1">НДС</label>
+        <template v-if="!isMobile()">
+          <Select :model-value="payment.vat_type" @update:model-value="handleVatTypeChange($event as VatType)">
+            <SelectTrigger><SelectValue placeholder="Выберите тип НДС" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in vatTypeOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </template>
+        <template v-else>
+          <button type="button" class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-left bg-white" @click="vatSheetOpen = true">
+            <span :class="selectedVatLabel ? 'text-gray-900' : 'text-gray-400'">{{ selectedVatLabel || 'Выберите тип НДС' }}</span>
+          </button>
+          <BottomSheet v-model="vatSheetOpen" label="НДС">
+            <div class="overflow-y-auto flex-1">
+              <button v-for="o in vatTypeOptions" :key="o.value" type="button"
+                :class="['w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100', o.value === payment.vat_type ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900']"
+                @click="handleVatSheetSelect(o.value)">{{ o.label }}</button>
+            </div>
+          </BottomSheet>
+        </template>
       </div>
 
       <!-- Payment method -->
       <div data-tutorial="payment-method">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Способ оплаты
-        </label>
-        <Select
-          :model-value="payment.method"
-          @update:model-value="handleMethodChange($event as PaymentMethod)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите способ оплаты" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in paymentMethodOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Способ оплаты</label>
+        <template v-if="!isMobile()">
+          <Select :model-value="payment.method" @update:model-value="handleMethodChange($event as PaymentMethod)">
+            <SelectTrigger><SelectValue placeholder="Выберите способ оплаты" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in paymentMethodOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </template>
+        <template v-else>
+          <button type="button" class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-left bg-white" @click="methodSheetOpen = true">
+            <span :class="selectedMethodLabel ? 'text-gray-900' : 'text-gray-400'">{{ selectedMethodLabel || 'Выберите способ оплаты' }}</span>
+          </button>
+          <BottomSheet v-model="methodSheetOpen" label="Способ оплаты">
+            <div class="overflow-y-auto flex-1">
+              <button v-for="o in paymentMethodOptions" :key="o.value" type="button"
+                :class="['w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100', o.value === payment.method ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900']"
+                @click="handleMethodSheetSelect(o.value)">{{ o.label }}</button>
+            </div>
+          </BottomSheet>
+        </template>
       </div>
 
       <!-- Payment terms -->
       <div data-tutorial="payment-terms">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Условия оплаты
-        </label>
-        <Select
-          :model-value="payment.terms"
-          @update:model-value="handleTermsChange($event as PaymentTerms)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите условия оплаты" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in paymentTermsOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Условия оплаты</label>
+        <template v-if="!isMobile()">
+          <Select :model-value="payment.terms" @update:model-value="handleTermsChange($event as PaymentTerms)">
+            <SelectTrigger><SelectValue placeholder="Выберите условия оплаты" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in paymentTermsOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </template>
+        <template v-else>
+          <button type="button" class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-left bg-white" @click="termsSheetOpen = true">
+            <span :class="selectedTermsLabel ? 'text-gray-900' : 'text-gray-400'">{{ selectedTermsLabel || 'Выберите условия оплаты' }}</span>
+          </button>
+          <BottomSheet v-model="termsSheetOpen" label="Условия оплаты">
+            <div class="overflow-y-auto flex-1">
+              <button v-for="o in paymentTermsOptions" :key="o.value" type="button"
+                :class="['w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100', o.value === payment.terms ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900']"
+                @click="handleTermsSheetSelect(o.value)">{{ o.label }}</button>
+            </div>
+          </BottomSheet>
+        </template>
       </div>
 
       <!-- Deferred days -->
