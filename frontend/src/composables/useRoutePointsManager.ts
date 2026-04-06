@@ -140,8 +140,6 @@ export function useRoutePointsManager(): UseRoutePointsManagerReturn {
       ...p,
       date_from: '',
       date_to: undefined,
-      time_from: undefined,
-      time_to: undefined,
     }))
     ensureRouteConstraints()
   }

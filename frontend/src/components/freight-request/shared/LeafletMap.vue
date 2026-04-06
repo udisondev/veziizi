@@ -28,7 +28,6 @@ interface Emits {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  height: '300px',
   interactive: false,
   navigable: true,
 })
@@ -208,8 +207,8 @@ watch(
   <div class="relative isolate">
     <div
       ref="mapContainer"
-      :style="{ height }"
-      class="w-full rounded-lg border border-gray-200 overflow-hidden"
+      :style="height ? { height } : undefined"
+      :class="['w-full rounded-lg border border-gray-200 overflow-hidden', !height ? 'h-[250px] md:h-[400px]' : '']"
     />
   </div>
 </template>

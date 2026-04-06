@@ -49,8 +49,11 @@ const selectedVehicleSubTypeLabel = computed(() => {
 
 function handleVehicleTypeSheetSelect(value: VehicleType | null) {
   if (value === null) {
-    const { vehicle_type: _t, vehicle_subtype: _s, ...rest } = props.vehicle
-    emit('update:vehicle', rest as VehicleRequirements)
+    emit('update:vehicle', {
+      ...props.vehicle,
+      vehicle_type: undefined,
+      vehicle_subtype: undefined,
+    } as unknown as VehicleRequirements)
   } else {
     selectVehicleType(value)
   }
@@ -185,13 +188,15 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       <!-- Desktop -->
       <template v-if="!isMobile()">
         <Select
+          :key="vehicle.vehicle_type ?? '__none__'"
           :model-value="vehicle.vehicle_type"
-          @update:model-value="selectVehicleType($event as VehicleType)"
+          @update:model-value="value => value === '__none__' ? handleVehicleTypeSheetSelect(null) : selectVehicleType(value as VehicleType)"
         >
           <SelectTrigger>
             <SelectValue placeholder="Выберите тип транспорта" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="__none__" class="text-gray-400">Не выбран</SelectItem>
             <SelectItem v-for="option in vehicleTypeOptions" :key="option.value" :value="option.value">
               {{ option.label }}
             </SelectItem>
@@ -215,7 +220,6 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
 
         <BottomSheet v-model="vehicleTypeSheetOpen" label="Тип транспорта">
           <div class="overflow-y-auto flex-1">
-            <!-- Опция "Не выбран" -->
             <button
               type="button"
               class="w-full px-4 py-3 text-left text-sm border-b border-gray-50 text-gray-400 active:bg-gray-100"
