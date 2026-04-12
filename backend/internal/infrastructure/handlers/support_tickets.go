@@ -8,7 +8,6 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/values"
@@ -153,20 +152,3 @@ func (h *SupportTicketsHandler) onReopened(ctx context.Context, e events.TicketR
 	return nil
 }
 
-// Helper to get ticket by ID from lookup
-func (h *SupportTicketsHandler) getTicket(ctx context.Context, id uuid.UUID) (memberID uuid.UUID, orgID uuid.UUID, err error) {
-	query, args, err := h.psql.
-		Select("member_id", "org_id").
-		From("support_tickets_lookup").
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
-	if err != nil {
-		return uuid.Nil, uuid.Nil, fmt.Errorf("build select query: %w", err)
-	}
-
-	if err := h.db.QueryRow(ctx, query, args...).Scan(&memberID, &orgID); err != nil {
-		return uuid.Nil, uuid.Nil, fmt.Errorf("get ticket: %w", err)
-	}
-
-	return memberID, orgID, nil
-}

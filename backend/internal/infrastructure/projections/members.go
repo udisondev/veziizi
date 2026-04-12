@@ -12,14 +12,18 @@ import (
 )
 
 type MembersProjection struct {
-	db   dbtx.TxManager
-	psql squirrel.StatementBuilderType
+	db                     dbtx.TxManager
+	psql                   squirrel.StatementBuilderType
+	maxFailedLoginAttempts int
+	accountLockoutMinutes  int
 }
 
-func NewMembersProjection(db dbtx.TxManager) *MembersProjection {
+func NewMembersProjection(db dbtx.TxManager, maxFailedAttempts int, lockoutMinutes int) *MembersProjection {
 	return &MembersProjection{
-		db:   db,
-		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		db:                     db,
+		psql:                   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		maxFailedLoginAttempts: maxFailedAttempts,
+		accountLockoutMinutes:  lockoutMinutes,
 	}
 }
 
@@ -244,11 +248,6 @@ func (p *MembersProjection) GetLoginHistory(ctx context.Context, memberID uuid.U
 	return entries, nil
 }
 
-const (
-	MaxFailedLoginAttempts = 5
-	AccountLockoutDuration = 15 * time.Minute
-)
-
 // IncrementFailedLogin increments the failed login counter and locks account if threshold exceeded.
 func (p *MembersProjection) IncrementFailedLogin(ctx context.Context, memberID uuid.UUID) error {
 	query, args, err := p.psql.
@@ -257,7 +256,7 @@ func (p *MembersProjection) IncrementFailedLogin(ctx context.Context, memberID u
 		Set("last_failed_login_at", squirrel.Expr("NOW()")).
 		Set("locked_until", squirrel.Expr(
 			fmt.Sprintf("CASE WHEN failed_login_count + 1 >= %d THEN NOW() + INTERVAL '%d minutes' ELSE locked_until END",
-				MaxFailedLoginAttempts, int(AccountLockoutDuration.Minutes())),
+				p.maxFailedLoginAttempts, p.accountLockoutMinutes),
 		)).
 		Where(squirrel.Eq{"id": memberID}).
 		ToSql()

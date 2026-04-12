@@ -12,8 +12,9 @@ import (
 )
 
 type Server struct {
-	router chi.Router
-	srv    *http.Server
+	router          chi.Router
+	srv             *http.Server
+	shutdownTimeout time.Duration
 }
 
 func NewServer(cfg *config.Config) *Server {
@@ -28,8 +29,9 @@ func NewServer(cfg *config.Config) *Server {
 	}
 
 	return &Server{
-		router: router,
-		srv:    srv,
+		router:          router,
+		srv:             srv,
+		shutdownTimeout: cfg.Security.ShutdownTimeout,
 	}
 }
 
@@ -50,7 +52,7 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	slog.Info("shutting down HTTP server")
 
-	shutdownCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(ctx, s.shutdownTimeout)
 	defer cancel()
 
 	return s.srv.Shutdown(shutdownCtx)

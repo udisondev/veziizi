@@ -14,16 +14,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/setup"
-)
-
-var (
-	// baseURL is the base URL of the test server.
-	baseURL string
-
-	// apiClient is a shared client without authentication.
-	apiClient *client.Client
 )
 
 func TestMain(m *testing.M) {
@@ -49,8 +40,3 @@ func getSuite(t *testing.T) *setup.Suite {
 	return setup.GetSharedSuite(t)
 }
 
-// getClient returns a new API client connected to the test server.
-func getClient(t *testing.T) *client.Client {
-	suite := getSuite(t)
-	return client.New(suite.BaseURL)
-}

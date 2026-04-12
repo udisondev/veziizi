@@ -130,10 +130,7 @@ func (h *HistoryHandler) parsePagination(r *http.Request) (limit, offset int) {
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-			limit = l
-			if limit > maxHistoryLimit {
-				limit = maxHistoryLimit
-			}
+			limit = min(l, maxHistoryLimit)
 		}
 	}
 

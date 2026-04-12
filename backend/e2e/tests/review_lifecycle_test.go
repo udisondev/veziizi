@@ -97,9 +97,9 @@ func (s *ReviewLifecycleSuite) TestRLC001_FullPipelineCleanReview() {
 	s.Assert().False(row.RequiresModeration, "модерация не должна требоваться")
 	s.Assert().NotNil(row.ActivationDate, "activation date должна быть установлена")
 
-	expectedActivation := time.Now().AddDate(0, 0, values.FraudActivationDelayDays)
+	expectedActivation := time.Now().AddDate(0, 0, s.f.Config().Fraud.ActivationDelayDays)
 	s.Assert().WithinDuration(expectedActivation, *row.ActivationDate, 24*time.Hour,
-		"activation date должна быть ~%d дней от сейчас", values.FraudActivationDelayDays)
+		"activation date должна быть ~%d дней от сейчас", s.f.Config().Fraud.ActivationDelayDays)
 }
 
 // TestRLC002_ModerationPath проверяет, что отзыв с SameIP (fraud_score >= 0.3)
@@ -153,7 +153,7 @@ func (s *ReviewLifecycleSuite) TestRLC002_ModerationPath() {
 	// Ожидаем pending_moderation
 	row := s.waitForReviewStatus(reviewID, values.StatusPendingModeration.String())
 
-	s.Assert().GreaterOrEqual(row.FraudScore, values.FraudModerationScoreThreshold,
+	s.Assert().GreaterOrEqual(row.FraudScore, s.f.Config().Fraud.ModerationScoreThreshold,
 		"fraud score должен быть >= порога модерации")
 	s.Assert().True(row.RequiresModeration, "должна требоваться модерация")
 }

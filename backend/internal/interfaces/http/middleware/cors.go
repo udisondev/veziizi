@@ -8,22 +8,10 @@ import (
 )
 
 func CORS(cfg *config.Config) func(http.Handler) http.Handler {
-	allowedOrigins := map[string]bool{
-		"http://localhost:5173":  true,
-		"http://localhost:3000":  true,
-		"http://127.0.0.1:5173": true,
-		"http://127.0.0.1:3000": true,
-	}
-
-	if cfg.IsProduction() {
-		allowedOrigins = map[string]bool{
-			"https://везиизи.рф":               true,
-			"https://xn--e1aebcghhi.xn--p1acf": true,
-		}
-	}
+	allowedOrigins := make(map[string]bool)
 
 	if cfg.HTTP.CORSOrigins != "" {
-		for _, origin := range strings.Split(cfg.HTTP.CORSOrigins, ",") {
+		for origin := range strings.SplitSeq(cfg.HTTP.CORSOrigins, ",") {
 			allowedOrigins[strings.TrimSpace(origin)] = true
 		}
 	}

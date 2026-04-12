@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/middleware"
@@ -76,8 +77,18 @@ func main() {
 		}
 	}()
 
-	// Инициализация rate limiter'а с конфигом (до middleware)
+	// Инициализация rate limiter'а и fraud thresholds с конфигом (до middleware)
 	middleware.InitRateLimiter(&cfg.RateLimit)
+	projections.InitSessionFraudThresholds(projections.SessionFraudThresholdsConfig{
+		MaxKmPerHour:         cfg.Fraud.MaxKmPerHour,
+		MinDistanceForCheck:  cfg.Fraud.MinDistanceForCheck,
+		UnusualHourThreshold: cfg.Fraud.UnusualHourThreshold,
+		MinLoginsForPattern:  cfg.Fraud.MinLoginsForPattern,
+		MaxRequestsPerMinute: cfg.Fraud.MaxRequestsPerMinute,
+		MaxRequestsPerHour:   cfg.Fraud.MaxRequestsPerHour,
+		BlockDurationMinutes: cfg.Fraud.BlockDurationMinutes,
+		ScrapingThreshold:    cfg.Fraud.ScrapingThreshold,
+	})
 
 	sessionManager := session.NewManager(cfg)
 	adminSessionManager := session.NewAdminManager(cfg)
@@ -120,14 +131,14 @@ func main() {
 	server.Router().Group(func(r chi.Router) {
 		r.Use(middleware.SecurityHeaders(cfg)) // SEC-011
 		r.Use(middleware.CORS(cfg))            // SEC-010
-		r.Use(middleware.BodyLimit())          // SEC-015
+		r.Use(middleware.BodyLimit(cfg))       // SEC-015
 		r.Use(middleware.RequireAuth(sessionManager))
 		r.Use(middleware.CheckMemberStatus(sessionManager, f.MembersProjection()))
 		r.Use(middleware.EventMetaEnricher(sessionManager)) // Добавляем metadata для аудита событий
 		r.Use(middleware.RateLimiter(sessionManager, f.SessionAnalyzer()))
 		r.Use(middleware.CSRFProtection()) // SEC-005
 
-		orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), sessionManager)
+		orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), f.FreightRequestsProjection(), sessionManager)
 		orgHandler.RegisterRoutes(r)
 
 		authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.FreightRequestsProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)

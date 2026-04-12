@@ -17,13 +17,14 @@ import (
 const bcryptCost = 12
 
 func main() {
-	email := flag.String("email", "", "Admin email (required)")
-	name := flag.String("name", "", "Admin name (required)")
-	password := flag.String("password", "", "Admin password (required)")
+	email := flag.String("email", os.Getenv("ADMIN_EMAIL"), "Admin email")
+	name := flag.String("name", os.Getenv("ADMIN_NAME"), "Admin name")
+	password := flag.String("password", os.Getenv("ADMIN_PASSWORD"), "Admin password")
 	flag.Parse()
 
 	if *email == "" || *name == "" || *password == "" {
-		flag.Usage()
+		fmt.Println("Usage: create-admin --email=... --name=... --password=...")
+		fmt.Println("Or set ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD env vars")
 		os.Exit(1)
 	}
 
@@ -43,27 +44,32 @@ func main() {
 		}
 	}()
 
-	// Check if email already exists
-	var exists bool
-	if err := conn.QueryRow(ctx,
-		"SELECT EXISTS(SELECT 1 FROM platform_admins WHERE email = $1)",
-		*email,
-	).Scan(&exists); err != nil {
-		log.Fatalf("failed to check email: %v", err)
-	}
-	if exists {
-		log.Fatalf("admin with email %s already exists", *email)
-	}
-
-	// Hash password
 	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcryptCost)
 	if err != nil {
 		log.Fatalf("failed to hash password: %v", err)
 	}
 
-	// Insert admin
+	// Удаляем всех существующих админов и создаём нового с актуальными данными
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		log.Fatalf("failed to begin transaction: %v", err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && err != pgx.ErrTxClosed {
+			log.Printf("failed to rollback: %v", err)
+		}
+	}()
+
+	tag, err := tx.Exec(ctx, "DELETE FROM platform_admins")
+	if err != nil {
+		log.Fatalf("failed to delete old admins: %v", err)
+	}
+	if tag.RowsAffected() > 0 {
+		fmt.Printf("Removed %d old admin(s)\n", tag.RowsAffected())
+	}
+
 	id := uuid.New()
-	if _, err := conn.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`INSERT INTO platform_admins (id, email, password_hash, name, is_active)
 		 VALUES ($1, $2, $3, $4, true)`,
 		id, *email, string(hash), *name,
@@ -71,6 +77,9 @@ func main() {
 		log.Fatalf("failed to create admin: %v", err)
 	}
 
-	fmt.Printf("Admin created: %s (%s)\n", *name, *email)
-	fmt.Printf("ID: %s\n", id)
+	if err := tx.Commit(ctx); err != nil {
+		log.Fatalf("failed to commit: %v", err)
+	}
+
+	fmt.Printf("Admin ready: %s (%s)\n", *name, *email)
 }

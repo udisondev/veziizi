@@ -1,0 +1,130 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [staging]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build-and-push:
+    name: Build & push images
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}/backend:staging
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}/frontend:staging
+
+  deploy:
+    name: Deploy to staging
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Generate .env.secrets on server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+          SECRET_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SECRET_SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          SECRET_SESSION_ADMIN_SECRET: ${{ secrets.SESSION_ADMIN_SECRET }}
+          SECRET_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SECRET_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SECRET_ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          SECRET_ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
+          SECRET_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          printf '%s\n' \
+            "POSTGRES_PASSWORD=${SECRET_POSTGRES_PASSWORD}" \
+            "DATABASE_URL=postgres://veziizi:${SECRET_POSTGRES_PASSWORD}@postgres:5432/veziizi?sslmode=disable" \
+            "SESSION_SECRET=${SECRET_SESSION_SECRET}" \
+            "SESSION_ADMIN_SECRET=${SECRET_SESSION_ADMIN_SECRET}" \
+            "TELEGRAM_BOT_TOKEN=${SECRET_TELEGRAM_BOT_TOKEN}" \
+            "RESEND_API_KEY=${SECRET_RESEND_API_KEY}" \
+            "ADMIN_EMAIL=${SECRET_ADMIN_EMAIL}" \
+            "ADMIN_NAME=${SECRET_ADMIN_NAME}" \
+            "ADMIN_PASSWORD=${SECRET_ADMIN_PASSWORD}" \
+          | ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST} "cat > ${DEPLOY_PATH}/.env.secrets && chmod 600 ${DEPLOY_PATH}/.env.secrets"
+
+      - name: Sync compose files
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            docker-compose.yml docker-compose.staging.yml \
+            ${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/
+
+      - name: Pull and restart
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST}"
+          ${SSH_CMD} "cd ${DEPLOY_PATH} && \
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml pull && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d"
+
+      - name: Run migrations and seed
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST}"
+          ${SSH_CMD} "cd ${DEPLOY_PATH} && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm api migrator up && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm api seed-geo && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm api create-admin"
+
+      - name: Verify
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST}"
+          sleep 10
+          ${SSH_CMD} "cd ${DEPLOY_PATH} && docker compose -f docker-compose.yml -f docker-compose.staging.yml ps"

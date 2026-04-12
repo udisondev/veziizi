@@ -10,7 +10,6 @@ import (
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/udisondev/veziizi/backend/e2e/helpers"
 	"github.com/udisondev/veziizi/backend/e2e/setup"
-	adminApp "github.com/udisondev/veziizi/backend/internal/application/admin"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -83,25 +82,6 @@ func (s *FraudsterHandlerSuite) createAndApproveReview(reviewerOrgID, reviewedOr
 	}, "review "+reviewID.String()+" to become approved")
 
 	return reviewID
-}
-
-// createOrgAggregate создаёт организацию через полный API-flow (register + admin approve).
-// Возвращает orgID.
-func (s *FraudsterHandlerSuite) createOrgAggregate() uuid.UUID {
-	s.T().Helper()
-
-	c := getClient(s.T())
-
-	org := fixtures.NewOrganization(s.T(), c).Create()
-
-	// Одобрение через AdminService напрямую
-	err := s.f.AdminService().Approve(context.Background(), adminApp.ApproveInput{
-		AdminID:        uuid.New(),
-		OrganizationID: org.OrganizationID,
-	})
-	s.Require().NoError(err, "approve organization")
-
-	return org.OrganizationID
 }
 
 // TestFRH001_MarkDeactivatesApprovedReviews проверяет, что при пометке организации

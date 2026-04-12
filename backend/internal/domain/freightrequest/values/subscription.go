@@ -2,6 +2,7 @@ package values
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -230,48 +231,27 @@ func hasVehicleTypeMatch(criteriaTypes []VehicleType, criteriaSubTypes []Vehicle
 
 	// Проверка по типу
 	typeMatch := len(criteriaTypes) == 0
-	for _, ct := range criteriaTypes {
-		if ct == actualType {
-			typeMatch = true
-			break
-		}
+	if slices.Contains(criteriaTypes, actualType) {
+		typeMatch = true
 	}
 
 	// Проверка по подтипу
 	subTypeMatch := len(criteriaSubTypes) == 0
-	for _, cst := range criteriaSubTypes {
-		if cst == actualSubType {
-			subTypeMatch = true
-			break
-		}
+	if slices.Contains(criteriaSubTypes, actualSubType) {
+		subTypeMatch = true
 	}
 
 	return typeMatch && subTypeMatch
 }
 
 func containsPaymentMethod(slice []PaymentMethod, item PaymentMethod) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 func containsPaymentTerms(slice []PaymentTerms, item PaymentTerms) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 func containsVatType(slice []VatType, item VatType) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }

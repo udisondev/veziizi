@@ -8,27 +8,26 @@ import (
 
 	"github.com/udisondev/veziizi/backend/internal/domain/review"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
 
-const (
-	batchSize = 100
-	interval  = 1 * time.Minute
-)
-
 func main() {
 	worker.RunScheduled(worker.ScheduledConfig{
-		Name:     "review-activator",
-		Interval: interval,
-		LogFile:  "review-activator-worker.log",
-		Handler:  newActivatorHandler,
+		Name:    "review-activator",
+		LogFile: "review-activator-worker.log",
+		IntervalFunc: func(cfg *config.Config) time.Duration {
+			return cfg.Worker.ReviewActivatorInterval
+		},
+		Handler: newActivatorHandler,
 	})
 }
 
 func newActivatorHandler(f *factory.Factory) func(ctx context.Context) error {
 	reviewService := f.ReviewService()
 	reviewsProjection := f.ReviewsProjection()
+	batchSize := f.Config().Worker.ReviewActivatorBatchSize
 
 	return func(ctx context.Context) error {
 		ids, err := reviewsProjection.ListReviewsForActivation(ctx, batchSize)
@@ -44,7 +43,6 @@ func newActivatorHandler(f *factory.Factory) func(ctx context.Context) error {
 
 		var activated, failed int
 		for _, id := range ids {
-			// Проверяем отмену контекста перед обработкой каждого review
 			select {
 			case <-ctx.Done():
 				slog.Info("activation cancelled",
@@ -58,7 +56,6 @@ func newActivatorHandler(f *factory.Factory) func(ctx context.Context) error {
 				if errors.Is(err, review.ErrActivationDateNotPassed) ||
 					errors.Is(err, review.ErrReviewNotApproved) ||
 					errors.Is(err, review.ErrReviewAlreadyActive) {
-					// Skip reviews that are not ready or already active
 					slog.Debug("skipping review",
 						slog.String("review_id", id.String()),
 						slog.String("reason", err.Error()))

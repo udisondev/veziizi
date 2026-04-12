@@ -899,8 +899,8 @@ func (o *Organization) FromSnapshot(state any) error {
 	}
 
 	// Restore base aggregate state
-	o.Base.SetID(snap.ID)
-	o.Base.SetVersion(snap.Version)
+	o.SetID(snap.ID)
+	o.SetVersion(snap.Version)
 
 	o.name = snap.Name
 	o.inn = snap.INN

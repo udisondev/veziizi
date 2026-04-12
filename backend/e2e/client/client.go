@@ -71,7 +71,7 @@ func (c *Client) do(method, path string, body any, headers map[string]string) (*
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to perform request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -102,9 +102,8 @@ func doRequest[T any](c *Client, method, path string, body any, headers map[stri
 	}
 
 	if len(respBody) > 0 && resp.StatusCode < 400 {
-		if err := json.Unmarshal(respBody, &result.Body); err != nil {
-			// Not an error - some responses have no body
-		}
+		// Not an error if unmarshal fails — some responses have no body
+		_ = json.Unmarshal(respBody, &result.Body)
 	}
 
 	return result, nil
@@ -373,7 +372,8 @@ func (c *Client) GetCountryRaw(id string) (int, []byte, error) {
 
 // GetCountryCities returns cities for a country with optional search.
 func (c *Client) GetCountryCities(countryID int, search string, limit int) (*Response[[]CityResponse], error) {
-	path := fmt.Sprintf("/api/v1/geo/countries/%d/cities", countryID)
+	var path strings.Builder
+	fmt.Fprintf(&path, "/api/v1/geo/countries/%d/cities", countryID)
 	params := []string{}
 	if search != "" {
 		params = append(params, "search="+search)
@@ -382,15 +382,15 @@ func (c *Client) GetCountryCities(countryID int, search string, limit int) (*Res
 		params = append(params, fmt.Sprintf("limit=%d", limit))
 	}
 	if len(params) > 0 {
-		path += "?"
+		path.WriteString("?")
 		for i, p := range params {
 			if i > 0 {
-				path += "&"
+				path.WriteString("&")
 			}
-			path += p
+			path.WriteString(p)
 		}
 	}
-	return doRequest[[]CityResponse](c, http.MethodGet, path, nil, nil)
+	return doRequest[[]CityResponse](c, http.MethodGet, path.String(), nil, nil)
 }
 
 // GetCity returns a city by ID.

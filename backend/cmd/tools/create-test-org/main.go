@@ -57,7 +57,7 @@ func main() {
 	}()
 
 	invitations := projections.NewInvitationsProjection(txManager)
-	members := projections.NewMembersProjection(txManager)
+	members := projections.NewMembersProjection(txManager, cfg.Security.MaxFailedLoginAttempts, int(cfg.Security.AccountLockoutDuration.Minutes()))
 	organizations := projections.NewOrganizationsProjection(txManager)
 	pendingOrgs := projections.NewPendingOrganizationsProjection(txManager)
 

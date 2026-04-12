@@ -36,13 +36,13 @@ func LoadCountries() ([]Country, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open embedded countries: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	r := csv.NewReader(gr)
 	var result []Country
@@ -76,13 +76,13 @@ func LoadCities() ([]City, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open embedded cities: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	r := csv.NewReader(gr)
 	var result []City

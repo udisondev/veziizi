@@ -174,7 +174,7 @@ func New(cfg *config.Config) *Factory {
 	}
 }
 
-// Config returns the application config
+// Config returns the application config.
 func (f *Factory) Config() *config.Config {
 	return f.cfg
 }
@@ -387,7 +387,11 @@ func (f *Factory) SupportService() *supportApp.Service {
 
 func (f *Factory) MembersProjection() *projections.MembersProjection {
 	f.membersOnce.Do(func() {
-		f.membersProjection = projections.NewMembersProjection(f.DB())
+		f.membersProjection = projections.NewMembersProjection(
+			f.DB(),
+			f.cfg.Security.MaxFailedLoginAttempts,
+			int(f.cfg.Security.AccountLockoutDuration.Minutes()),
+		)
 	})
 	return f.membersProjection
 }
@@ -532,6 +536,7 @@ func (f *Factory) ReviewAnalyzer() *reviewApp.Analyzer {
 		f.reviewAnalyzer = reviewApp.NewAnalyzer(
 			f.FraudDataProjection(),
 			f.MembersProjection(),
+			f.cfg.Fraud,
 		)
 	})
 	return f.reviewAnalyzer

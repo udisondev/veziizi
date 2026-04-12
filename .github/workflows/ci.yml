@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, staging]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+
+  test:
+    name: Test
+    needs: lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: veziizi
+          POSTGRES_PASSWORD: veziizi
+          POSTGRES_DB: veziizi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U veziizi"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://veziizi:veziizi@localhost:5432/veziizi?sslmode=disable
+      SESSION_SECRET: test-secret-32-bytes-key-padding
+      SESSION_ADMIN_SECRET: test-admin-secret-32-bytes-pad00
+      APP_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test -v -race -count=1 ./backend/internal/...
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build all binaries
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/api ./backend/cmd/api
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/telegram-bot ./backend/cmd/telegram-bot
+          for worker in members invitations pending-organizations organizations freight-requests review-receiver review-analyzer reviews-projection review-activator fraudster-handler notification-dispatcher telegram-sender email-sender support-tickets rate-limiter-cleanup; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "bin/worker-${worker}" "./backend/cmd/workers/${worker}"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+          retention-days: 3

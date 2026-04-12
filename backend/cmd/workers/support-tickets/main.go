@@ -130,7 +130,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router.AddNoPublisherHandler(workerName+"_handler", topic, subscriber, compositeHandler)
+	router.AddConsumerHandler(workerName+"_handler", topic, subscriber, compositeHandler)
 
 	go func() {
 		if err := router.Run(ctx); err != nil {

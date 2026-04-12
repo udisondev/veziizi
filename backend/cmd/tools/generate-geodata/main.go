@@ -97,10 +97,18 @@ func writeCountries(countries []country, ruNames map[int]string) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			slog.Error("failed to close file", "error", cerr)
+		}
+	}()
 
 	gw := gzip.NewWriter(f)
-	defer gw.Close()
+	defer func() {
+		if cerr := gw.Close(); cerr != nil {
+			slog.Error("failed to close gzip writer", "error", cerr)
+		}
+	}()
 
 	w := csv.NewWriter(gw)
 	defer w.Flush()
@@ -130,10 +138,18 @@ func writeCities(cities []city, ruNames map[int]string) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			slog.Error("failed to close file", "error", cerr)
+		}
+	}()
 
 	gw := gzip.NewWriter(f)
-	defer gw.Close()
+	defer func() {
+		if cerr := gw.Close(); cerr != nil {
+			slog.Error("failed to close gzip writer", "error", cerr)
+		}
+	}()
 
 	w := csv.NewWriter(gw)
 	defer w.Flush()
@@ -165,7 +181,11 @@ func downloadCountries() ([]country, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http get: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			slog.Error("failed to close response body", "error", cerr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
@@ -210,7 +230,11 @@ func downloadCities(tmpDir string) ([]city, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open zip: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		if cerr := reader.Close(); cerr != nil {
+			slog.Error("failed to close zip reader", "error", cerr)
+		}
+	}()
 
 	var result []city
 	for _, file := range reader.File {
@@ -244,7 +268,9 @@ func downloadCities(tmpDir string) ([]city, error) {
 				Longitude:   lon,
 			})
 		}
-		rc.Close()
+		if cerr := rc.Close(); cerr != nil {
+			slog.Error("failed to close zip entry", "error", cerr)
+		}
 		if err := scanner.Err(); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
@@ -262,7 +288,11 @@ func downloadAlternateNames(tmpDir string, language string) (map[int]string, err
 	if err != nil {
 		return nil, fmt.Errorf("open zip: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		if cerr := reader.Close(); cerr != nil {
+			slog.Error("failed to close zip reader", "error", cerr)
+		}
+	}()
 
 	names := make(map[int]string)
 	preferred := make(map[int]bool)
@@ -294,7 +324,9 @@ func downloadAlternateNames(tmpDir string, language string) (map[int]string, err
 				preferred[geonameID] = isPref
 			}
 		}
-		rc.Close()
+		if cerr := rc.Close(); cerr != nil {
+			slog.Error("failed to close zip entry", "error", cerr)
+		}
 		if err := scanner.Err(); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
@@ -308,7 +340,11 @@ func downloadFile(url string, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("http get: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			slog.Error("failed to close response body", "error", cerr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
@@ -318,7 +354,11 @@ func downloadFile(url string, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("create: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			slog.Error("failed to close file", "error", cerr)
+		}
+	}()
 
 	written, err := io.Copy(f, resp.Body)
 	if err != nil {

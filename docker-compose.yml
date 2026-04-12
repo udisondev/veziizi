@@ -1,21 +1,102 @@
+x-backend: &backend
+  image: veziizi/backend
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+
 services:
   postgres:
     image: postgres:17-alpine
     container_name: veziizi-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-veziizi}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veziizi}
-      POSTGRES_DB: ${POSTGRES_DB:-veziizi}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veziizi} -d ${POSTGRES_DB:-veziizi}"]
+      test: ["CMD-SHELL", "pg_isready -U veziizi"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+  api:
+    <<: *backend
+    command: ["api"]
+
+  frontend:
+    image: veziizi/frontend
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  telegram-bot:
+    <<: *backend
+    command: ["telegram-bot"]
+
+  worker-members:
+    <<: *backend
+    command: ["worker-members"]
+
+  worker-invitations:
+    <<: *backend
+    command: ["worker-invitations"]
+
+  worker-pending-organizations:
+    <<: *backend
+    command: ["worker-pending-organizations"]
+
+  worker-organizations:
+    <<: *backend
+    command: ["worker-organizations"]
+
+  worker-freight-requests:
+    <<: *backend
+    command: ["worker-freight-requests"]
+
+  worker-review-receiver:
+    <<: *backend
+    command: ["worker-review-receiver"]
+
+  worker-review-analyzer:
+    <<: *backend
+    command: ["worker-review-analyzer"]
+
+  worker-reviews-projection:
+    <<: *backend
+    command: ["worker-reviews-projection"]
+
+  worker-review-activator:
+    <<: *backend
+    command: ["worker-review-activator"]
+
+  worker-fraudster-handler:
+    <<: *backend
+    command: ["worker-fraudster-handler"]
+
+  worker-notification-dispatcher:
+    <<: *backend
+    command: ["worker-notification-dispatcher"]
+
+  worker-telegram-sender:
+    <<: *backend
+    command: ["worker-telegram-sender"]
+
+  worker-email-sender:
+    <<: *backend
+    command: ["worker-email-sender"]
+
+  worker-support-tickets:
+    <<: *backend
+    command: ["worker-support-tickets"]
+
+  worker-rate-limiter-cleanup:
+    <<: *backend
+    command: ["worker-rate-limiter-cleanup"]
 
 volumes:
   postgres_data:

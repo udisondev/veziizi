@@ -1114,8 +1114,8 @@ func (f *FreightRequest) FromSnapshot(state any) error {
 		return ErrInvalidSnapshotType
 	}
 
-	f.Base.SetID(snap.ID)
-	f.Base.SetVersion(snap.Version)
+	f.SetID(snap.ID)
+	f.SetVersion(snap.Version)
 
 	f.requestNumber = snap.RequestNumber
 	f.customerOrgID = snap.CustomerOrgID

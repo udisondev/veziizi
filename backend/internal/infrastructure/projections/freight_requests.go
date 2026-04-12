@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -248,28 +249,17 @@ func WithVatTypes(types []string) FilterOption {
 	}
 }
 
-// joinStrings joins strings with comma for PostgreSQL array literal
-func joinStrings(s []string) string {
-	if len(s) == 0 {
-		return ""
-	}
-	result := s[0]
-	for i := 1; i < len(s); i++ {
-		result += "," + s[i]
-	}
-	return result
-}
-
 // joinInts joins integers with comma for PostgreSQL array literal
 func joinInts(nums []int) string {
 	if len(nums) == 0 {
 		return ""
 	}
-	result := fmt.Sprintf("%d", nums[0])
+	var result strings.Builder
+	fmt.Fprintf(&result, "%d", nums[0])
 	for i := 1; i < len(nums); i++ {
-		result += fmt.Sprintf(",%d", nums[i])
+		fmt.Fprintf(&result, ",%d", nums[i])
 	}
-	return result
+	return result.String()
 }
 
 func WithRouteCities(cityIDs []int) FilterOption {
@@ -651,4 +641,38 @@ func (p *FreightRequestsProjection) HaveSharedConfirmedFreight(ctx context.Conte
 	}
 
 	return true, nil
+}
+
+// OrgStats содержит агрегированную статистику организации
+type OrgStats struct {
+	TotalFreightRequests  int `json:"total_freight_requests"`
+	ActiveFreightRequests int `json:"active_freight_requests"`
+	CompletedDeals        int `json:"completed_deals"`
+	TotalOffersMade       int `json:"total_offers_made"`
+	SuccessfulOffers      int `json:"successful_offers"`
+}
+
+// GetOrgStats возвращает статистику организации по freight requests и offers
+func (p *FreightRequestsProjection) GetOrgStats(ctx context.Context, orgID uuid.UUID) (*OrgStats, error) {
+	query := `
+		SELECT
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1),
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status IN ('published', 'selected', 'confirmed')),
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE (customer_org_id = $1 OR carrier_org_id = $1) AND status = 'completed'),
+			(SELECT COUNT(*) FROM offers_lookup WHERE carrier_org_id = $1),
+			(SELECT COUNT(*) FROM offers_lookup WHERE carrier_org_id = $1 AND status = 'confirmed')
+	`
+
+	var stats OrgStats
+	if err := p.db.QueryRow(ctx, query, orgID).Scan(
+		&stats.TotalFreightRequests,
+		&stats.ActiveFreightRequests,
+		&stats.CompletedDeals,
+		&stats.TotalOffersMade,
+		&stats.SuccessfulOffers,
+	); err != nil {
+		return nil, fmt.Errorf("get org stats: %w", err)
+	}
+
+	return &stats, nil
 }

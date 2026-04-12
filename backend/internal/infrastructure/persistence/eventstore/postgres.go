@@ -372,43 +372,6 @@ func (s *PostgresStore) LoadWithSnapshot(ctx context.Context, aggregateID uuid.U
 	}, nil
 }
 
-func (s *PostgresStore) loadAllEnvelopes(ctx context.Context, aggregateID uuid.UUID, aggregateType string) ([]EventEnvelope, error) {
-	query, args, err := s.psql.
-		Select("id", "aggregate_id", "aggregate_type", "event_type", "version", "data", "metadata", "occurred_at").
-		From("events").
-		Where(squirrel.Eq{
-			"aggregate_id":   aggregateID,
-			"aggregate_type": aggregateType,
-		}).
-		OrderBy("version ASC").
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
-	}
-
-	rows, err := s.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query events: %w", err)
-	}
-	defer rows.Close()
-
-	var dbRows []eventRow
-	if err := pgxscan.ScanAll(&dbRows, rows); err != nil {
-		return nil, fmt.Errorf("failed to scan events: %w", err)
-	}
-
-	envelopes := make([]EventEnvelope, 0, len(dbRows))
-	for _, row := range dbRows {
-		envelope, err := row.toEnvelope()
-		if err != nil {
-			return nil, fmt.Errorf("convert event row: %w", err)
-		}
-		envelopes = append(envelopes, envelope)
-	}
-
-	return envelopes, nil
-}
-
 type eventRow struct {
 	ID            uuid.UUID `db:"id"`
 	AggregateID   uuid.UUID `db:"aggregate_id"`

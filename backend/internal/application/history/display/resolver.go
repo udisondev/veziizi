@@ -3,6 +3,7 @@ package display
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"sync"
 
 	"github.com/google/uuid"
@@ -126,9 +127,7 @@ func (r *CachedResolver) PreloadMembers(ctx context.Context, ids []uuid.UUID) {
 	}
 
 	r.mu.Lock()
-	for id, name := range names {
-		r.memberCache[id] = name
-	}
+	maps.Copy(r.memberCache, names)
 	r.mu.Unlock()
 }
 
@@ -159,8 +158,6 @@ func (r *CachedResolver) PreloadOrganizations(ctx context.Context, ids []uuid.UU
 	}
 
 	r.mu.Lock()
-	for id, name := range names {
-		r.orgCache[id] = name
-	}
+	maps.Copy(r.orgCache, names)
 	r.mu.Unlock()
 }
