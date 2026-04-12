@@ -25,6 +25,7 @@ jobs:
 
   test:
     name: Test
+    needs: lint
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -57,6 +58,7 @@ jobs:
 
   build:
     name: Build
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
