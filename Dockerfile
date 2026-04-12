@@ -18,4 +18,4 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/api ./backend/cmd/api && \
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=builder /bin/ /usr/local/bin/
-ENTRYPOINT ["api"]
+CMD ["api"]
