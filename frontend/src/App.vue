@@ -33,7 +33,7 @@ const isDevMode = ref(false)
 onMounted(async () => {
   // Sandbox interceptor и loadProgress инициализируются в main.ts ДО монтирования app
 
-  if (import.meta.env.DEV) {
+  if (import.meta.env.VITE_DEV_TOOLS === 'true') {
     try {
       const status = await devApi.getStatus()
       isDevMode.value = status.enabled
