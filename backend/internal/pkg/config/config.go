@@ -36,7 +36,8 @@ type HTTPConfig struct {
 	ReadTimeout    time.Duration `env:"HTTP_READ_TIMEOUT" envDefault:"15s" validate:"required"`
 	WriteTimeout   time.Duration `env:"HTTP_WRITE_TIMEOUT" envDefault:"15s" validate:"required"`
 	IdleTimeout    time.Duration `env:"HTTP_IDLE_TIMEOUT" envDefault:"60s" validate:"required"`
-	TrustedProxies string        `env:"HTTP_TRUSTED_PROXIES" envDefault:"127.0.0.1,::1"` // Comma-separated list of trusted proxy IPs
+	TrustedProxies string        `env:"HTTP_TRUSTED_PROXIES" envDefault:"127.0.0.1,::1"`
+	CORSOrigins    string        `env:"CORS_ORIGINS"`
 }
 
 type SessionConfig struct {
@@ -72,7 +73,7 @@ type EmailConfig struct {
 }
 
 type AppConfig struct {
-	Env      string `env:"APP_ENV" envDefault:"development" validate:"required,oneof=development production"`
+	Env      string `env:"APP_ENV" envDefault:"development" validate:"required,oneof=development staging production"`
 	LogLevel string `env:"LOG_LEVEL" envDefault:"debug" validate:"required,oneof=debug info warn error"`
 	LogFile  string `env:"LOG_FILE" envDefault:""`                          // Path to log file (empty = stdout only)
 	BaseURL  string `env:"APP_BASE_URL" envDefault:"http://localhost:5173"` // URL для ссылок в уведомлениях
