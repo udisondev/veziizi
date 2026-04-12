@@ -244,28 +244,28 @@ func (s *Suite) startEventHandlers() error {
 		return err
 	}
 	membersHandler := eventHandlers.NewMembersHandler(db)
-	router.AddNoPublisherHandler("members", "organization.events", membersSub, membersHandler.Handle)
+	router.AddConsumerHandler("members", "organization.events", membersSub, membersHandler.Handle)
 
 	orgsSub, err := createSubscriber("e2e_organizations", "organization.events")
 	if err != nil {
 		return err
 	}
 	organizationsHandler := eventHandlers.NewOrganizationsHandler(s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
-	router.AddNoPublisherHandler("organizations", "organization.events", orgsSub, organizationsHandler.Handle)
+	router.AddConsumerHandler("organizations", "organization.events", orgsSub, organizationsHandler.Handle)
 
 	invSub, err := createSubscriber("e2e_invitations", "organization.events")
 	if err != nil {
 		return err
 	}
 	invitationsHandler := eventHandlers.NewInvitationsHandler(db)
-	router.AddNoPublisherHandler("invitations", "organization.events", invSub, invitationsHandler.Handle)
+	router.AddConsumerHandler("invitations", "organization.events", invSub, invitationsHandler.Handle)
 
 	pendingSub, err := createSubscriber("e2e_pending_orgs", "organization.events")
 	if err != nil {
 		return err
 	}
 	pendingOrgsHandler := eventHandlers.NewPendingOrganizationsHandler(db)
-	router.AddNoPublisherHandler("pending_orgs", "organization.events", pendingSub, pendingOrgsHandler.Handle)
+	router.AddConsumerHandler("pending_orgs", "organization.events", pendingSub, pendingOrgsHandler.Handle)
 
 	// Freight request event handlers
 	frSub, err := createSubscriber("e2e_freight_requests", "freightrequest.events")
@@ -273,7 +273,7 @@ func (s *Suite) startEventHandlers() error {
 		return err
 	}
 	freightRequestsHandler := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore())
-	router.AddNoPublisherHandler("freight_requests", "freightrequest.events", frSub, freightRequestsHandler.Handle)
+	router.AddConsumerHandler("freight_requests", "freightrequest.events", frSub, freightRequestsHandler.Handle)
 
 	// Support event handlers
 	supportSub, err := createSubscriber("e2e_support_tickets", "support.events")
@@ -281,7 +281,7 @@ func (s *Suite) startEventHandlers() error {
 		return err
 	}
 	supportTicketsHandler := eventHandlers.NewSupportTicketsHandler(db)
-	router.AddNoPublisherHandler("support_tickets", "support.events", supportSub, supportTicketsHandler.Handle)
+	router.AddConsumerHandler("support_tickets", "support.events", supportSub, supportTicketsHandler.Handle)
 
 	// Fraudster handler (for marking organizations as fraudsters)
 	fraudsterSub, err := createSubscriber("e2e_fraudster", "organization.events")
@@ -289,7 +289,7 @@ func (s *Suite) startEventHandlers() error {
 		return err
 	}
 	fraudsterHandler := eventHandlers.NewFraudsterHandler(s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
-	router.AddNoPublisherHandler("fraudster", "organization.events", fraudsterSub, fraudsterHandler.Handle)
+	router.AddConsumerHandler("fraudster", "organization.events", fraudsterSub, fraudsterHandler.Handle)
 
 	// Review event handlers
 	reviewReceiverSub, err := createSubscriber("e2e_review_receiver", "freightrequest.events")
@@ -297,32 +297,30 @@ func (s *Suite) startEventHandlers() error {
 		return err
 	}
 	reviewReceiverHandler := eventHandlers.NewReviewReceiverHandler(s.Factory.ReviewService())
-	router.AddNoPublisherHandler("review_receiver", "freightrequest.events", reviewReceiverSub, reviewReceiverHandler.Handle)
+	router.AddConsumerHandler("review_receiver", "freightrequest.events", reviewReceiverSub, reviewReceiverHandler.Handle)
 
 	reviewAnalyzerSub, err := createSubscriber("e2e_review_analyzer", "review.events")
 	if err != nil {
 		return err
 	}
 	reviewAnalyzerHandler := eventHandlers.NewReviewAnalyzerHandler(s.Factory.ReviewService(), s.Factory.ReviewAnalyzer())
-	router.AddNoPublisherHandler("review_analyzer", "review.events", reviewAnalyzerSub, reviewAnalyzerHandler.Handle)
+	router.AddConsumerHandler("review_analyzer", "review.events", reviewAnalyzerSub, reviewAnalyzerHandler.Handle)
 
 	reviewsProjectionSub, err := createSubscriber("e2e_reviews_projection", "review.events")
 	if err != nil {
 		return err
 	}
 	reviewsProjectionHandler := eventHandlers.NewReviewsProjectionHandler(s.Factory.DB(), s.Factory.FraudDataProjection(), s.Factory.OrganizationRatingsProjection())
-	router.AddNoPublisherHandler("reviews_projection", "review.events", reviewsProjectionSub, reviewsProjectionHandler.Handle)
+	router.AddConsumerHandler("reviews_projection", "review.events", reviewsProjectionSub, reviewsProjectionHandler.Handle)
 
 	s.eventRouter = router
 
 	// Start router in background
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		if err := router.Run(s.ctx); err != nil {
 			slog.Error("event router error", slog.String("error", err.Error()))
 		}
-	}()
+	})
 
 	// Wait for router to be running
 	<-router.Running()
@@ -348,7 +346,7 @@ func (s *Suite) startServer() {
 	server.Router().Group(func(r chi.Router) {
 		r.Use(middleware.SecurityHeaders(s.Config))
 		r.Use(middleware.CORS(s.Config))
-		r.Use(middleware.BodyLimit())
+		r.Use(middleware.BodyLimit(s.Config))
 		r.Use(middleware.RequireAuth(sessionManager))
 		r.Use(middleware.CheckMemberStatus(sessionManager, s.Factory.MembersProjection()))
 		r.Use(middleware.RateLimiter(sessionManager, s.Factory.SessionAnalyzer()))
@@ -408,11 +406,11 @@ func (s *Suite) startServer() {
 	s.server = server
 
 	// Start server in goroutine
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		http.Serve(s.listener, server.Router())
-	}()
+	s.wg.Go(func() {
+		if err := http.Serve(s.listener, server.Router()); err != nil {
+			slog.Error("http serve error", slog.String("error", err.Error()))
+		}
+	})
 }
 
 func (s *Suite) waitForServer() error {
@@ -426,7 +424,7 @@ func (s *Suite) waitForServer() error {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(s.BaseURL + "/api/v1/geo/countries")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(backoff)
@@ -449,11 +447,15 @@ func (s *Suite) Shutdown() {
 		s.cancel()
 	}
 	if s.listener != nil {
-		s.listener.Close()
+		if err := s.listener.Close(); err != nil {
+			slog.Error("failed to close listener", slog.String("error", err.Error()))
+		}
 	}
 	s.wg.Wait()
 	if s.Factory != nil {
-		s.Factory.Close()
+		if err := s.Factory.Close(); err != nil {
+			slog.Error("failed to close factory", slog.String("error", err.Error()))
+		}
 	}
 	if s.postgresContainer != nil {
 		if err := s.postgresContainer.Stop(context.Background()); err != nil {

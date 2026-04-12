@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -27,10 +28,8 @@ func validateCategory(category values.NotificationCategory) error {
 	if !safeCategoryRe.MatchString(string(category)) {
 		return fmt.Errorf("%w: unsafe characters in %q", errInvalidNotificationCategory, category)
 	}
-	for _, c := range values.AllCategories() {
-		if c == category {
-			return nil
-		}
+	if slices.Contains(values.AllCategories(), category) {
+		return nil
 	}
 	return fmt.Errorf("%w: %s", errInvalidNotificationCategory, category)
 }

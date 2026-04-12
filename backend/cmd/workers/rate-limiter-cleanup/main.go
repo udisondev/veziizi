@@ -5,21 +5,19 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
 
-const (
-	// Interval for cleanup - every 10 minutes
-	interval = 10 * time.Minute
-)
-
 func main() {
 	worker.RunScheduled(worker.ScheduledConfig{
-		Name:     "rate-limiter-cleanup",
-		Interval: interval,
-		LogFile:  "rate-limiter-cleanup-worker.log",
-		Handler:  newCleanupHandler,
+		Name:    "rate-limiter-cleanup",
+		LogFile: "rate-limiter-cleanup-worker.log",
+		IntervalFunc: func(cfg *config.Config) time.Duration {
+			return cfg.Worker.RateLimiterCleanupInterval
+		},
+		Handler: newCleanupHandler,
 	})
 }
 

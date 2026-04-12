@@ -21,28 +21,33 @@ const (
 	SignalAPIAbuse       = "api_abuse"
 )
 
-// Session fraud thresholds
-var SessionFraudThresholds = struct {
-	// login_geo_jump
-	MaxKmPerHour        float64 // impossible travel speed
-	MinDistanceForCheck float64 // minimum km to check
-	// session_anomaly
-	UnusualHourThreshold int // hours outside typical range
-	MinLoginsForPattern  int // minimum logins to establish pattern
-	// api_abuse
+// SessionFraudThresholdsConfig holds session fraud detection thresholds
+type SessionFraudThresholdsConfig struct {
+	MaxKmPerHour         float64
+	MinDistanceForCheck  float64
+	UnusualHourThreshold int
+	MinLoginsForPattern  int
 	MaxRequestsPerMinute int
 	MaxRequestsPerHour   int
 	BlockDurationMinutes int
-	ScrapingThreshold    int // GET requests without actions
-}{
-	MaxKmPerHour:         900, // ~airplane speed
-	MinDistanceForCheck:  100, // 100km minimum
-	UnusualHourThreshold: 3,   // 3+ hours from typical
-	MinLoginsForPattern:  5,   // need 5+ logins for pattern
+	ScrapingThreshold    int
+}
+
+// SessionFraudThresholds — глобальные пороги, инициализируются из конфига через InitSessionFraudThresholds
+var SessionFraudThresholds = SessionFraudThresholdsConfig{
+	MaxKmPerHour:         900,
+	MinDistanceForCheck:  100,
+	UnusualHourThreshold: 3,
+	MinLoginsForPattern:  5,
 	MaxRequestsPerMinute: 100,
 	MaxRequestsPerHour:   1000,
 	BlockDurationMinutes: 15,
-	ScrapingThreshold:    50, // 50 GETs without POST/PUT
+	ScrapingThreshold:    50,
+}
+
+// InitSessionFraudThresholds инициализирует пороги из конфига
+func InitSessionFraudThresholds(cfg SessionFraudThresholdsConfig) {
+	SessionFraudThresholds = cfg
 }
 
 // SetSessionFraudLimits allows configuring session fraud limits for testing.

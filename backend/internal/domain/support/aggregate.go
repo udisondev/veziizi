@@ -318,8 +318,8 @@ func (t *Ticket) FromSnapshot(state any) error {
 		return ErrInvalidSnapshotType
 	}
 
-	t.Base.SetID(snap.ID)
-	t.Base.SetVersion(snap.Version)
+	t.SetID(snap.ID)
+	t.SetVersion(snap.Version)
 
 	t.ticketNumber = snap.TicketNumber
 	t.memberID = snap.MemberID

@@ -357,7 +357,7 @@ func (c *telegramLinkConfirmer) ConfirmLinkCode(ctx context.Context, code string
 
 func isValidCode(s string) bool {
 	for _, c := range s {
-		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')) {
+		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') && (c < 'a' || c > 'z') {
 			return false
 		}
 	}

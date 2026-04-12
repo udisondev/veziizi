@@ -64,7 +64,7 @@ func Run(cfg Config) {
 	slog.Info(fmt.Sprintf("%s worker connected to database", cfg.Name))
 
 	// Heartbeat
-	hb := heartbeat.New(pool, cfg.Name, "event")
+	hb := heartbeat.New(pool, cfg.Name, "event", appCfg.Worker.HeartbeatInterval)
 	if err := hb.Start(ctx); err != nil {
 		slog.Error("failed to start heartbeat", "error", err)
 	}
@@ -124,7 +124,7 @@ func Run(cfg Config) {
 	select {
 	case <-shutdownDone:
 		slog.Info(fmt.Sprintf("%s worker shutdown complete", cfg.Name))
-	case <-time.After(30 * time.Second):
+	case <-time.After(appCfg.Worker.ShutdownTimeout):
 		slog.Error(fmt.Sprintf("%s worker shutdown timed out, forcing exit", cfg.Name))
 		os.Exit(1)
 	}
@@ -132,9 +132,11 @@ func Run(cfg Config) {
 
 // ScheduledConfig configures a scheduled (cron-like) worker
 type ScheduledConfig struct {
-	Name     string
-	Interval time.Duration
-	LogFile  string
+	Name    string
+	LogFile string
+
+	// IntervalFunc returns interval from config. Called once at startup.
+	IntervalFunc func(cfg *config.Config) time.Duration
 
 	// Handler receives Factory and returns a function to execute on each tick
 	Handler func(f *factory.Factory) func(ctx context.Context) error
@@ -177,7 +179,7 @@ func RunScheduled(cfg ScheduledConfig) {
 	slog.Info(fmt.Sprintf("%s scheduled worker connected to database", cfg.Name))
 
 	// Heartbeat
-	hb := heartbeat.New(pool, cfg.Name, "scheduled")
+	hb := heartbeat.New(pool, cfg.Name, "scheduled", appCfg.Worker.HeartbeatInterval)
 	if err := hb.Start(ctx); err != nil {
 		slog.Error("failed to start heartbeat", "error", err)
 	}
@@ -186,11 +188,14 @@ func RunScheduled(cfg ScheduledConfig) {
 	// Get handler
 	handler := cfg.Handler(f)
 
+	// Get interval from config
+	interval := cfg.IntervalFunc(appCfg)
+
 	// Start ticker
-	ticker := time.NewTicker(cfg.Interval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	slog.Info(fmt.Sprintf("%s scheduled worker started (interval: %s)", cfg.Name, cfg.Interval))
+	slog.Info(fmt.Sprintf("%s scheduled worker started (interval: %s)", cfg.Name, interval))
 
 	// Run immediately on start
 	go func() {

@@ -21,7 +21,7 @@ func runMigrations(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
 	if err != nil {
@@ -42,7 +42,7 @@ func initWatermillSchema(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	schema := wmSql.DefaultPostgreSQLSchema{}
 
@@ -81,7 +81,7 @@ func CleanDatabase(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Tables to clean (in order respecting foreign keys)
 	tables := []string{
@@ -137,7 +137,7 @@ func CreateTestAdmin(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Hash password with bcrypt MinCost for faster tests
 	hash, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.MinCost)
@@ -163,7 +163,7 @@ func SeedGeoData(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Insert test countries into geo_countries
 	_, err = db.Exec(`

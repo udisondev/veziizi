@@ -35,7 +35,7 @@ type healthResponse struct {
 func (s *HealthSuite) getHealth(path string) (*http.Response, healthResponse) {
 	resp, err := http.Get(s.baseURL + path)
 	s.Require().NoError(err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	s.Require().NoError(err)
@@ -145,7 +145,7 @@ func (s *HealthSuite) TestHealthz_IncludesWorkersSection() {
 func (s *HealthSuite) TestHealthz_IncludesDescription() {
 	resp, err := http.Get(s.baseURL + "/healthz")
 	s.Require().NoError(err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	rawBody, err := io.ReadAll(resp.Body)
 	s.Require().NoError(err)
@@ -178,7 +178,7 @@ func (s *HealthSuite) TestHealthEndpoints_NoAuthRequired() {
 	for _, path := range []string{"/livez", "/readyz", "/healthz"} {
 		resp, err := plainClient.Get(s.baseURL + path)
 		s.Require().NoError(err, "should not error for %s", path)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		s.Assert().NotEqual(http.StatusUnauthorized, resp.StatusCode, "%s should not require auth", path)
 		s.Assert().NotEqual(http.StatusForbidden, resp.StatusCode, "%s should not require auth", path)

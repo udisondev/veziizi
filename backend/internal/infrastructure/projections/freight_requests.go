@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -248,28 +249,17 @@ func WithVatTypes(types []string) FilterOption {
 	}
 }
 
-// joinStrings joins strings with comma for PostgreSQL array literal
-func joinStrings(s []string) string {
-	if len(s) == 0 {
-		return ""
-	}
-	result := s[0]
-	for i := 1; i < len(s); i++ {
-		result += "," + s[i]
-	}
-	return result
-}
-
 // joinInts joins integers with comma for PostgreSQL array literal
 func joinInts(nums []int) string {
 	if len(nums) == 0 {
 		return ""
 	}
-	result := fmt.Sprintf("%d", nums[0])
+	var result strings.Builder
+	fmt.Fprintf(&result, "%d", nums[0])
 	for i := 1; i < len(nums); i++ {
-		result += fmt.Sprintf(",%d", nums[i])
+		fmt.Fprintf(&result, ",%d", nums[i])
 	}
-	return result
+	return result.String()
 }
 
 func WithRouteCities(cityIDs []int) FilterOption {

@@ -20,6 +20,9 @@ type Config struct {
 	GeoIP     GeoIPConfig
 	RateLimit RateLimitConfig
 	Metrics   MetricsConfig
+	Security  SecurityConfig
+	Worker    WorkerConfig
+	Fraud     FraudConfig
 }
 
 type MetricsConfig struct {
@@ -96,6 +99,68 @@ type RateLimitConfig struct {
 	WindowDuration time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"1m"`
 	// Block duration when rate limited
 	BlockDuration time.Duration `env:"RATE_LIMIT_BLOCK" envDefault:"15m"`
+	// Cleanup threshold — entries older than this are removed
+	CleanupThreshold time.Duration `env:"RATE_LIMIT_CLEANUP_THRESHOLD" envDefault:"1h"`
+	// Cleanup interval — how often cleanup runs
+	CleanupInterval time.Duration `env:"RATE_LIMIT_CLEANUP_INTERVAL" envDefault:"10m"`
+}
+
+type SecurityConfig struct {
+	// Max JSON body size in bytes
+	MaxJSONBodySize int64 `env:"MAX_JSON_BODY_SIZE" envDefault:"1048576"` // 1MB
+	// Max file upload size in bytes
+	MaxFileUploadSize int64 `env:"MAX_FILE_UPLOAD_SIZE" envDefault:"10485760"` // 10MB
+	// Max failed login attempts before lockout
+	MaxFailedLoginAttempts int `env:"MAX_FAILED_LOGIN_ATTEMPTS" envDefault:"5"`
+	// Account lockout duration
+	AccountLockoutDuration time.Duration `env:"ACCOUNT_LOCKOUT_DURATION" envDefault:"15m"`
+	// Shutdown timeout for HTTP server
+	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"30s"`
+}
+
+type WorkerConfig struct {
+	// Shutdown timeout for workers
+	ShutdownTimeout time.Duration `env:"WORKER_SHUTDOWN_TIMEOUT" envDefault:"30s"`
+	// Heartbeat interval
+	HeartbeatInterval time.Duration `env:"WORKER_HEARTBEAT_INTERVAL" envDefault:"30s"`
+	// Review activator interval
+	ReviewActivatorInterval time.Duration `env:"REVIEW_ACTIVATOR_INTERVAL" envDefault:"1m"`
+	// Review activator batch size
+	ReviewActivatorBatchSize int `env:"REVIEW_ACTIVATOR_BATCH_SIZE" envDefault:"100"`
+	// Rate limiter cleanup interval
+	RateLimiterCleanupInterval time.Duration `env:"RATE_LIMITER_CLEANUP_INTERVAL" envDefault:"10m"`
+}
+
+type FraudConfig struct {
+	// Session fraud
+	MaxKmPerHour         float64 `env:"FRAUD_MAX_KM_PER_HOUR" envDefault:"900"`
+	MinDistanceForCheck  float64 `env:"FRAUD_MIN_DISTANCE_FOR_CHECK" envDefault:"100"`
+	UnusualHourThreshold int     `env:"FRAUD_UNUSUAL_HOUR_THRESHOLD" envDefault:"3"`
+	MinLoginsForPattern  int     `env:"FRAUD_MIN_LOGINS_FOR_PATTERN" envDefault:"5"`
+	MaxRequestsPerMinute int     `env:"FRAUD_MAX_REQUESTS_PER_MINUTE" envDefault:"100"`
+	MaxRequestsPerHour   int     `env:"FRAUD_MAX_REQUESTS_PER_HOUR" envDefault:"1000"`
+	BlockDurationMinutes int     `env:"FRAUD_BLOCK_DURATION_MINUTES" envDefault:"15"`
+	ScrapingThreshold    int     `env:"FRAUD_SCRAPING_THRESHOLD" envDefault:"50"`
+
+	// Review fraud
+	MutualReviewsPerMonth       int     `env:"FRAUD_MUTUAL_REVIEWS_PER_MONTH" envDefault:"5"`
+	FastCompletionHours         int     `env:"FRAUD_FAST_COMPLETION_HOURS" envDefault:"2"`
+	PerfectRatingsCount         int     `env:"FRAUD_PERFECT_RATINGS_COUNT" envDefault:"3"`
+	NewOrgBurstReviewsPerWeek   int     `env:"FRAUD_NEW_ORG_BURST_REVIEWS_PER_WEEK" envDefault:"10"`
+	ModerationScoreThreshold    float64 `env:"FRAUD_MODERATION_SCORE_THRESHOLD" envDefault:"0.3"`
+	ActivationDelayDays         int     `env:"FRAUD_ACTIVATION_DELAY_DAYS" envDefault:"7"`
+	SuspiciousDelayDays         int     `env:"FRAUD_SUSPICIOUS_DELAY_DAYS" envDefault:"14"`
+	TextSimilarityThreshold     float64 `env:"FRAUD_TEXT_SIMILARITY_THRESHOLD" envDefault:"0.8"`
+	TextSimilarityMinReviews    int     `env:"FRAUD_TEXT_SIMILARITY_MIN_REVIEWS" envDefault:"3"`
+	TimingPatternWindowHours    int     `env:"FRAUD_TIMING_PATTERN_WINDOW_HOURS" envDefault:"2"`
+	TimingPatternMinReviews     int     `env:"FRAUD_TIMING_PATTERN_MIN_REVIEWS" envDefault:"10"`
+	RatingManipFriendAvgMin     float64 `env:"FRAUD_RATING_MANIP_FRIEND_AVG_MIN" envDefault:"4.5"`
+	RatingManipOtherAvgMax      float64 `env:"FRAUD_RATING_MANIP_OTHER_AVG_MAX" envDefault:"2.5"`
+	RatingManipMinFriendReviews int     `env:"FRAUD_RATING_MANIP_MIN_FRIEND_REVIEWS" envDefault:"3"`
+	BurstAfterLowDays           int     `env:"FRAUD_BURST_AFTER_LOW_DAYS" envDefault:"7"`
+	BurstAfterLowCount          int     `env:"FRAUD_BURST_AFTER_LOW_COUNT" envDefault:"5"`
+	DormantDays                 int     `env:"FRAUD_DORMANT_DAYS" envDefault:"90"`
+	DormantBurstCount           int     `env:"FRAUD_DORMANT_BURST_COUNT" envDefault:"5"`
 }
 
 func Load() (*Config, error) {

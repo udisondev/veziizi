@@ -268,7 +268,7 @@ func (s *FreightRequestsSuite) TestFR058_CancelAlreadyCancelled() {
 	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
 
 	// Cancel first time
-	s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
+	_, _ = s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
 
 	// Try to cancel again
 	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
@@ -410,8 +410,8 @@ func (s *FreightRequestsSuite) TestFR103_ConfirmedStatus() {
 	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
 
 	// Select and confirm
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
-	s.ctx.Carrier.Client.ConfirmOffer(fr.ID, offer.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+	_, _ = s.ctx.Carrier.Client.ConfirmOffer(fr.ID, offer.OfferID)
 
 	// Verify FR status changes to confirmed
 	helpers.WaitFor(s.T(), func() (string, bool) {
@@ -450,7 +450,7 @@ func (s *FreightRequestsSuite) TestFR111_UnselectOffer_WithReason() {
 	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
 
 	// Select offer
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
 
 	// Unselect with reason
 	reason := "Found better offer"
@@ -464,7 +464,7 @@ func (s *FreightRequestsSuite) TestFR112_UnselectOffer_Unauthorized() {
 	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
 
 	// Select offer
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
 
 	// Try to unselect without auth
 	resp, err := s.ctx.AnonClient.UnselectOffer(fr.ID, offer.OfferID, nil)
@@ -477,7 +477,7 @@ func (s *FreightRequestsSuite) TestFR113_UnselectOffer_NotOwner() {
 	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
 
 	// Select offer
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
 
 	// Try to unselect by carrier (not owner)
 	resp, err := s.ctx.Carrier.Client.UnselectOffer(fr.ID, offer.OfferID, nil)
@@ -504,7 +504,7 @@ func (s *FreightRequestsSuite) TestFR115_UnselectOffer_WrongOffer() {
 	offer2 := fixtures.NewOffer(s.T(), carrier2.Client, fr.ID).Create()
 
 	// Select offer1
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
 
 	// Try to unselect offer2 (not the selected one)
 	resp, err := s.ctx.Customer.Client.UnselectOffer(fr.ID, offer2.OfferID, nil)
@@ -527,7 +527,7 @@ func (s *FreightRequestsSuite) TestFR117_UnselectOffer_ThenSelectAnother() {
 	offer2 := fixtures.NewOffer(s.T(), carrier2.Client, fr.ID).Create()
 
 	// Select offer1
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
 
 	// Unselect offer1
 	resp1, err := s.ctx.Customer.Client.UnselectOffer(fr.ID, offer1.OfferID, nil)
@@ -551,7 +551,7 @@ func (s *FreightRequestsSuite) TestFR120_CancelSelected_Success() {
 	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
 
 	// Select offer
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
 
 	// Cancel FR from selected status
 	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, helpers.StringPtr("Changed plans"))
@@ -568,10 +568,10 @@ func (s *FreightRequestsSuite) TestFR121_CancelSelected_OfferRejected() {
 	offer := fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
 
 	// Select offer
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
 
 	// Cancel FR
-	s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
+	_, _ = s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
 
 	// Verify offer is rejected
 	helpers.Wait(s.T(), func() bool {
@@ -597,10 +597,10 @@ func (s *FreightRequestsSuite) TestFR122_CancelSelected_PendingOffersRejected() 
 	offer2 := fixtures.NewOffer(s.T(), carrier2.Client, fr.ID).Create()
 
 	// Select offer1
-	s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
+	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer1.OfferID)
 
 	// Cancel FR
-	s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
+	_, _ = s.ctx.Customer.Client.CancelFreightRequest(fr.ID, nil)
 
 	// Verify all offers are rejected
 	helpers.Wait(s.T(), func() bool {
@@ -757,10 +757,6 @@ func (s *FreightRequestsSuite) TestFR135_FilterCombined() {
 // Helper function
 func intPtr(i int) *int {
 	return &i
-}
-
-func stringPtr(s string) *string {
-	return &s
 }
 
 // ============================================================================

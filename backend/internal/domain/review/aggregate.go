@@ -383,8 +383,8 @@ func (r *Review) FromSnapshot(state any) error {
 		return errors.New("invalid snapshot type: expected ReviewSnapshot")
 	}
 
-	r.Base.SetID(snap.ID)
-	r.Base.SetVersion(snap.Version)
+	r.SetID(snap.ID)
+	r.SetVersion(snap.Version)
 
 	r.orderID = snap.OrderID
 	r.reviewerOrgID = snap.ReviewerOrgID

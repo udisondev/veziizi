@@ -156,9 +156,9 @@ func (s *FraudModerationSuite) TestFRM002_ModerationThreshold() {
 	s.Require().NoError(err)
 
 	// FastCompletion (0.2) + BurstAfterLow (0.25) = 0.45
-	s.Assert().GreaterOrEqual(result.FraudScore, values.FraudModerationScoreThreshold,
+	s.Assert().GreaterOrEqual(result.FraudScore, s.f.Config().Fraud.ModerationScoreThreshold,
 		"fraud score %.2f должен быть >= порога модерации %.2f",
-		result.FraudScore, values.FraudModerationScoreThreshold)
+		result.FraudScore, s.f.Config().Fraud.ModerationScoreThreshold)
 	s.Assert().True(result.RequiresModeration, "должна требоваться модерация")
 }
 
@@ -180,9 +180,9 @@ func (s *FraudModerationSuite) TestFRM003_BelowModeration() {
 	s.Require().NoError(err)
 
 	// FastCompletion = 0.2, ниже порога 0.3
-	s.Assert().Less(result.FraudScore, values.FraudModerationScoreThreshold,
+	s.Assert().Less(result.FraudScore, s.f.Config().Fraud.ModerationScoreThreshold,
 		"fraud score %.2f должен быть < порога модерации %.2f",
-		result.FraudScore, values.FraudModerationScoreThreshold)
+		result.FraudScore, s.f.Config().Fraud.ModerationScoreThreshold)
 	s.Assert().False(result.RequiresModeration, "модерация не должна требоваться")
 }
 
@@ -224,9 +224,9 @@ func (s *FraudModerationSuite) TestFRM004_SuspiciousDelay() {
 		"fraud score должен быть > 0.1 для suspicious delay")
 
 	// Ожидаемая задержка: ~14 дней от сейчас
-	expectedDate := time.Now().AddDate(0, 0, values.FraudSuspiciousDelayDays)
+	expectedDate := time.Now().AddDate(0, 0, s.f.Config().Fraud.SuspiciousDelayDays)
 	s.Assert().WithinDuration(expectedDate, result.ActivationDate, 24*time.Hour,
-		"activation date должна быть ~%d дней от сейчас", values.FraudSuspiciousDelayDays)
+		"activation date должна быть ~%d дней от сейчас", s.f.Config().Fraud.SuspiciousDelayDays)
 }
 
 // TestFRM005_NormalDelay проверяет, что чистый отзыв (score = 0)
@@ -249,9 +249,9 @@ func (s *FraudModerationSuite) TestFRM005_NormalDelay() {
 	s.Assert().InDelta(0.0, result.FraudScore, 0.001, "fraud score должен быть 0 для чистого отзыва")
 	s.Assert().False(result.RequiresModeration, "модерация не требуется")
 
-	expectedDate := time.Now().AddDate(0, 0, values.FraudActivationDelayDays)
+	expectedDate := time.Now().AddDate(0, 0, s.f.Config().Fraud.ActivationDelayDays)
 	s.Assert().WithinDuration(expectedDate, result.ActivationDate, 24*time.Hour,
-		"activation date должна быть ~%d дней от сейчас", values.FraudActivationDelayDays)
+		"activation date должна быть ~%d дней от сейчас", s.f.Config().Fraud.ActivationDelayDays)
 }
 
 // TestFRM006_AutoApproval проверяет, что RecordAnalysis с requiresModeration=false

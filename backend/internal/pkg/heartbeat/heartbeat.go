@@ -9,8 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const defaultInterval = 30 * time.Second
-
 // Recorder периодически пишет heartbeat в БД для мониторинга воркера.
 type Recorder struct {
 	pool       *pgxpool.Pool
@@ -21,12 +19,12 @@ type Recorder struct {
 }
 
 // New создаёт Recorder и регистрирует воркер в БД.
-func New(pool *pgxpool.Pool, name, workerType string) *Recorder {
+func New(pool *pgxpool.Pool, name, workerType string, interval time.Duration) *Recorder {
 	return &Recorder{
 		pool:       pool,
 		name:       name,
 		workerType: workerType,
-		interval:   defaultInterval,
+		interval:   interval,
 	}
 }
 
