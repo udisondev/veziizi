@@ -18,7 +18,8 @@ Communicate in Russian (Русский язык).
 
 ## Prerequisites
 
-Необходимые инструменты (устанавливаются через `make dev-setup`):
+Необходимые инструменты (устанавливаются автоматически через `task dev:setup`):
+- `task` (go-task) — task runner (вместо make)
 - `goreman` — запуск всех сервисов из Procfile.dev
 - `air` — hot-reload для Go
 - `goose` — миграции БД
@@ -26,54 +27,63 @@ Communicate in Russian (Русский язык).
 
 ## Commands
 
+Проект использует [Task](https://taskfile.dev/) (`Taskfile.yml`). Полный список: `task --list-all`.
+
 ```bash
 # Development
-make dev              # Start PostgreSQL, run migrations, start API server (all-in-one)
-make dev-all          # Full stack with hot-reload: API + all workers (uses goreman)
-make run-api          # Run API server only
-make run-workers      # Run all workers in background
-make run-telegram-bot # Run Telegram bot for link codes
-make back-dev         # Run API with air (hot-reload)
-make up / make down   # Start/stop Docker services
+task dev              # Start PostgreSQL, run migrations, seed geo, start API server
+task dev:all          # Full stack with hot-reload: API + all workers + frontend (goreman)
+task run:api          # Run API server only
+task run:workers      # Run all workers in background
+task run:telegram-bot # Run Telegram bot for link codes
+task back:dev         # Run API with air (hot-reload)
+task up / task down   # Start/stop dev Docker services (PostgreSQL)
 
 # Database
-make migrate                         # Run migrations up
-make migrate-down                    # Rollback one migration
-make migrate-create name=foo         # Create new migration
-make db-shell                        # Connect to PostgreSQL
+task migrate                         # Run migrations up
+task migrate:down                    # Rollback one migration
+task migrate:create -- foo           # Create new migration
+task migrate:status                  # Show migration status
+task db-shell                        # Connect to PostgreSQL
 
 # Build & Test
-make build            # Build all binaries to bin/ (api, workers, telegram-notifier, migrator)
-make build-api        # Build API only
-make build-workers    # Build all workers
-make test             # Run unit tests
-make test-cover       # Run tests with coverage
-make test-e2e         # Run E2E tests (setup + sequential, uses docker-compose DB)
-make test-e2e-parallel # Run E2E tests in parallel
-make test-e2e-containers # Run E2E tests with testcontainers (auto-creates DB)
-make lint             # Run golangci-lint
-make tidy             # Tidy go modules
+task build            # Build all binaries to bin/ (api, workers, telegram-bot)
+task build:api        # Build API only
+task build:workers    # Build all workers
+task test             # Run unit tests
+task test:cover       # Run tests with coverage
+task test:e2e         # Run E2E tests (setup + sequential, uses docker-compose DB)
+task test:e2e:parallel  # Run E2E tests in parallel
+task test:e2e:containers # Run E2E tests with testcontainers (auto-creates DB)
+task lint             # Run golangci-lint
+task tidy             # Tidy go modules
+task fmt              # Format code (go fmt + goimports)
+task generate         # Run go generate (enums via go-enum)
 go build ./...        # Quick compilation check
 go test ./backend/internal/application/organization/...  # Run tests for specific package
 go test -v -count=1 ./backend/e2e/tests/...              # Run specific E2E test
 
-# Code Generation
-make generate         # Run go generate (enums via go-enum)
-
 # Admin Tools
-make create-admin          # Create platform admin (interactive)
-make create-admin-dev      # Create dev admin (admin@veziizi.local / admin123)
-make create-test-org       # Create test org (owner@test.local / test123)
+task create:admin          # Create platform admin (interactive)
+task create:admin:dev      # Create dev admin (admin@veziizi.local / admin123)
+task create:test-org       # Create test org (owner@test.local / test123)
 
 # Geo & Seed Data
-make seed-geo         # Seed countries and cities (runs automatically with dev/dev-all)
-go run ./backend/cmd/tools/seed-orgs              # Seed test organizations
-go run ./backend/cmd/tools/backfill-freight-requests  # Backfill freight requests projection
+task seed:geo         # Seed countries and cities (runs automatically with dev/dev:all)
+task seed:orgs        # Seed test organizations
+task backfill:freight-requests  # Backfill freight requests projection
+
+# Staging
+task stage            # Build and start staging (requires .env.secrets)
+task stage:down       # Stop staging
+task stage:logs       # Show staging logs
+task stage:rebuild -- api  # Rebuild specific service
+task stage:ps         # Show staging status
 ```
 
 ## Environment
 
-Скопировать `.env.example` в `.env` перед запуском (или `make env-init`):
+Скопировать `.env.example` в `.env` перед запуском:
 ```
 DATABASE_URL=postgres://veziizi:veziizi@localhost:5432/veziizi?sslmode=disable
 SESSION_SECRET=32-byte-key-for-sessions
@@ -194,8 +204,8 @@ APP_ENV=development                # development | production
 1. Create `backend/cmd/workers/<name>/main.go`
 2. **CRITICAL:** Import events package for registration: `_ ".../<domain>/events"` (без этого десериализация не работает!)
 3. Add Handler in `infrastructure/handlers/`
-4. Add build command in `Makefile`
-5. Add to `make run-workers` and `Procfile.dev`
+4. Add worker name to `WORKERS` var in `Taskfile.yml`
+5. Add to `Procfile.dev`
 
 **New Aggregate:**
 1. `domain/<name>/aggregate.go` — struct + `New()`, `NewFromEvents()`
@@ -463,7 +473,7 @@ macro_start_session:
 2. `br start <id>` — возьми задачу
 3. `file_reservation_paths` — зарезервируй файлы
 4. Напиши код и тесты
-5. `make lint && make test` — проверь
+5. `task lint && task test` — проверь
 6. Коммит с описанием
 7. `release_file_reservations` — освободи файлы
 8. `br done <id>` — отметь выполнение
