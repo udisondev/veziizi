@@ -854,6 +854,7 @@ func (h *OrganizationHandler) GetRating(w http.ResponseWriter, r *http.Request) 
 }
 
 // GetStats returns aggregated organization statistics from lookup tables.
+// Public endpoint (same as GetRating) — aggregate counts are not sensitive.
 func (h *OrganizationHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {

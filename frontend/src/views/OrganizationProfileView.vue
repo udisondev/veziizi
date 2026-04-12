@@ -63,15 +63,15 @@ async function loadData() {
 
   try {
     const id = route.params.id as string
-    const [orgData, ratingData, reviewsData, statsData] = await Promise.all([
+    const [orgData, ratingData, reviewsData] = await Promise.all([
       organizationsApi.get(id),
       organizationsApi.getRating(id),
       organizationsApi.getReviews(id, { limit: REVIEWS_PER_PAGE }),
-      organizationsApi.getStats(id),
     ])
     organization.value = orgData
     rating.value = ratingData
-    stats.value = statsData
+
+    organizationsApi.getStats(id).then(s => { stats.value = s }).catch(() => {})
     reviews.value = reviewsData.items ?? []
     reviewsCursor.value = reviewsData.next_cursor
     reviewsHasMore.value = reviewsData.has_more
