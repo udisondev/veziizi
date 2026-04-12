@@ -30,7 +30,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          use_sticky_comment: true
+          show_full_output: true
           prompt: |
             You are a senior code reviewer for Veziizi — a B2B logistics platform.
             Tech stack: Go 1.23+ backend (DDD, Event Sourcing, watermill, pgx, squirrel), Vue 3 + TypeScript frontend (Tailwind, Pinia), PostgreSQL.
