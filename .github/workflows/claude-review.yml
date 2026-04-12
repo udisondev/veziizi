@@ -59,7 +59,7 @@ jobs:
             --arg prompt "$PROMPT" \
             --arg diff "$DIFF" \
             '{
-              "model": "claude-sonnet-4-6-20250514",
+              "model": "claude-sonnet-4-5-20241022",
               "max_tokens": 4096,
               "messages": [
                 {"role": "user", "content": ($prompt + "\n\n## PR Diff\n\n```diff\n" + $diff + "\n```")}
@@ -72,11 +72,27 @@ jobs:
             -H "anthropic-version: 2023-06-01" \
             -d "$PAYLOAD")
 
-          # Extract text from response
-          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text // "Error: no response from Claude API"')
+          # Debug: show response type and error if any
+          echo "API response type: $(echo "$RESPONSE" | jq -r '.type // "unknown"')"
+          echo "API stop reason: $(echo "$RESPONSE" | jq -r '.stop_reason // "none"')"
+          ERROR=$(echo "$RESPONSE" | jq -r '.error.message // empty')
+          if [ -n "$ERROR" ]; then
+            echo "API error: $ERROR"
+            echo "Claude API returned error: $ERROR" > /tmp/review-result.txt
+            exit 1
+          fi
 
-          # Save to file (avoid delimiter issues)
+          # Extract text from response
+          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text')
+          if [ -z "$REVIEW" ] || [ "$REVIEW" = "null" ]; then
+            echo "Full API response:"
+            echo "$RESPONSE" | jq .
+            echo "Error: empty response" > /tmp/review-result.txt
+            exit 1
+          fi
+
           echo "$REVIEW" > /tmp/review-result.txt
+          echo "Review generated successfully ($(wc -c < /tmp/review-result.txt) bytes)"
 
       - name: Post comment on PR
         env:
