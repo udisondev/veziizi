@@ -1,22 +1,15 @@
 name: Claude Code Review
 
 on:
-  # Run after CI completes on PRs
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-  # Allow @claude mentions in PR comments
+  pull_request:
+    types: [opened, synchronize]
   issue_comment:
     types: [created]
 
 jobs:
   review:
-    # For workflow_run: only on PRs and only if CI succeeded
-    # For issue_comment: only on PRs with @claude mention
     if: >
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.event == 'pull_request' &&
-       github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
        contains(github.event.comment.body, '@claude'))
@@ -30,3 +23,4 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
