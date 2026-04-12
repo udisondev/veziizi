@@ -138,7 +138,7 @@ func main() {
 		r.Use(middleware.RateLimiter(sessionManager, f.SessionAnalyzer()))
 		r.Use(middleware.CSRFProtection()) // SEC-005
 
-		orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), sessionManager)
+		orgHandler := handlers.NewOrganizationHandler(f.OrganizationService(), f.OrganizationRatingsProjection(), f.FreightRequestsProjection(), sessionManager)
 		orgHandler.RegisterRoutes(r)
 
 		authHandler := handlers.NewAuthHandler(f.MembersProjection(), f.FreightRequestsProjection(), f.OrganizationService(), sessionManager, f.SessionAnalyzer(), geoIPService)
