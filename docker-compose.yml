@@ -1,4 +1,5 @@
-x-worker: &worker
+x-backend: &backend
+  image: veziizi/backend
   build:
     context: .
     dockerfile: Dockerfile
@@ -21,13 +22,8 @@ services:
     restart: unless-stopped
 
   api:
-    <<: *worker
-    image: veziizi/api
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: api
+    <<: *backend
+    command: ["api"]
 
   frontend:
     image: veziizi/frontend
@@ -39,148 +35,68 @@ services:
     restart: unless-stopped
 
   telegram-bot:
-    <<: *worker
-    image: veziizi/telegram-bot
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: telegram-bot
+    <<: *backend
+    command: ["telegram-bot"]
 
   worker-members:
-    <<: *worker
-    image: veziizi/worker-members
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/members
+    <<: *backend
+    command: ["worker-members"]
 
   worker-invitations:
-    <<: *worker
-    image: veziizi/worker-invitations
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/invitations
+    <<: *backend
+    command: ["worker-invitations"]
 
   worker-pending-organizations:
-    <<: *worker
-    image: veziizi/worker-pending-organizations
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/pending-organizations
+    <<: *backend
+    command: ["worker-pending-organizations"]
 
   worker-organizations:
-    <<: *worker
-    image: veziizi/worker-organizations
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/organizations
+    <<: *backend
+    command: ["worker-organizations"]
 
   worker-freight-requests:
-    <<: *worker
-    image: veziizi/worker-freight-requests
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/freight-requests
+    <<: *backend
+    command: ["worker-freight-requests"]
 
   worker-review-receiver:
-    <<: *worker
-    image: veziizi/worker-review-receiver
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/review-receiver
+    <<: *backend
+    command: ["worker-review-receiver"]
 
   worker-review-analyzer:
-    <<: *worker
-    image: veziizi/worker-review-analyzer
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/review-analyzer
+    <<: *backend
+    command: ["worker-review-analyzer"]
 
   worker-reviews-projection:
-    <<: *worker
-    image: veziizi/worker-reviews-projection
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/reviews-projection
+    <<: *backend
+    command: ["worker-reviews-projection"]
 
   worker-review-activator:
-    <<: *worker
-    image: veziizi/worker-review-activator
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/review-activator
+    <<: *backend
+    command: ["worker-review-activator"]
 
   worker-fraudster-handler:
-    <<: *worker
-    image: veziizi/worker-fraudster-handler
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/fraudster-handler
+    <<: *backend
+    command: ["worker-fraudster-handler"]
 
   worker-notification-dispatcher:
-    <<: *worker
-    image: veziizi/worker-notification-dispatcher
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/notification-dispatcher
+    <<: *backend
+    command: ["worker-notification-dispatcher"]
 
   worker-telegram-sender:
-    <<: *worker
-    image: veziizi/worker-telegram-sender
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/telegram-sender
+    <<: *backend
+    command: ["worker-telegram-sender"]
 
   worker-email-sender:
-    <<: *worker
-    image: veziizi/worker-email-sender
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/email-sender
+    <<: *backend
+    command: ["worker-email-sender"]
 
   worker-support-tickets:
-    <<: *worker
-    image: veziizi/worker-support-tickets
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/support-tickets
+    <<: *backend
+    command: ["worker-support-tickets"]
 
   worker-rate-limiter-cleanup:
-    <<: *worker
-    image: veziizi/worker-rate-limiter-cleanup
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY: workers/rate-limiter-cleanup
+    <<: *backend
+    command: ["worker-rate-limiter-cleanup"]
 
 volumes:
   postgres_data:

@@ -19,6 +19,7 @@ x-staging-env: &staging-env
   METRICS_ADDR: ":9090"
 
 x-staging-service: &staging-service
+  image: ghcr.io/udisondev/veziizi/backend:staging
   env_file:
     - .env.secrets
   environment:
@@ -41,6 +42,7 @@ services:
       - "127.0.0.1:9090:9090"
 
   frontend:
+    image: ghcr.io/udisondev/veziizi/frontend:staging
     ports:
       - "80:80"
 

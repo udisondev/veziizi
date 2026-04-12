@@ -6,10 +6,16 @@ RUN go mod download
 
 COPY backend/ backend/
 
-ARG BINARY
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app ./backend/cmd/${BINARY}
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/api ./backend/cmd/api && \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/telegram-bot ./backend/cmd/telegram-bot && \
+    for w in members invitations pending-organizations organizations freight-requests \
+             review-receiver review-analyzer reviews-projection review-activator \
+             fraudster-handler notification-dispatcher telegram-sender email-sender \
+             support-tickets rate-limiter-cleanup; do \
+      CGO_ENABLED=0 go build -ldflags="-s -w" -o "/bin/worker-${w}" "./backend/cmd/workers/${w}"; \
+    done
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
-COPY --from=builder /app /app
-ENTRYPOINT ["/app"]
+COPY --from=builder /bin/ /usr/local/bin/
+ENTRYPOINT ["api"]
