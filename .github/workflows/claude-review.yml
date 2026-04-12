@@ -3,79 +3,94 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-  issue_comment:
-    types: [created]
 
 jobs:
   review:
-    if: >
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.pull_request &&
-       contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
     environment: claude-review
     permissions:
       contents: read
       pull-requests: write
-      issues: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: anthropics/claude-code-action@v1
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...HEAD -- '*.go' '*.vue' '*.ts' '*.sql' | head -c 90000)
+          echo "$DIFF" > /tmp/pr-diff.txt
+
+      - name: Call Claude API
+        id: review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          show_full_output: true
-          prompt: |
-            You are a senior code reviewer for Veziizi — a B2B logistics platform.
-            Tech stack: Go 1.23+ backend (DDD, Event Sourcing, watermill, pgx, squirrel), Vue 3 + TypeScript frontend (Tailwind, Pinia), PostgreSQL.
+        run: |
+          DIFF=$(cat /tmp/pr-diff.txt)
 
-            ## Your task
-            Review ALL changed files in this PR. For each file, read it carefully and check for real issues.
+          PROMPT=$(cat <<'PROMPT_EOF'
+          You are a senior code reviewer for Veziizi — a B2B logistics platform.
+          Tech stack: Go 1.23+ backend (DDD, Event Sourcing, watermill, pgx, squirrel), Vue 3 + TypeScript frontend (Tailwind, Pinia), PostgreSQL.
 
-            ## Review checklist
+          Review the PR diff below. Check for real issues only:
 
-            **Go backend:**
-            - Errors are never swallowed — every error is either returned (wrapped with fmt.Errorf) or logged with slog.Error()
-            - SQL injection: all queries use parameterized placeholders ($1, $2), never string concatenation
-            - Race conditions: shared state is protected; goroutines have proper synchronization
-            - Event Sourcing: new events are registered in init(), aggregates apply events correctly
-            - Context propagation: ctx is passed through, not context.Background() in request handlers
-            - Resource leaks: rows.Close(), tx.Rollback() in defers, no unclosed resources
-            - Nil pointer dereference: pointer returns are checked before use
+          **Go:** errors swallowed, SQL injection, race conditions, nil dereference, resource leaks, missing context propagation
+          **Vue/TS:** reactive state misuse, unhandled API errors, XSS vectors, unsafe `any` casts
+          **SQL:** backward-incompatible changes, missing indexes, NOT NULL without DEFAULT
+          **General:** hardcoded secrets, debug code left in
 
-            **Vue/TypeScript frontend:**
-            - Reactive state is used correctly (ref/computed, no direct mutation of props)
-            - API errors are handled — user sees feedback, not silent failures
-            - No XSS vectors (v-html with user data, unsanitized interpolation in URLs)
-            - Type safety — no `any` casts that hide real type mismatches
+          CRITICAL anti-hallucination rules:
+          - ONLY comment on code in the diff. Re-read the line before commenting.
+          - Do NOT invent names, paths, or issues. If <80% confident, skip it.
+          - NEVER suggest improvements — only real bugs, security issues, or correctness problems.
+          - Fewer high-confidence comments > many speculative ones.
 
-            **SQL migrations:**
-            - Backward compatible — no DROP COLUMN without migration strategy
-            - Indexes exist for columns used in WHERE/JOIN
-            - NOT NULL columns have DEFAULT or are populated in same migration
+          Format each issue as:
+          **[Critical/High/Medium/Low]** `file:line` — problem description. Fix: concrete suggestion.
 
-            **General:**
-            - No hardcoded secrets, tokens, or credentials
-            - No accidentally committed debug code (console.log, fmt.Println for debugging)
+          If the PR is clean, say "PR looks good, no issues found." briefly.
+          PROMPT_EOF
+          )
 
-            ## Anti-hallucination rules — CRITICAL
-            - ONLY comment on code that actually exists in the diff. Before writing a comment, re-read the specific line to confirm the issue is real.
-            - Do NOT invent function names, variable names, or file paths that are not in the PR.
-            - Do NOT assume code is buggy just because it looks unusual — verify by reading the surrounding context.
-            - If you are less than 80% confident an issue is real, do NOT report it.
-            - NEVER suggest "consider adding" improvements — only report actual bugs, security issues, or correctness problems.
-            - Prefer fewer, high-confidence comments over many speculative ones.
+          # Build JSON payload
+          PAYLOAD=$(jq -n \
+            --arg prompt "$PROMPT" \
+            --arg diff "$DIFF" \
+            '{
+              "model": "claude-sonnet-4-6-20250514",
+              "max_tokens": 4096,
+              "messages": [
+                {"role": "user", "content": ($prompt + "\n\n## PR Diff\n\n```diff\n" + $diff + "\n```")}
+              ]
+            }')
 
-            ## Output format
-            For each issue found, leave an inline comment on the specific line with:
-            - Severity: **Critical** (breaks functionality/security), **High** (likely bug), **Medium** (potential issue), **Low** (minor)
-            - What the problem is (1-2 sentences)
-            - How to fix it (concrete suggestion, not vague advice)
+          RESPONSE=$(curl -s -X POST https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$PAYLOAD")
 
-            If the PR looks good and has no real issues, say so briefly. Do not manufacture problems.
+          # Extract text from response
+          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text // "Error: no response from Claude API"')
+
+          # Save to file (avoid delimiter issues)
+          echo "$REVIEW" > /tmp/review-result.txt
+
+      - name: Post comment on PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REVIEW=$(cat /tmp/review-result.txt)
+          BODY=$(printf '## 🔍 Claude Code Review\n\n%s\n\n---\n*Automated review by Claude Sonnet 4.6*' "$REVIEW")
+
+          # Post as PR comment via GitHub API
+          jq -n --arg body "$BODY" '{"body": $body}' | \
+            curl -s -X POST \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d @- \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+
+          echo "Review comment posted successfully"
