@@ -1,21 +1,186 @@
+x-worker: &worker
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+
 services:
   postgres:
     image: postgres:17-alpine
     container_name: veziizi-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-veziizi}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veziizi}
-      POSTGRES_DB: ${POSTGRES_DB:-veziizi}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veziizi} -d ${POSTGRES_DB:-veziizi}"]
+      test: ["CMD-SHELL", "pg_isready -U veziizi"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+  api:
+    <<: *worker
+    image: veziizi/api
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: api
+
+  frontend:
+    image: veziizi/frontend
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  telegram-bot:
+    <<: *worker
+    image: veziizi/telegram-bot
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: telegram-bot
+
+  worker-members:
+    <<: *worker
+    image: veziizi/worker-members
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/members
+
+  worker-invitations:
+    <<: *worker
+    image: veziizi/worker-invitations
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/invitations
+
+  worker-pending-organizations:
+    <<: *worker
+    image: veziizi/worker-pending-organizations
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/pending-organizations
+
+  worker-organizations:
+    <<: *worker
+    image: veziizi/worker-organizations
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/organizations
+
+  worker-freight-requests:
+    <<: *worker
+    image: veziizi/worker-freight-requests
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/freight-requests
+
+  worker-review-receiver:
+    <<: *worker
+    image: veziizi/worker-review-receiver
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/review-receiver
+
+  worker-review-analyzer:
+    <<: *worker
+    image: veziizi/worker-review-analyzer
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/review-analyzer
+
+  worker-reviews-projection:
+    <<: *worker
+    image: veziizi/worker-reviews-projection
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/reviews-projection
+
+  worker-review-activator:
+    <<: *worker
+    image: veziizi/worker-review-activator
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/review-activator
+
+  worker-fraudster-handler:
+    <<: *worker
+    image: veziizi/worker-fraudster-handler
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/fraudster-handler
+
+  worker-notification-dispatcher:
+    <<: *worker
+    image: veziizi/worker-notification-dispatcher
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/notification-dispatcher
+
+  worker-telegram-sender:
+    <<: *worker
+    image: veziizi/worker-telegram-sender
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/telegram-sender
+
+  worker-email-sender:
+    <<: *worker
+    image: veziizi/worker-email-sender
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/email-sender
+
+  worker-support-tickets:
+    <<: *worker
+    image: veziizi/worker-support-tickets
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/support-tickets
+
+  worker-rate-limiter-cleanup:
+    <<: *worker
+    image: veziizi/worker-rate-limiter-cleanup
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY: workers/rate-limiter-cleanup
 
 volumes:
   postgres_data:

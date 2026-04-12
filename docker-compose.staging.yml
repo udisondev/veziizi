@@ -1,0 +1,93 @@
+# Staging override: all services active
+# Secrets from .env.secrets (DATABASE_URL, SESSION_*, TELEGRAM_*, etc.)
+
+x-staging-env: &staging-env
+  APP_ENV: staging
+  LOG_LEVEL: info
+  HTTP_ADDR: ":8080"
+  SESSION_NAME: veziizi_session
+  SESSION_ADMIN_NAME: veziizi_admin_session
+  SESSION_MAX_AGE: "86400"
+  CORS_ORIGINS: https://staging.veziizi.ru
+  APP_BASE_URL: https://staging.veziizi.ru
+  EMAIL_ENABLED: "false"
+  EMAIL_PROVIDER: resend
+  EMAIL_FROM_ADDRESS: noreply@veziizi.ru
+  EMAIL_FROM_NAME: Veziizi
+  TELEGRAM_BOT_USERNAME: veziizi_bot
+  METRICS_ENABLED: "true"
+  METRICS_ADDR: ":9090"
+
+x-staging-service: &staging-service
+  env_file:
+    - .env.secrets
+  environment:
+    <<: *staging-env
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: veziizi
+      POSTGRES_DB: veziizi
+    env_file:
+      - .env.secrets
+
+  api:
+    <<: *staging-service
+    ports:
+      - "8080:8080"
+      - "127.0.0.1:9090:9090"
+
+  frontend:
+    ports:
+      - "80:80"
+
+  telegram-bot:
+    <<: *staging-service
+
+  worker-members:
+    <<: *staging-service
+
+  worker-invitations:
+    <<: *staging-service
+
+  worker-pending-organizations:
+    <<: *staging-service
+
+  worker-organizations:
+    <<: *staging-service
+
+  worker-freight-requests:
+    <<: *staging-service
+
+  worker-review-receiver:
+    <<: *staging-service
+
+  worker-review-analyzer:
+    <<: *staging-service
+
+  worker-reviews-projection:
+    <<: *staging-service
+
+  worker-review-activator:
+    <<: *staging-service
+
+  worker-fraudster-handler:
+    <<: *staging-service
+
+  worker-notification-dispatcher:
+    <<: *staging-service
+
+  worker-telegram-sender:
+    <<: *staging-service
+
+  worker-email-sender:
+    <<: *staging-service
+
+  worker-support-tickets:
+    <<: *staging-service
+
+  worker-rate-limiter-cleanup:
+    <<: *staging-service

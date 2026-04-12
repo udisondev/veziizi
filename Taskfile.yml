@@ -1,6 +1,6 @@
 version: '3'
 
-dotenv: ['.env?']
+dotenv: ['.env.dev']
 
 vars:
   POSTGRES_USER: '{{.POSTGRES_USER | default "veziizi"}}'
@@ -11,6 +11,9 @@ vars:
   DATABASE_URL: 'postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_DB}}?sslmode=disable'
   TEST_DATABASE_URL: 'postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/veziizi_test?sslmode=disable'
   WORKERS: members invitations pending-organizations organizations freight-requests review-receiver review-analyzer reviews-projection review-activator fraudster-handler notification-dispatcher telegram-sender email-sender support-tickets rate-limiter-cleanup
+  COMPOSE_DEV: '-f docker-compose.yml -f docker-compose.dev.yml'
+  COMPOSE_STAGING: '-f docker-compose.yml -f docker-compose.staging.yml'
+  COMPOSE_PROD: '-f docker-compose.yml -f docker-compose.prod.yml'
 
 tasks:
   default:
@@ -18,29 +21,29 @@ tasks:
     cmds:
       - task --list-all
 
-  # --- Docker ---
+  # --- Docker (dev Postgres) ---
 
   up:
-    desc: Start all services
+    desc: Start dev Postgres
     cmds:
-      - docker compose up -d
+      - docker compose {{.COMPOSE_DEV}} up -d
 
   down:
-    desc: Stop all services
+    desc: Stop dev Postgres
     cmds:
-      - docker compose down
+      - docker compose {{.COMPOSE_DEV}} down
 
   logs:
-    desc: Show logs
+    desc: Show dev logs
     interactive: true
     cmds:
-      - docker compose logs -f
+      - docker compose {{.COMPOSE_DEV}} logs -f {{.CLI_ARGS}}
 
   db-shell:
     desc: Connect to PostgreSQL shell
     interactive: true
     cmds:
-      - docker compose exec postgres psql -U {{.POSTGRES_USER}} -d {{.POSTGRES_DB}}
+      - docker compose {{.COMPOSE_DEV}} exec postgres psql -U {{.POSTGRES_USER}} -d {{.POSTGRES_DB}}
 
   # --- Migrations ---
 
@@ -190,22 +193,6 @@ tasks:
     cmds:
       - go generate ./...
 
-  # --- Environment ---
-
-  env:init:
-    desc: Create .env from .env.example if not exists
-    status:
-      - test -f .env
-    cmds:
-      - cp .env.example .env
-      - echo ".env created from .env.example - please edit it with your values"
-
-  check-env:
-    internal: true
-    preconditions:
-      - sh: test -f .env
-        msg: "Error: .env file not found. Run 'task env:init' first"
-
   # --- Development ---
 
   dev:setup:
@@ -217,7 +204,6 @@ tasks:
   dev:
     desc: Start DB + API only (without workers/frontend)
     cmds:
-      - task: check-env
       - task: up
       - task: migrate
       - task: seed:geo
@@ -226,7 +212,6 @@ tasks:
   dev:all:
     desc: Start everything with hot-reload (API + workers + frontend)
     cmds:
-      - task: check-env
       - task: dev:setup
       - task: up
       - task: build:workers
@@ -239,17 +224,112 @@ tasks:
       - echo "Starting all services..."
       - goreman -f Procfile.dev start
 
+  dev:docker:
+    desc: Full stack in Docker (no hot-reload)
+    cmds:
+      - docker compose {{.COMPOSE_DEV}} --profile docker-dev build
+      - docker compose {{.COMPOSE_DEV}} --profile docker-dev up -d
+      - echo "Waiting for PostgreSQL..."
+      - until docker compose {{.COMPOSE_DEV}} exec -T postgres pg_isready -U veziizi >/dev/null 2>&1; do sleep 1; done
+      - echo "Running migrations..."
+      - task: migrate
+      - echo "Seeding geo data..."
+      - task: seed:geo
+      - echo "=== Dev stack running in Docker ==="
+      - docker compose {{.COMPOSE_DEV}} --profile docker-dev ps
+
+  dev:docker:down:
+    desc: Stop full Docker dev stack
+    cmds:
+      - docker compose {{.COMPOSE_DEV}} --profile docker-dev down
+
   back:dev:
     desc: Run backend with air (hot-reload)
-    deps: [check-env]
     cmds:
       - air
+
+  # --- Staging ---
+
+  stage:
+    desc: Build and start all staging services
+    preconditions:
+      - sh: test -f .env.secrets
+        msg: ".env.secrets not found. Copy .env.secrets.example and fill in values."
+    cmds:
+      - docker compose {{.COMPOSE_STAGING}} build
+      - docker compose {{.COMPOSE_STAGING}} up -d
+      - echo "Waiting for PostgreSQL..."
+      - until docker compose {{.COMPOSE_STAGING}} exec -T postgres pg_isready -U veziizi >/dev/null 2>&1; do sleep 1; done
+      - echo "Running migrations..."
+      - docker compose {{.COMPOSE_STAGING}} exec -T api /app migrate -dir /migrations up 2>/dev/null || goose -dir backend/migrations postgres "{{.DATABASE_URL}}" up
+      - echo "=== Staging is running ==="
+      - docker compose {{.COMPOSE_STAGING}} ps
+
+  stage:down:
+    desc: Stop staging services
+    cmds:
+      - docker compose {{.COMPOSE_STAGING}} down
+
+  stage:logs:
+    desc: Show staging logs (use -- service-name for specific)
+    interactive: true
+    cmds:
+      - docker compose {{.COMPOSE_STAGING}} logs -f {{.CLI_ARGS}}
+
+  stage:rebuild:
+    desc: Rebuild and restart specific service (use -- service-name)
+    preconditions:
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: "Usage: task stage:rebuild -- api  or  task stage:rebuild -- worker-members"
+    cmds:
+      - docker compose {{.COMPOSE_STAGING}} build {{.CLI_ARGS}}
+      - docker compose {{.COMPOSE_STAGING}} up -d --no-deps {{.CLI_ARGS}}
+
+  stage:rebuild-all:
+    desc: Rebuild and restart all services
+    cmds:
+      - docker compose {{.COMPOSE_STAGING}} up -d --build
+
+  stage:ps:
+    desc: Show staging services status
+    cmds:
+      - docker compose {{.COMPOSE_STAGING}} ps
+
+  # --- Production ---
+
+  prod:
+    desc: Build and start production
+    preconditions:
+      - sh: test -f .env.secrets
+        msg: ".env.secrets not found."
+    cmds:
+      - docker compose {{.COMPOSE_PROD}} build
+      - docker compose {{.COMPOSE_PROD}} up -d
+      - echo "Waiting for PostgreSQL..."
+      - until docker compose {{.COMPOSE_PROD}} exec -T postgres pg_isready -U veziizi >/dev/null 2>&1; do sleep 1; done
+      - echo "=== Production is running ==="
+      - docker compose {{.COMPOSE_PROD}} ps
+
+  prod:down:
+    desc: Stop production services
+    cmds:
+      - docker compose {{.COMPOSE_PROD}} down
+
+  prod:logs:
+    desc: Show production logs
+    interactive: true
+    cmds:
+      - docker compose {{.COMPOSE_PROD}} logs -f {{.CLI_ARGS}}
+
+  prod:ps:
+    desc: Show production services status
+    cmds:
+      - docker compose {{.COMPOSE_PROD}} ps
 
   # --- Admin Management ---
 
   create:admin:
     desc: Create platform admin (interactive)
-    deps: [check-env]
     interactive: true
     cmds:
       - |
@@ -264,13 +344,11 @@ tasks:
 
   create:admin:dev:
     desc: Create dev admin (admin@veziizi.local / admin123)
-    deps: [check-env]
     cmds:
       - go run ./backend/cmd/tools/create-admin --email="admin@veziizi.local" --name="Admin" --password="admin123"
 
   create:test-org:
     desc: Create test org with owner (owner@test.local / test123)
-    deps: [check-env]
     cmds:
       - >-
         go run ./backend/cmd/tools/create-test-org
@@ -284,24 +362,20 @@ tasks:
 
   seed:geo:
     desc: Seed geo data (countries and cities)
-    deps: [check-env]
     cmds:
       - go run ./backend/cmd/tools/seed-geo
 
   seed:orgs:
     desc: Seed test organizations
-    deps: [check-env]
     cmds:
       - go run ./backend/cmd/tools/seed-orgs
 
   resend:telegram:
     desc: Resend failed telegram notifications
-    deps: [check-env]
     cmds:
       - go run ./backend/cmd/tools/resend-telegram
 
   backfill:freight-requests:
     desc: Backfill freight requests projection
-    deps: [check-env]
     cmds:
       - go run ./backend/cmd/tools/backfill-freight-requests

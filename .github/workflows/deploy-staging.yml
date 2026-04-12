@@ -1,0 +1,85 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [staging]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy to staging
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Generate .env.secrets on server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+          SECRET_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SECRET_SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          SECRET_SESSION_ADMIN_SECRET: ${{ secrets.SESSION_ADMIN_SECRET }}
+          SECRET_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SECRET_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          ENV_CONTENT="POSTGRES_PASSWORD=${SECRET_POSTGRES_PASSWORD}
+          DATABASE_URL=postgres://veziizi:${SECRET_POSTGRES_PASSWORD}@postgres:5432/veziizi?sslmode=disable
+          SESSION_SECRET=${SECRET_SESSION_SECRET}
+          SESSION_ADMIN_SECRET=${SECRET_SESSION_ADMIN_SECRET}
+          TELEGRAM_BOT_TOKEN=${SECRET_TELEGRAM_BOT_TOKEN}
+          RESEND_API_KEY=${SECRET_RESEND_API_KEY}"
+
+          echo "${ENV_CONTENT}" | ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST} "cat > ${DEPLOY_PATH}/.env.secrets && chmod 600 ${DEPLOY_PATH}/.env.secrets"
+
+      - name: Sync code to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='bin' \
+            --exclude='tmp' \
+            --exclude='.env.secrets' \
+            --exclude='.env' \
+            --exclude='.beads' \
+            --exclude='.claude' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ ${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/
+
+      - name: Build and restart services
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST}"
+          ${SSH_CMD} "cd ${DEPLOY_PATH} && docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build"
+
+      - name: Wait and verify
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST}"
+          sleep 10
+          ${SSH_CMD} "cd ${DEPLOY_PATH} && docker compose -f docker-compose.yml -f docker-compose.staging.yml ps --format 'table {{.Name}}\t{{.Status}}'"

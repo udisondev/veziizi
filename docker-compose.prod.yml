@@ -1,0 +1,93 @@
+# Production override: strict security, email enabled
+# Secrets from .env.secrets (DATABASE_URL with sslmode=require, SESSION_*, etc.)
+
+x-prod-env: &prod-env
+  APP_ENV: production
+  LOG_LEVEL: warn
+  HTTP_ADDR: ":8080"
+  SESSION_NAME: veziizi_session
+  SESSION_ADMIN_NAME: veziizi_admin_session
+  SESSION_MAX_AGE: "86400"
+  CORS_ORIGINS: "https://везиизи.рф,https://xn--e1aebcghhi.xn--p1acf,https://veziizi.ru"
+  APP_BASE_URL: https://veziizi.ru
+  EMAIL_ENABLED: "true"
+  EMAIL_PROVIDER: resend
+  EMAIL_FROM_ADDRESS: noreply@veziizi.ru
+  EMAIL_FROM_NAME: Veziizi
+  TELEGRAM_BOT_USERNAME: veziizi_bot
+  METRICS_ENABLED: "true"
+  METRICS_ADDR: ":9090"
+
+x-prod-service: &prod-service
+  env_file:
+    - .env.secrets
+  environment:
+    <<: *prod-env
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: veziizi
+      POSTGRES_DB: veziizi
+    env_file:
+      - .env.secrets
+
+  api:
+    <<: *prod-service
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+
+  frontend:
+    ports:
+      - "127.0.0.1:80:80"
+
+  telegram-bot:
+    <<: *prod-service
+
+  worker-members:
+    <<: *prod-service
+
+  worker-invitations:
+    <<: *prod-service
+
+  worker-pending-organizations:
+    <<: *prod-service
+
+  worker-organizations:
+    <<: *prod-service
+
+  worker-freight-requests:
+    <<: *prod-service
+
+  worker-review-receiver:
+    <<: *prod-service
+
+  worker-review-analyzer:
+    <<: *prod-service
+
+  worker-reviews-projection:
+    <<: *prod-service
+
+  worker-review-activator:
+    <<: *prod-service
+
+  worker-fraudster-handler:
+    <<: *prod-service
+
+  worker-notification-dispatcher:
+    <<: *prod-service
+
+  worker-telegram-sender:
+    <<: *prod-service
+
+  worker-email-sender:
+    <<: *prod-service
+
+  worker-support-tickets:
+    <<: *prod-service
+
+  worker-rate-limiter-cleanup:
+    <<: *prod-service
