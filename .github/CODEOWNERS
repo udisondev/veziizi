@@ -1,0 +1,8 @@
+# CI/CD and workflow files — only repo owner can approve changes
+.github/ @udisondev
+
+# Environment and secrets config
+.env* @udisondev
+docker-compose*.yml @udisondev
+Dockerfile* @udisondev
+Taskfile.yml @udisondev

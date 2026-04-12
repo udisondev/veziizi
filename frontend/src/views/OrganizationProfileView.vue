@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { organizationsApi } from '@/api/organizations'
-import type { OrganizationDetail, OrganizationRating, OrganizationReview } from '@/types/admin'
+import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats } from '@/types/admin'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { logger } from '@/utils/logger'
 
@@ -14,6 +14,7 @@ const route = useRoute()
 
 const organization = ref<OrganizationDetail | null>(null)
 const rating = ref<OrganizationRating | null>(null)
+const stats = ref<OrganizationStats | null>(null)
 const reviews = ref<OrganizationReview[]>([])
 const reviewsCursor = ref<string | undefined>(undefined)
 const reviewsHasMore = ref(false)
@@ -69,6 +70,8 @@ async function loadData() {
     ])
     organization.value = orgData
     rating.value = ratingData
+
+    organizationsApi.getStats(id).then(s => { stats.value = s }).catch(() => {})
     reviews.value = reviewsData.items ?? []
     reviewsCursor.value = reviewsData.next_cursor
     reviewsHasMore.value = reviewsData.has_more
@@ -168,6 +171,30 @@ watch(() => route.params.id, () => {
                 <span class="text-gray-500 text-sm">
                   ({{ rating.total_reviews }} {{ rating.total_reviews === 1 ? 'отзыв' : rating.total_reviews < 5 ? 'отзыва' : 'отзывов' }})
                 </span>
+              </div>
+
+              <!-- Stats -->
+              <div v-if="stats" class="flex flex-wrap gap-3 mt-4 text-sm">
+                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
+                  <span class="text-lg font-bold text-gray-900">{{ stats.total_freight_requests }}</span>
+                  <span class="text-gray-500 text-xs">Заявок</span>
+                </div>
+                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
+                  <span class="text-lg font-bold text-blue-600">{{ stats.active_freight_requests }}</span>
+                  <span class="text-gray-500 text-xs">Активных</span>
+                </div>
+                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
+                  <span class="text-lg font-bold text-green-600">{{ stats.completed_deals }}</span>
+                  <span class="text-gray-500 text-xs">Завершено</span>
+                </div>
+                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
+                  <span class="text-lg font-bold text-gray-900">{{ stats.total_offers_made }}</span>
+                  <span class="text-gray-500 text-xs">Предложений</span>
+                </div>
+                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
+                  <span class="text-lg font-bold text-green-600">{{ stats.successful_offers }}</span>
+                  <span class="text-gray-500 text-xs">Успешных</span>
+                </div>
               </div>
             </div>
             <span :class="[statusColors[organization.status], 'px-3 py-1 rounded-full text-sm font-medium']">

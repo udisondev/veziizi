@@ -352,7 +352,7 @@ func (s *Suite) startServer() {
 		r.Use(middleware.RateLimiter(sessionManager, s.Factory.SessionAnalyzer()))
 		r.Use(middleware.CSRFProtection())
 
-		orgHandler := handlers.NewOrganizationHandler(s.Factory.OrganizationService(), s.Factory.OrganizationRatingsProjection(), sessionManager)
+		orgHandler := handlers.NewOrganizationHandler(s.Factory.OrganizationService(), s.Factory.OrganizationRatingsProjection(), s.Factory.FreightRequestsProjection(), sessionManager)
 		orgHandler.RegisterRoutes(r)
 
 		authHandler := handlers.NewAuthHandler(s.Factory.MembersProjection(), s.Factory.FreightRequestsProjection(), s.Factory.OrganizationService(), sessionManager, s.Factory.SessionAnalyzer(), geoIPService)

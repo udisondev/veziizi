@@ -53,6 +53,14 @@ export interface OrganizationRating {
   average_rating: number
 }
 
+export interface OrganizationStats {
+  total_freight_requests: number
+  active_freight_requests: number
+  completed_deals: number
+  total_offers_made: number
+  successful_offers: number
+}
+
 export interface OrganizationReview {
   id: string
   order_id: string
