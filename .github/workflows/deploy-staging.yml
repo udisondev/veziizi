@@ -38,14 +38,14 @@ jobs:
           SECRET_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SECRET_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
-          ENV_CONTENT="POSTGRES_PASSWORD=${SECRET_POSTGRES_PASSWORD}
-          DATABASE_URL=postgres://veziizi:${SECRET_POSTGRES_PASSWORD}@postgres:5432/veziizi?sslmode=disable
-          SESSION_SECRET=${SECRET_SESSION_SECRET}
-          SESSION_ADMIN_SECRET=${SECRET_SESSION_ADMIN_SECRET}
-          TELEGRAM_BOT_TOKEN=${SECRET_TELEGRAM_BOT_TOKEN}
-          RESEND_API_KEY=${SECRET_RESEND_API_KEY}"
-
-          echo "${ENV_CONTENT}" | ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST} "cat > ${DEPLOY_PATH}/.env.secrets && chmod 600 ${DEPLOY_PATH}/.env.secrets"
+          printf '%s\n' \
+            "POSTGRES_PASSWORD=${SECRET_POSTGRES_PASSWORD}" \
+            "DATABASE_URL=postgres://veziizi:${SECRET_POSTGRES_PASSWORD}@postgres:5432/veziizi?sslmode=disable" \
+            "SESSION_SECRET=${SECRET_SESSION_SECRET}" \
+            "SESSION_ADMIN_SECRET=${SECRET_SESSION_ADMIN_SECRET}" \
+            "TELEGRAM_BOT_TOKEN=${SECRET_TELEGRAM_BOT_TOKEN}" \
+            "RESEND_API_KEY=${SECRET_RESEND_API_KEY}" \
+          | ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST} "cat > ${DEPLOY_PATH}/.env.secrets && chmod 600 ${DEPLOY_PATH}/.env.secrets"
 
       - name: Sync code to server
         env:
