@@ -1,7 +1,9 @@
 name: Claude Code Review
 
 on:
-  pull_request:
+  # pull_request_target runs workflow from BASE branch, not PR branch.
+  # This prevents PR authors from modifying the workflow to steal secrets.
+  pull_request_target:
     types: [opened, synchronize]
 
 jobs:
@@ -12,23 +14,29 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      # Checkout base branch (safe — this is our trusted code)
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
 
       - name: Get PR diff
-        id: diff
         run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...HEAD -- '*.go' '*.vue' '*.ts' '*.sql' | head -c 90000)
+          git fetch origin +refs/pull/${{ github.event.pull_request.number }}/head:refs/remotes/origin/pr-head
+          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...origin/pr-head -- '*.go' '*.vue' '*.ts' '*.sql' | head -c 90000)
           echo "$DIFF" > /tmp/pr-diff.txt
+          echo "Diff size: $(wc -c < /tmp/pr-diff.txt) bytes"
 
       - name: Call Claude API
-        id: review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           DIFF=$(cat /tmp/pr-diff.txt)
+
+          if [ -z "$DIFF" ]; then
+            echo "No relevant changes found" > /tmp/review-result.txt
+            exit 0
+          fi
 
           PROMPT=$(cat <<'PROMPT_EOF'
           You are a senior code reviewer for Veziizi — a B2B logistics platform.
@@ -54,7 +62,6 @@ jobs:
           PROMPT_EOF
           )
 
-          # Build JSON payload
           PAYLOAD=$(jq -n \
             --arg prompt "$PROMPT" \
             --arg diff "$DIFF" \
@@ -72,41 +79,39 @@ jobs:
             -H "anthropic-version: 2023-06-01" \
             -d "$PAYLOAD")
 
-          # Debug: show response type and error if any
           echo "API response type: $(echo "$RESPONSE" | jq -r '.type // "unknown"')"
-          echo "API stop reason: $(echo "$RESPONSE" | jq -r '.stop_reason // "none"')"
           ERROR=$(echo "$RESPONSE" | jq -r '.error.message // empty')
           if [ -n "$ERROR" ]; then
             echo "API error: $ERROR"
-            echo "Claude API returned error: $ERROR" > /tmp/review-result.txt
             exit 1
           fi
 
-          # Extract text from response
           REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text')
           if [ -z "$REVIEW" ] || [ "$REVIEW" = "null" ]; then
-            echo "Full API response:"
+            echo "Empty response from API"
             echo "$RESPONSE" | jq .
-            echo "Error: empty response" > /tmp/review-result.txt
             exit 1
           fi
 
           echo "$REVIEW" > /tmp/review-result.txt
-          echo "Review generated successfully ($(wc -c < /tmp/review-result.txt) bytes)"
+          echo "Review generated ($(wc -c < /tmp/review-result.txt) bytes)"
 
       - name: Post comment on PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REVIEW=$(cat /tmp/review-result.txt)
-          BODY=$(printf '## 🔍 Claude Code Review\n\n%s\n\n---\n*Automated review by Claude Sonnet 4.6*' "$REVIEW")
 
-          # Post as PR comment via GitHub API
-          jq -n --arg body "$BODY" '{"body": $body}' | \
+          jq -n --arg body "## Claude Code Review
+
+          $REVIEW
+
+          ---
+          *Automated review by Claude Sonnet 4.6*" '{"body": $body}' | \
             curl -s -X POST \
               -H "Authorization: token $GH_TOKEN" \
               -H "Content-Type: application/json" \
               -d @- \
               "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
 
-          echo "Review comment posted successfully"
+          echo "Review posted"
