@@ -69,6 +69,9 @@ jobs:
           SECRET_SESSION_ADMIN_SECRET: ${{ secrets.SESSION_ADMIN_SECRET }}
           SECRET_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SECRET_RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SECRET_ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          SECRET_ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
+          SECRET_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           printf '%s\n' \
             "POSTGRES_PASSWORD=${SECRET_POSTGRES_PASSWORD}" \
@@ -77,6 +80,9 @@ jobs:
             "SESSION_ADMIN_SECRET=${SECRET_SESSION_ADMIN_SECRET}" \
             "TELEGRAM_BOT_TOKEN=${SECRET_TELEGRAM_BOT_TOKEN}" \
             "RESEND_API_KEY=${SECRET_RESEND_API_KEY}" \
+            "ADMIN_EMAIL=${SECRET_ADMIN_EMAIL}" \
+            "ADMIN_NAME=${SECRET_ADMIN_NAME}" \
+            "ADMIN_PASSWORD=${SECRET_ADMIN_PASSWORD}" \
           | ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST} "cat > ${DEPLOY_PATH}/.env.secrets && chmod 600 ${DEPLOY_PATH}/.env.secrets"
 
       - name: Sync compose files
@@ -100,6 +106,18 @@ jobs:
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} && \
             docker compose -f docker-compose.yml -f docker-compose.staging.yml pull && \
             docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d"
+
+      - name: Run migrations and seed
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/veziizi' }}
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/deploy_key ${SERVER_USER}@${SERVER_HOST}"
+          ${SSH_CMD} "cd ${DEPLOY_PATH} && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm api migrator up && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm api seed-geo && \
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm api create-admin"
 
       - name: Verify
         env:

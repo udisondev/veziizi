@@ -261,7 +261,7 @@ tasks:
       - echo "Waiting for PostgreSQL..."
       - until docker compose {{.COMPOSE_STAGING}} exec -T postgres pg_isready -U veziizi >/dev/null 2>&1; do sleep 1; done
       - echo "Running migrations..."
-      - docker compose {{.COMPOSE_STAGING}} exec -T api /app migrate -dir /migrations up 2>/dev/null || goose -dir backend/migrations postgres "{{.DATABASE_URL}}" up
+      - docker compose {{.COMPOSE_STAGING}} run --rm api migrator up
       - echo "=== Staging is running ==="
       - docker compose {{.COMPOSE_STAGING}} ps
 
