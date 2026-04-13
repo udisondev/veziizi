@@ -85,3 +85,113 @@ jobs:
           name: binaries
           path: bin/
           retention-days: 3
+
+  review:
+    name: Claude Code Review
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: claude-review
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...HEAD -- '*.go' '*.vue' '*.ts' '*.sql' | head -c 90000)
+          echo "$DIFF" > /tmp/pr-diff.txt
+          echo "Diff size: $(wc -c < /tmp/pr-diff.txt) bytes"
+
+      - name: Call Claude API
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          DIFF=$(cat /tmp/pr-diff.txt)
+
+          if [ -z "$DIFF" ]; then
+            echo "No relevant changes found" > /tmp/review-result.txt
+            exit 0
+          fi
+
+          PROMPT=$(cat <<'PROMPT_EOF'
+          You are a senior code reviewer for Veziizi — a B2B logistics platform.
+          Tech stack: Go 1.23+ backend (DDD, Event Sourcing, watermill, pgx, squirrel), Vue 3 + TypeScript frontend (Tailwind, Pinia), PostgreSQL.
+
+          Review the PR diff below. Check for real issues only:
+
+          **Go:** errors swallowed, SQL injection, race conditions, nil dereference, resource leaks, missing context propagation
+          **Vue/TS:** reactive state misuse, unhandled API errors, XSS vectors, unsafe `any` casts
+          **SQL:** backward-incompatible changes, missing indexes, NOT NULL without DEFAULT
+          **General:** hardcoded secrets, debug code left in
+
+          CRITICAL anti-hallucination rules:
+          - ONLY comment on code in the diff. Re-read the line before commenting.
+          - Do NOT invent names, paths, or issues. If <80% confident, skip it.
+          - NEVER suggest improvements — only real bugs, security issues, or correctness problems.
+          - Fewer high-confidence comments > many speculative ones.
+
+          Format each issue as:
+          **[Critical/High/Medium/Low]** `file:line` — problem description. Fix: concrete suggestion.
+
+          If the PR is clean, say "PR looks good, no issues found." briefly.
+          PROMPT_EOF
+          )
+
+          PAYLOAD=$(jq -n \
+            --arg prompt "$PROMPT" \
+            --arg diff "$DIFF" \
+            '{
+              "model": "claude-sonnet-4-6",
+              "max_tokens": 4096,
+              "messages": [
+                {"role": "user", "content": ($prompt + "\n\n## PR Diff\n\n```diff\n" + $diff + "\n```")}
+              ]
+            }')
+
+          RESPONSE=$(curl -s -X POST https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$PAYLOAD")
+
+          echo "API response type: $(echo "$RESPONSE" | jq -r '.type // "unknown"')"
+          ERROR=$(echo "$RESPONSE" | jq -r '.error.message // empty')
+          if [ -n "$ERROR" ]; then
+            echo "API error: $ERROR"
+            exit 1
+          fi
+
+          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text')
+          if [ -z "$REVIEW" ] || [ "$REVIEW" = "null" ]; then
+            echo "Empty response from API"
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          echo "$REVIEW" > /tmp/review-result.txt
+          echo "Review generated ($(wc -c < /tmp/review-result.txt) bytes)"
+
+      - name: Post comment on PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REVIEW=$(cat /tmp/review-result.txt)
+
+          jq -n --arg body "## Claude Code Review
+
+          $REVIEW
+
+          ---
+          *Automated review by Claude Sonnet 4.6*" '{"body": $body}' | \
+            curl -s -X POST \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d @- \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+
+          echo "Review posted"
