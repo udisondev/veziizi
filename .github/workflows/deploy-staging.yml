@@ -9,12 +9,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
+  lint-test-build:
+    uses: ./.github/workflows/lint-test-build.yml
 
   build-and-push:
     name: Build & push images
-    needs: ci
+    needs: lint-test-build
     runs-on: ubuntu-latest
     permissions:
       contents: read
