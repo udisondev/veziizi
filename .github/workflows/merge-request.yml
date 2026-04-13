@@ -28,7 +28,7 @@ jobs:
       - name: Get PR diff
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
-          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...HEAD -- '*.go' '*.vue' '*.ts' '*.sql' | head -c 90000)
+          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...HEAD | head -c 180000)
           echo "$DIFF" > /tmp/pr-diff.txt
           echo "Diff size: $(wc -c < /tmp/pr-diff.txt) bytes"
 
