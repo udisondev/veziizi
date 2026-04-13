@@ -1,0 +1,15 @@
+name: Deploy Main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  lint-test-build:
+    uses: ./.github/workflows/lint-test-build.yml
+
+  # TODO: add build-and-push and deploy to production
