@@ -170,8 +170,11 @@ function initMap() {
     touchZoom: props.navigable,
     doubleClickZoom: props.navigable,
     boxZoom: props.navigable,
-    attributionControl: false,
+    attributionControl: true,
   })
+
+  // Убираем с карты атрибутику без нарушения условия лицензии ODbL
+  map.attributionControl.setPrefix(false)
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:
