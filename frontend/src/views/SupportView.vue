@@ -7,6 +7,7 @@ import { storeToRefs } from 'pinia'
 import { createTicket, getMyTickets, type TicketListItem } from '@/api/support'
 import { getErrorMessage } from '@/api/errors'
 import type { ScenarioType } from '@/types/tutorial'
+import logger from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -130,7 +131,7 @@ async function loadRecentTickets() {
   try {
     recentTickets.value = await getMyTickets({ limit: 3 })
   } catch (e) {
-    console.error('Failed to load recent tickets:', e)
+    logger.error('Failed to load recent tickets:', e)
   } finally {
     ticketsLoading.value = false
   }
@@ -244,7 +245,7 @@ onMounted(() => {
       </div>
 
       <!-- Форма + последние обращения -->
-      <div class="space-y-6 lg:top-4 lg:self-start">
+      <div class="space-y-6 lg:self-start">
         <!-- Create ticket form -->
         <Card>
           <CardHeader>

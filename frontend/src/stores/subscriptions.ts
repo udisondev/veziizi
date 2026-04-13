@@ -128,7 +128,11 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
     const newIsActive = !subscription.is_active
     subscription.is_active = newIsActive
     try {
-      await subscriptionsApi.setActive(id, newIsActive)
+      const updated = await subscriptionsApi.setActive(id, newIsActive)
+      const index = subscriptions.value.findIndex(s => s.id === id)
+      if (index !== -1) {
+        subscriptions.value[index] = updated
+      }
       return true
     } catch (e) {
       subscription.is_active = !newIsActive
