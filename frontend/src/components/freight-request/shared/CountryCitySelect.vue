@@ -93,7 +93,7 @@ function calculateDropdownDirection() {
 
 // Recalculate direction when dropdown opens (desktop only)
 watch(isCityDropdownOpen, (isOpen) => {
-  if (isOpen && !isMobile()) {
+  if (isOpen && !isMobile) {
     nextTick(() => calculateDropdownDirection())
   }
 })
@@ -244,7 +244,7 @@ function handleCitySheetSelect(city: City) {
       <Label class="block text-sm font-medium text-gray-700 mb-1">Страна</Label>
 
       <!-- Desktop -->
-      <template v-if="!isMobile()">
+      <template v-if="!isMobile">
         <Select
           :model-value="selectedCountryId?.toString()"
           :disabled="disabled || isLoadingCountries"
@@ -338,7 +338,7 @@ function handleCitySheetSelect(city: City) {
       <Label class="block text-sm font-medium text-gray-700 mb-1">Город</Label>
 
       <!-- Desktop -->
-      <template v-if="!isMobile()">
+      <template v-if="!isMobile">
         <div class="relative">
           <input
             ref="cityInputRef"

@@ -1,30 +1,30 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
+import { useWindowSize } from '@vueuse/core'
 
 export type Breakpoint = 'mobile' | 'tablet' | 'desktop'
 
 const SM = 768
 const LG = 1240
 
-function getBreakpoint(width: number): Breakpoint {
-  if (width < SM) return 'mobile'
-  if (width < LG) return 'tablet'
-  return 'desktop'
-}
-
 export function useBreakpoint() {
-  const breakpoint = ref<Breakpoint>(getBreakpoint(window.innerWidth))
+  const { width } = useWindowSize()
 
-  const isMobile = () => breakpoint.value === 'mobile'
-  const isTablet = () => breakpoint.value === 'tablet'
-  const isDesktop = () => breakpoint.value === 'desktop'
-  const isMobileOrTablet = () => breakpoint.value !== 'desktop'
+  const breakpoint = computed<Breakpoint>(() => {
+    if (width.value < SM) return 'mobile'
+    if (width.value < LG) return 'tablet'
+    return 'desktop'
+  })
 
-  function onResize() {
-    breakpoint.value = getBreakpoint(window.innerWidth)
+  const isMobile = computed(() => breakpoint.value === 'mobile')
+  const isTablet = computed(() => breakpoint.value === 'tablet')
+  const isDesktop = computed(() => breakpoint.value === 'desktop')
+  const isMobileOrTablet = computed(() => breakpoint.value !== 'desktop')
+
+  return {
+    breakpoint,
+    isMobile,
+    isTablet,
+    isDesktop,
+    isMobileOrTablet,
   }
-
-  onMounted(() => window.addEventListener('resize', onResize))
-  onUnmounted(() => window.removeEventListener('resize', onResize))
-
-  return { breakpoint, isMobile, isTablet, isDesktop, isMobileOrTablet }
 }

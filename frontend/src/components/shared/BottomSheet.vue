@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { watch } from 'vue'
+import { useScrollLock } from '@vueuse/core'
+
 /**
  * Переиспользуемый bottom sheet для мобильных.
  * Используется как замена выпадающим спискам на мобильных устройствах.
@@ -13,6 +16,15 @@ withDefaults(defineProps<Props>(), {
 })
 
 const open = defineModel<boolean>({ default: false })
+
+const isLocked = useScrollLock(document.body)
+watch(
+  open,
+  (value) => {
+    isLocked.value = value
+  },
+  { immediate: true }
+)
 
 function close() {
   open.value = false

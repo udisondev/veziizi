@@ -157,6 +157,12 @@ export interface VehicleRequirements {
   thermograph?: boolean // устройство фиксации температуры в пути
 }
 
+// Тип для состояния формы: vehicle_type и vehicle_subtype опциональны до выбора
+export type VehicleRequirementsForm = Omit<VehicleRequirements, 'vehicle_type' | 'vehicle_subtype'> & {
+  vehicle_type?: VehicleType
+  vehicle_subtype?: VehicleSubType
+}
+
 export interface Money {
   amount: number // в копейках/центах
   currency: Currency

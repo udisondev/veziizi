@@ -14,7 +14,7 @@
  *     @on-close="handleChange"
  *   />
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import FlatPickr from 'vue-flatpickr-component'
 import type { BaseOptions } from 'flatpickr/dist/types/options'
 import type { Instance } from 'flatpickr/dist/types/instance'
@@ -43,6 +43,36 @@ const isMobileNow = computed(() => breakpoint.value === 'mobile')
 const sheetOpen = ref(false)
 const calendarContainer = ref<HTMLElement | null>(null)
 let fpInstance: Instance | null = null
+let yearBtnObserver: MutationObserver | null = null
+
+function injectYearButtons(fp: Instance) {
+  const yearWrapper = fp.calendarContainer.querySelector<HTMLElement>('.cur-year')?.parentElement
+  if (!yearWrapper) return
+  if (yearWrapper.querySelector('.fp-year-btn')) return // уже вставлены
+
+  yearWrapper.querySelectorAll<HTMLElement>('.arrowUp, .arrowDown').forEach(el => {
+    el.style.display = 'none'
+  })
+
+  const btnMinus = document.createElement('button')
+  btnMinus.type = 'button'
+  btnMinus.textContent = '−'
+  btnMinus.className = 'fp-year-btn fp-year-btn--minus'
+  btnMinus.addEventListener('click', () => fp.changeYear(fp.currentYear - 1))
+
+  const btnPlus = document.createElement('button')
+  btnPlus.type = 'button'
+  btnPlus.textContent = '+'
+  btnPlus.className = 'fp-year-btn fp-year-btn--plus'
+  btnPlus.addEventListener('click', () => fp.changeYear(fp.currentYear + 1))
+
+  yearWrapper.insertBefore(btnMinus, yearWrapper.firstChild)
+  yearWrapper.appendChild(btnPlus)
+}
+
+onBeforeUnmount(() => {
+  yearBtnObserver?.disconnect()
+})
 
 // Когда BottomSheet закрывается через X/overlay — синхронизируем с flatpickr
 watch(sheetOpen, (open) => {
@@ -83,28 +113,18 @@ const enhancedConfig = computed<Partial<BaseOptions>>(() => {
         // которая сбрасывает transform и вызывает рывок scale
         fp.calendarContainer.classList.remove('animate')
 
-        // Заменяем стрелки года на кнопки - и + по бокам
-        const yearWrapper = fp.calendarContainer.querySelector<HTMLElement>('.cur-year')?.parentElement
-        if (yearWrapper) {
-          // Скрываем стандартные стрелки
-          yearWrapper.querySelectorAll<HTMLElement>('.arrowUp, .arrowDown').forEach(el => {
-            el.style.display = 'none'
+        injectYearButtons(fp)
+
+        // Переинжектируем кнопки если flatpickr пересоздаст заголовок
+        yearBtnObserver?.disconnect()
+        const monthNav = fp.calendarContainer.querySelector('.flatpickr-months')
+        if (monthNav) {
+          yearBtnObserver = new MutationObserver(() => {
+            if (!fp.calendarContainer.querySelector('.fp-year-btn')) {
+              injectYearButtons(fp)
+            }
           })
-
-          const btnMinus = document.createElement('button')
-          btnMinus.type = 'button'
-          btnMinus.textContent = '−'
-          btnMinus.className = 'fp-year-btn fp-year-btn--minus'
-          btnMinus.addEventListener('click', () => fp.changeYear(fp.currentYear - 1))
-
-          const btnPlus = document.createElement('button')
-          btnPlus.type = 'button'
-          btnPlus.textContent = '+'
-          btnPlus.className = 'fp-year-btn fp-year-btn--plus'
-          btnPlus.addEventListener('click', () => fp.changeYear(fp.currentYear + 1))
-
-          yearWrapper.insertBefore(btnMinus, yearWrapper.firstChild)
-          yearWrapper.appendChild(btnPlus)
+          yearBtnObserver.observe(monthNav, { childList: true, subtree: true })
         }
 
         fp._positionCalendar = () => {}
@@ -157,13 +177,13 @@ const enhancedConfig = computed<Partial<BaseOptions>>(() => {
 }
 
 /* Внутри sheet видимостью управляем мы сами (translate + opacity) */
+/* zoom влияет на layout (в отличие от transform: scale), поэтому */
+/* компенсация отступа не нужна и высота работает для любого числа недель */
 .date-picker-sheet .flatpickr-calendar {
   display: inline-block;
   opacity: 1;
   visibility: visible;
-  transform: scale(1.13);
-  transform-origin: top center;
-  margin-bottom: calc(308px * 0.13);
+  zoom: 1.13;
 }
 
 /* Фиксируем layout навигации — prev/next по умолчанию position:absolute */

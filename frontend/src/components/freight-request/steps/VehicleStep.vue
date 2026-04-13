@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import type { VehicleRequirements, VehicleType, VehicleSubType, LoadingType } from '@/types/freightRequest'
+import type { VehicleRequirementsForm, VehicleType, VehicleSubType, LoadingType } from '@/types/freightRequest'
 import {
   vehicleTypeOptions,
   getVehicleSubTypeOptions,
@@ -10,59 +10,31 @@ import {
   loadingTypeOptions,
   loadingTypeLabels,
 } from '@/types/freightRequest'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { useBreakpoint } from '@/composables/useBreakpoint'
-import BottomSheet from '@/components/shared/BottomSheet.vue'
+import SelectField from '@/components/freight-request/shared/SelectField.vue'
 
 interface Props {
-  vehicle: VehicleRequirements
+  vehicle: VehicleRequirementsForm
   errors: Record<string, string | null>
 }
 
 interface Emits {
-  (e: 'update:vehicle', value: VehicleRequirements): void
+  (e: 'update:vehicle', value: VehicleRequirementsForm): void
   (e: 'validateField', field: string): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const { isMobile } = useBreakpoint()
-
-const vehicleTypeSheetOpen = ref(false)
-const vehicleSubTypeSheetOpen = ref(false)
-
-const selectedVehicleTypeLabel = computed(() =>
-  vehicleTypeOptions.find(o => o.value === props.vehicle.vehicle_type)?.label ?? null
-)
-
-const selectedVehicleSubTypeLabel = computed(() => {
-  if (!props.vehicle.vehicle_subtype) return null
-  return availableSubTypes.value.find(o => o.value === props.vehicle.vehicle_subtype)?.label ?? null
-})
-
-function handleVehicleTypeSheetSelect(value: VehicleType | null) {
-  if (value === null) {
+function handleVehicleTypeChange(value: string | null | undefined) {
+  if (!value) {
     emit('update:vehicle', {
       ...props.vehicle,
       vehicle_type: undefined,
       vehicle_subtype: undefined,
-    } as unknown as VehicleRequirements)
+    })
   } else {
-    selectVehicleType(value)
+    selectVehicleType(value as VehicleType)
   }
-  vehicleTypeSheetOpen.value = false
-}
-
-function handleVehicleSubTypeSheetSelect(value: VehicleSubType) {
-  selectVehicleSubType(value)
-  vehicleSubTypeSheetOpen.value = false
 }
 
 // Типы кузова с температурным режимом
@@ -109,9 +81,9 @@ watch(isTemperatureSubType, (isTemp) => {
   }
 })
 
-function updateField<K extends keyof VehicleRequirements>(
+function updateField<K extends keyof VehicleRequirementsForm>(
   field: K,
-  value: VehicleRequirements[K]
+  value: VehicleRequirementsForm[K]
 ) {
   emit('update:vehicle', { ...props.vehicle, [field]: value })
 }
@@ -185,63 +157,16 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
         Тип транспорта <span class="text-red-500">*</span>
       </label>
 
-      <!-- Desktop -->
-      <template v-if="!isMobile()">
-        <Select
-          :key="vehicle.vehicle_type ?? '__none__'"
-          :model-value="vehicle.vehicle_type"
-          @update:model-value="value => value === '__none__' ? handleVehicleTypeSheetSelect(null) : selectVehicleType(value as VehicleType)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите тип транспорта" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__" class="text-gray-400">Не выбран</SelectItem>
-            <SelectItem v-for="option in vehicleTypeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </template>
-
-      <!-- Mobile -->
-      <template v-else>
-        <button
-          type="button"
-          :class="[
-            'appearance-none block w-full px-3 py-2 border rounded-md text-sm text-left bg-white',
-            errors.vehicle_type ? 'border-red-300' : 'border-gray-300',
-          ]"
-          @click="vehicleTypeSheetOpen = true"
-        >
-          <span v-if="selectedVehicleTypeLabel">{{ selectedVehicleTypeLabel }}</span>
-          <span v-else class="text-gray-400">Выберите тип транспорта</span>
-        </button>
-
-        <BottomSheet v-model="vehicleTypeSheetOpen" label="Тип транспорта">
-          <div class="overflow-y-auto flex-1">
-            <button
-              type="button"
-              class="w-full px-4 py-3 text-left text-sm border-b border-gray-50 text-gray-400 active:bg-gray-100"
-              @click="handleVehicleTypeSheetSelect(null)"
-            >
-              Не выбран
-            </button>
-            <button
-              v-for="option in vehicleTypeOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100',
-                option.value === vehicle.vehicle_type ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900',
-              ]"
-              @click="handleVehicleTypeSheetSelect(option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-        </BottomSheet>
-      </template>
+      <SelectField
+        :model-value="vehicle.vehicle_type"
+        :options="vehicleTypeOptions"
+        :has-error="!!errors.vehicle_type"
+        placeholder="Выберите тип транспорта"
+        sheet-label="Тип транспорта"
+        clearable
+        clear-label="Не выбран"
+        @update:model-value="handleVehicleTypeChange"
+      />
 
       <p v-if="errors.vehicle_type" class="mt-1 text-sm text-red-600">
         {{ errors.vehicle_type }}
@@ -254,54 +179,14 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
         Тип кузова <span class="text-red-500">*</span>
       </label>
 
-      <!-- Desktop -->
-      <template v-if="!isMobile()">
-        <Select
-          :model-value="vehicle.vehicle_subtype"
-          @update:model-value="selectVehicleSubType($event as VehicleSubType)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите тип кузова" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in availableSubTypes" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </template>
-
-      <!-- Mobile -->
-      <template v-else>
-        <button
-          type="button"
-          :class="[
-            'appearance-none block w-full px-3 py-2 border rounded-md text-sm text-left bg-white',
-            errors.vehicle_subtype ? 'border-red-300' : 'border-gray-300',
-          ]"
-          @click="vehicleSubTypeSheetOpen = true"
-        >
-          <span v-if="selectedVehicleSubTypeLabel">{{ selectedVehicleSubTypeLabel }}</span>
-          <span v-else class="text-gray-400">Выберите тип кузова</span>
-        </button>
-
-        <BottomSheet v-model="vehicleSubTypeSheetOpen" label="Тип кузова">
-          <div class="overflow-y-auto flex-1">
-            <button
-              v-for="option in availableSubTypes"
-              :key="option.value"
-              type="button"
-              :class="[
-                'w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100',
-                option.value === vehicle.vehicle_subtype ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900',
-              ]"
-              @click="handleVehicleSubTypeSheetSelect(option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-        </BottomSheet>
-      </template>
+      <SelectField
+        :model-value="vehicle.vehicle_subtype"
+        :options="availableSubTypes"
+        :has-error="!!errors.vehicle_subtype"
+        placeholder="Выберите тип кузова"
+        sheet-label="Тип кузова"
+        @update:model-value="selectVehicleSubType($event as VehicleSubType)"
+      />
 
       <p v-if="errors.vehicle_subtype" class="mt-1 text-sm text-red-600">
         {{ errors.vehicle_subtype }}
