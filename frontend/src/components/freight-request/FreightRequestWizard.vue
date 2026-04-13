@@ -12,7 +12,7 @@ import CargoStep from './steps/CargoStep.vue'
 import VehicleStep from './steps/VehicleStep.vue'
 import PaymentStep from './steps/PaymentStep.vue'
 import ConfirmationStep from './steps/ConfirmationStep.vue'
-import type { FreightRequest } from '@/types/freightRequest'
+import type { FreightRequest, VehicleType, VehicleSubType } from '@/types/freightRequest'
 
 interface Props {
   editMode?: boolean
@@ -62,8 +62,8 @@ async function handleSubmit() {
       cargo_weight: form.cargo.weight || 0,
       price_amount: form.payment.price?.amount,
       price_currency: form.payment.price?.currency,
-      vehicle_type: form.vehicle.vehicle_type || 'truck',
-      vehicle_subtype: form.vehicle.vehicle_subtype || 'tilt',
+      vehicle_type: (form.vehicle.vehicle_type || 'truck') as VehicleType,
+      vehicle_subtype: (form.vehicle.vehicle_subtype || 'tilt') as VehicleSubType,
       created_at: new Date().toISOString(),
     })
     emitTutorial('freightRequest:created', { id: 'sandbox-request' })

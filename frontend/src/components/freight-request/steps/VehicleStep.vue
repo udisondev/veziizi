@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import type { VehicleRequirements, VehicleType, VehicleSubType, LoadingType } from '@/types/freightRequest'
+import type { VehicleRequirementsForm, VehicleType, VehicleSubType, LoadingType } from '@/types/freightRequest'
 import {
   vehicleTypeOptions,
   getVehicleSubTypeOptions,
@@ -10,26 +10,32 @@ import {
   loadingTypeOptions,
   loadingTypeLabels,
 } from '@/types/freightRequest'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import SelectField from '@/components/freight-request/shared/SelectField.vue'
 
 interface Props {
-  vehicle: VehicleRequirements
+  vehicle: VehicleRequirementsForm
   errors: Record<string, string | null>
 }
 
 interface Emits {
-  (e: 'update:vehicle', value: VehicleRequirements): void
+  (e: 'update:vehicle', value: VehicleRequirementsForm): void
   (e: 'validateField', field: string): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+function handleVehicleTypeChange(value: string | null | undefined) {
+  if (!value) {
+    emit('update:vehicle', {
+      ...props.vehicle,
+      vehicle_type: undefined,
+      vehicle_subtype: undefined,
+    })
+  } else {
+    selectVehicleType(value as VehicleType)
+  }
+}
 
 // Типы кузова с температурным режимом
 const temperatureSubTypes: VehicleSubType[] = ['insulated', 'refrigerator']
@@ -75,9 +81,9 @@ watch(isTemperatureSubType, (isTemp) => {
   }
 })
 
-function updateField<K extends keyof VehicleRequirements>(
+function updateField<K extends keyof VehicleRequirementsForm>(
   field: K,
-  value: VehicleRequirements[K]
+  value: VehicleRequirementsForm[K]
 ) {
   emit('update:vehicle', { ...props.vehicle, [field]: value })
 }
@@ -150,19 +156,18 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Тип транспорта <span class="text-red-500">*</span>
       </label>
-      <Select
+
+      <SelectField
         :model-value="vehicle.vehicle_type"
-        @update:model-value="selectVehicleType($event as VehicleType)"
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Выберите тип транспорта" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="option in vehicleTypeOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
+        :options="vehicleTypeOptions"
+        :has-error="!!errors.vehicle_type"
+        placeholder="Выберите тип транспорта"
+        sheet-label="Тип транспорта"
+        clearable
+        clear-label="Не выбран"
+        @update:model-value="handleVehicleTypeChange"
+      />
+
       <p v-if="errors.vehicle_type" class="mt-1 text-sm text-red-600">
         {{ errors.vehicle_type }}
       </p>
@@ -173,19 +178,16 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Тип кузова <span class="text-red-500">*</span>
       </label>
-      <Select
+
+      <SelectField
         :model-value="vehicle.vehicle_subtype"
+        :options="availableSubTypes"
+        :has-error="!!errors.vehicle_subtype"
+        placeholder="Выберите тип кузова"
+        sheet-label="Тип кузова"
         @update:model-value="selectVehicleSubType($event as VehicleSubType)"
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Выберите тип кузова" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="option in availableSubTypes" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
+      />
+
       <p v-if="errors.vehicle_subtype" class="mt-1 text-sm text-red-600">
         {{ errors.vehicle_subtype }}
       </p>

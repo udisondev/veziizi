@@ -100,7 +100,7 @@ const hasValidCoordinates = computed(() =>
     <!-- Map preview -->
     <div v-if="hasValidCoordinates">
       <h4 class="text-sm font-medium text-gray-700 mb-2">Маршрут на карте</h4>
-      <LeafletMap :points="routePoints" height="250px" />
+      <LeafletMap :points="routePoints" />
     </div>
 
     <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-gray-500">

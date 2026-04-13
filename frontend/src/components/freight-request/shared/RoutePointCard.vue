@@ -1,8 +1,39 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import flatpickr from 'flatpickr'
+import 'flatpickr/dist/flatpickr.css'
+import { Russian } from 'flatpickr/dist/l10n/ru'
 import type { RoutePoint, Coordinates } from '@/types/freightRequest'
+import DatePicker from '@/components/shared/DatePicker.vue'
 import CountryCitySelect from './CountryCitySelect.vue'
 import { useTutorialEvent } from '@/composables/useTutorialEvent'
+
+// Родительный падеж — подставляется при форматировании altInput (формат 'j F Y')
+const genitiveMonths = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+]
+
+// Вызывается flatpickr вместо встроенного форматтера.
+// Если формат содержит 'F' (altFormat 'j F Y') — подставляем родительный падеж.
+// Иначе делегируем стандартному форматтеру (dateFormat 'Y-m-d').
+function formatDateFn(date: Date, format: string): string {
+  if (format.includes('F')) {
+    return `${date.getDate()} ${genitiveMonths[date.getMonth()]} ${date.getFullYear()}`
+  }
+  return flatpickr.formatDate(date, format)
+}
+
+function toISO(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function toHHMM(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 const { emit: emitTutorial } = useTutorialEvent()
 
@@ -83,13 +114,11 @@ const borderColor = computed(() => {
 })
 
 function toggleLoading() {
-  // Первая точка всегда loading
   if (isFirstPoint.value) return
   emit('update', { is_loading: !props.point.is_loading })
 }
 
 function toggleUnloading() {
-  // Последняя точка всегда unloading
   if (isLastPoint.value) return
   emit('update', { is_unloading: !props.point.is_unloading })
 }
@@ -110,32 +139,51 @@ function handleCoordinatesUpdate(coordinates: Coordinates | undefined) {
 }
 
 function handleDisplayAddressUpdate(value: string) {
-  // Update legacy address field for backward compatibility
   emit('update', { address: value })
 }
 
-function handleDateFromChange(event: Event) {
-  const value = (event.target as HTMLInputElement).value
-  emit('update', { date_from: value })
-  if (value) {
-    emitTutorial('route:dateSet', { pointIndex: props.index })
-  }
+// --- Дата (range) ---
+
+// Передаём массив — независимо от локального разделителя диапазона
+const dateRangeValue = computed<string[]>(() => {
+  if (!props.point.date_from) return []
+  if (props.point.date_to) return [props.point.date_from, props.point.date_to]
+  return [props.point.date_from]
+})
+
+const dateRangeConfig = {
+  mode: 'range' as const,
+  dateFormat: 'Y-m-d',
+  altInput: true,
+  altFormat: 'j F Y',
+  locale: Russian,
+  minDate: 'today',
+  allowInput: false,
+  formatDate: formatDateFn,
 }
 
-function handleDateToChange(event: Event) {
-  const value = (event.target as HTMLInputElement).value
-  emit('update', { date_to: value || undefined })
+function handleDateRangeChange(selectedDates: Date[]) {
+  const from = selectedDates[0] ? toISO(selectedDates[0]) : ''
+  const to = selectedDates[1] ? toISO(selectedDates[1]) : undefined
+  emit('update', { date_from: from, date_to: to })
+  if (from) emitTutorial('route:dateSet', { pointIndex: props.index })
 }
 
-function handleTimeFromChange(event: Event) {
-  const value = (event.target as HTMLInputElement).value
-  emit('update', { time_from: value || undefined })
+// --- Время ---
+
+const timeConfig = {
+  enableTime: true,
+  noCalendar: true,
+  dateFormat: 'H:i',
+  time_24hr: true,
+  locale: Russian,
 }
 
-function handleTimeToChange(event: Event) {
-  const value = (event.target as HTMLInputElement).value
-  emit('update', { time_to: value || undefined })
+function handleTimeChange(field: 'time_from' | 'time_to', selectedDates: Date[]) {
+  emit('update', { [field]: selectedDates[0] ? toHHMM(selectedDates[0]) : undefined })
 }
+
+// --- Контакт ---
 
 function handleContactNameChange(event: Event) {
   const value = (event.target as HTMLInputElement).value
@@ -169,13 +217,11 @@ function handlePhoneInput(event: Event) {
   const input = event.target as HTMLInputElement
   let value = input.value
 
-  // Если пустое значение, позволяем очистить
   if (!value) {
     emit('update', { contact_phone: undefined })
     return
   }
 
-  // Добавляем 7 в начало если нет
   let digits = value.replace(/\D/g, '')
   if (digits.length > 0 && digits[0] !== '7') {
     digits = '7' + digits
@@ -184,7 +230,6 @@ function handlePhoneInput(event: Event) {
   const formatted = formatPhoneNumber(digits)
   input.value = formatted
 
-  // Сохраняем только цифры
   emit('update', { contact_phone: digits.length > 1 ? '+' + digits : undefined })
 }
 
@@ -209,7 +254,6 @@ function toggleShowComment() {
   emitTutorial('route:commentToggled', { pointIndex: props.index, shown: true })
 }
 
-// Функции скрытия полей (очищают данные)
 function hideTime() {
   showTime.value = false
   emit('update', { time_from: undefined, time_to: undefined })
@@ -228,7 +272,6 @@ function hideComment() {
   emitTutorial('route:commentToggled', { pointIndex: props.index, shown: false })
 }
 
-// Показ отформатированного телефона
 const formattedPhone = computed(() => {
   if (!props.point.contact_phone) return ''
   return formatPhoneNumber(props.point.contact_phone.replace(/\D/g, ''))
@@ -241,13 +284,11 @@ const inputErrorClass = 'appearance-none block w-full px-3 py-2 border border-re
 watch(() => [props.index, props.totalPoints], () => {
   const updates: Partial<RoutePoint> = {}
 
-  // Первая точка: всегда loading, никогда unloading
   if (isFirstPoint.value) {
     if (!props.point.is_loading) updates.is_loading = true
     if (props.point.is_unloading) updates.is_unloading = false
   }
 
-  // Последняя точка: всегда unloading, никогда loading
   if (isLastPoint.value) {
     if (!props.point.is_unloading) updates.is_unloading = true
     if (props.point.is_loading) updates.is_loading = false
@@ -354,31 +395,20 @@ watch(() => [props.index, props.totalPoints], () => {
         <label class="block text-sm font-medium text-gray-700 mb-1">
           Дата <span class="text-red-500">*</span>
         </label>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <input
-              type="date"
-              :value="point.date_from"
-              :class="dateFromError ? inputErrorClass : inputClass"
-              @change="handleDateFromChange"
-            />
-            <p v-if="dateFromError" class="mt-1 text-sm text-red-600">
-              {{ dateFromError }}
-            </p>
-          </div>
-          <div>
-            <input
-              type="date"
-              :value="point.date_to || ''"
-              :class="dateToError ? inputErrorClass : inputClass"
-              placeholder="до (опционально)"
-              @change="handleDateToChange"
-            />
-            <p v-if="dateToError" class="mt-1 text-sm text-red-600">
-              {{ dateToError }}
-            </p>
-          </div>
-        </div>
+        <DatePicker
+          :model-value="dateRangeValue"
+          :config="dateRangeConfig"
+          :class="(dateFromError || dateToError) ? inputErrorClass : inputClass"
+          placeholder="Выберите дату или период"
+          label="Выберите дату"
+          @on-close="handleDateRangeChange"
+        />
+        <p v-if="dateFromError" class="mt-1 text-sm text-red-600">
+          {{ dateFromError }}
+        </p>
+        <p v-if="dateToError" class="mt-1 text-sm text-red-600">
+          {{ dateToError }}
+        </p>
       </div>
 
       <!-- Время (раскрывается по кнопке) -->
@@ -397,24 +427,22 @@ watch(() => [props.index, props.totalPoints], () => {
           </button>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div>
-            <input
-              type="time"
-              :value="point.time_from || ''"
-              :class="inputClass"
-              placeholder="с"
-              @change="handleTimeFromChange"
-            />
-          </div>
-          <div>
-            <input
-              type="time"
-              :value="point.time_to || ''"
-              :class="inputClass"
-              placeholder="до"
-              @change="handleTimeToChange"
-            />
-          </div>
+          <DatePicker
+            :model-value="point.time_from || ''"
+            :config="timeConfig"
+            :class="inputClass"
+            placeholder="с"
+            label="Время от"
+            @on-change="(d: Date[]) => handleTimeChange('time_from', d)"
+          />
+          <DatePicker
+            :model-value="point.time_to || ''"
+            :config="timeConfig"
+            :class="inputClass"
+            placeholder="до"
+            label="Время до"
+            @on-change="(d: Date[]) => handleTimeChange('time_to', d)"
+          />
         </div>
       </div>
 

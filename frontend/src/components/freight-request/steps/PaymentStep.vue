@@ -8,13 +8,7 @@ import {
   paymentTermsOptions,
   currencyLabels,
 } from '@/types/freightRequest'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import SelectField from '@/components/freight-request/shared/SelectField.vue'
 
 interface Props {
   payment: Payment
@@ -144,84 +138,52 @@ const inputClass = (field: string) => [
 
     <!-- Currency -->
     <div v-if="!payment.no_price" data-tutorial="payment-currency">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Валюта
-      </label>
-      <Select
+      <label class="block text-sm font-medium text-gray-700 mb-1">Валюта</label>
+      <SelectField
         :model-value="payment.price?.currency || 'RUB'"
+        :options="currencyOptions"
+        placeholder="Выберите валюту"
+        sheet-label="Валюта"
         @update:model-value="handleCurrencyChange($event as Currency)"
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Выберите валюту" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="option in currencyOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
+      />
     </div>
 
     <!-- Все остальные поля оплаты показываем только если цена указывается -->
     <template v-if="!payment.no_price">
       <!-- VAT type -->
       <div data-tutorial="payment-vat">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          НДС
-        </label>
-        <Select
+        <label class="block text-sm font-medium text-gray-700 mb-1">НДС</label>
+        <SelectField
           :model-value="payment.vat_type"
+          :options="vatTypeOptions"
+          placeholder="Выберите тип НДС"
+          sheet-label="НДС"
           @update:model-value="handleVatTypeChange($event as VatType)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите тип НДС" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in vatTypeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
       </div>
 
       <!-- Payment method -->
       <div data-tutorial="payment-method">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Способ оплаты
-        </label>
-        <Select
+        <label class="block text-sm font-medium text-gray-700 mb-1">Способ оплаты</label>
+        <SelectField
           :model-value="payment.method"
+          :options="paymentMethodOptions"
+          placeholder="Выберите способ оплаты"
+          sheet-label="Способ оплаты"
           @update:model-value="handleMethodChange($event as PaymentMethod)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите способ оплаты" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in paymentMethodOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
       </div>
 
       <!-- Payment terms -->
       <div data-tutorial="payment-terms">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Условия оплаты
-        </label>
-        <Select
+        <label class="block text-sm font-medium text-gray-700 mb-1">Условия оплаты</label>
+        <SelectField
           :model-value="payment.terms"
+          :options="paymentTermsOptions"
+          placeholder="Выберите условия оплаты"
+          sheet-label="Условия оплаты"
           @update:model-value="handleTermsChange($event as PaymentTerms)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите условия оплаты" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in paymentTermsOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
       </div>
 
       <!-- Deferred days -->

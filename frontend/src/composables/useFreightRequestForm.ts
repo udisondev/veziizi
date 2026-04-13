@@ -3,8 +3,7 @@ import type {
   RoutePoint,
   CargoInfo,
   VehicleRequirements,
-  VehicleType,
-  VehicleSubType,
+  VehicleRequirementsForm,
   LoadingType,
   Payment,
   VatType,
@@ -43,9 +42,9 @@ export function useFreightRequestForm() {
   })
 
   // Step 3: Vehicle
-  const vehicle = reactive<VehicleRequirements>({
-    vehicle_type: undefined as unknown as VehicleType,
-    vehicle_subtype: undefined as unknown as VehicleSubType,
+  const vehicle = reactive<VehicleRequirementsForm>({
+    vehicle_type: undefined,
+    vehicle_subtype: undefined,
     loading_types: [] as LoadingType[],
     capacity: undefined,
     volume: undefined,
@@ -242,8 +241,8 @@ export function useFreightRequestForm() {
     if (cargo.adr_class) cleanedCargo.adr_class = cargo.adr_class
 
     const cleanedVehicle: VehicleRequirements = {
-      vehicle_type: vehicle.vehicle_type,
-      vehicle_subtype: vehicle.vehicle_subtype,
+      vehicle_type: vehicle.vehicle_type!,
+      vehicle_subtype: vehicle.vehicle_subtype!,
     }
 
     if (vehicle.loading_types && vehicle.loading_types.length > 0) {

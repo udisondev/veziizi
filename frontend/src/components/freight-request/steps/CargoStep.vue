@@ -1,13 +1,7 @@
 <script setup lang="ts">
 import type { CargoInfo, ADRClass } from '@/types/freightRequest'
 import { adrClassOptions } from '@/types/freightRequest'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import SelectField from '@/components/freight-request/shared/SelectField.vue'
 
 interface Props {
   cargo: CargoInfo
@@ -192,19 +186,15 @@ const inputClass = (field: string) => [
       <label class="block text-sm font-medium text-gray-700 mb-1">
         Класс опасности груза
       </label>
-      <Select
+
+      <SelectField
         :model-value="cargo.adr_class || 'none'"
+        :options="adrClassOptions"
+        placeholder="Не требуется"
+        sheet-label="Класс опасности груза"
         @update:model-value="handleAdrClassChange($event as ADRClass)"
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Не требуется" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="option in adrClassOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
+      />
+
       <p class="mt-1 text-sm text-gray-500">
         Выберите класс, если груз относится к опасным
       </p>
