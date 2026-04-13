@@ -9,8 +9,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build-and-push:
     name: Build & push images
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
