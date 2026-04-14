@@ -49,8 +49,8 @@ async function handleDelete(id: string) {
   await store.deleteSubscription(id)
 }
 
-async function handleToggleActive(id: string) {
-  await store.toggleActive(id)
+function handleToggleActive(id: string, value: boolean) {
+  store.toggleActive(id, value)
 }
 
 onMounted(() => {

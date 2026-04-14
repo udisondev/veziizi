@@ -121,24 +121,30 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
     }
   }
 
-  async function toggleActive(id: string): Promise<boolean> {
-    const subscription = subscriptions.value.find(s => s.id === id)
-    if (!subscription) return false
+  const pendingToggles = new Map<string, ReturnType<typeof setTimeout>>()
 
-    const newIsActive = !subscription.is_active
-    subscription.is_active = newIsActive
-    try {
-      const updated = await subscriptionsApi.setActive(id, newIsActive)
-      const index = subscriptions.value.findIndex(s => s.id === id)
-      if (index !== -1) {
-        subscriptions.value[index] = updated
-      }
-      return true
-    } catch (e) {
-      subscription.is_active = !newIsActive
-      logger.error('Failed to toggle subscription active', e)
-      return false
+  function toggleActive(id: string, desiredValue: boolean): void {
+    const subscription = subscriptions.value.find(s => s.id === id)
+    if (!subscription) return
+
+    // Optimistic update immediately
+    subscription.is_active = desiredValue
+
+    // Debounce the API call — cancel previous pending request for this id
+    if (pendingToggles.has(id)) {
+      clearTimeout(pendingToggles.get(id)!)
     }
+
+    pendingToggles.set(id, setTimeout(async () => {
+      pendingToggles.delete(id)
+      try {
+        const updated = await subscriptionsApi.setActive(id, desiredValue)
+        Object.assign(subscription, updated)
+      } catch (e) {
+        subscription.is_active = !desiredValue
+        logger.error('Failed to toggle subscription active', e)
+      }
+    }, 600))
   }
 
   function clearError(): void {
@@ -146,6 +152,8 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
   }
 
   function cleanup(): void {
+    pendingToggles.forEach(clearTimeout)
+    pendingToggles.clear()
     subscriptions.value = []
     error.value = null
     isLoading.value = false

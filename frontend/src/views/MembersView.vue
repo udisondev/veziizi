@@ -6,10 +6,9 @@ import { usePermissions } from '@/composables/usePermissions'
 import { membersApi } from '@/api/members'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { historyApi } from '@/api/history'
-import type { MemberListItem, MemberRole, MemberRoleFilter, MemberStatus, MemberStatusFilter } from '@/types/member'
+import type { MemberListItem, MemberRole, MemberRoleFilter, MemberStatusFilter } from '@/types/member'
 import {
   roleLabels,
-  statusLabels,
   roleOptions,
   statusOptions,
 } from '@/types/member'
@@ -22,18 +21,11 @@ import InvitationsTab from '@/components/members/InvitationsTab.vue'
 // UI Components
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { Tabs, TabsContent } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Tabs, TabsContent, TabsSlider } from '@/components/ui/tabs'
+import SelectField from '@/components/freight-request/shared/SelectField.vue'
 import {
   Table,
   TableBody,
@@ -50,8 +42,7 @@ import {
   LoadingSpinner,
   EmptyState,
   ErrorBanner,
-  TabsDropdown,
-  FilterSheet,
+  HighlightText,
   type TabItem,
 } from '@/components/shared'
 
@@ -87,15 +78,9 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 
 // Filters
-const showFilters = ref(false)
 const searchQuery = ref('')
 const roleFilter = ref<MemberRoleFilter>('all')
 const statusFilter = ref<MemberStatusFilter>('all')
-
-// Temp filters for sheet
-const tempSearch = ref('')
-const tempRole = ref<MemberRoleFilter>('all')
-const tempStatus = ref<MemberStatusFilter>('all')
 
 // Invitations tab ref
 const invitationsTabRef = ref<InstanceType<typeof InvitationsTab> | null>(null)
@@ -137,13 +122,6 @@ const hasActiveFilters = computed(
   () => searchQuery.value.trim() !== '' || roleFilter.value !== 'all' || statusFilter.value !== 'all'
 )
 
-const activeFiltersCount = computed(() => {
-  let count = 0
-  if (searchQuery.value.trim()) count++
-  if (roleFilter.value !== 'all') count++
-  if (statusFilter.value !== 'all') count++
-  return count
-})
 
 const tabItems = computed((): TabItem[] => {
   const items: TabItem[] = [
@@ -173,27 +151,6 @@ async function loadMembers() {
   } finally {
     isLoading.value = false
   }
-}
-
-// Filter functions
-function openFilters() {
-  tempSearch.value = searchQuery.value
-  tempRole.value = roleFilter.value
-  tempStatus.value = statusFilter.value
-  showFilters.value = true
-}
-
-function applyFilters() {
-  searchQuery.value = tempSearch.value
-  roleFilter.value = tempRole.value
-  statusFilter.value = tempStatus.value
-  showFilters.value = false
-}
-
-function resetFilters() {
-  tempSearch.value = ''
-  tempRole.value = 'all'
-  tempStatus.value = 'all'
 }
 
 function resetAllFilters() {
@@ -268,86 +225,42 @@ onMounted(() => {
         >
           Отмена
         </Button>
-        <!-- Filters Sheet (only for members tab) -->
-        <FilterSheet
-          v-if="currentTab === 'members'"
-          v-model:open="showFilters"
-          :active-filters-count="activeFiltersCount"
-          description="Фильтрация сотрудников"
-          @open="openFilters"
-          @apply="applyFilters"
-          @reset="resetFilters"
-        >
-          <div class="space-y-2">
-            <Label>Поиск</Label>
-            <Input
-              v-model="tempSearch"
-              placeholder="ФИО, email или телефон"
-            />
-          </div>
-
-          <div class="space-y-2">
-            <Label>Роль</Label>
-            <Select v-model="tempRole">
-              <SelectTrigger>
-                <SelectValue placeholder="Все роли" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="opt in roleOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-2">
-            <Label>Статус</Label>
-            <Select v-model="tempStatus">
-              <SelectTrigger>
-                <SelectValue placeholder="Все статусы" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="opt in statusOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FilterSheet>
       </template>
     </PageHeader>
 
-    <!-- Active filters indicator (only for members tab) -->
-    <Card v-if="hasActiveFilters && currentTab === 'members'" class="mb-6 border-primary/20 bg-primary/5">
-      <CardContent class="flex items-center justify-between py-3">
-        <div class="text-sm text-primary flex flex-wrap gap-x-2 gap-y-1">
-          <span v-if="searchQuery">Поиск: "{{ searchQuery }}"</span>
-          <span v-if="searchQuery && (roleFilter !== 'all' || statusFilter !== 'all')">, </span>
-          <span v-if="roleFilter !== 'all'">Роль: {{ roleLabels[roleFilter as MemberRole] }}</span>
-          <span v-if="roleFilter !== 'all' && statusFilter !== 'all'">, </span>
-          <span v-if="statusFilter !== 'all'">Статус: {{ statusLabels[statusFilter as MemberStatus] }}</span>
-        </div>
-        <Button variant="ghost" size="sm" @click="resetAllFilters">
-          Сбросить
-        </Button>
-      </CardContent>
-    </Card>
-
     <!-- Tabs -->
     <Tabs v-if="(canManageInvitations || canViewHistory) && !isSelectionMode" v-model="currentTab" class="space-y-6">
-      <!-- Tab selector dropdown -->
-      <TabsDropdown v-model="currentTab" :items="tabItems" />
+      <!-- Tab selector with slider -->
+      <TabsSlider v-model="currentTab" :items="tabItems" />
 
       <!-- Members Tab -->
       <TabsContent value="members">
+        <!-- Inline Filters -->
+        <div class="flex flex-col sm:flex-row gap-2 mb-4">
+          <Input
+            v-model="searchQuery"
+            placeholder="ФИО, email или телефон"
+            class="sm:max-w-xs"
+          />
+          <div class="sm:w-44">
+            <SelectField
+              v-model="roleFilter"
+              :options="roleOptions"
+              sheet-label="Роль"
+            />
+          </div>
+          <div class="sm:w-48">
+            <SelectField
+              v-model="statusFilter"
+              :options="statusOptions"
+              sheet-label="Статус"
+            />
+          </div>
+          <Button v-if="hasActiveFilters" variant="ghost" size="sm" @click="resetAllFilters">
+            Сбросить
+          </Button>
+        </div>
+
         <LoadingSpinner v-if="isLoading" text="Загрузка сотрудников..." />
 
         <ErrorBanner
@@ -382,11 +295,15 @@ onMounted(() => {
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0 flex-1">
                     <div class="font-medium text-foreground truncate">
-                      {{ member.name }}
+                      <HighlightText :text="member.name" :query="searchQuery" />
                       <span v-if="member.id === auth.memberId" class="text-xs text-muted-foreground">(вы)</span>
                     </div>
-                    <div class="text-sm text-muted-foreground truncate">{{ member.email }}</div>
-                    <div v-if="member.phone" class="text-sm text-muted-foreground">{{ member.phone }}</div>
+                    <div class="text-sm text-muted-foreground truncate">
+                      <HighlightText :text="member.email" :query="searchQuery" />
+                    </div>
+                    <div v-if="member.phone" class="text-sm text-muted-foreground">
+                      <HighlightText :text="member.phone" :query="searchQuery" />
+                    </div>
                   </div>
                   <div class="flex flex-col items-end gap-1">
                     <Badge :variant="getRoleBadgeVariant(member.role)">
@@ -431,16 +348,19 @@ onMounted(() => {
                     {{ formatDateShort(member.created_at) }}
                   </TableCell>
                   <TableCell>
-                    <div class="font-medium">{{ member.name }}</div>
+                    <div class="font-medium">
+                      <HighlightText :text="member.name" :query="searchQuery" />
+                    </div>
                     <div v-if="member.id === auth.memberId" class="text-xs text-muted-foreground">
                       (это вы)
                     </div>
                   </TableCell>
                   <TableCell class="text-muted-foreground">
-                    {{ member.phone || '—' }}
+                    <HighlightText v-if="member.phone" :text="member.phone" :query="searchQuery" />
+                    <span v-else>—</span>
                   </TableCell>
                   <TableCell class="text-muted-foreground">
-                    {{ member.email }}
+                    <HighlightText :text="member.email" :query="searchQuery" />
                   </TableCell>
                   <TableCell>
                     <Badge :variant="getRoleBadgeVariant(member.role)">
@@ -464,11 +384,7 @@ onMounted(() => {
 
       <!-- History Tab -->
       <TabsContent value="history">
-        <Card>
-          <CardContent class="p-6">
-            <EventHistory :load-fn="loadOrganizationHistory" />
-          </CardContent>
-        </Card>
+        <EventHistory :load-fn="loadOrganizationHistory" />
       </TabsContent>
     </Tabs>
 

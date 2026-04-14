@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { vMaska } from 'maska/vue'
 import { invitationsApi } from '@/api/invitations'
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import SelectField from '@/components/freight-request/shared/SelectField.vue'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Select,
@@ -45,7 +46,6 @@ import {
   EmptyState,
   ErrorBanner,
   ConfirmDialog,
-  FilterSheet,
 } from '@/components/shared'
 
 // Icons
@@ -59,10 +59,8 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 
 // Filters
-const showFilters = ref(false)
 type InvitationStatusFilter = InvitationStatus | 'all'
 const statusFilter = ref<InvitationStatusFilter>('all')
-const tempStatus = ref<InvitationStatusFilter>('all')
 
 const statusOptions: { value: InvitationStatusFilter; label: string }[] = [
   { value: 'all', label: 'Все статусы' },
@@ -101,7 +99,6 @@ const cancelError = ref<string | null>(null)
 
 // Computed
 const hasActiveFilters = computed(() => statusFilter.value !== 'all')
-const activeFiltersCount = computed(() => (statusFilter.value !== 'all' ? 1 : 0))
 
 // Load data
 async function loadData() {
@@ -121,6 +118,8 @@ async function loadData() {
     isLoading.value = false
   }
 }
+
+watch(statusFilter, loadData)
 
 // CRUD
 async function createInvitation() {
@@ -213,26 +212,6 @@ async function copyToClipboard(text: string) {
   }, 2000)
 }
 
-// Filter functions
-function openFilters() {
-  tempStatus.value = statusFilter.value
-  showFilters.value = true
-}
-
-function applyFilters() {
-  statusFilter.value = tempStatus.value
-  loadData()
-  showFilters.value = false
-}
-
-function resetFilters() {
-  tempStatus.value = 'all'
-}
-
-function resetAllFilters() {
-  statusFilter.value = 'all'
-  loadData()
-}
 
 // Expose for parent
 defineExpose({
@@ -248,45 +227,21 @@ onMounted(() => {
 <template>
   <div class="space-y-4">
     <!-- Toolbar -->
-    <div class="flex items-center justify-between gap-2">
-      <FilterSheet
-        v-model:open="showFilters"
-        :active-filters-count="activeFiltersCount"
-        description="Фильтрация приглашений"
-        @open="openFilters"
-        @apply="applyFilters"
-        @reset="resetFilters"
-      >
-        <div class="space-y-2">
-          <Label>Статус</Label>
-          <Select v-model="tempStatus">
-            <SelectTrigger>
-              <SelectValue placeholder="Все статусы" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </FilterSheet>
-
-      <Button data-tutorial="invite-btn" @click="showForm = true">
-        <Plus class="mr-2 h-4 w-4" />
-        Пригласить
-      </Button>
+    <div class="flex items-center gap-2">
+      <div class="w-48 shrink-0">
+        <SelectField
+          v-model="statusFilter"
+          :options="statusOptions"
+          sheet-label="Статус"
+        />
+      </div>
+      <div class="ml-auto shrink-0">
+        <Button data-tutorial="invite-btn" @click="showForm = true">
+          <Plus class="mr-2 h-4 w-4" />
+          Пригласить
+        </Button>
+      </div>
     </div>
-
-    <!-- Active filters -->
-    <Card v-if="hasActiveFilters" class="border-primary/20 bg-primary/5">
-      <CardContent class="flex items-center justify-between py-3">
-        <span class="text-sm text-primary">
-          Статус: {{ statusOptions.find((o) => o.value === statusFilter)?.label }}
-        </span>
-        <Button variant="ghost" size="sm" @click="resetAllFilters"> Сбросить </Button>
-      </CardContent>
-    </Card>
 
     <!-- Loading -->
     <LoadingSpinner v-if="isLoading" text="Загрузка приглашений..." />
