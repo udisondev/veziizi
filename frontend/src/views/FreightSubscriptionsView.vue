@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSubscriptionsStore } from '@/stores/subscriptions'
 import { storeToRefs } from 'pinia'
 import { MAX_SUBSCRIPTIONS_PER_MEMBER } from '@/types/subscription'
@@ -14,35 +15,20 @@ import { PageHeader, LoadingSpinner, EmptyState } from '@/components/shared'
 
 // Subscription Components
 import SubscriptionCard from '@/components/subscriptions/SubscriptionCard.vue'
-import SubscriptionFormDialog from '@/components/subscriptions/SubscriptionFormDialog.vue'
 
 // Icons
 import { Plus, Bell, Info } from 'lucide-vue-next'
 
+const router = useRouter()
 const store = useSubscriptionsStore()
 const { subscriptions, isLoading, canCreateMore, subscriptionsCount, activeCount } = storeToRefs(store)
 
-const isFormOpen = ref(false)
-const editingSubscription = ref<FreightSubscription | null>(null)
-
-function openCreateForm() {
-  editingSubscription.value = null
-  isFormOpen.value = true
+function goToCreate() {
+  router.push({ name: 'subscription-create' })
 }
 
-function openEditForm(subscription: FreightSubscription) {
-  editingSubscription.value = subscription
-  isFormOpen.value = true
-}
-
-function closeForm() {
-  isFormOpen.value = false
-  editingSubscription.value = null
-}
-
-async function handleFormSuccess() {
-  closeForm()
-  await store.fetchSubscriptions()
+function goToEdit(subscription: FreightSubscription) {
+  router.push({ name: 'subscription-edit', params: { id: subscription.id } })
 }
 
 async function handleDelete(id: string) {
@@ -62,7 +48,7 @@ onMounted(() => {
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <PageHeader title="Рассылка" class="mb-6">
       <template #actions>
-        <Button v-if="canCreateMore" @click="openCreateForm">
+        <Button v-if="canCreateMore" @click="goToCreate">
           <Plus class="h-4 w-4 mr-2" />
           Создать подписку
         </Button>
@@ -102,7 +88,7 @@ onMounted(() => {
           v-for="subscription in subscriptions"
           :key="subscription.id"
           :subscription="subscription"
-          @edit="openEditForm"
+          @edit="goToEdit"
           @delete="handleDelete"
           @toggle-active="handleToggleActive"
         />
@@ -118,20 +104,12 @@ onMounted(() => {
           <Bell class="h-12 w-12 text-muted-foreground/50" />
         </template>
         <template #action>
-          <Button @click="openCreateForm">
+          <Button @click="goToCreate">
             <Plus class="h-4 w-4 mr-2" />
             Создать подписку
           </Button>
         </template>
       </EmptyState>
     </template>
-
-    <!-- Form Dialog -->
-    <SubscriptionFormDialog
-      v-model:open="isFormOpen"
-      :subscription="editingSubscription"
-      @success="handleFormSuccess"
-      @cancel="closeForm"
-    />
   </div>
 </template>

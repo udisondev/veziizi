@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useSubscriptionsStore } from '@/stores/subscriptions'
 import { useToast } from '@/components/ui/toast/use-toast'
 import type {
@@ -16,39 +17,26 @@ import type {
 
 // UI Components
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 
+// Shared Components
+import { DetailPageHeader, LoadingSpinner } from '@/components/shared'
+
 // Filter Components
 import { FreightFiltersForm, type RoutePointFilter } from '@/components/filters'
 
-interface Props {
-  open: boolean
-  subscription?: FreightSubscription | null
-}
-
-interface Emits {
-  (e: 'update:open', value: boolean): void
-  (e: 'success'): void
-  (e: 'cancel'): void
-}
-
-const props = defineProps<Props>()
-const emit = defineEmits<Emits>()
-
+const route = useRoute()
+const router = useRouter()
 const store = useSubscriptionsStore()
 const { toast } = useToast()
 
-const isEditing = computed(() => !!props.subscription)
+const subscriptionId = computed(() => route.params.id as string | undefined)
+const isEditing = computed(() => !!subscriptionId.value)
+
+const isLoadingSubscription = ref(false)
+const subscription = ref<FreightSubscription | null>(null)
 const isSaving = ref(false)
 
 // Form state
@@ -64,26 +52,10 @@ const paymentMethods = ref<PaymentMethod[]>([])
 const paymentTerms = ref<PaymentTerms[]>([])
 const vatTypes = ref<VatType[]>([])
 const isActive = ref(true)
-
-// Route points
 const routePoints = ref<RoutePointFilter[]>([])
 
-// Initialize form when dialog opens or subscription changes
-watch(
-  () => [props.open, props.subscription],
-  () => {
-    if (props.open) {
-      if (props.subscription) {
-        loadSubscription(props.subscription)
-      } else {
-        resetForm()
-      }
-    }
-  },
-  { immediate: true }
-)
-
 function loadSubscription(sub: FreightSubscription) {
+  subscription.value = sub
   name.value = sub.name
   minWeight.value = sub.min_weight
   maxWeight.value = sub.max_weight
@@ -96,7 +68,6 @@ function loadSubscription(sub: FreightSubscription) {
   paymentTerms.value = (sub.payment_terms || []) as PaymentTerms[]
   vatTypes.value = (sub.vat_types || []) as VatType[]
   isActive.value = sub.is_active
-
   routePoints.value = (sub.route_points || []).map((rp, idx) => ({
     id: `rp-${idx}-${Date.now()}`,
     countryId: rp.country_id,
@@ -107,66 +78,38 @@ function loadSubscription(sub: FreightSubscription) {
   }))
 }
 
-function resetForm() {
-  name.value = ''
-  minWeight.value = undefined
-  maxWeight.value = undefined
-  minPrice.value = undefined
-  maxPrice.value = undefined
-  minVolume.value = undefined
-  maxVolume.value = undefined
-  vehicleSubTypes.value = []
-  paymentMethods.value = []
-  paymentTerms.value = []
-  vatTypes.value = []
-  isActive.value = true
-  routePoints.value = []
-}
-
 // Route point management
 function addRoutePoint() {
-  const newId = `rp-${Date.now()}`
-  const order = routePoints.value.length
   routePoints.value.push({
-    id: newId,
+    id: `rp-${Date.now()}`,
     countryId: undefined,
     cityId: undefined,
-    order,
+    order: routePoints.value.length,
   })
 }
 
 function removeRoutePoint(id: string) {
   routePoints.value = routePoints.value.filter(rp => rp.id !== id)
-  // Reorder
-  routePoints.value.forEach((rp, idx) => {
-    rp.order = idx
-  })
+  routePoints.value.forEach((rp, idx) => { rp.order = idx })
 }
 
 function updateRoutePoint(id: string, updates: Partial<RoutePointFilter>) {
   const point = routePoints.value.find(rp => rp.id === id)
-  if (point) {
-    Object.assign(point, updates)
-  }
+  if (point) Object.assign(point, updates)
 }
 
 function reorderRoutePoints(points: RoutePointFilter[]) {
   routePoints.value = points
 }
 
-// Form validation
 const isValid = computed(() => {
   if (!name.value.trim()) return false
-
-  // Check route points validity
   for (const rp of routePoints.value) {
     if (!rp.countryId) return false
   }
-
   return true
 })
 
-// Submit
 async function handleSubmit() {
   if (!isValid.value) return
 
@@ -197,14 +140,14 @@ async function handleSubmit() {
   }
 
   try {
-    if (isEditing.value && props.subscription) {
-      await store.updateSubscription(props.subscription.id, data)
+    if (isEditing.value && subscription.value) {
+      await store.updateSubscription(subscription.value.id, data)
       toast({ title: 'Подписка обновлена' })
     } else {
       await store.createSubscription(data)
       toast({ title: 'Подписка создана' })
     }
-    emit('success')
+    router.push({ name: 'freight-subscriptions' })
   } catch {
     toast({
       title: 'Ошибка',
@@ -217,25 +160,42 @@ async function handleSubmit() {
 }
 
 function handleCancel() {
-  emit('cancel')
+  router.push({ name: 'freight-subscriptions' })
 }
+
+onMounted(async () => {
+  if (isEditing.value && subscriptionId.value) {
+    isLoadingSubscription.value = true
+    const sub = await store.getSubscription(subscriptionId.value)
+    if (sub) {
+      loadSubscription(sub)
+    } else {
+      toast({ title: 'Подписка не найдена', variant: 'destructive' })
+      router.push({ name: 'freight-subscriptions' })
+    }
+    isLoadingSubscription.value = false
+  }
+})
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(v: boolean) => emit('update:open', v)">
-    <DialogContent class="max-w-2xl max-h-[90vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>
+  <div>
+    <DetailPageHeader :back-to="{ name: 'freight-subscriptions' }" back-label="К подпискам" />
+
+    <div class="max-w-2xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold tracking-tight text-foreground mb-3">
           {{ isEditing ? 'Редактировать подписку' : 'Создать подписку' }}
-        </DialogTitle>
-        <DialogDescription>
+        </h1>
+        <p class="text-muted-foreground">
           Укажите критерии для получения уведомлений о заявках.
           Если параметр не указан — подходят любые значения.
-        </DialogDescription>
-      </DialogHeader>
+        </p>
+      </div>
 
-      <form @submit.prevent="handleSubmit" class="space-y-6 py-4">
-        <!-- Name -->
+      <LoadingSpinner v-if="isLoadingSubscription" text="Загрузка..." />
+
+      <form v-else class="space-y-6" @submit.prevent="handleSubmit">
         <div>
           <Label for="name" class="text-base font-medium">Название подписки *</Label>
           <Input
@@ -248,7 +208,6 @@ function handleCancel() {
 
         <Separator />
 
-        <!-- Filters Form -->
         <FreightFiltersForm
           :route-points="routePoints"
           :min-weight="minWeight"
@@ -276,20 +235,18 @@ function handleCancel() {
           @update:payment-terms="paymentTerms = $event"
           @update:vat-types="vatTypes = $event"
         />
-      </form>
 
-      <DialogFooter>
-        <Button type="button" variant="outline" @click="handleCancel">
-          Отмена
-        </Button>
-        <Button
-          type="submit"
-          :disabled="!isValid || isSaving"
-          @click="handleSubmit"
-        >
-          {{ isSaving ? 'Сохранение...' : (isEditing ? 'Сохранить' : 'Создать') }}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+        <Separator />
+
+        <div class="flex gap-3">
+          <Button type="button" variant="outline" @click="handleCancel">
+            Отмена
+          </Button>
+          <Button type="submit" :disabled="!isValid || isSaving">
+            {{ isSaving ? 'Сохранение...' : (isEditing ? 'Сохранить' : 'Создать') }}
+          </Button>
+        </div>
+      </form>
+    </div>
+  </div>
 </template>

@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { useGeo, type City, searchCities } from '@/composables/useGeo'
 import { useCityDropdown } from '@/composables/useCityDropdown'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import {
   Select,
   SelectContent,
@@ -10,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import BottomSheet from '@/components/shared/BottomSheet.vue'
 import { Trash2, GripVertical } from 'lucide-vue-next'
 import type { AcceptableValue } from 'reka-ui'
 
@@ -46,6 +48,38 @@ const {
   isLoadingCountries,
   fetchCountries,
 } = useGeo()
+
+const { isMobile } = useBreakpoint()
+
+// Mobile country sheet
+const countrySheetOpen = ref(false)
+const countrySheetSearch = ref('')
+
+const filteredSheetCountries = computed(() => {
+  if (!countrySheetSearch.value) return countries.value
+  const search = countrySheetSearch.value.toLowerCase()
+  return countries.value.filter(
+    (c) =>
+      c.name.toLowerCase().includes(search) ||
+      (c.name_ru && c.name_ru.toLowerCase().includes(search)) ||
+      c.iso2.toLowerCase().includes(search) ||
+      (c.native_name && c.native_name.toLowerCase().includes(search))
+  )
+})
+
+function handleSheetCountrySelect(countryId: number) {
+  const country = countries.value.find(c => c.id === countryId)
+  emit('update', {
+    countryId,
+    countryName: country?.name_ru || country?.name,
+    cityId: undefined,
+    cityName: undefined,
+  })
+  citySearch.value = ''
+  cities.value = []
+  countrySheetOpen.value = false
+  countrySheetSearch.value = ''
+}
 
 // Local state for city search
 const citySearch = ref('')
@@ -202,58 +236,107 @@ onMounted(async () => {
       <div class="flex-1 space-y-3">
         <!-- Country Select -->
         <div>
-          <Label class="text-sm font-medium text-gray-700 mb-1">Страна *</Label>
-          <Select
-            :model-value="point.countryId?.toString()"
-            :disabled="isLoadingCountries"
-            @update:model-value="handleCountryChange"
-          >
-            <SelectTrigger class="w-full">
-              <SelectValue placeholder="Выберите страну" />
-            </SelectTrigger>
-            <SelectContent
-              class="!w-[var(--reka-select-trigger-width)] !min-w-0 !max-h-[50vh] overflow-hidden"
-              :side-offset="4"
+          <Label class="text-base font-medium text-gray-700 mb-1.5">Страна *</Label>
+
+          <!-- Desktop -->
+          <template v-if="!isMobile">
+            <Select
+              :model-value="point.countryId?.toString()"
+              :disabled="isLoadingCountries"
+              @update:model-value="handleCountryChange"
             >
-              <!-- Search input inside dropdown -->
-              <div class="px-2 py-1 bg-white border-b z-10">
+              <SelectTrigger class="w-full">
+                <SelectValue placeholder="Выберите страну" />
+              </SelectTrigger>
+              <SelectContent
+                class="!w-[var(--reka-select-trigger-width)] !min-w-0 !max-h-[50vh] overflow-hidden"
+                :side-offset="4"
+              >
+                <div class="px-2 py-1 bg-white border-b z-10">
+                  <input
+                    v-model="countrySearch"
+                    type="text"
+                    class="w-full px-2 py-2 text-base border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Поиск страны..."
+                    @click.stop
+                    @keydown.stop
+                  />
+                </div>
+                <div class="max-h-[40vh] overflow-y-auto">
+                  <SelectItem
+                    v-for="country in filteredCountries"
+                    :key="country.id"
+                    :value="country.id.toString()"
+                  >
+                    {{ country.name_ru || country.name }}
+                    <span v-if="country.name_ru && country.name !== country.name_ru" class="text-gray-500 text-xs ml-1">
+                      ({{ country.name }})
+                    </span>
+                  </SelectItem>
+                  <div v-if="filteredCountries.length === 0" class="px-2 py-3 text-sm text-gray-500 text-center">
+                    Страны не найдены
+                  </div>
+                </div>
+              </SelectContent>
+            </Select>
+          </template>
+
+          <!-- Mobile -->
+          <template v-else>
+            <button
+              type="button"
+              :disabled="isLoadingCountries"
+              class="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md text-base text-left bg-white disabled:bg-gray-100 disabled:text-gray-400"
+              @click="countrySheetOpen = true"
+            >
+              <span v-if="point.countryId" class="text-gray-900">
+                {{ point.countryName }}
+              </span>
+              <span v-else class="text-gray-400">Выберите страну</span>
+            </button>
+
+            <BottomSheet v-model="countrySheetOpen" label="Страна">
+              <div class="px-4 py-2 border-b border-gray-100 flex-shrink-0">
                 <input
-                  v-model="countrySearch"
+                  v-model="countrySheetSearch"
                   type="text"
-                  class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  class="w-full px-3 py-2.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder="Поиск страны..."
-                  @click.stop
-                  @keydown.stop
                 />
               </div>
-              <div class="max-h-[40vh] overflow-y-auto">
-                <SelectItem
-                  v-for="country in filteredCountries"
+              <div class="overflow-y-auto flex-1">
+                <button
+                  v-for="country in filteredSheetCountries"
                   :key="country.id"
-                  :value="country.id.toString()"
+                  type="button"
+                  :class="[
+                    'w-full px-4 py-3.5 text-left text-base border-b border-gray-50 active:bg-gray-100',
+                    country.id === point.countryId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900',
+                  ]"
+                  @click="handleSheetCountrySelect(country.id)"
                 >
                   {{ country.name_ru || country.name }}
                   <span v-if="country.name_ru && country.name !== country.name_ru" class="text-gray-500 text-xs ml-1">
                     ({{ country.name }})
                   </span>
-                </SelectItem>
-                <div v-if="filteredCountries.length === 0" class="px-2 py-3 text-sm text-gray-500 text-center">
+                </button>
+                <div v-if="filteredSheetCountries.length === 0" class="px-4 py-6 text-sm text-gray-500 text-center">
                   Страны не найдены
                 </div>
               </div>
-            </SelectContent>
-          </Select>
+            </BottomSheet>
+          </template>
         </div>
 
         <!-- City Autocomplete -->
         <div v-if="point.countryId">
-          <Label class="text-sm font-medium text-gray-700 mb-1">Город (опционально)</Label>
+          <Label class="text-base font-medium text-gray-700 mb-1.5">Город (опционально)</Label>
           <div class="relative">
             <input
               ref="cityInputRef"
               type="text"
               :value="citySearch"
-              class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              class="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base"
               placeholder="Любой город"
               autocomplete="off"
               @input="handleCityInput"
@@ -318,7 +401,7 @@ onMounted(async () => {
                 :key="city.id"
                 type="button"
                 :class="[
-                  'w-full px-3 py-2 text-left text-sm hover:bg-gray-100',
+                  'w-full px-3 py-2.5 text-left text-base hover:bg-gray-100',
                   idx === highlightedIndex ? 'bg-blue-50' : '',
                 ]"
                 @click="handleCitySelect(city)"

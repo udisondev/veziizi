@@ -277,8 +277,8 @@ const formattedPhone = computed(() => {
   return formatPhoneNumber(props.point.contact_phone.replace(/\D/g, ''))
 })
 
-const inputClass = 'appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm'
-const inputErrorClass = 'appearance-none block w-full px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm'
+const inputClass = 'appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base'
+const inputErrorClass = 'appearance-none block w-full px-3 py-2.5 border border-red-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base'
 
 // Следим за изменениями позиции для автообновления типов
 watch(() => [props.index, props.totalPoints], () => {
@@ -392,7 +392,7 @@ watch(() => [props.index, props.totalPoints], () => {
 
       <!-- Date (обязательное) -->
       <div :data-tutorial="index === 0 ? 'route-date-fields' : (index === 1 ? 'route-date-fields-1' : (index === 2 ? 'route-date-fields-2' : undefined))">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
+        <label class="block text-base font-medium text-gray-700 mb-1.5">
           Дата <span class="text-red-500">*</span>
         </label>
         <DatePicker
@@ -413,8 +413,8 @@ watch(() => [props.index, props.totalPoints], () => {
 
       <!-- Время (раскрывается по кнопке) -->
       <div v-if="showTime" :data-tutorial="index === 0 ? 'route-time-section' : undefined">
-        <div class="flex items-center justify-between mb-1">
-          <label class="block text-sm font-medium text-gray-700">
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="block text-base font-medium text-gray-700">
             Время
           </label>
           <button
@@ -448,8 +448,8 @@ watch(() => [props.index, props.totalPoints], () => {
 
       <!-- Контакт (раскрывается по кнопке) -->
       <div v-if="showContact" :data-tutorial="index === 0 ? 'route-contact-section' : undefined">
-        <div class="flex items-center justify-between mb-1">
-          <label class="block text-sm font-medium text-gray-700">
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="block text-base font-medium text-gray-700">
             Контакт
           </label>
           <button
@@ -491,8 +491,8 @@ watch(() => [props.index, props.totalPoints], () => {
 
       <!-- Комментарий (раскрывается по кнопке) -->
       <div v-if="showComment" :data-tutorial="index === 0 ? 'route-comment-section' : undefined">
-        <div class="flex items-center justify-between mb-1">
-          <label class="block text-sm font-medium text-gray-700">
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="block text-base font-medium text-gray-700">
             Примечание
           </label>
           <button
@@ -508,7 +508,7 @@ watch(() => [props.index, props.totalPoints], () => {
           :value="point.comment || ''"
           placeholder="Дополнительная информация"
           rows="2"
-          class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm resize-none"
+          class="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base resize-none"
           @input="handleCommentChange"
         />
       </div>
@@ -518,11 +518,11 @@ watch(() => [props.index, props.totalPoints], () => {
         <button
           v-if="!showTime"
           type="button"
-          class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+          class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5"
           :data-tutorial="index === 0 ? 'route-add-time' : undefined"
           @click="toggleShowTime"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
           </svg>
           Время
@@ -530,11 +530,11 @@ watch(() => [props.index, props.totalPoints], () => {
         <button
           v-if="!showContact"
           type="button"
-          class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+          class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5"
           :data-tutorial="index === 0 ? 'route-add-contact' : undefined"
           @click="toggleShowContact"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
           </svg>
           Контакт
@@ -542,11 +542,11 @@ watch(() => [props.index, props.totalPoints], () => {
         <button
           v-if="!showComment"
           type="button"
-          class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+          class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5"
           :data-tutorial="index === 0 ? 'route-add-comment' : undefined"
           @click="toggleShowComment"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
           </svg>
           Примечание

@@ -79,7 +79,7 @@ function handleSheetSelect(value: string | undefined) {
       type="button"
       :disabled="disabled"
       :class="[
-        'appearance-none block w-full px-3 py-2 border rounded-md text-sm text-left',
+        'appearance-none block w-full px-3 py-2.5 border rounded-md text-base text-left',
         hasError ? 'border-red-300' : 'border-gray-300',
         disabled ? 'bg-gray-100 text-gray-400' : 'bg-white',
       ]"
@@ -96,7 +96,7 @@ function handleSheetSelect(value: string | undefined) {
         <button
           v-if="clearable"
           type="button"
-          class="w-full px-4 py-3 text-left text-sm border-b border-gray-50 text-gray-400 active:bg-gray-100"
+          class="w-full px-4 py-3.5 text-left text-base border-b border-gray-50 text-gray-400 active:bg-gray-100"
           @click="handleSheetSelect(undefined)"
         >
           {{ clearLabel }}
@@ -106,7 +106,7 @@ function handleSheetSelect(value: string | undefined) {
           :key="option.value"
           type="button"
           :class="[
-            'w-full px-4 py-3 text-left text-sm border-b border-gray-50 active:bg-gray-100',
+            'w-full px-4 py-3.5 text-left text-base border-b border-gray-50 active:bg-gray-100',
             option.value === modelValue ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900',
           ]"
           @click="handleSheetSelect(option.value)"
