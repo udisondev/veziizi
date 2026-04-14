@@ -136,6 +136,7 @@ function openSheet() {
         v-if="dropdownOpen"
         class="absolute z-50 top-full mt-1 w-full bg-popover border border-border rounded-md shadow-md flex flex-col"
         style="max-height: 300px"
+        @mousedown.prevent
       >
         <!-- Search -->
         <div class="p-2 border-b border-border flex-shrink-0">

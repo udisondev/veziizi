@@ -166,14 +166,20 @@ function handleCancel() {
 onMounted(async () => {
   if (isEditing.value && subscriptionId.value) {
     isLoadingSubscription.value = true
-    const sub = await store.getSubscription(subscriptionId.value)
-    if (sub) {
-      loadSubscription(sub)
-    } else {
-      toast({ title: 'Подписка не найдена', variant: 'destructive' })
+    try {
+      const sub = await store.getSubscription(subscriptionId.value)
+      if (sub) {
+        loadSubscription(sub)
+      } else {
+        toast({ title: 'Подписка не найдена', variant: 'destructive' })
+        router.push({ name: 'freight-subscriptions' })
+      }
+    } catch {
+      toast({ title: 'Ошибка загрузки подписки', variant: 'destructive' })
       router.push({ name: 'freight-subscriptions' })
+    } finally {
+      isLoadingSubscription.value = false
     }
-    isLoadingSubscription.value = false
   }
 })
 </script>
