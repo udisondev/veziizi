@@ -139,9 +139,11 @@ export const useSubscriptionsStore = defineStore('subscriptions', () => {
       pendingToggles.delete(id)
       try {
         const updated = await subscriptionsApi.setActive(id, desiredValue)
-        Object.assign(subscription, updated)
+        const current = subscriptions.value.find(s => s.id === id)
+        if (current) Object.assign(current, updated)
       } catch (e) {
-        subscription.is_active = !desiredValue
+        const current = subscriptions.value.find(s => s.id === id)
+        if (current) current.is_active = !desiredValue
         logger.error('Failed to toggle subscription active', e)
       }
     }, 600))
