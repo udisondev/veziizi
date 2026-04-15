@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { Card, CardContent } from '@/components/ui/card'
 
 // Shared Components
 import { DetailPageHeader, LoadingSpinner } from '@/components/shared'
@@ -188,71 +189,75 @@ onMounted(async () => {
   <div>
     <DetailPageHeader :back-to="{ name: 'freight-subscriptions' }" back-label="К подпискам" />
 
-    <div class="max-w-2xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-      <div class="mb-6">
-        <h1 class="text-2xl font-bold tracking-tight text-foreground mb-3">
-          {{ isEditing ? 'Редактировать подписку' : 'Создать подписку' }}
-        </h1>
-        <p class="text-muted-foreground">
-          Укажите критерии для получения уведомлений о заявках.
-          Если параметр не указан — подходят любые значения.
-        </p>
-      </div>
+    <div class="max-w-5xl mx-auto py-6 px-4">
+      <Card>
+        <CardContent class="p-6">
+          <div class="mb-6">
+            <h1 class="text-2xl font-bold tracking-tight text-foreground mb-3">
+              {{ isEditing ? 'Редактировать подписку' : 'Создать подписку' }}
+            </h1>
+            <p class="text-muted-foreground">
+              Укажите критерии для получения уведомлений о заявках.
+              Если параметр не указан — подходят любые значения.
+            </p>
+          </div>
 
-      <LoadingSpinner v-if="isLoadingSubscription" text="Загрузка..." />
+          <LoadingSpinner v-if="isLoadingSubscription" text="Загрузка..." />
 
-      <form v-else class="space-y-6" @submit.prevent="handleSubmit">
-        <div>
-          <Label for="name" class="text-base font-medium">Название подписки *</Label>
-          <Input
-            id="name"
-            v-model="name"
-            placeholder="Например: Россия → Казахстан, тент"
-            class="mt-2"
-          />
-        </div>
+          <form v-else class="space-y-6" @submit.prevent="handleSubmit">
+            <div>
+              <Label for="name" class="text-base font-medium">Название подписки *</Label>
+              <Input
+                id="name"
+                v-model="name"
+                placeholder="Например: Россия → Казахстан, тент"
+                class="mt-2"
+              />
+            </div>
 
-        <Separator />
+            <Separator />
 
-        <FreightFiltersForm
-          :route-points="routePoints"
-          :min-weight="minWeight"
-          :max-weight="maxWeight"
-          :min-price="minPrice"
-          :max-price="maxPrice"
-          :min-volume="minVolume"
-          :max-volume="maxVolume"
-          :vehicle-sub-types="vehicleSubTypes"
-          :payment-methods="paymentMethods"
-          :payment-terms="paymentTerms"
-          :vat-types="vatTypes"
-          @add-route-point="addRoutePoint"
-          @remove-route-point="removeRoutePoint"
-          @update-route-point="updateRoutePoint"
-          @reorder-route-points="reorderRoutePoints"
-          @update:min-weight="minWeight = $event"
-          @update:max-weight="maxWeight = $event"
-          @update:min-price="minPrice = $event"
-          @update:max-price="maxPrice = $event"
-          @update:min-volume="minVolume = $event"
-          @update:max-volume="maxVolume = $event"
-          @update:vehicle-sub-types="vehicleSubTypes = $event"
-          @update:payment-methods="paymentMethods = $event"
-          @update:payment-terms="paymentTerms = $event"
-          @update:vat-types="vatTypes = $event"
-        />
+            <FreightFiltersForm
+              :route-points="routePoints"
+              :min-weight="minWeight"
+              :max-weight="maxWeight"
+              :min-price="minPrice"
+              :max-price="maxPrice"
+              :min-volume="minVolume"
+              :max-volume="maxVolume"
+              :vehicle-sub-types="vehicleSubTypes"
+              :payment-methods="paymentMethods"
+              :payment-terms="paymentTerms"
+              :vat-types="vatTypes"
+              @add-route-point="addRoutePoint"
+              @remove-route-point="removeRoutePoint"
+              @update-route-point="updateRoutePoint"
+              @reorder-route-points="reorderRoutePoints"
+              @update:min-weight="minWeight = $event"
+              @update:max-weight="maxWeight = $event"
+              @update:min-price="minPrice = $event"
+              @update:max-price="maxPrice = $event"
+              @update:min-volume="minVolume = $event"
+              @update:max-volume="maxVolume = $event"
+              @update:vehicle-sub-types="vehicleSubTypes = $event"
+              @update:payment-methods="paymentMethods = $event"
+              @update:payment-terms="paymentTerms = $event"
+              @update:vat-types="vatTypes = $event"
+            />
 
-        <Separator />
+            <Separator />
 
-        <div class="flex gap-3">
-          <Button type="button" variant="outline" @click="handleCancel">
-            Отмена
-          </Button>
-          <Button type="submit" :disabled="!isValid || isSaving">
-            {{ isSaving ? 'Сохранение...' : (isEditing ? 'Сохранить' : 'Создать') }}
-          </Button>
-        </div>
-      </form>
+            <div class="flex gap-3">
+              <Button type="button" variant="outline" @click="handleCancel">
+                Отмена
+              </Button>
+              <Button type="submit" :disabled="!isValid || isSaving">
+                {{ isSaving ? 'Сохранение...' : (isEditing ? 'Сохранить' : 'Создать') }}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   </div>
 </template>

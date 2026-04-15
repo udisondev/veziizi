@@ -73,63 +73,73 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <DropdownMenu v-model:open="isOpen">
-    <DropdownMenuTrigger as-child>
-      <Button variant="ghost" size="icon" class="relative" data-tutorial="notification-bell">
-        <Bell class="h-5 w-5" />
-        <!-- Badge с количеством -->
-        <span
-          v-if="hasUnread"
-          class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground"
-        >
-          {{ unreadCount > 99 ? '99+' : unreadCount }}
-        </span>
-      </Button>
-    </DropdownMenuTrigger>
-
-    <DropdownMenuContent align="end" class="w-80 p-0">
-      <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b" data-tutorial="notification-dropdown">
-        <span class="font-semibold">Уведомления</span>
-        <Button
-          v-if="hasUnread"
-          variant="ghost"
-          size="sm"
-          class="text-xs h-7"
-          @click="handleMarkAllRead"
-        >
-          Прочитать все
+  <div class="relative group/bell">
+    <DropdownMenu v-model:open="isOpen">
+      <DropdownMenuTrigger as-child>
+        <Button variant="ghost" size="icon" class="relative" data-tutorial="notification-bell">
+          <Bell class="h-5 w-5" />
+          <!-- Badge с количеством -->
+          <span
+            v-if="hasUnread"
+            class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground"
+          >
+            {{ unreadCount > 99 ? '99+' : unreadCount }}
+          </span>
         </Button>
-      </div>
+      </DropdownMenuTrigger>
 
-      <!-- Notifications list -->
-      <div class="max-h-96 overflow-y-auto">
-        <template v-if="recentNotifications.length > 0">
-          <NotificationItem
-            v-for="notification in recentNotifications"
-            :key="notification.id"
-            :notification="notification"
-            compact
-            data-tutorial="notification-item"
-            @click="handleNotificationClick(notification)"
-          />
-        </template>
-        <div v-else class="py-8 text-center text-muted-foreground text-sm">
-          Нет уведомлений
+      <DropdownMenuContent align="end" class="w-80 p-0">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-4 py-3 border-b" data-tutorial="notification-dropdown">
+          <span class="font-semibold">Уведомления</span>
+          <Button
+            v-if="hasUnread"
+            variant="ghost"
+            size="sm"
+            class="text-xs h-7"
+            @click="handleMarkAllRead"
+          >
+            Прочитать все
+          </Button>
         </div>
-      </div>
 
-      <!-- Footer -->
-      <Separator />
-      <div class="p-2">
-        <Button
-          variant="ghost"
-          class="w-full justify-center text-sm"
-          @click="goToAllNotifications"
-        >
-          Все уведомления
-        </Button>
-      </div>
-    </DropdownMenuContent>
-  </DropdownMenu>
+        <!-- Notifications list -->
+        <div class="max-h-96 overflow-y-auto">
+          <template v-if="recentNotifications.length > 0">
+            <NotificationItem
+              v-for="notification in recentNotifications"
+              :key="notification.id"
+              :notification="notification"
+              compact
+              data-tutorial="notification-item"
+              @click="handleNotificationClick(notification)"
+            />
+          </template>
+          <div v-else class="py-8 text-center text-muted-foreground text-sm">
+            Нет уведомлений
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <Separator />
+        <div class="p-2">
+          <Button
+            variant="ghost"
+            class="w-full justify-center text-sm"
+            @click="goToAllNotifications"
+          >
+            Все уведомления
+          </Button>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+
+    <!-- Tooltip — скрывается когда открыт dropdown -->
+    <div
+      v-if="!isOpen"
+      class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2.5 py-1 rounded-md bg-popover text-popover-foreground text-sm shadow-md whitespace-nowrap opacity-0 group-hover/bell:opacity-100 transition-opacity duration-150 z-50"
+    >
+      Уведомления
+    </div>
+  </div>
 </template>

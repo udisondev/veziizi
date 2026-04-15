@@ -24,7 +24,7 @@ const hasDefaultSlot = computed(() => !!slots.default)
       <slot />
     </div>
     <div v-else class="min-w-0">
-      <h1 class="text-2xl font-bold tracking-tight text-foreground truncate">{{ title }}</h1>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">{{ title }}</h1>
       <p v-if="description" class="text-muted-foreground">{{ description }}</p>
     </div>
     <div class="flex items-center gap-2 shrink-0">

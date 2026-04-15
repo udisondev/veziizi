@@ -41,6 +41,7 @@ import {
   Building2,
   HelpCircle,
 } from 'lucide-vue-next'
+import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -184,15 +185,16 @@ const userInitial = computed(() => {
           </div>
 
           <!-- Support -->
-          <Button
-            variant="ghost"
-            size="icon"
-            data-tutorial="help-btn"
-            @click="router.push('/support')"
-            title="Поддержка"
-          >
-            <HelpCircle class="h-5 w-5" />
-          </Button>
+          <Tooltip text="Поддержка" side="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              data-tutorial="help-btn"
+              @click="router.push('/support')"
+            >
+              <HelpCircle class="h-5 w-5" />
+            </Button>
+          </Tooltip>
 
           <!-- Notifications -->
           <NotificationBell />
