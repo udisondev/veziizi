@@ -140,24 +140,23 @@ async function handleSubmit() {
     is_active: isActive.value,
   }
 
-  try {
-    if (isEditing.value && subscription.value) {
-      await store.updateSubscription(subscription.value.id, data)
-      toast({ title: 'Подписка обновлена' })
-    } else {
-      await store.createSubscription(data)
-      toast({ title: 'Подписка создана' })
-    }
-    router.push({ name: 'freight-subscriptions' })
-  } catch {
+  const result = isEditing.value && subscription.value
+    ? await store.updateSubscription(subscription.value.id, data)
+    : await store.createSubscription(data)
+
+  isSaving.value = false
+
+  if (!result) {
     toast({
       title: 'Ошибка',
       description: 'Не удалось сохранить подписку',
       variant: 'destructive',
     })
-  } finally {
-    isSaving.value = false
+    return
   }
+
+  toast({ title: isEditing.value ? 'Подписка обновлена' : 'Подписка создана' })
+  router.push({ name: 'freight-subscriptions' })
 }
 
 function handleCancel() {

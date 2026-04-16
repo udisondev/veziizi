@@ -68,6 +68,7 @@ onMounted(async () => {
             ? 'text-foreground'
             : 'text-muted-foreground hover:text-foreground'
         "
+        type="button"
         @click="emit('update:modelValue', item.value)"
       >
         <component v-if="item.icon" :is="item.icon" class="h-4 w-4 shrink-0" />
