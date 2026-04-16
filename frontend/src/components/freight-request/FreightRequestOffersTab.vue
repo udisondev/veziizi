@@ -74,9 +74,9 @@ function formatPrice(amount: number, currency: Currency): string {
         v-for="offer in visibleOffers"
         :key="offer.id"
         :class="[
-          'border rounded-lg p-4',
-          offer.status === 'selected' ? 'border-info/50 bg-info/5' :
-          offer.status === 'confirmed' ? 'border-success/50 bg-success/5' :
+          'border rounded-lg p-4 bg-white shadow-sm',
+          offer.status === 'selected' ? 'border-info/50' :
+          offer.status === 'confirmed' ? 'border-success/50' :
           'border-border'
         ]"
       >
