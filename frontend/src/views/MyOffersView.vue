@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import SelectField from '@/components/freight-request/shared/SelectField.vue'
+import { SelectField } from '@/components/ui/select-field'
 import {
   Dialog,
   DialogContent,

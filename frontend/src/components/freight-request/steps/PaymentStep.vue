@@ -8,7 +8,7 @@ import {
   paymentTermsOptions,
   currencyLabels,
 } from '@/types/freightRequest'
-import SelectField from '@/components/freight-request/shared/SelectField.vue'
+import { SelectField } from '@/components/ui/select-field'
 
 interface Props {
   payment: Payment

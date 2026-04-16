@@ -6,6 +6,7 @@ import { useTutorialEvent } from '@/composables/useTutorialEvent'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { scrollToFirstError } from '@/utils/scrollToError'
+import { Button } from '@/components/ui/button'
 import WizardStepIndicator from './WizardStepIndicator.vue'
 import RouteStep from './steps/RouteStep.vue'
 import CargoStep from './steps/CargoStep.vue'
@@ -18,6 +19,7 @@ interface Props {
   editMode?: boolean
   freightRequestId?: string
   initialData?: FreightRequest
+  title?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -32,7 +34,7 @@ const onboarding = useOnboardingStore()
 const isLoading = ref(false)
 const apiError = ref('')
 
-const steps = ['Маршрут', 'Груз', 'Транспорт', 'Оплата', 'Подтверждение']
+const steps = ['Маршрут', 'Груз', 'Транспорт', 'Оплата', 'Готово']
 
 onMounted(() => {
   if (props.editMode && props.initialData) {
@@ -101,7 +103,6 @@ function handleNext() {
       emitTutorial('wizard:next')
     } else {
       // Валидация не прошла - скроллим к первой ошибке
-      console.log('[handleNext] validation failed, errors:', JSON.stringify(form.errors))
       scrollToFirstError(form.errors)
     }
   }
@@ -109,25 +110,27 @@ function handleNext() {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto">
-    <!-- Step indicator -->
-    <WizardStepIndicator
-      :steps="steps"
-      :current-step="form.currentStep.value"
-      @go-to="form.goToStep"
-    />
+  <div class="bg-white rounded-xl border border-border shadow-md">
+    <!-- Card header: title + stepper -->
+    <div class="px-6 pt-6 pb-4 border-b border-border">
+      <h2 v-if="title" class="text-xl font-bold text-foreground mb-6">{{ title }}</h2>
+      <WizardStepIndicator
+        :steps="steps"
+        :current-step="form.currentStep.value"
+        @go-to="form.goToStep"
+      />
+    </div>
 
     <!-- API Error -->
     <div
       v-if="apiError"
-      class="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md mb-6"
+      class="mx-6 mt-4 bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg"
     >
       {{ apiError }}
     </div>
 
     <!-- Steps content -->
-    <div class="bg-white shadow-sm rounded-lg p-6">
-      <!-- Step 1: Route -->
+    <div class="p-6">
       <RouteStep
         v-if="form.currentStep.value === 1"
         data-tutorial="route-step"
@@ -138,8 +141,6 @@ function handleNext() {
         @update-point="form.updateRoutePoint"
         @reorder="form.reorderRoutePoints"
       />
-
-      <!-- Step 2: Cargo -->
       <CargoStep
         v-else-if="form.currentStep.value === 2"
         data-tutorial="cargo-step"
@@ -148,8 +149,6 @@ function handleNext() {
         @update:cargo="Object.assign(form.cargo, $event)"
         @validate-field="form.validateField"
       />
-
-      <!-- Step 3: Vehicle -->
       <VehicleStep
         v-else-if="form.currentStep.value === 3"
         data-tutorial="vehicle-step"
@@ -158,8 +157,6 @@ function handleNext() {
         @update:vehicle="Object.assign(form.vehicle, $event)"
         @validate-field="form.validateField"
       />
-
-      <!-- Step 4: Payment -->
       <PaymentStep
         v-else-if="form.currentStep.value === 4"
         data-tutorial="payment-step"
@@ -168,8 +165,6 @@ function handleNext() {
         @update:payment="Object.assign(form.payment, $event)"
         @validate-field="form.validateField"
       />
-
-      <!-- Step 5: Confirmation -->
       <ConfirmationStep
         v-else-if="form.currentStep.value === 5"
         :request-data="form.requestData.value"
@@ -179,48 +174,38 @@ function handleNext() {
     </div>
 
     <!-- Navigation buttons -->
-    <div class="flex gap-4 mt-6" data-tutorial="wizard-buttons">
-      <button
+    <div class="px-6 py-4 border-t border-border flex items-center gap-3" data-tutorial="wizard-buttons">
+      <Button
         v-if="form.currentStep.value > 1"
         type="button"
+        variant="outline"
         data-tutorial="back-btn"
-        class="flex-1 py-3 px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
         @click="form.prevStep"
       >
         Назад
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
         data-tutorial="submit-btn"
         :disabled="isLoading"
-        :class="[
-          'flex-1 py-3 px-4 border border-transparent rounded-md text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors',
-          form.currentStep.value === form.totalSteps
-            ? 'bg-green-600 hover:bg-green-700'
-            : 'bg-blue-600 hover:bg-blue-700',
-          isLoading ? 'opacity-50 cursor-not-allowed' : '',
-        ]"
         @click="handleNext"
       >
-        <template v-if="isLoading">
-          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          {{ editMode ? 'Сохранение...' : 'Публикация...' }}
-        </template>
-        <template v-else>
-          {{ form.currentStep.value === form.totalSteps ? (editMode ? 'Сохранить изменения' : 'Опубликовать') : 'Далее' }}
-        </template>
-      </button>
-    </div>
+        <svg v-if="isLoading" class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+        {{ isLoading
+          ? (editMode ? 'Сохранение...' : 'Публикация...')
+          : form.currentStep.value === form.totalSteps
+            ? (editMode ? 'Сохранить изменения' : 'Опубликовать')
+            : 'Далее'
+        }}
+      </Button>
 
-    <!-- Cancel link -->
-    <div class="text-center mt-4">
       <router-link
         :to="editMode && freightRequestId ? `/freight-requests/${freightRequestId}` : '/'"
-        class="text-gray-500 hover:text-gray-700 text-sm"
+        class="text-sm text-muted-foreground hover:text-foreground transition-colors ml-1"
       >
         Отмена
       </router-link>

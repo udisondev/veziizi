@@ -102,7 +102,7 @@ const contactPhoneError = computed(() => props.errors?.[`point_${props.index}_co
 // Цвет левой границы зависит от типов
 const borderColor = computed(() => {
   if (props.point.is_loading && props.point.is_unloading) {
-    return 'border-l-4 border-l-purple-500' // Оба типа
+    return 'border-l-4 border-l-purple-500'
   }
   if (props.point.is_loading) {
     return 'border-l-4 border-l-blue-500'
@@ -110,7 +110,7 @@ const borderColor = computed(() => {
   if (props.point.is_unloading) {
     return 'border-l-4 border-l-green-500'
   }
-  return 'border-l-4 border-l-gray-300'
+  return 'border-l-4 border-l-border'
 })
 
 function toggleLoading() {
@@ -277,8 +277,8 @@ const formattedPhone = computed(() => {
   return formatPhoneNumber(props.point.contact_phone.replace(/\D/g, ''))
 })
 
-const inputClass = 'appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base'
-const inputErrorClass = 'appearance-none block w-full px-3 py-2.5 border border-red-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base'
+const inputClass = 'appearance-none block w-full px-3 py-2.5 border border-input rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary text-base'
+const inputErrorClass = 'appearance-none block w-full px-3 py-2.5 border border-destructive rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-ring text-base'
 
 // Следим за изменениями позиции для автообновления типов
 watch(() => [props.index, props.totalPoints], () => {
@@ -313,7 +313,7 @@ watch(() => [props.index, props.totalPoints], () => {
         <!-- Drag handle -->
         <div
           v-if="canMove"
-          class="drag-handle cursor-move text-gray-400 hover:text-gray-600"
+          class="drag-handle cursor-move text-muted-foreground hover:text-foreground"
           data-tutorial="route-drag-handle"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -321,7 +321,7 @@ watch(() => [props.index, props.totalPoints], () => {
           </svg>
         </div>
 
-        <span class="text-sm text-gray-500 font-medium">Точка #{{ index + 1 }}</span>
+        <span class="text-sm text-muted-foreground font-medium">Точка #{{ index + 1 }}</span>
 
         <!-- Badge для первой/последней точки (не редактируемый) -->
         <span
@@ -342,7 +342,7 @@ watch(() => [props.index, props.totalPoints], () => {
       <button
         v-if="canRemove"
         type="button"
-        class="text-gray-400 hover:text-red-500 transition-colors"
+        class="text-muted-foreground hover:text-destructive transition-colors"
         title="Удалить точку"
         @click="$emit('remove')"
       >
@@ -362,19 +362,19 @@ watch(() => [props.index, props.totalPoints], () => {
         <input
           type="checkbox"
           :checked="point.is_loading"
-          class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          class="w-4 h-4 accent-primary border-input rounded"
           @change="toggleLoading"
         />
-        <span class="text-sm text-gray-700">Погрузка</span>
+        <span class="text-sm text-foreground">Погрузка</span>
       </label>
       <label class="flex items-center gap-2 cursor-pointer">
         <input
           type="checkbox"
           :checked="point.is_unloading"
-          class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+          class="w-4 h-4 accent-primary border-input rounded"
           @change="toggleUnloading"
         />
-        <span class="text-sm text-gray-700">Разгрузка</span>
+        <span class="text-sm text-foreground">Разгрузка</span>
       </label>
     </div>
 
@@ -392,7 +392,7 @@ watch(() => [props.index, props.totalPoints], () => {
 
       <!-- Date (обязательное) -->
       <div :data-tutorial="index === 0 ? 'route-date-fields' : (index === 1 ? 'route-date-fields-1' : (index === 2 ? 'route-date-fields-2' : undefined))">
-        <label class="block text-base font-medium text-gray-700 mb-1.5">
+        <label class="block text-base font-medium text-foreground mb-1.5">
           Дата <span class="text-red-500">*</span>
         </label>
         <DatePicker
@@ -414,12 +414,12 @@ watch(() => [props.index, props.totalPoints], () => {
       <!-- Время (раскрывается по кнопке) -->
       <div v-if="showTime" :data-tutorial="index === 0 ? 'route-time-section' : undefined">
         <div class="flex items-center justify-between mb-1.5">
-          <label class="block text-base font-medium text-gray-700">
+          <label class="block text-base font-medium text-foreground">
             Время
           </label>
           <button
             type="button"
-            class="text-gray-400 hover:text-red-500 text-xs"
+            class="text-muted-foreground hover:text-destructive text-xs transition-colors"
             :data-tutorial="index === 0 ? 'route-hide-time' : undefined"
             @click="hideTime"
           >
@@ -449,12 +449,12 @@ watch(() => [props.index, props.totalPoints], () => {
       <!-- Контакт (раскрывается по кнопке) -->
       <div v-if="showContact" :data-tutorial="index === 0 ? 'route-contact-section' : undefined">
         <div class="flex items-center justify-between mb-1.5">
-          <label class="block text-base font-medium text-gray-700">
+          <label class="block text-base font-medium text-foreground">
             Контакт
           </label>
           <button
             type="button"
-            class="text-gray-400 hover:text-red-500 text-xs"
+            class="text-muted-foreground hover:text-destructive text-xs transition-colors"
             :data-tutorial="index === 0 ? 'route-hide-contact' : undefined"
             @click="hideContact"
           >
@@ -492,12 +492,12 @@ watch(() => [props.index, props.totalPoints], () => {
       <!-- Комментарий (раскрывается по кнопке) -->
       <div v-if="showComment" :data-tutorial="index === 0 ? 'route-comment-section' : undefined">
         <div class="flex items-center justify-between mb-1.5">
-          <label class="block text-base font-medium text-gray-700">
+          <label class="block text-base font-medium text-foreground">
             Примечание
           </label>
           <button
             type="button"
-            class="text-gray-400 hover:text-red-500 text-xs"
+            class="text-muted-foreground hover:text-destructive text-xs transition-colors"
             :data-tutorial="index === 0 ? 'route-hide-comment' : undefined"
             @click="hideComment"
           >
@@ -508,7 +508,7 @@ watch(() => [props.index, props.totalPoints], () => {
           :value="point.comment || ''"
           placeholder="Дополнительная информация"
           rows="2"
-          class="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base resize-none"
+          class="appearance-none block w-full px-3 py-2.5 border border-input rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary text-base resize-none"
           @input="handleCommentChange"
         />
       </div>
@@ -518,7 +518,7 @@ watch(() => [props.index, props.totalPoints], () => {
         <button
           v-if="!showTime"
           type="button"
-          class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5"
+          class="text-sm text-primary hover:text-primary/70 flex items-center gap-1.5 transition-colors"
           :data-tutorial="index === 0 ? 'route-add-time' : undefined"
           @click="toggleShowTime"
         >
@@ -530,7 +530,7 @@ watch(() => [props.index, props.totalPoints], () => {
         <button
           v-if="!showContact"
           type="button"
-          class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5"
+          class="text-sm text-primary hover:text-primary/70 flex items-center gap-1.5 transition-colors"
           :data-tutorial="index === 0 ? 'route-add-contact' : undefined"
           @click="toggleShowContact"
         >
@@ -542,7 +542,7 @@ watch(() => [props.index, props.totalPoints], () => {
         <button
           v-if="!showComment"
           type="button"
-          class="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5"
+          class="text-sm text-primary hover:text-primary/70 flex items-center gap-1.5 transition-colors"
           :data-tutorial="index === 0 ? 'route-add-comment' : undefined"
           @click="toggleShowComment"
         >

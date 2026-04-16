@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type {
   VehicleSubType,
   PaymentMethod,
@@ -17,26 +17,21 @@ import {
   freightRequestStatusLabels,
 } from '@/types/freightRequest'
 
-// Опции статусов для ChipButtonGroup (без 'all')
+// Опции статусов для MultiSelectField (без 'all')
 const statusFilterOptions = Object.entries(freightRequestStatusLabels).map(([value, label]) => ({
   value: value as FreightRequestStatus,
   label,
 }))
 
 // UI Components
+import { ChevronDown } from 'lucide-vue-next'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { SelectField } from '@/components/ui/select-field'
 
 // Filter Components
-import { ChipButtonGroup, RangeInput } from '@/components/filters'
+import { RangeInput } from '@/components/filters'
 import SubscriptionRouteStep from '@/components/subscriptions/SubscriptionRouteStep.vue'
 import { MultiSelectField } from '@/components/ui/multi-select'
 
@@ -79,6 +74,9 @@ interface Props {
   requestNumber?: number | null
   showStatuses?: boolean
   statuses?: FreightRequestStatus[]
+
+  // Layout
+  compact?: boolean
 }
 
 interface Emits {
@@ -120,6 +118,7 @@ const props = withDefaults(defineProps<Props>(), {
   requestNumber: null,
   showStatuses: false,
   statuses: () => ['published'],
+  compact: false,
 })
 
 const emit = defineEmits<Emits>()
@@ -154,159 +153,204 @@ const localStatuses = computed({
   get: () => props.statuses,
   set: (v) => emit('update:statuses', v),
 })
+
+// Accordion open state — auto-open if data already present
+const routeOpen = ref(props.routePoints.length > 0)
+const cargoOpen = ref(
+  props.minWeight !== undefined || props.maxWeight !== undefined ||
+  props.minPrice !== undefined || props.maxPrice !== undefined ||
+  props.minVolume !== undefined || props.maxVolume !== undefined
+)
+const vehicleOpen = ref(props.vehicleSubTypes.length > 0)
+const paymentOpen = ref(
+  props.paymentMethods.length > 0 || props.paymentTerms.length > 0 || props.vatTypes.length > 0
+)
+
+// Badge counts
+const routeCount = computed(() => props.routePoints.filter(rp => rp.countryId).length)
+const cargoCount = computed(() => [
+  props.minWeight, props.maxWeight,
+  props.minPrice, props.maxPrice,
+  props.minVolume, props.maxVolume,
+].filter(v => v !== undefined).length)
+const vehicleCount = computed(() => props.vehicleSubTypes.length)
+const paymentCount = computed(() =>
+  props.paymentMethods.length + props.paymentTerms.length + props.vatTypes.length
+)
+
+// Auto-open when data arrives externally (e.g. reset then re-apply)
+watch(() => props.routePoints.length, (v) => { if (v > 0) routeOpen.value = true })
+watch(() => props.vehicleSubTypes.length, (v) => { if (v > 0) vehicleOpen.value = true })
+watch(() => [props.paymentMethods.length, props.paymentTerms.length, props.vatTypes.length], (vals) => {
+  if (vals.some(v => v > 0)) paymentOpen.value = true
+})
+watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, props.minVolume, props.maxVolume], (vals) => {
+  if (vals.some(v => v !== undefined)) cargoOpen.value = true
+})
+
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Ownership (optional) -->
-    <div v-if="showOwnership" class="space-y-2">
-      <Label>Принадлежность</Label>
-      <Select v-model="localOwnership">
-        <SelectTrigger>
-          <SelectValue placeholder="Выберите..." />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem
-            v-for="opt in ownershipOptions"
-            :key="opt.value"
-            :value="opt.value"
-          >
-            {{ opt.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+  <!-- ===== COMPACT MODE (filters sidebar — accordion) ===== -->
+  <template v-if="compact">
+    <div class="space-y-1">
 
-    <!-- INN (optional) -->
-    <div v-if="showINN" class="space-y-2">
-      <Label>ИНН организации</Label>
-      <Input
-        :model-value="orgINN"
-        placeholder="Поиск по ИНН"
-        @update:model-value="emit('update:orgINN', $event as string)"
-      />
-    </div>
+      <!-- Top fields: Принадлежность, ИНН, Номер заявки, Статус -->
+      <template v-if="showOwnership || showINN || showRequestNumber || showStatuses">
+        <div v-if="showOwnership" class="space-y-1.5 pb-2">
+          <Label class="text-sm font-semibold px-1">Принадлежность</Label>
+          <SelectField v-model="localOwnership" :options="ownershipOptions" sheet-label="Принадлежность" />
+        </div>
+        <div v-if="showINN" class="space-y-1.5 pb-2">
+          <Label class="text-sm font-semibold px-1">ИНН организации</Label>
+          <Input :model-value="orgINN" placeholder="Поиск по ИНН" @update:model-value="emit('update:orgINN', $event as string)" />
+        </div>
+        <div v-if="showRequestNumber" class="space-y-1.5 pb-2">
+          <Label class="text-sm font-semibold px-1">Номер заявки</Label>
+          <Input :model-value="requestNumber ?? ''" type="number" placeholder="Поиск по номеру" @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)" />
+        </div>
+        <div v-if="showStatuses" class="space-y-1.5 pb-3">
+          <Label class="text-sm font-semibold px-1">Статус заявки</Label>
+          <MultiSelectField v-model="localStatuses" :options="statusFilterOptions" placeholder="Все статусы" sheet-label="Статус заявки" search-placeholder="Поиск статуса..." />
+        </div>
+      </template>
 
-    <!-- Request Number (optional) -->
-    <div v-if="showRequestNumber" class="space-y-2">
-      <Label>Номер заявки</Label>
-      <Input
-        :model-value="requestNumber ?? ''"
-        type="number"
-        placeholder="Поиск по номеру"
-        @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)"
-      />
-    </div>
-
-    <!-- Statuses (optional) -->
-    <ChipButtonGroup
-      v-if="showStatuses"
-      v-model="localStatuses"
-      :options="statusFilterOptions"
-      label="Статус заявки"
-      empty-text="Не выбрано — все статусы"
-    />
-
-    <Separator v-if="showOwnership || showINN || showRequestNumber || showStatuses" />
-
-    <!-- Route Points -->
-    <SubscriptionRouteStep
-      :route-points="routePoints"
-      @add-point="emit('addRoutePoint')"
-      @remove-point="(id) => emit('removeRoutePoint', id)"
-      @update-point="(id, updates) => emit('updateRoutePoint', id, updates)"
-      @reorder="(points) => emit('reorderRoutePoints', points)"
-    />
-
-    <Separator />
-
-    <!-- Numeric Ranges -->
-    <div class="space-y-4">
-      <h4 class="font-semibold text-lg">Параметры груза</h4>
-
-      <RangeInput
-        :min-value="minWeight"
-        :max-value="maxWeight"
-        label="Вес груза, т"
-        :min="0"
-        step="0.1"
-        @update:min-value="emit('update:minWeight', $event)"
-        @update:max-value="emit('update:maxWeight', $event)"
-      />
-
-      <RangeInput
-        :min-value="minPrice"
-        :max-value="maxPrice"
-        label="Ставка, руб."
-        :min="0"
-        step="1000"
-        @update:min-value="emit('update:minPrice', $event)"
-        @update:max-value="emit('update:maxPrice', $event)"
-      />
-
-      <RangeInput
-        :min-value="minVolume"
-        :max-value="maxVolume"
-        label="Объём груза, м³"
-        :min="0"
-        step="1"
-        @update:min-value="emit('update:minVolume', $event)"
-        @update:max-value="emit('update:maxVolume', $event)"
-      />
-    </div>
-
-    <Separator />
-
-    <!-- Vehicle SubTypes -->
-    <div class="space-y-2">
-      <h4 class="font-semibold text-lg">Тип кузова</h4>
-      <MultiSelectField
-        v-model="localVehicleSubTypes"
-        :options="allVehicleSubTypeOptions"
-        placeholder="Все типы кузова"
-        sheet-label="Тип кузова"
-        search-placeholder="Поиск типа кузова..."
-      />
-    </div>
-
-    <Separator />
-
-    <!-- Payment -->
-    <div class="space-y-4">
-      <h4 class="font-semibold text-lg">Оплата</h4>
-
-      <div class="space-y-2">
-        <Label class="text-base mb-1.5 block">Способ оплаты</Label>
-        <MultiSelectField
-          v-model="localPaymentMethods"
-          :options="paymentMethodOptions"
-          placeholder="Все способы"
-          sheet-label="Способ оплаты"
-          search-placeholder="Поиск..."
-        />
+      <!-- Route -->
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="routeOpen = !routeOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Маршрут</span>
+          <div class="flex items-center gap-2">
+            <span v-if="routeCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ routeCount }}</span>
+            <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="routeOpen ? 'rotate-180' : ''" />
+          </div>
+        </button>
+        <div v-if="routeOpen" class="px-1 pt-3 pb-2">
+          <SubscriptionRouteStep :route-points="routePoints" plain-cards @add-point="emit('addRoutePoint')" @remove-point="(id) => emit('removeRoutePoint', id)" @update-point="(id, updates) => emit('updateRoutePoint', id, updates)" @reorder="(points) => emit('reorderRoutePoints', points)" />
+        </div>
       </div>
 
-      <div class="space-y-2">
-        <Label class="text-base mb-1.5 block">Условия оплаты</Label>
-        <MultiSelectField
-          v-model="localPaymentTerms"
-          :options="paymentTermsOptions"
-          placeholder="Все условия"
-          sheet-label="Условия оплаты"
-          search-placeholder="Поиск..."
-        />
+      <!-- Cargo -->
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="cargoOpen = !cargoOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Параметры груза</span>
+          <div class="flex items-center gap-2">
+            <span v-if="cargoCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ cargoCount }}</span>
+            <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="cargoOpen ? 'rotate-180' : ''" />
+          </div>
+        </button>
+        <div v-if="cargoOpen" class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
+          <RangeInput :min-value="minWeight" :max-value="maxWeight" label="Вес груза, т" :min="0" step="0.1" @update:min-value="emit('update:minWeight', $event)" @update:max-value="emit('update:maxWeight', $event)" />
+          <RangeInput :min-value="minPrice" :max-value="maxPrice" label="Ставка, руб." :min="0" step="1000" @update:min-value="emit('update:minPrice', $event)" @update:max-value="emit('update:maxPrice', $event)" />
+          <RangeInput :min-value="minVolume" :max-value="maxVolume" label="Объём груза, м³" :min="0" step="1" @update:min-value="emit('update:minVolume', $event)" @update:max-value="emit('update:maxVolume', $event)" />
+        </div>
       </div>
 
+      <!-- Vehicle -->
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="vehicleOpen = !vehicleOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Тип кузова</span>
+          <div class="flex items-center gap-2">
+            <span v-if="vehicleCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ vehicleCount }}</span>
+            <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="vehicleOpen ? 'rotate-180' : ''" />
+          </div>
+        </button>
+        <div v-if="vehicleOpen" class="px-1 pt-3 pb-2">
+          <MultiSelectField v-model="localVehicleSubTypes" :options="allVehicleSubTypeOptions" placeholder="Все типы кузова" sheet-label="Тип кузова" search-placeholder="Поиск типа кузова..." />
+        </div>
+      </div>
+
+      <!-- Payment -->
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="paymentOpen = !paymentOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Оплата</span>
+          <div class="flex items-center gap-2">
+            <span v-if="paymentCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ paymentCount }}</span>
+            <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="paymentOpen ? 'rotate-180' : ''" />
+          </div>
+        </button>
+        <div v-if="paymentOpen" class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
+          <div class="space-y-1.5">
+            <Label class="text-sm font-semibold px-1">Способ оплаты</Label>
+            <MultiSelectField v-model="localPaymentMethods" :options="paymentMethodOptions" placeholder="Все способы" sheet-label="Способ оплаты" search-placeholder="Поиск..." />
+          </div>
+          <div class="space-y-1.5">
+            <Label class="text-sm font-semibold px-1">Условия оплаты</Label>
+            <MultiSelectField v-model="localPaymentTerms" :options="paymentTermsOptions" placeholder="Все условия" sheet-label="Условия оплаты" search-placeholder="Поиск..." />
+          </div>
+          <div class="space-y-1.5">
+            <Label class="text-sm font-semibold px-1">НДС</Label>
+            <MultiSelectField v-model="localVatTypes" :options="vatTypeOptions" placeholder="Все варианты" sheet-label="НДС" search-placeholder="Поиск..." />
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </template>
+
+  <!-- ===== FULL MODE (subscription form — original layout) ===== -->
+  <template v-else>
+    <div class="space-y-6">
+      <!-- Route Points -->
+      <SubscriptionRouteStep
+        :route-points="routePoints"
+        @add-point="emit('addRoutePoint')"
+        @remove-point="(id) => emit('removeRoutePoint', id)"
+        @update-point="(id, updates) => emit('updateRoutePoint', id, updates)"
+        @reorder="(points) => emit('reorderRoutePoints', points)"
+      />
+
+      <Separator />
+
+      <!-- Cargo Params -->
+      <div class="space-y-4">
+        <h4 class="font-semibold text-lg">Параметры груза</h4>
+        <RangeInput :min-value="minWeight" :max-value="maxWeight" label="Вес груза, т" :min="0" step="0.1" @update:min-value="emit('update:minWeight', $event)" @update:max-value="emit('update:maxWeight', $event)" />
+        <RangeInput :min-value="minPrice" :max-value="maxPrice" label="Ставка, руб." :min="0" step="1000" @update:min-value="emit('update:minPrice', $event)" @update:max-value="emit('update:maxPrice', $event)" />
+        <RangeInput :min-value="minVolume" :max-value="maxVolume" label="Объём груза, м³" :min="0" step="1" @update:min-value="emit('update:minVolume', $event)" @update:max-value="emit('update:maxVolume', $event)" />
+      </div>
+
+      <Separator />
+
+      <!-- Vehicle SubTypes -->
       <div class="space-y-2">
-        <Label class="text-base mb-1.5 block">НДС</Label>
-        <MultiSelectField
-          v-model="localVatTypes"
-          :options="vatTypeOptions"
-          placeholder="Все варианты"
-          sheet-label="НДС"
-          search-placeholder="Поиск..."
-        />
+        <h4 class="font-semibold text-lg">Тип кузова</h4>
+        <MultiSelectField v-model="localVehicleSubTypes" :options="allVehicleSubTypeOptions" placeholder="Все типы кузова" sheet-label="Тип кузова" search-placeholder="Поиск типа кузова..." />
+      </div>
+
+      <Separator />
+
+      <!-- Payment -->
+      <div class="space-y-4">
+        <h4 class="font-semibold text-lg">Оплата</h4>
+        <div class="space-y-2">
+          <Label class="text-base mb-1.5 block">Способ оплаты</Label>
+          <MultiSelectField v-model="localPaymentMethods" :options="paymentMethodOptions" placeholder="Все способы" sheet-label="Способ оплаты" search-placeholder="Поиск..." />
+        </div>
+        <div class="space-y-2">
+          <Label class="text-base mb-1.5 block">Условия оплаты</Label>
+          <MultiSelectField v-model="localPaymentTerms" :options="paymentTermsOptions" placeholder="Все условия" sheet-label="Условия оплаты" search-placeholder="Поиск..." />
+        </div>
+        <div class="space-y-2">
+          <Label class="text-base mb-1.5 block">НДС</Label>
+          <MultiSelectField v-model="localVatTypes" :options="vatTypeOptions" placeholder="Все варианты" sheet-label="НДС" search-placeholder="Поиск..." />
+        </div>
       </div>
     </div>
-  </div>
+  </template>
 </template>

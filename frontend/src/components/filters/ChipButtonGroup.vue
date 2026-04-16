@@ -40,7 +40,7 @@ function isSelected(value: T): boolean {
 
 <template>
   <div>
-    <Label v-if="label" class="text-sm font-medium mb-2 block">{{ label }}</Label>
+    <Label v-if="label" class="text-base font-medium mb-1.5 block">{{ label }}</Label>
     <div class="flex flex-wrap gap-2">
       <button
         v-for="option in options"

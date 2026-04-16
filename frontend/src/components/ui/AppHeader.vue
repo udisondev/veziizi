@@ -41,6 +41,7 @@ import {
   Building2,
   HelpCircle,
 } from 'lucide-vue-next'
+import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -92,7 +93,7 @@ const userInitial = computed(() => {
 </script>
 
 <template>
-  <header class="bg-card border-b sticky top-0 z-50">
+  <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-14">
         <!-- Left: Menu button + Title -->
@@ -100,7 +101,7 @@ const userInitial = computed(() => {
           <!-- Mobile menu (Sheet) -->
           <Sheet v-model:open="isMenuOpen">
             <SheetTrigger as-child>
-              <Button variant="ghost" size="icon" class="md:hidden" data-tutorial="mobile-menu-btn">
+              <Button variant="ghost" size="icon" class="md:hidden text-slate-300 hover:text-white hover:bg-slate-800" data-tutorial="mobile-menu-btn">
                 <Menu class="h-5 w-5" />
               </Button>
             </SheetTrigger>
@@ -159,8 +160,8 @@ const userInitial = computed(() => {
               :class="[
                 'px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors',
                 route.path === item.to
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  ? 'bg-white/15 text-white'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
               ]"
               @click="item.to === '/' && onboarding.isSandboxMode && tutorialBus.emit('nav:requestsClicked')"
             >
@@ -170,7 +171,7 @@ const userInitial = computed(() => {
           </nav>
 
           <!-- Logo/Title -->
-          <router-link to="/" class="text-lg font-semibold text-foreground md:hidden">
+          <router-link to="/" class="text-lg font-semibold text-white md:hidden">
             Veziizi
           </router-link>
         </div>
@@ -178,21 +179,23 @@ const userInitial = computed(() => {
         <!-- Right: Organization + Notifications + User menu -->
         <div class="flex items-center gap-2">
           <!-- Organization name (desktop) -->
-          <div class="hidden sm:flex items-center gap-2 text-sm text-muted-foreground mr-1">
+          <div class="hidden sm:flex items-center gap-2 text-sm text-slate-200 mr-1">
             <Building2 class="h-4 w-4" />
             <span class="max-w-40 truncate">{{ auth.organization?.name }}</span>
           </div>
 
           <!-- Support -->
-          <Button
-            variant="ghost"
-            size="icon"
-            data-tutorial="help-btn"
-            @click="router.push('/support')"
-            title="Поддержка"
-          >
-            <HelpCircle class="h-5 w-5" />
-          </Button>
+          <Tooltip text="Поддержка" side="bottom" content-class="bg-slate-700 text-slate-100 border-slate-600">
+            <Button
+              variant="ghost"
+              size="icon"
+              class="text-slate-300 hover:text-white hover:bg-slate-800"
+              data-tutorial="help-btn"
+              @click="router.push('/support')"
+            >
+              <HelpCircle class="h-5 w-5" />
+            </Button>
+          </Tooltip>
 
           <!-- Notifications -->
           <NotificationBell />
@@ -200,36 +203,37 @@ const userInitial = computed(() => {
           <!-- User dropdown -->
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" class="relative h-9 w-9 rounded-full">
+              <Button variant="ghost" class="relative h-9 w-9 rounded-full hover:bg-slate-800">
                 <Avatar class="h-9 w-9">
-                  <AvatarFallback class="bg-primary/10 text-primary">
+                  <AvatarFallback class="bg-primary/20 text-primary-foreground">
                     {{ userInitial }}
                   </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" class="w-56">
+            <DropdownMenuContent align="end" class="w-56 bg-slate-800 border-slate-700 text-slate-100">
               <DropdownMenuLabel>
                 <div class="flex flex-col space-y-1">
-                  <p class="text-sm font-medium">{{ auth.name }}</p>
-                  <p class="text-xs text-muted-foreground">{{ auth.email }}</p>
+                  <p class="text-sm font-medium text-slate-100">{{ auth.name }}</p>
+                  <p class="text-xs text-slate-400">{{ auth.email }}</p>
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem @click="router.push('/profile')">
+              <DropdownMenuSeparator class="bg-slate-700" />
+              <DropdownMenuItem class="text-slate-200 focus:bg-slate-700 focus:text-white" @click="router.push('/profile')">
                 <User class="mr-2 h-4 w-4" />
                 Профиль
               </DropdownMenuItem>
               <DropdownMenuItem
                 v-if="canManageMembers"
+                class="text-slate-200 focus:bg-slate-700 focus:text-white"
                 @click="router.push('/organization/settings')"
               >
                 <Settings class="mr-2 h-4 w-4" />
                 Настройки
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator class="bg-slate-700" />
               <DropdownMenuItem
-                class="text-destructive focus:text-destructive"
+                class="text-red-400 focus:bg-slate-700 focus:text-red-300"
                 @click="logout"
               >
                 <LogOut class="mr-2 h-4 w-4" />

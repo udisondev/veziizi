@@ -15,6 +15,7 @@ interface RoutePointData {
 
 interface Props {
   routePoints: RoutePointData[]
+  plainCards?: boolean
 }
 
 interface Emits {
@@ -24,7 +25,7 @@ interface Emits {
   (e: 'reorder', points: RoutePointData[]): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { plainCards: false })
 const emit = defineEmits<Emits>()
 
 const localPoints = computed({
@@ -55,6 +56,8 @@ function handleRemove(id: string) {
       handle=".drag-handle"
       ghost-class="opacity-50"
       animation="200"
+      :force-fallback="true"
+      :fallback-on-body="true"
       class="space-y-3"
     >
       <template #item="{ element, index }">
@@ -63,6 +66,7 @@ function handleRemove(id: string) {
           :index="index"
           :can-remove="true"
           :can-move="routePoints.length > 1"
+          :plain="plainCards"
           @update="(updates) => handleUpdate(element.id, updates)"
           @remove="handleRemove(element.id)"
         />

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Check } from 'lucide-vue-next'
+
 interface Props {
   steps: string[]
   currentStep: number
@@ -13,42 +15,47 @@ defineEmits<Emits>()
 </script>
 
 <template>
-  <div class="flex items-center justify-center space-x-2 mb-8">
+  <div class="flex items-start">
     <template v-for="(title, index) in steps" :key="index">
-      <button
-        type="button"
-        :class="[
-          'flex items-center justify-center w-10 h-10 rounded-full font-medium transition-colors text-sm',
-          index + 1 === currentStep
-            ? 'bg-blue-600 text-white'
-            : index + 1 < currentStep
-              ? 'bg-green-500 text-white cursor-pointer hover:bg-green-600'
-              : 'bg-gray-200 text-gray-500 cursor-not-allowed',
-        ]"
-        :disabled="index + 1 > currentStep"
-        :title="title"
-        @click="index + 1 < currentStep && $emit('goTo', index + 1)"
-      >
-        <span v-if="index + 1 < currentStep">&#10003;</span>
-        <span v-else>{{ index + 1 }}</span>
-      </button>
-
+      <!-- Connector between steps -->
       <div
-        v-if="index < steps.length - 1"
-        :class="[
-          'w-8 h-1 rounded',
-          index + 1 < currentStep ? 'bg-green-500' : 'bg-gray-200',
-        ]"
+        v-if="index > 0"
+        class="flex-1 h-0.5 mt-4 transition-colors duration-300 shrink"
+        :class="index < currentStep ? 'bg-primary' : 'bg-border'"
       />
-    </template>
-  </div>
 
-  <div class="text-center mb-6">
-    <h3 class="text-lg font-medium text-gray-900">
-      {{ steps[currentStep - 1] }}
-    </h3>
-    <p class="text-sm text-gray-500">
-      Шаг {{ currentStep }} из {{ steps.length }}
-    </p>
+      <!-- Step: circle + label -->
+      <div class="flex flex-col items-center gap-2 w-16 shrink-0">
+        <button
+          type="button"
+          :disabled="index + 1 > currentStep"
+          class="flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm transition-all duration-300"
+          :class="[
+            index + 1 === currentStep
+              ? 'bg-primary text-primary-foreground ring-4 ring-primary/20'
+              : index + 1 < currentStep
+                ? 'bg-primary text-primary-foreground cursor-pointer hover:bg-primary/80'
+                : 'bg-background border-2 border-border text-muted-foreground cursor-not-allowed',
+          ]"
+          @click="index + 1 < currentStep && $emit('goTo', index + 1)"
+        >
+          <Check v-if="index + 1 < currentStep" class="h-4 w-4" />
+          <span v-else>{{ index + 1 }}</span>
+        </button>
+
+        <span
+          class="text-xs text-center leading-tight transition-colors duration-300 whitespace-nowrap"
+          :class="[
+            index + 1 === currentStep
+              ? 'text-primary font-semibold'
+              : index + 1 < currentStep
+                ? 'text-primary/70 font-medium'
+                : 'text-muted-foreground',
+          ]"
+        >
+          {{ title }}
+        </span>
+      </div>
+    </template>
   </div>
 </template>

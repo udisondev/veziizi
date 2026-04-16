@@ -28,8 +28,8 @@ defineEmits<Emits>()
 
 <template>
   <div>
-    <Label v-if="label" class="text-base">{{ label }}</Label>
-    <div class="flex items-center gap-3 mt-1">
+    <Label v-if="label" class="text-base font-medium mb-1.5 block">{{ label }}</Label>
+    <div class="flex items-center gap-3">
       <Input
         type="number"
         :model-value="minValue"
