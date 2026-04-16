@@ -9,6 +9,8 @@ import { useRouter } from 'vue-router'
 import { tutorialBus } from '@/sandbox/events'
 import { resetAllMockData } from '@/sandbox/mockData'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useBreakpoint } from '@/composables/useBreakpoint'
+import { logger } from '@/utils/logger'
 import type {
   ScenarioType,
   TutorialStep,
@@ -18,9 +20,6 @@ import type {
 } from '@/types/tutorial'
 import type { PopupDirection } from '@/composables/useTutorialPopupTracker'
 import type { VehicleType, VehicleSubType, Currency } from '@/types/freightRequest'
-
-// Breakpoint для desktop (md в Tailwind)
-const DESKTOP_BREAKPOINT = 768
 
 // localStorage ключи
 const STORAGE_KEYS = {
@@ -67,8 +66,10 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   }
   const isSandboxMode = ref(initialSandboxMode)
 
-  // Desktop или mobile (реактивно отслеживается)
-  const isDesktop = ref(window.innerWidth >= DESKTOP_BREAKPOINT)
+  // Desktop/tablet vs mobile для фильтрации шагов туториала.
+  // Планшет намеренно считается десктопом — шаги делятся только на две группы.
+  const { isMobile } = useBreakpoint()
+  const isDesktop = computed(() => !isMobile.value)
 
   // Все шаги сценария (без фильтрации)
   const allSteps = ref<TutorialStep[]>([])
@@ -192,7 +193,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         }
       }
     } catch (e) {
-      console.error('Failed to load onboarding progress:', e)
+      logger.error('Failed to load onboarding progress', e)
     }
   }
 
@@ -214,7 +215,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
         localStorage.removeItem(STORAGE_KEYS.SANDBOX_STATE)
       }
     } catch (e) {
-      console.error('Failed to save onboarding progress:', e)
+      logger.error('Failed to save onboarding progress', e)
     }
   }
 
@@ -234,33 +235,16 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     localStorage.setItem(STORAGE_KEYS.HAS_SEEN_HELP_HINT, 'true')
   }
 
-  /**
-   * Обработчик resize для обновления isDesktop
-   */
-  function handleResize() {
-    const wasDesktop = isDesktop.value
-    isDesktop.value = window.innerWidth >= DESKTOP_BREAKPOINT
-
-    // Если платформа изменилась во время туториала, обновляем индекс
-    if (wasDesktop !== isDesktop.value && isSandboxMode.value) {
-      // Корректируем индекс чтобы остаться на аналогичном шаге
+  // Если платформа изменилась во время туториала — корректируем индекс шага
+  watch(isDesktop, (newIsDesktop, wasDesktop) => {
+    if (wasDesktop !== newIsDesktop && isSandboxMode.value) {
       const currentId = currentStep.value?.id
       if (currentId) {
         const newIndex = currentSteps.value.findIndex(s => s.id === currentId)
-        if (newIndex >= 0) {
-          currentStepIndex.value = newIndex
-        } else {
-          // Если текущий шаг скрылся, переходим к первому доступному
-          currentStepIndex.value = 0
-        }
+        currentStepIndex.value = newIndex >= 0 ? newIndex : 0
       }
     }
-  }
-
-  // Подписка на resize при инициализации store
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', handleResize)
-  }
+  })
 
   /**
    * Войти в режим песочницы
@@ -319,7 +303,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     } catch (e) {
       // При ошибке помечаем sandbox как готовый, чтобы не блокировать компоненты
       sandboxReady.value = true
-      console.error('Failed to enter sandbox:', e)
+      logger.error('Failed to enter sandbox', e)
     }
   }
 

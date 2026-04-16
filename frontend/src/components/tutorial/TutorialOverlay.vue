@@ -10,7 +10,8 @@
  * - Сужает обратно когда popup закрывается
  */
 
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { useWindowSize, useEventListener } from '@vueuse/core'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { storeToRefs } from 'pinia'
 import { useTutorialPopupTracker, onPopupChange } from '@/composables/useTutorialPopupTracker'
@@ -34,8 +35,7 @@ const padding = TUTORIAL_OVERLAY_PADDING
 const borderRadius = TUTORIAL_OVERLAY_BORDER_RADIUS
 
 // Размеры экрана
-const screenWidth = ref(window.innerWidth)
-const screenHeight = ref(window.innerHeight)
+const { width: screenWidth, height: screenHeight } = useWindowSize()
 
 // Стили для 4 div вокруг "дырки"
 const topStyle = computed(() => ({
@@ -70,10 +70,6 @@ const rightStyle = computed(() => ({
 const currentTargetRect = ref<DOMRect | null>(null)
 
 function updateHolePosition() {
-  // Обновляем размеры экрана
-  screenWidth.value = window.innerWidth
-  screenHeight.value = window.innerHeight
-
   // Поддерживаем target (data-tutorial) и highlightSelector (CSS селектор)
   const targetSelector = currentStep.value?.target
     ? `[data-tutorial="${currentStep.value.target}"]`
@@ -222,16 +218,9 @@ watch(
 const throttledUpdateHolePosition = throttle(updateHolePosition, SCROLL_THROTTLE_DELAY)
 
 // Обновляем при скролле и ресайзе
-onMounted(() => {
-  window.addEventListener('scroll', throttledUpdateHolePosition, true)
-  window.addEventListener('resize', updateHolePosition)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('scroll', throttledUpdateHolePosition, true)
-  window.removeEventListener('resize', updateHolePosition)
-  stopPopupTracking()
-})
+useEventListener('scroll', throttledUpdateHolePosition, { capture: true })
+useEventListener('resize', updateHolePosition)
+onUnmounted(stopPopupTracking)
 
 // Блокируем клики на затемнённых областях
 function blockClick(e: MouseEvent) {

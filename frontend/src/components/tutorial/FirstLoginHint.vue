@@ -5,7 +5,8 @@
  * Показывает tooltip с информацией о разделе помощи
  */
 
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import { useWindowSize, useEventListener } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useAuthStore } from '@/stores/auth'
@@ -38,11 +39,7 @@ const padding = 8
 const borderRadius = 24 // для круглой кнопки
 
 // Размеры экрана
-const screenWidth = ref(window.innerWidth)
-const screenHeight = ref(window.innerHeight)
-
-// На мобильных (< 640px) показываем tooltip снизу
-const isMobile = computed(() => screenWidth.value < 640)
+const { width: screenWidth, height: screenHeight } = useWindowSize()
 
 // Стили для 4 div вокруг "дырки"
 const topStyle = computed(() => ({
@@ -74,9 +71,6 @@ const rightStyle = computed(() => ({
 }))
 
 function updatePosition() {
-  screenWidth.value = window.innerWidth
-  screenHeight.value = window.innerHeight
-
   const target = document.querySelector('[data-tutorial="help-btn"]')
   if (!target) {
     isReady.value = false
@@ -92,24 +86,15 @@ function updatePosition() {
     height: rect.height + padding * 2,
   }
 
-  // Tooltip: на мобильных — снизу, на десктопе — слева
-  if (isMobile.value) {
-    // Ширина tooltip на мобильных: min(screenWidth - 24, 384)
-    const tooltipWidth = Math.min(screenWidth.value - 24, 384)
-    // Центр tooltip должен быть в пределах: [12 + width/2, screenWidth - 12 - width/2]
-    const minLeft = 12 + tooltipWidth / 2
-    const maxLeft = screenWidth.value - 12 - tooltipWidth / 2
-    const idealLeft = rect.left + rect.width / 2
+  // Tooltip: всегда снизу от иконки
+  const tooltipWidth = Math.min(screenWidth.value - 24, 384)
+  const minLeft = 12 + tooltipWidth / 2
+  const maxLeft = screenWidth.value - 12 - tooltipWidth / 2
+  const idealLeft = rect.left + rect.width / 2
 
-    tooltipPosition.value = {
-      top: rect.bottom + 16,
-      left: Math.max(minLeft, Math.min(idealLeft, maxLeft)),
-    }
-  } else {
-    tooltipPosition.value = {
-      top: rect.top + rect.height / 2,
-      left: rect.left - 16,
-    }
+  tooltipPosition.value = {
+    top: rect.bottom + 16,
+    left: Math.max(minLeft, Math.min(idealLeft, maxLeft)),
   }
 
   isReady.value = true
@@ -134,15 +119,8 @@ watch(isVisible, async (visible) => {
   }
 }, { immediate: true })
 
-onMounted(() => {
-  window.addEventListener('resize', updatePosition)
-  window.addEventListener('scroll', updatePosition, true)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', updatePosition)
-  window.removeEventListener('scroll', updatePosition, true)
-})
+useEventListener('resize', updatePosition)
+useEventListener('scroll', updatePosition, { capture: true })
 
 function blockClick(e: MouseEvent) {
   e.preventDefault()
@@ -193,38 +171,28 @@ function blockClick(e: MouseEvent) {
           }"
         />
 
-        <!-- Tooltip: на мобильных снизу, на десктопе слева -->
+        <!-- Tooltip: всегда снизу от иконки -->
         <div
-          class="fixed z-[70] rounded-lg border bg-white p-4 shadow-xl pointer-events-auto"
-          :class="isMobile ? 'w-[calc(100vw-24px)] max-w-sm' : 'w-72'"
+          class="fixed z-[70] rounded-lg border bg-white p-4 shadow-xl pointer-events-auto w-[calc(100vw-24px)] max-w-sm"
           :style="{
             top: `${tooltipPosition.top}px`,
             left: `${tooltipPosition.left}px`,
-            transform: isMobile ? 'translate(-50%, 0)' : 'translate(-100%, -50%)',
+            transform: 'translate(-50%, 0)',
           }"
         >
-          <!-- Стрелка: вверх на мобильных, вправо на десктопе -->
-          <div
-            v-if="isMobile"
-            class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-45 w-3 h-3 bg-white border-l border-t"
-          />
-          <div
-            v-else
-            class="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 rotate-45 w-3 h-3 bg-white border-r border-t"
-          />
 
           <!-- Кнопка закрытия -->
           <Button
             variant="ghost"
             size="icon"
-            class="absolute top-1 right-1 h-6 w-6"
+            class="absolute top-1 right-1 h-9 w-9 sm:h-6 sm:w-6 [&_svg]:size-5 sm:[&_svg]:size-4"
             @click="dismiss"
           >
-            <X class="h-4 w-4" />
+            <X />
           </Button>
 
           <!-- Содержимое -->
-          <div class="flex items-start gap-3 pr-6">
+          <div class="flex items-start gap-3 pr-10 sm:pr-6">
             <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100">
               <GraduationCap class="h-5 w-5 text-amber-600" />
             </div>
