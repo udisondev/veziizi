@@ -104,7 +104,7 @@ function openSheet() {
       <!-- Trigger -->
       <button
         type="button"
-        class="w-full min-h-11 px-3 py-2 border border-input rounded-md bg-background text-base text-left flex items-center gap-2 hover:bg-accent/50 transition-colors"
+        class="w-full min-h-11 px-3 py-2 border border-input rounded-lg bg-white shadow-sm text-base text-left flex items-center gap-2 hover:bg-accent/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         @click="dropdownOpen ? closeDesktop() : openDesktop()"
       >
         <span class="flex-1 flex flex-wrap gap-1 min-w-0">
@@ -134,7 +134,7 @@ function openSheet() {
       <!-- Dropdown -->
       <div
         v-if="dropdownOpen"
-        class="absolute z-50 top-full mt-1 w-full bg-popover border border-border rounded-md shadow-md flex flex-col"
+        class="absolute z-50 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-lg flex flex-col"
         style="max-height: 300px"
         @mousedown.prevent
       >
@@ -145,7 +145,7 @@ function openSheet() {
             <input
               v-model="searchQuery"
               type="text"
-              class="w-full pl-7 pr-2 py-2 text-base bg-muted/50 rounded border-0 outline-none focus:ring-1 focus:ring-ring"
+              class="w-full pl-7 pr-2 py-2 text-base bg-white border border-input rounded-md outline-none focus:ring-2 focus:ring-ring"
               :placeholder="searchPlaceholder"
               @keydown.escape="closeDesktop"
             />
@@ -184,7 +184,7 @@ function openSheet() {
     <div class="space-y-2">
       <button
         type="button"
-        class="w-full min-h-11 px-3 py-2 border border-input rounded-md bg-background text-base text-left flex items-center gap-2"
+        class="w-full min-h-11 px-3 py-2 border border-input rounded-lg bg-white shadow-sm text-base text-left flex items-center gap-2"
         @click="openSheet"
       >
         <span class="flex-1 text-muted-foreground">
@@ -217,7 +217,7 @@ function openSheet() {
         <input
           v-model="sheetSearch"
           type="text"
-          class="w-full px-3 py-2.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full px-3 py-2.5 text-base border border-input rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ring"
           :placeholder="searchPlaceholder"
         />
       </div>
@@ -227,17 +227,17 @@ function openSheet() {
           v-for="option in filteredSheetOptions"
           :key="option.value"
           type="button"
-          class="w-full px-4 py-3.5 text-left text-base border-b border-gray-50 flex items-center gap-3 active:bg-gray-100"
-          :class="isSelected(option.value) ? 'bg-blue-50' : ''"
+          class="w-full px-4 py-3.5 text-left text-base border-b border-border flex items-center gap-3 active:bg-accent"
+          :class="isSelected(option.value) ? 'bg-accent' : ''"
           @click="toggle(option.value)"
         >
           <span
             class="w-4 h-4 shrink-0 rounded border flex items-center justify-center"
-            :class="isSelected(option.value) ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'"
+            :class="isSelected(option.value) ? 'bg-primary border-primary' : 'border-input bg-white'"
           >
-            <Check v-if="isSelected(option.value)" class="h-3 w-3 text-white" />
+            <Check v-if="isSelected(option.value)" class="h-3 w-3 text-primary-foreground" />
           </span>
-          <span :class="isSelected(option.value) ? 'text-blue-700 font-medium' : 'text-gray-900'">
+          <span :class="isSelected(option.value) ? 'text-primary font-medium' : 'text-foreground'">
             <HighlightText :text="option.label" :query="sheetSearch" />
           </span>
         </button>

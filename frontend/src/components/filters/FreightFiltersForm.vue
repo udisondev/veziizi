@@ -27,14 +27,8 @@ const statusFilterOptions = Object.entries(freightRequestStatusLabels).map(([val
 import { ChevronDown } from 'lucide-vue-next'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { SelectField } from '@/components/ui/select-field'
 
 // Filter Components
 import { RangeInput } from '@/components/filters'
@@ -199,66 +193,60 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
 <template>
   <!-- ===== COMPACT MODE (filters sidebar — accordion) ===== -->
   <template v-if="compact">
-    <div>
-      <!-- Top fields grid -->
-      <div
-        v-if="showOwnership || showINN || showRequestNumber || showStatuses"
-        class="grid grid-cols-1 gap-4 mb-4"
-      >
-        <div v-if="showOwnership" class="space-y-2">
-          <Label class="text-base font-medium mb-1.5 block">Принадлежность</Label>
-          <Select v-model="localOwnership">
-            <SelectTrigger>
-              <SelectValue placeholder="Выберите..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="opt in ownershipOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+    <div class="space-y-1">
+
+      <!-- Top fields: Принадлежность, ИНН, Номер заявки, Статус -->
+      <template v-if="showOwnership || showINN || showRequestNumber || showStatuses">
+        <div v-if="showOwnership" class="space-y-1.5 pb-2">
+          <Label class="text-sm font-semibold px-1">Принадлежность</Label>
+          <SelectField v-model="localOwnership" :options="ownershipOptions" sheet-label="Принадлежность" />
         </div>
-        <div v-if="showINN" class="space-y-2">
-          <Label class="text-base font-medium mb-1.5 block">ИНН организации</Label>
+        <div v-if="showINN" class="space-y-1.5 pb-2">
+          <Label class="text-sm font-semibold px-1">ИНН организации</Label>
           <Input :model-value="orgINN" placeholder="Поиск по ИНН" @update:model-value="emit('update:orgINN', $event as string)" />
         </div>
-        <div v-if="showRequestNumber" class="space-y-2">
-          <Label class="text-base font-medium mb-1.5 block">Номер заявки</Label>
+        <div v-if="showRequestNumber" class="space-y-1.5 pb-2">
+          <Label class="text-sm font-semibold px-1">Номер заявки</Label>
           <Input :model-value="requestNumber ?? ''" type="number" placeholder="Поиск по номеру" @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)" />
         </div>
-        <div v-if="showStatuses" class="space-y-2">
-          <Label class="text-base font-medium mb-1.5 block">Статус заявки</Label>
+        <div v-if="showStatuses" class="space-y-1.5 pb-3">
+          <Label class="text-sm font-semibold px-1">Статус заявки</Label>
           <MultiSelectField v-model="localStatuses" :options="statusFilterOptions" placeholder="Все статусы" sheet-label="Статус заявки" search-placeholder="Поиск статуса..." />
         </div>
-      </div>
+      </template>
 
-      <Separator v-if="showOwnership || showINN || showRequestNumber || showStatuses" />
-
-      <!-- Accordion sections -->
       <!-- Route -->
-      <div class="border-b border-border">
-        <button type="button" class="w-full flex items-center justify-between py-3 text-left" @click="routeOpen = !routeOpen">
-          <span class="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Маршрут</span>
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="routeOpen = !routeOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Маршрут</span>
           <div class="flex items-center gap-2">
             <span v-if="routeCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ routeCount }}</span>
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="routeOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="routeOpen" class="pb-4">
+        <div v-if="routeOpen" class="px-1 pt-3 pb-2">
           <SubscriptionRouteStep :route-points="routePoints" plain-cards @add-point="emit('addRoutePoint')" @remove-point="(id) => emit('removeRoutePoint', id)" @update-point="(id, updates) => emit('updateRoutePoint', id, updates)" @reorder="(points) => emit('reorderRoutePoints', points)" />
         </div>
       </div>
 
       <!-- Cargo -->
-      <div class="border-b border-border">
-        <button type="button" class="w-full flex items-center justify-between py-3 text-left" @click="cargoOpen = !cargoOpen">
-          <span class="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Параметры груза</span>
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="cargoOpen = !cargoOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Параметры груза</span>
           <div class="flex items-center gap-2">
             <span v-if="cargoCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ cargoCount }}</span>
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="cargoOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="cargoOpen" class="pb-4 grid grid-cols-1 gap-4">
+        <div v-if="cargoOpen" class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
           <RangeInput :min-value="minWeight" :max-value="maxWeight" label="Вес груза, т" :min="0" step="0.1" @update:min-value="emit('update:minWeight', $event)" @update:max-value="emit('update:maxWeight', $event)" />
           <RangeInput :min-value="minPrice" :max-value="maxPrice" label="Ставка, руб." :min="0" step="1000" @update:min-value="emit('update:minPrice', $event)" @update:max-value="emit('update:maxPrice', $event)" />
           <RangeInput :min-value="minVolume" :max-value="maxVolume" label="Объём груза, м³" :min="0" step="1" @update:min-value="emit('update:minVolume', $event)" @update:max-value="emit('update:maxVolume', $event)" />
@@ -266,43 +254,52 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
       </div>
 
       <!-- Vehicle -->
-      <div class="border-b border-border">
-        <button type="button" class="w-full flex items-center justify-between py-3 text-left" @click="vehicleOpen = !vehicleOpen">
-          <span class="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Тип кузова</span>
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="vehicleOpen = !vehicleOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Тип кузова</span>
           <div class="flex items-center gap-2">
             <span v-if="vehicleCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ vehicleCount }}</span>
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="vehicleOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="vehicleOpen" class="pb-4">
+        <div v-if="vehicleOpen" class="px-1 pt-3 pb-2">
           <MultiSelectField v-model="localVehicleSubTypes" :options="allVehicleSubTypeOptions" placeholder="Все типы кузова" sheet-label="Тип кузова" search-placeholder="Поиск типа кузова..." />
         </div>
       </div>
 
       <!-- Payment -->
-      <div class="border-b border-border">
-        <button type="button" class="w-full flex items-center justify-between py-3 text-left" @click="paymentOpen = !paymentOpen">
-          <span class="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Оплата</span>
+      <div>
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
+          @click="paymentOpen = !paymentOpen"
+        >
+          <span class="font-bold text-sm text-foreground">Оплата</span>
           <div class="flex items-center gap-2">
             <span v-if="paymentCount > 0" class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{{ paymentCount }}</span>
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="paymentOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="paymentOpen" class="pb-4 grid grid-cols-1 gap-4">
-          <div class="space-y-2">
-            <Label class="text-base font-medium mb-1.5 block">Способ оплаты</Label>
+        <div v-if="paymentOpen" class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
+          <div class="space-y-1.5">
+            <Label class="text-sm font-semibold px-1">Способ оплаты</Label>
             <MultiSelectField v-model="localPaymentMethods" :options="paymentMethodOptions" placeholder="Все способы" sheet-label="Способ оплаты" search-placeholder="Поиск..." />
           </div>
-          <div class="space-y-2">
-            <Label class="text-base font-medium mb-1.5 block">Условия оплаты</Label>
+          <div class="space-y-1.5">
+            <Label class="text-sm font-semibold px-1">Условия оплаты</Label>
             <MultiSelectField v-model="localPaymentTerms" :options="paymentTermsOptions" placeholder="Все условия" sheet-label="Условия оплаты" search-placeholder="Поиск..." />
           </div>
-          <div class="space-y-2">
-            <Label class="text-base font-medium mb-1.5 block">НДС</Label>
+          <div class="space-y-1.5">
+            <Label class="text-sm font-semibold px-1">НДС</Label>
             <MultiSelectField v-model="localVatTypes" :options="vatTypeOptions" placeholder="Все варианты" sheet-label="НДС" search-placeholder="Поиск..." />
           </div>
         </div>
       </div>
+
     </div>
   </template>
 

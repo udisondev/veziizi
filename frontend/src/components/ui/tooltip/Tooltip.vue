@@ -11,6 +11,7 @@ defineProps<{
   text: string
   side?: 'top' | 'right' | 'bottom' | 'left'
   delayDuration?: number
+  contentClass?: string
 }>()
 </script>
 
@@ -24,7 +25,7 @@ defineProps<{
         <TooltipContent
           :side="side ?? 'bottom'"
           :side-offset="6"
-          class="z-50 overflow-hidden rounded-md bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+          :class="['z-50 overflow-hidden rounded-md bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95', contentClass]"
         >
           {{ text }}
         </TooltipContent>

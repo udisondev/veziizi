@@ -7,7 +7,7 @@ const props = defineProps<{
 }>()
 
 const classes = computed(() =>
-  cn('rounded-lg border bg-card text-card-foreground shadow-sm', props.class)
+  cn('rounded-xl border bg-card text-card-foreground shadow-md', props.class)
 )
 </script>
 

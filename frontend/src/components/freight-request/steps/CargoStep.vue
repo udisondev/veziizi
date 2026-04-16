@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CargoInfo, ADRClass } from '@/types/freightRequest'
 import { adrClassOptions } from '@/types/freightRequest'
-import SelectField from '@/components/freight-request/shared/SelectField.vue'
+import { SelectField } from '@/components/ui/select-field'
 
 interface Props {
   cargo: CargoInfo

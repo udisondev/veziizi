@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsContent, TabsSlider } from '@/components/ui/tabs'
-import SelectField from '@/components/freight-request/shared/SelectField.vue'
+import { SelectField } from '@/components/ui/select-field'
 import {
   Table,
   TableBody,

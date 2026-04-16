@@ -76,7 +76,7 @@ onUnmounted(() => {
   <div class="relative group/bell">
     <DropdownMenu v-model:open="isOpen">
       <DropdownMenuTrigger as-child>
-        <Button variant="ghost" size="icon" class="relative" data-tutorial="notification-bell">
+        <Button variant="ghost" size="icon" class="relative text-slate-300 hover:text-white hover:bg-slate-800" data-tutorial="notification-bell">
           <Bell class="h-5 w-5" />
           <!-- Badge с количеством -->
           <span
@@ -88,15 +88,15 @@ onUnmounted(() => {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" class="w-80 p-0">
+      <DropdownMenuContent align="end" class="w-80 p-0 bg-slate-800 border-slate-700 text-slate-100">
         <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b" data-tutorial="notification-dropdown">
-          <span class="font-semibold">Уведомления</span>
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700" data-tutorial="notification-dropdown">
+          <span class="font-semibold text-slate-100">Уведомления</span>
           <Button
             v-if="hasUnread"
             variant="ghost"
             size="sm"
-            class="text-xs h-7"
+            class="text-xs h-7 text-slate-300 hover:text-white hover:bg-slate-700"
             @click="handleMarkAllRead"
           >
             Прочитать все
@@ -111,21 +111,22 @@ onUnmounted(() => {
               :key="notification.id"
               :notification="notification"
               compact
+              dark
               data-tutorial="notification-item"
               @click="handleNotificationClick(notification)"
             />
           </template>
-          <div v-else class="py-8 text-center text-muted-foreground text-sm">
+          <div v-else class="py-8 text-center text-slate-400 text-sm">
             Нет уведомлений
           </div>
         </div>
 
         <!-- Footer -->
-        <Separator />
+        <Separator class="bg-slate-700" />
         <div class="p-2">
           <Button
             variant="ghost"
-            class="w-full justify-center text-sm"
+            class="w-full justify-center text-sm text-slate-300 hover:text-white hover:bg-slate-700"
             @click="goToAllNotifications"
           >
             Все уведомления
@@ -137,7 +138,7 @@ onUnmounted(() => {
     <!-- Tooltip — скрывается когда открыт dropdown -->
     <div
       v-if="!isOpen"
-      class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2.5 py-1 rounded-md bg-popover text-popover-foreground text-sm shadow-md whitespace-nowrap opacity-0 group-hover/bell:opacity-100 transition-opacity duration-150 z-50"
+      class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2.5 py-1 rounded-md bg-slate-700 text-slate-100 text-sm shadow-md whitespace-nowrap opacity-0 group-hover/bell:opacity-100 transition-opacity duration-150 z-50"
     >
       Уведомления
     </div>

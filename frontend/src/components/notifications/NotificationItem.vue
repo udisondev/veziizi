@@ -15,8 +15,10 @@ import {
 const props = withDefaults(defineProps<{
   notification: Notification
   compact?: boolean
+  dark?: boolean
 }>(), {
   compact: false,
+  dark: false,
 })
 
 const emit = defineEmits<{
@@ -71,8 +73,10 @@ function formatDate(dateStr: string): string {
   <div
     :class="cn(
       'flex gap-3 cursor-pointer transition-colors',
-      compact ? 'px-4 py-3 hover:bg-muted/50' : 'p-4 hover:bg-muted/30 rounded-lg',
-      !notification.is_read && 'bg-primary/5'
+      compact
+        ? dark ? 'px-4 py-3 hover:bg-slate-700' : 'px-4 py-3 hover:bg-muted/50'
+        : dark ? 'p-4 hover:bg-slate-700 rounded-lg' : 'p-4 hover:bg-muted/30 rounded-lg',
+      !notification.is_read && (dark ? 'bg-slate-700/50' : 'bg-primary/5')
     )"
     @click="emit('click')"
   >
@@ -94,7 +98,7 @@ function formatDate(dateStr: string): string {
           :class="cn(
             'font-medium truncate',
             compact ? 'text-sm' : 'text-base',
-            !notification.is_read && 'text-foreground'
+            dark ? 'text-slate-100' : (!notification.is_read && 'text-foreground')
           )"
         >
           {{ notification.title }}
@@ -108,13 +112,13 @@ function formatDate(dateStr: string): string {
       <p
         v-if="notification.body"
         :class="cn(
-          'text-muted-foreground',
-          compact ? 'text-xs line-clamp-1' : 'text-sm line-clamp-2 mt-0.5'
+          compact ? 'text-xs line-clamp-1' : 'text-sm line-clamp-2 mt-0.5',
+          dark ? 'text-slate-400' : 'text-muted-foreground'
         )"
       >
         {{ notification.body }}
       </p>
-      <p class="text-xs text-muted-foreground mt-1">
+      <p :class="['text-xs mt-1', dark ? 'text-slate-500' : 'text-muted-foreground']">
         {{ formatDate(notification.created_at) }}
       </p>
     </div>

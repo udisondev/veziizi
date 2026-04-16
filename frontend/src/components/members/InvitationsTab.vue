@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import SelectField from '@/components/freight-request/shared/SelectField.vue'
+import { SelectField } from '@/components/ui/select-field'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Select,
