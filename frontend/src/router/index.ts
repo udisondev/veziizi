@@ -162,6 +162,18 @@ const router = createRouter({
       component: () => import('@/views/FreightSubscriptionsView.vue'),
       meta: { title: 'Рассылка' },
     },
+    {
+      path: '/subscriptions/new',
+      name: 'subscription-create',
+      component: () => import('@/views/SubscriptionFormView.vue'),
+      meta: { title: 'Создать подписку' },
+    },
+    {
+      path: '/subscriptions/:id/edit',
+      name: 'subscription-edit',
+      component: () => import('@/views/SubscriptionFormView.vue'),
+      meta: { title: 'Редактировать подписку' },
+    },
 
     // Support
     {

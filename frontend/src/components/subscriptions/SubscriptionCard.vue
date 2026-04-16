@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { FreightSubscription } from '@/types/subscription'
 import type { VehicleType, VehicleSubType, PaymentMethod, PaymentTerms, VatType } from '@/types/freightRequest'
 import { useToast } from '@/components/ui/toast/use-toast'
@@ -23,7 +23,7 @@ interface Props {
 interface Emits {
   (e: 'edit', subscription: FreightSubscription): void
   (e: 'delete', id: string): void
-  (e: 'toggle-active', id: string): void
+  (e: 'toggle-active', id: string, value: boolean): void
 }
 
 const props = defineProps<Props>()
@@ -31,7 +31,9 @@ const emit = defineEmits<Emits>()
 
 const { toast } = useToast()
 const isDeleteDialogOpen = ref(false)
-const isTogglingActive = ref(false)
+
+const localIsActive = ref(props.subscription.is_active)
+watch(() => props.subscription.is_active, (v) => { localIsActive.value = v })
 
 // Convert subscription to FiltersData format
 const filtersData = computed<FiltersData>(() => {
@@ -78,10 +80,9 @@ const hasFilters = computed(() => {
   )
 })
 
-async function handleToggleActive() {
-  isTogglingActive.value = true
-  emit('toggle-active', props.subscription.id)
-  isTogglingActive.value = false
+function handleToggleActive(value: boolean) {
+  localIsActive.value = value
+  emit('toggle-active', props.subscription.id, value)
 }
 
 function handleEdit() {
@@ -118,8 +119,7 @@ function handleDelete() {
         </div>
         <div class="flex items-center gap-1">
           <Switch
-            :checked="subscription.is_active"
-            :disabled="isTogglingActive"
+            :checked="localIsActive"
             @update:checked="handleToggleActive"
           />
         </div>

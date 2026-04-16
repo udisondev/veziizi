@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { offersApi, type MyOfferListItem } from '@/api/offers'
 import type { OfferStatus, OfferStatusFilter } from '@/types/freightRequest'
@@ -15,13 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import SelectField from '@/components/freight-request/shared/SelectField.vue'
 import {
   Dialog,
   DialogContent,
@@ -38,7 +32,6 @@ import {
   LoadingSpinner,
   EmptyState,
   ErrorBanner,
-  FilterSheet,
 } from '@/components/shared'
 
 // Icons
@@ -60,13 +53,7 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 
 // Filters
-const showFilters = ref(false)
 const statusFilter = ref<OfferStatusFilter>('all')
-const tempStatus = ref<OfferStatusFilter>('all')
-
-// Computed
-const hasActiveFilters = computed(() => statusFilter.value !== 'all')
-const activeFiltersCount = computed(() => statusFilter.value !== 'all' ? 1 : 0)
 
 // Status map for StatusBadge
 const offerStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
@@ -133,25 +120,6 @@ function formatRoute(item: MyOfferListItem): string {
   const origin = item.origin_address || '?'
   const dest = item.destination_address || '?'
   return `${origin} → ${dest}`
-}
-
-// Filter functions
-function openFilters() {
-  tempStatus.value = statusFilter.value
-  showFilters.value = true
-}
-
-function applyFilters() {
-  statusFilter.value = tempStatus.value
-  showFilters.value = false
-}
-
-function resetFilters() {
-  tempStatus.value = 'all'
-}
-
-function resetAllFilters() {
-  statusFilter.value = 'all'
 }
 
 // Action handlers
@@ -278,49 +246,16 @@ onMounted(() => {
 <template>
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <!-- Header -->
-    <PageHeader title="Предложения" class="mb-6">
-      <template #actions>
-        <!-- Filters Sheet -->
-        <FilterSheet
-          v-model:open="showFilters"
-          :active-filters-count="activeFiltersCount"
-          description="Настройте параметры отображения предложений"
-          @open="openFilters"
-          @apply="applyFilters"
-          @reset="resetFilters"
-        >
-          <div class="space-y-2">
-            <Label>Статус</Label>
-            <Select v-model="tempStatus">
-              <SelectTrigger>
-                <SelectValue placeholder="Все статусы" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="opt in offerStatusOptions"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FilterSheet>
-      </template>
-    </PageHeader>
+    <PageHeader title="Предложения" class="mb-6" />
 
-    <!-- Active filters indicator -->
-    <Card v-if="hasActiveFilters" class="mb-6 border-primary/20 bg-primary/5">
-      <CardContent class="flex items-center justify-between py-3">
-        <div class="text-sm text-primary">
-          Статус: {{ offerStatusOptions.find(o => o.value === statusFilter)?.label }}
-        </div>
-        <Button variant="ghost" size="sm" @click="resetAllFilters">
-          Сбросить
-        </Button>
-      </CardContent>
-    </Card>
+    <!-- Inline filter -->
+    <div class="mb-6 w-48">
+      <SelectField
+        v-model="statusFilter"
+        :options="offerStatusOptions"
+        sheet-label="Статус"
+      />
+    </div>
 
     <!-- Action error -->
     <div

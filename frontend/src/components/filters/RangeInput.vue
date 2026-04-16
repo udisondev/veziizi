@@ -28,7 +28,7 @@ defineEmits<Emits>()
 
 <template>
   <div>
-    <Label v-if="label" class="text-sm">{{ label }}</Label>
+    <Label v-if="label" class="text-base">{{ label }}</Label>
     <div class="flex items-center gap-3 mt-1">
       <Input
         type="number"

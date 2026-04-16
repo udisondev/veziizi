@@ -68,7 +68,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Shared Components
-import { DetailPageHeader, StatusBadge, LoadingSpinner, ErrorBanner, TabsDropdown, type TabItem } from '@/components/shared'
+import { DetailPageHeader, StatusBadge, LoadingSpinner, ErrorBanner, type TabItem } from '@/components/shared'
+import { TabsSlider } from '@/components/ui/tabs'
 
 // Icons
 import {
@@ -759,7 +760,7 @@ onUnmounted(() => {
         <Tabs v-model="currentTab" class="w-full">
           <!-- Tab selector dropdown -->
           <div v-if="tabItems.length > 1" class="mb-6">
-            <TabsDropdown v-model="currentTab" :items="tabItems" trigger-tutorial-id="tabs-dropdown" />
+            <TabsSlider v-model="currentTab" :items="tabItems" />
           </div>
 
           <!-- Details Tab -->

@@ -38,6 +38,7 @@ import { Separator } from '@/components/ui/separator'
 // Filter Components
 import { ChipButtonGroup, RangeInput } from '@/components/filters'
 import SubscriptionRouteStep from '@/components/subscriptions/SubscriptionRouteStep.vue'
+import { MultiSelectField } from '@/components/ui/multi-select'
 
 // Route point interface
 export interface RoutePointFilter {
@@ -221,7 +222,7 @@ const localStatuses = computed({
 
     <!-- Numeric Ranges -->
     <div class="space-y-4">
-      <h4 class="font-medium text-sm">Параметры груза</h4>
+      <h4 class="font-semibold text-lg">Параметры груза</h4>
 
       <RangeInput
         :min-value="minWeight"
@@ -256,40 +257,56 @@ const localStatuses = computed({
 
     <Separator />
 
-    <!-- Vehicle SubTypes (flat list of all 35 body types) -->
-    <ChipButtonGroup
-      v-model="localVehicleSubTypes"
-      :options="allVehicleSubTypeOptions"
-      label="Тип кузова"
-      empty-text="Не выбрано — все типы кузова"
-    />
+    <!-- Vehicle SubTypes -->
+    <div class="space-y-2">
+      <h4 class="font-semibold text-lg">Тип кузова</h4>
+      <MultiSelectField
+        v-model="localVehicleSubTypes"
+        :options="allVehicleSubTypeOptions"
+        placeholder="Все типы кузова"
+        sheet-label="Тип кузова"
+        search-placeholder="Поиск типа кузова..."
+      />
+    </div>
 
     <Separator />
 
     <!-- Payment -->
     <div class="space-y-4">
-      <h4 class="font-medium text-sm">Оплата</h4>
+      <h4 class="font-semibold text-lg">Оплата</h4>
 
-      <ChipButtonGroup
-        v-model="localPaymentMethods"
-        :options="paymentMethodOptions"
-        label="Способ оплаты"
-        empty-text="Не выбрано — все способы"
-      />
+      <div class="space-y-2">
+        <Label class="text-base mb-1.5 block">Способ оплаты</Label>
+        <MultiSelectField
+          v-model="localPaymentMethods"
+          :options="paymentMethodOptions"
+          placeholder="Все способы"
+          sheet-label="Способ оплаты"
+          search-placeholder="Поиск..."
+        />
+      </div>
 
-      <ChipButtonGroup
-        v-model="localPaymentTerms"
-        :options="paymentTermsOptions"
-        label="Условия оплаты"
-        empty-text="Не выбрано — все условия"
-      />
+      <div class="space-y-2">
+        <Label class="text-base mb-1.5 block">Условия оплаты</Label>
+        <MultiSelectField
+          v-model="localPaymentTerms"
+          :options="paymentTermsOptions"
+          placeholder="Все условия"
+          sheet-label="Условия оплаты"
+          search-placeholder="Поиск..."
+        />
+      </div>
 
-      <ChipButtonGroup
-        v-model="localVatTypes"
-        :options="vatTypeOptions"
-        label="НДС"
-        empty-text="Не выбрано — все варианты"
-      />
+      <div class="space-y-2">
+        <Label class="text-base mb-1.5 block">НДС</Label>
+        <MultiSelectField
+          v-model="localVatTypes"
+          :options="vatTypeOptions"
+          placeholder="Все варианты"
+          sheet-label="НДС"
+          search-placeholder="Поиск..."
+        />
+      </div>
     </div>
   </div>
 </template>
