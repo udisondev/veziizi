@@ -139,7 +139,7 @@ function openSheet() {
         @mousedown.prevent
       >
         <!-- Search -->
-        <div class="p-2 border-b border-border flex-shrink-0">
+        <div v-if="props.options.length > 5" class="p-2 border-b border-border flex-shrink-0">
           <div class="relative">
             <Search class="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
@@ -213,7 +213,7 @@ function openSheet() {
     </div>
 
     <BottomSheet v-model="sheetOpen" :label="sheetLabel">
-      <div class="px-4 py-2 border-b border-gray-100 flex-shrink-0">
+      <div v-if="props.options.length > 5" class="px-4 py-2 border-b border-gray-100 flex-shrink-0">
         <input
           v-model="sheetSearch"
           type="text"
@@ -222,12 +222,12 @@ function openSheet() {
         />
       </div>
 
-      <div class="overflow-y-auto flex-1">
+      <div class="overflow-y-auto flex-1 divide-y divide-border/50">
         <button
           v-for="option in filteredSheetOptions"
           :key="option.value"
           type="button"
-          class="w-full px-4 py-3.5 text-left text-base border-b border-border flex items-center gap-3 active:bg-accent"
+          class="w-full px-4 py-3.5 text-left text-base flex items-center gap-3 active:bg-accent"
           :class="isSelected(option.value) ? 'bg-accent' : ''"
           @click="toggle(option.value)"
         >

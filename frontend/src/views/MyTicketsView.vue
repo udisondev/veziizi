@@ -7,13 +7,7 @@ import { getMyTickets, type TicketListItem } from '@/api/support'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import SelectField from '@/components/ui/select-field/SelectField.vue'
 
 // Shared Components
 import { PageHeader } from '@/components/shared'
@@ -90,18 +84,18 @@ onMounted(() => {
 
     <!-- Filters -->
     <div class="flex items-center gap-4 mb-6">
-      <Select v-model="statusFilter">
-        <SelectTrigger class="w-48">
-          <SelectValue placeholder="Статус" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Все обращения</SelectItem>
-          <SelectItem value="open">Открытые</SelectItem>
-          <SelectItem value="answered">Отвеченные</SelectItem>
-          <SelectItem value="awaiting_reply">Ожидают ответа</SelectItem>
-          <SelectItem value="closed">Закрытые</SelectItem>
-        </SelectContent>
-      </Select>
+      <SelectField
+        v-model="statusFilter"
+        class="w-48"
+        sheet-label="Статус"
+        :options="[
+          { value: 'all', label: 'Все обращения' },
+          { value: 'open', label: 'Открытые' },
+          { value: 'answered', label: 'Отвеченные' },
+          { value: 'awaiting_reply', label: 'Ожидают ответа' },
+          { value: 'closed', label: 'Закрытые' },
+        ]"
+      />
     </div>
 
     <!-- Loading -->

@@ -83,14 +83,20 @@ func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded
 			nil, e.Role.String(), "active", e.OccurredAt(),
 			regIP, regFingerprint, regUserAgent,
 		).
-		Suffix("ON CONFLICT (id) DO NOTHING").
+		Suffix("ON CONFLICT DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+	result, err := h.db.Exec(ctx, query, args...)
+	if err != nil {
 		return fmt.Errorf("failed to insert member: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		slog.Warn("member already exists in lookup, skipping", slog.String("member_id", e.MemberID.String()))
+		return nil
 	}
 
 	slog.Debug("member added to lookup", slog.String("member_id", e.MemberID.String()))

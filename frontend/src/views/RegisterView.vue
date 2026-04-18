@@ -23,13 +23,14 @@ import {
 // Utils
 import { cn } from '@/lib/utils'
 
+import WizardStepIndicator from '@/components/freight-request/WizardStepIndicator.vue'
+
 // Icons
-import { AlertCircle, Check, ChevronLeft, ChevronRight, UserPlus } from 'lucide-vue-next'
+import { AlertCircle, ChevronLeft, ChevronRight, UserPlus } from 'lucide-vue-next'
 
 const router = useRouter()
 const {
   currentStep,
-  totalSteps,
   organization,
   owner,
   errors,
@@ -102,34 +103,17 @@ const stepTitles = ['Организация', 'Владелец', 'Подтве�
     <Card class="w-full max-w-lg">
       <CardHeader class="text-center">
         <CardTitle class="text-2xl">Регистрация организации</CardTitle>
-        <CardDescription>Шаг {{ currentStep }} из {{ totalSteps }}: {{ stepTitles[currentStep - 1] }}</CardDescription>
+        <CardDescription>Заполните данные для создания аккаунта</CardDescription>
       </CardHeader>
 
       <CardContent>
         <!-- Step Indicator -->
-        <div class="flex items-center justify-center mb-6">
-          <template v-for="step in totalSteps" :key="step">
-            <button
-              type="button"
-              :class="[
-                'w-10 h-10 rounded-full flex items-center justify-center font-medium transition-colors',
-                step === currentStep
-                  ? 'bg-primary text-primary-foreground'
-                  : step < currentStep
-                    ? 'bg-success text-success-foreground cursor-pointer hover:bg-success/90'
-                    : 'bg-muted text-muted-foreground cursor-not-allowed',
-              ]"
-              :disabled="step > currentStep"
-              @click="step < currentStep && goToStep(step)"
-            >
-              <Check v-if="step < currentStep" class="h-5 w-5" />
-              <span v-else>{{ step }}</span>
-            </button>
-            <div
-              v-if="step < totalSteps"
-              :class="['w-12 h-1 rounded mx-1', step < currentStep ? 'bg-success' : 'bg-muted']"
-            />
-          </template>
+        <div class="mb-8">
+          <WizardStepIndicator
+            :steps="stepTitles"
+            :current-step="currentStep"
+            @go-to="goToStep"
+          />
         </div>
 
         <!-- API Error -->

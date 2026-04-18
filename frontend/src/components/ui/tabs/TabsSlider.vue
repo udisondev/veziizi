@@ -7,6 +7,7 @@ export interface TabSliderItem {
   label: string
   icon?: Component
   badge?: number | string
+  highlight?: boolean
 }
 
 const props = defineProps<{
@@ -79,6 +80,10 @@ onMounted(async () => {
         >
           {{ item.badge }}
         </span>
+        <span
+          v-if="item.highlight"
+          class="w-1.5 h-1.5 rounded-full bg-destructive shrink-0"
+        />
       </button>
     </div>
   </div>

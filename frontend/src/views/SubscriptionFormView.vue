@@ -140,23 +140,25 @@ async function handleSubmit() {
     is_active: isActive.value,
   }
 
-  const result = isEditing.value && subscription.value
-    ? await store.updateSubscription(subscription.value.id, data)
-    : await store.createSubscription(data)
+  try {
+    const result = isEditing.value && subscription.value
+      ? await store.updateSubscription(subscription.value.id, data)
+      : await store.createSubscription(data)
 
-  isSaving.value = false
+    if (!result) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось сохранить подписку',
+        variant: 'destructive',
+      })
+      return
+    }
 
-  if (!result) {
-    toast({
-      title: 'Ошибка',
-      description: 'Не удалось сохранить подписку',
-      variant: 'destructive',
-    })
-    return
+    toast({ title: isEditing.value ? 'Подписка обновлена' : 'Подписка создана' })
+    router.push({ name: 'freight-subscriptions' })
+  } finally {
+    isSaving.value = false
   }
-
-  toast({ title: isEditing.value ? 'Подписка обновлена' : 'Подписка создана' })
-  router.push({ name: 'freight-subscriptions' })
 }
 
 function handleCancel() {
@@ -247,10 +249,10 @@ onMounted(async () => {
             <Separator />
 
             <div class="flex gap-3">
-              <Button type="button" variant="outline" @click="handleCancel">
+              <Button type="button" variant="outline" class="h-12 text-base md:h-10 md:text-sm" @click="handleCancel">
                 Отмена
               </Button>
-              <Button type="submit" :disabled="!isValid || isSaving">
+              <Button type="submit" class="h-12 text-base md:h-10 md:text-sm" :disabled="!isValid || isSaving">
                 {{ isSaving ? 'Сохранение...' : (isEditing ? 'Сохранить' : 'Создать') }}
               </Button>
             </div>

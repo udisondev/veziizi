@@ -51,8 +51,8 @@ function close() {
         style="max-height: 80dvh"
       >
         <!-- Хедер -->
-        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-          <span class="text-sm font-medium text-gray-700">{{ label }}</span>
+        <div class="flex items-center justify-between px-4 py-3 flex-shrink-0">
+          <span class="text-base font-semibold text-foreground">{{ label }}</span>
           <button
             type="button"
             class="p-1 rounded-full text-gray-400 hover:text-gray-600 active:text-gray-800 transition-colors"

@@ -18,6 +18,7 @@ export interface TabItem {
   icon?: Component
   badge?: number | string
   separator?: boolean
+  highlight?: boolean
 }
 
 const props = defineProps<{
