@@ -3,11 +3,13 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
@@ -83,7 +85,7 @@ func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded
 			nil, e.Role.String(), "active", e.OccurredAt(),
 			regIP, regFingerprint, regUserAgent,
 		).
-		Suffix("ON CONFLICT DO NOTHING").
+		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("failed to build insert query: %w", err)
@@ -91,11 +93,22 @@ func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded
 
 	result, err := h.db.Exec(ctx, query, args...)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			// Нарушение уникального ограничения по email — инвариант домена нарушен.
+			// Логируем как ошибку и пропускаем, чтобы не блокировать очередь.
+			slog.Error("member email already exists in lookup, domain invariant violated",
+				slog.String("member_id", e.MemberID.String()),
+				slog.String("email", e.Email),
+				slog.String("constraint", pgErr.ConstraintName),
+			)
+			return nil
+		}
 		return fmt.Errorf("failed to insert member: %w", err)
 	}
 
 	if result.RowsAffected() == 0 {
-		slog.Warn("member already exists in lookup, skipping", slog.String("member_id", e.MemberID.String()))
+		slog.Debug("member already exists in lookup, idempotent replay", slog.String("member_id", e.MemberID.String()))
 		return nil
 	}
 
