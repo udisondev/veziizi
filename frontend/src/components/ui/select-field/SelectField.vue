@@ -129,11 +129,11 @@ function onFocusOut(e: FocusEvent) {
     </button>
 
     <BottomSheet v-model="sheetOpen" :label="sheetLabel">
-      <div class="overflow-y-auto flex-1">
+      <div class="overflow-y-auto flex-1 divide-y divide-border/50">
         <button
           v-if="clearable"
           type="button"
-          class="w-full px-4 py-3.5 text-left text-base border-b border-border text-muted-foreground active:bg-accent"
+          class="w-full px-4 py-3.5 text-left text-base text-muted-foreground active:bg-accent"
           @click="select(undefined)"
         >
           {{ clearLabel }}
@@ -142,7 +142,7 @@ function onFocusOut(e: FocusEvent) {
           v-for="option in options"
           :key="option.value"
           type="button"
-          class="w-full px-4 py-3.5 text-left text-base border-b border-border flex items-center gap-3 active:bg-accent"
+          class="w-full px-4 py-3.5 text-left text-base flex items-center gap-3 active:bg-accent"
           :class="isSelected(option.value) ? 'bg-accent' : ''"
           @click="select(option.value)"
         >

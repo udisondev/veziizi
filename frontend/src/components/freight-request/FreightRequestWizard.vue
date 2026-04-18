@@ -179,6 +179,7 @@ function handleNext() {
         v-if="form.currentStep.value > 1"
         type="button"
         variant="outline"
+        class="h-12 text-base md:h-10 md:text-sm"
         data-tutorial="back-btn"
         @click="form.prevStep"
       >
@@ -187,6 +188,7 @@ function handleNext() {
 
       <Button
         type="button"
+        class="h-12 text-base md:h-10 md:text-sm"
         data-tutorial="submit-btn"
         :disabled="isLoading"
         @click="handleNext"
@@ -205,7 +207,7 @@ function handleNext() {
 
       <router-link
         :to="editMode && freightRequestId ? `/freight-requests/${freightRequestId}` : '/'"
-        class="text-sm text-muted-foreground hover:text-foreground transition-colors ml-1"
+        class="text-base md:text-sm text-muted-foreground hover:text-foreground transition-colors ml-1"
       >
         Отмена
       </router-link>

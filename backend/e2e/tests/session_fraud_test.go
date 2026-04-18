@@ -287,7 +287,7 @@ func (s *SessionFraudSuite) TestSFR007_ScrapingDetection() {
 			MemberID:       memberID,
 			OrganizationID: orgID,
 			EventType:      "api_call",
-			Endpoint:       strPtr("GET /api/v1/freight"),
+			Endpoint:       new("GET /api/v1/freight"),
 		}
 		err := s.sessionFraud.RecordSessionEvent(ctx, event)
 		s.Require().NoError(err)
@@ -301,4 +301,3 @@ func (s *SessionFraudSuite) TestSFR007_ScrapingDetection() {
 	s.Assert().Contains(result.Signals, projections.SignalAPIAbuse)
 }
 
-func strPtr(s string) *string { return &s }

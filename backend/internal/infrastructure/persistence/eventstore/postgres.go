@@ -11,13 +11,13 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 const (
 	defaultSnapshotThreshold = 100
-	uniqueViolationCode      = "23505"
 )
 
 type PostgresStore struct {
@@ -94,8 +94,7 @@ func (s *PostgresStore) Save(ctx context.Context, events ...Event) error {
 				}
 
 				if _, err := s.db.Exec(ctx, query, args...); err != nil {
-					var pgErr *pgconn.PgError
-					if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
+					if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation {
 						return ErrConcurrentModification
 					}
 					return fmt.Errorf("failed to insert event: %w", err)
@@ -242,8 +241,7 @@ func (s *PostgresStore) SaveWithState(ctx context.Context, state any, events ...
 				}
 
 				if _, err := s.db.Exec(ctx, query, args...); err != nil {
-					var pgErr *pgconn.PgError
-					if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
+					if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation {
 						return ErrConcurrentModification
 					}
 					return fmt.Errorf("insert event: %w", err)

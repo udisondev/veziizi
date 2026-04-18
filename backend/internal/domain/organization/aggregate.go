@@ -377,7 +377,7 @@ func (o *Organization) AcceptInvitation(
 		Name:                    finalName,
 		Phone:                   finalPhone,
 		Role:                    inv.Role(),
-		InvitedBy:               ptr(inv.CreatedBy()),
+		InvitedBy:               new(inv.CreatedBy()),
 		RegistrationIP:          registrationIP,
 		RegistrationFingerprint: registrationFingerprint,
 		RegistrationUserAgent:   registrationUserAgent,
@@ -775,10 +775,6 @@ func (o *Organization) apply(evt eventstore.Event) {
 		o.fraudsterMarkedBy = nil
 		o.fraudsterReason = ""
 	}
-}
-
-func ptr[T any](v T) *T {
-	return &v
 }
 
 // =====================================

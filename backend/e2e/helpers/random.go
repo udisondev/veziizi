@@ -143,16 +143,22 @@ func UniqueID() string {
 }
 
 // StringPtr returns a pointer to a string.
+//
+//go:fix inline
 func StringPtr(s string) *string {
-	return &s
+	return new(s)
 }
 
 // IntPtr returns a pointer to an int.
+//
+//go:fix inline
 func IntPtr(i int) *int {
-	return &i
+	return new(i)
 }
 
 // Float64Ptr returns a pointer to a float64.
+//
+//go:fix inline
 func Float64Ptr(f float64) *float64 {
-	return &f
+	return new(f)
 }

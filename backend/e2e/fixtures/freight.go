@@ -43,16 +43,16 @@ func NewFreightRequest(t *testing.T, c *client.Client) *FreightRequestBuilder {
 				{
 					IsLoading:   true,
 					IsUnloading: false,
-					CountryID:   intPtr(1),
-					CityID:      intPtr(1),
+					CountryID:   new(1),
+					CityID:      new(1),
 					Address:     "Moscow, Test Street 1",
 					DateFrom:    tomorrow,
 				},
 				{
 					IsLoading:   false,
 					IsUnloading: true,
-					CountryID:   intPtr(1),
-					CityID:      intPtr(2),
+					CountryID:   new(1),
+					CityID:      new(2),
 					Address:     "Saint Petersburg, Test Street 2",
 					DateFrom:    dayAfter,
 				},
@@ -324,10 +324,5 @@ func (b *OfferBuilder) Create() *CreatedOffer {
 func (b *OfferBuilder) CreateWithStatus() (*client.Response[client.CreateOfferResponse], error) {
 	b.t.Helper()
 	return b.client.CreateOffer(b.freightRequestID, b.Build())
-}
-
-// Helper functions
-func intPtr(i int) *int {
-	return &i
 }
 

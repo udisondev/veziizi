@@ -257,11 +257,11 @@ function handleCitySheetSelect(city: City) {
             class="!w-[var(--reka-select-trigger-width)] !min-w-0 !max-h-[50vh] overflow-hidden"
             :side-offset="4"
           >
-            <div class="px-2 py-1 bg-white border-b z-10">
+            <div class="px-2 py-2 bg-white border-b z-10">
               <input
                 v-model="countrySearch"
                 type="text"
-                class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                class="w-full px-3 py-2.5 text-base border border-input rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Поиск страны..."
                 @click.stop
                 @keydown.stop
@@ -307,7 +307,7 @@ function handleCitySheetSelect(city: City) {
             <input
               v-model="countrySearch"
               type="text"
-              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full px-3 py-2.5 text-base border border-input rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="Поиск страны..."
             />
           </div>
@@ -346,9 +346,9 @@ function handleCitySheetSelect(city: City) {
             :value="citySearch"
             :disabled="disabled"
             :class="[
-              'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-              error && !selectedCityId ? 'border-red-300' : 'border-gray-300',
-              disabled ? 'bg-gray-100 cursor-not-allowed' : '',
+              'appearance-none block w-full px-3 py-2.5 text-base border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring',
+              error && !selectedCityId ? 'border-red-300' : 'border-input',
+              disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white',
             ]"
             placeholder="Начните вводить город..."
             autocomplete="off"
@@ -426,7 +426,7 @@ function handleCitySheetSelect(city: City) {
               ref="cityInputRef"
               type="text"
               :value="citySearch"
-              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full px-3 py-2.5 text-base border border-input rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="Начните вводить город..."
               autocomplete="off"
               @input="handleCityInput"

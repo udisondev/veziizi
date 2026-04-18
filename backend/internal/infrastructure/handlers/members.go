@@ -3,11 +3,14 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
@@ -89,8 +92,23 @@ func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded
 		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+	result, err := h.db.Exec(ctx, query, args...)
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation {
+		slog.Error("member email already exists in lookup, domain invariant violated",
+			slog.String("member_id", e.MemberID.String()),
+			slog.String("email", e.Email),
+			slog.String("constraint", pgErr.ConstraintName),
+		)
+		return nil
+	}
+
+	if err != nil {
 		return fmt.Errorf("failed to insert member: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		slog.Debug("member already exists in lookup, idempotent replay", slog.String("member_id", e.MemberID.String()))
+		return nil
 	}
 
 	slog.Debug("member added to lookup", slog.String("member_id", e.MemberID.String()))

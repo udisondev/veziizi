@@ -201,8 +201,8 @@ func (s *FreightRequestsSuite) buildUpdateRequest() client.CreateFreightRequestR
 	return client.CreateFreightRequestRequest{
 		Route: client.Route{
 			Points: []client.RoutePoint{
-				{IsLoading: true, IsUnloading: false, CountryID: intPtr(1), CityID: intPtr(1), Address: "Moscow", DateFrom: tomorrow},
-				{IsLoading: false, IsUnloading: true, CountryID: intPtr(1), CityID: intPtr(3), Address: "Kazan", DateFrom: dayAfter},
+				{IsLoading: true, IsUnloading: false, CountryID: new(1), CityID: new(1), Address: "Moscow", DateFrom: tomorrow},
+				{IsLoading: false, IsUnloading: true, CountryID: new(1), CityID: new(3), Address: "Kazan", DateFrom: dayAfter},
 			},
 		},
 		Cargo:               client.Cargo{Description: "Updated cargo", Weight: 2000, Quantity: 1},
@@ -243,7 +243,7 @@ func (s *FreightRequestsSuite) TestFR049_UpdateNonexistent() {
 func (s *FreightRequestsSuite) TestFR053_SuccessfulCancel() {
 	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
 
-	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, helpers.StringPtr("No longer needed"))
+	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, new("No longer needed"))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 }
@@ -554,7 +554,7 @@ func (s *FreightRequestsSuite) TestFR120_CancelSelected_Success() {
 	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
 
 	// Cancel FR from selected status
-	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, helpers.StringPtr("Changed plans"))
+	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, new("Changed plans"))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 
@@ -752,11 +752,6 @@ func (s *FreightRequestsSuite) TestFR135_FilterCombined() {
 		}
 		return false
 	}, "FR should appear with combined filters")
-}
-
-// Helper function
-func intPtr(i int) *int {
-	return &i
 }
 
 // ============================================================================
