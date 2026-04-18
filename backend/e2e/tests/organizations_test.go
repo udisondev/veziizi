@@ -254,8 +254,8 @@ func (s *OrganizationsSuite) TestORG082_SuccessfulAccept() {
 
 	resp, err := s.c.AcceptInvitation(token, client.AcceptInvitationRequest{
 		Password: "password123",
-		Name:     helpers.StringPtr("New Member"),
-		Phone:    helpers.StringPtr("+79001234567"),
+		Name:     new("New Member"),
+		Phone:    new("+79001234567"),
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
@@ -286,8 +286,8 @@ func (s *OrganizationsSuite) TestORG085_EmptyPassword() {
 func (s *OrganizationsSuite) TestORG088_NonexistentToken() {
 	resp, err := s.c.AcceptInvitation("nonexistent-token", client.AcceptInvitationRequest{
 		Password: "password123",
-		Name:     helpers.StringPtr("Test"),
-		Phone:    helpers.StringPtr("+79001234567"),
+		Name:     new("Test"),
+		Phone:    new("+79001234567"),
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNotFound, resp.StatusCode)

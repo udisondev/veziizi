@@ -254,8 +254,8 @@ func (s *MemberBlockingSuite) TestBLOCK008_CannotAccessMemberProfiles() {
 	member2Client := s.c.Clone()
 	acceptResp, err := member2Client.AcceptInvitation(token, client.AcceptInvitationRequest{
 		Password: "password123",
-		Name:     helpers.StringPtr("Member 2"),
-		Phone:    helpers.StringPtr("+79001234567"),
+		Name:     new("Member 2"),
+		Phone:    new("+79001234567"),
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, acceptResp.StatusCode)

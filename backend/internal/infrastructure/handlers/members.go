@@ -9,6 +9,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
@@ -92,18 +93,16 @@ func (h *MembersHandler) onMemberAdded(ctx context.Context, e events.MemberAdded
 	}
 
 	result, err := h.db.Exec(ctx, query, args...)
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation {
+		slog.Error("member email already exists in lookup, domain invariant violated",
+			slog.String("member_id", e.MemberID.String()),
+			slog.String("email", e.Email),
+			slog.String("constraint", pgErr.ConstraintName),
+		)
+		return nil
+	}
+
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			// Нарушение уникального ограничения по email — инвариант домена нарушен.
-			// Логируем как ошибку и пропускаем, чтобы не блокировать очередь.
-			slog.Error("member email already exists in lookup, domain invariant violated",
-				slog.String("member_id", e.MemberID.String()),
-				slog.String("email", e.Email),
-				slog.String("constraint", pgErr.ConstraintName),
-			)
-			return nil
-		}
 		return fmt.Errorf("failed to insert member: %w", err)
 	}
 
