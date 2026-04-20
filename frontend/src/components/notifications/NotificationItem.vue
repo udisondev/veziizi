@@ -41,10 +41,10 @@ const icon = computed(() => {
 const iconBgClass = computed(() => {
   const category = getCategoryByType(props.notification.notification_type)
   const categoryColorMap: Record<string, string> = {
-    freight_requests: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400',
-    offers: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400',
-    reviews: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400',
-    organization: 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-400',
+    freight_requests: 'bg-warning/10 text-warning',
+    offers: 'bg-accent text-accent-foreground',
+    reviews: 'bg-warning/10 text-warning',
+    organization: 'bg-accent text-accent-foreground',
   }
   return categoryColorMap[category] || 'bg-muted text-muted-foreground'
 })

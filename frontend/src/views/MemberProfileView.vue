@@ -12,6 +12,17 @@ import {
 
 // UI Components
 import { Button } from '@/components/ui/button'
+import { AppLink } from '@/components/ui/app-link'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +34,7 @@ import {
 import { DetailPageHeader } from '@/components/shared'
 
 // Icons
-import { MoreVertical } from 'lucide-vue-next'
+import { MoreVertical, Pencil, AlertCircle } from 'lucide-vue-next'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -246,23 +257,58 @@ async function confirmEdit() {
     <!-- Header -->
     <DetailPageHeader back-to="/" back-label="Назад" use-history>
       <template #actions>
-        <DropdownMenu v-if="member && hasAnyAction">
+        <!-- Десктоп/планшет: все кнопки отдельно -->
+        <template v-if="member && hasAnyAction">
+          <Button
+            v-if="canEdit"
+            variant="outline"
+            size="sm"
+            class="hidden md:inline-flex"
+            data-tutorial="edit-member-btn"
+            @click="openEditModal"
+          >
+            <Pencil class="mr-2 h-4 w-4" />
+            Редактировать
+          </Button>
+          <Button
+            v-if="canBlock"
+            variant="outline"
+            size="sm"
+            class="hidden md:inline-flex text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/60 hover:bg-destructive/5"
+            data-tutorial="block-member-btn"
+            @click="openBlockModal"
+          >
+            Заблокировать
+          </Button>
+          <Button
+            v-if="canUnblock"
+            variant="outline"
+            size="sm"
+            class="hidden md:inline-flex text-success hover:text-success border-success/30 hover:border-success/60 hover:bg-success/5"
+            data-tutorial="unblock-member-btn"
+            @click="openUnblockModal"
+          >
+            Разблокировать
+          </Button>
+        </template>
+
+        <!-- Мобиле: бургер со всеми действиями -->
+        <DropdownMenu v-if="member && hasAnyAction" class="md:hidden">
           <DropdownMenuTrigger as-child>
-            <Button data-tutorial="member-actions" variant="ghost" size="icon">
+            <Button data-tutorial="member-actions" variant="ghost" size="icon" class="md:hidden">
               <MoreVertical class="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               v-if="canEdit"
-              data-tutorial="edit-member-btn"
+              data-tutorial="edit-member-btn-mobile"
               @click="openEditModal"
             >
               Редактировать
             </DropdownMenuItem>
             <DropdownMenuItem
               v-if="canBlock"
-              data-tutorial="block-member-btn"
               class="text-destructive focus:text-destructive"
               @click="openBlockModal"
             >
@@ -270,7 +316,6 @@ async function confirmEdit() {
             </DropdownMenuItem>
             <DropdownMenuItem
               v-if="canUnblock"
-              data-tutorial="unblock-member-btn"
               class="text-success focus:text-success"
               @click="openUnblockModal"
             >
@@ -285,239 +330,250 @@ async function confirmEdit() {
     <main class="max-w-4xl mx-auto px-4 py-6">
       <!-- Loading -->
       <div v-if="isLoading" class="text-center py-12">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <div class="text-gray-500 mt-2">Загрузка...</div>
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+        <div class="text-muted-foreground mt-2">Загрузка...</div>
       </div>
 
       <!-- Error -->
-      <div v-else-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+      <div v-else-if="error" class="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-destructive">
+        <AlertCircle class="h-4 w-4 shrink-0" />
         {{ error }}
-        <button @click="loadData" class="ml-4 text-red-600 underline">Повторить</button>
+        <button @click="loadData" class="ml-2 underline text-sm">Повторить</button>
       </div>
 
       <!-- Content -->
       <div v-else-if="member" class="space-y-6">
         <!-- Header Card -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex items-start justify-between">
-            <div>
-              <h1 class="text-2xl font-bold text-gray-900 break-words">{{ member.name }}</h1>
-              <div class="flex items-center gap-2 mt-2">
-                <span :class="[roleColors[member.role], 'px-2 py-0.5 text-xs font-medium rounded-full']">
-                  {{ roleLabels[member.role] }}
-                </span>
-                <span :class="[statusColors[member.status], 'px-2 py-0.5 text-xs font-medium rounded-full']">
-                  {{ statusLabels[member.status] }}
-                </span>
-              </div>
+        <Card>
+          <CardContent class="p-6">
+            <h1 class="text-2xl font-bold text-foreground break-words">{{ member.name }}</h1>
+            <div class="flex items-center gap-2 mt-2">
+              <span :class="[roleColors[member.role], 'px-2 py-0.5 text-xs font-medium rounded-full']">
+                {{ roleLabels[member.role] }}
+              </span>
+              <span :class="[statusColors[member.status], 'px-2 py-0.5 text-xs font-medium rounded-full']">
+                {{ statusLabels[member.status] }}
+              </span>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         <!-- Details Card -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-900 mb-4">Информация</h2>
-          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <dt class="text-sm text-gray-500">ФИО</dt>
-              <dd class="text-gray-900 font-medium break-words">{{ member.name }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-500">Email</dt>
-              <dd class="text-gray-900">
-                <a :href="`mailto:${member.email}`" class="text-blue-600 hover:text-blue-800">
-                  {{ member.email }}
-                </a>
-              </dd>
-            </div>
-            <div v-if="member.phone">
-              <dt class="text-sm text-gray-500">Телефон</dt>
-              <dd class="text-gray-900">
-                <a :href="`tel:${member.phone}`" class="text-blue-600 hover:text-blue-800">
-                  {{ member.phone }}
-                </a>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-500">Организация</dt>
-              <dd>
-                <router-link
-                  :to="{ name: 'organization-profile', params: { id: member.organization_id } }"
-                  class="text-blue-600 hover:text-blue-800 hover:underline break-words"
-                >
-                  {{ member.organization_name }}
-                </router-link>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-500">Дата регистрации</dt>
-              <dd class="text-gray-900">{{ formatDate(member.created_at) }}</dd>
-            </div>
-          </dl>
-        </div>
+        <Card>
+          <CardContent class="p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-4">Информация</h2>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <dt class="text-sm text-muted-foreground">ФИО</dt>
+                <dd class="text-foreground font-medium break-words">{{ member.name }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-muted-foreground">Email</dt>
+                <dd>
+                  <a :href="`mailto:${member.email}`" class="app-link">{{ member.email }}</a>
+                </dd>
+              </div>
+              <div v-if="member.phone">
+                <dt class="text-sm text-muted-foreground">Телефон</dt>
+                <dd>
+                  <a :href="`tel:${member.phone}`" class="app-link">{{ member.phone }}</a>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-sm text-muted-foreground">Организация</dt>
+                <dd>
+                  <AppLink
+                    :to="{ name: 'organization-profile', params: { id: member.organization_id } }"
+                    class="break-words"
+                  >
+                    {{ member.organization_name }}
+                  </AppLink>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-sm text-muted-foreground">Дата регистрации</dt>
+                <dd class="text-foreground">{{ formatDate(member.created_at) }}</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
       </div>
     </main>
 
     <!-- Block Modal -->
-    <div v-if="showBlockModal" class="fixed inset-0 bg-black/25 flex items-center justify-center z-50 p-4" @click="closeBlockModal">
-      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
-        <h2 class="text-xl font-bold mb-4 text-red-600">Заблокировать сотрудника?</h2>
+    <Dialog v-model:open="showBlockModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-destructive">Заблокировать сотрудника?</DialogTitle>
+        </DialogHeader>
 
-        <div v-if="blockError" class="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm mb-4">
+        <div
+          v-if="blockError"
+          class="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <AlertCircle class="h-4 w-4 shrink-0" />
           {{ blockError }}
         </div>
 
-        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-          <p class="text-sm text-yellow-800">
+        <div class="rounded-lg border border-warning/30 bg-warning/10 p-3">
+          <p class="text-sm text-warning-foreground">
             Заблокированный сотрудник не сможет войти в систему и выполнять действия от имени организации.
           </p>
         </div>
 
-        <div class="mb-4">
-          <p class="text-sm text-gray-600">
-            Сотрудник: <strong>{{ member?.name }}</strong>
+        <div class="space-y-1">
+          <p class="text-sm text-muted-foreground">
+            Сотрудник: <strong class="text-foreground">{{ member?.name }}</strong>
           </p>
-          <p class="text-sm text-gray-600">
-            Email: {{ member?.email }}
-          </p>
+          <p class="text-sm text-muted-foreground">Email: {{ member?.email }}</p>
         </div>
 
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            Причина блокировки <span class="text-red-500">*</span>
-          </label>
-          <textarea
+        <div>
+          <Label>
+            Причина блокировки <span class="text-destructive">*</span>
+          </Label>
+          <Textarea
             v-model="blockReason"
             rows="3"
-            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
             placeholder="Укажите причину блокировки..."
-          ></textarea>
+          />
         </div>
 
         <div class="flex gap-3">
-          <button
-            @click="closeBlockModal"
+          <Button
+            variant="outline"
+            class="flex-1"
             :disabled="blockLoading"
-            class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+            @click="closeBlockModal"
           >
             Отмена
-          </button>
-          <button
-            @click="confirmBlock"
+          </Button>
+          <Button
+            variant="destructive"
+            class="flex-1"
             :disabled="blockLoading || !blockReason.trim()"
-            class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+            @click="confirmBlock"
           >
             {{ blockLoading ? 'Блокировка...' : 'Заблокировать' }}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
 
     <!-- Unblock Modal -->
-    <div v-if="showUnblockModal" class="fixed inset-0 bg-black/25 flex items-center justify-center z-50 p-4" @click="closeUnblockModal">
-      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
-        <h2 class="text-xl font-bold mb-4 text-green-600">Разблокировать сотрудника?</h2>
+    <Dialog v-model:open="showUnblockModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-success">Разблокировать сотрудника?</DialogTitle>
+        </DialogHeader>
 
-        <div v-if="unblockError" class="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm mb-4">
+        <div
+          v-if="unblockError"
+          class="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <AlertCircle class="h-4 w-4 shrink-0" />
           {{ unblockError }}
         </div>
 
-        <div class="mb-4">
-          <p class="text-sm text-gray-600">
-            Сотрудник: <strong>{{ member?.name }}</strong>
+        <div class="space-y-1">
+          <p class="text-sm text-muted-foreground">
+            Сотрудник: <strong class="text-foreground">{{ member?.name }}</strong>
           </p>
-          <p class="text-sm text-gray-600">
-            Email: {{ member?.email }}
-          </p>
+          <p class="text-sm text-muted-foreground">Email: {{ member?.email }}</p>
         </div>
 
-        <p class="text-sm text-gray-600 mb-4">
+        <p class="text-sm text-muted-foreground">
           После разблокировки сотрудник сможет снова войти в систему и выполнять действия.
         </p>
 
         <div class="flex gap-3">
-          <button
-            @click="closeUnblockModal"
+          <Button
+            variant="outline"
+            class="flex-1"
             :disabled="unblockLoading"
-            class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+            @click="closeUnblockModal"
           >
             Отмена
-          </button>
-          <button
-            @click="confirmUnblock"
+          </Button>
+          <Button
+            class="flex-1 bg-success text-success-foreground hover:bg-success/90"
             :disabled="unblockLoading"
-            class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            @click="confirmUnblock"
           >
             {{ unblockLoading ? 'Разблокировка...' : 'Разблокировать' }}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
 
     <!-- Edit Modal -->
-    <div v-if="showEditModal" class="fixed inset-0 bg-black/25 flex items-center justify-center z-50 p-4" @click="closeEditModal">
-      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
-        <h2 class="text-xl font-bold mb-4 text-gray-900">Редактирование данных сотрудника</h2>
+    <Dialog v-model:open="showEditModal">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Редактирование данных сотрудника</DialogTitle>
+        </DialogHeader>
 
-        <div v-if="editError" class="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm mb-4">
+        <div
+          v-if="editError"
+          class="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <AlertCircle class="h-4 w-4 shrink-0" />
           {{ editError }}
         </div>
 
-        <div class="space-y-4 mb-6">
+        <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">
-              ФИО <span class="text-red-500">*</span>
-            </label>
-            <input
+            <Label>
+              ФИО <span class="text-destructive">*</span>
+            </Label>
+            <Input
               v-model="editName"
               type="text"
-              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Иванов Иван Иванович"
             />
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">
-              Email <span class="text-red-500">*</span>
-            </label>
-            <input
+            <Label>
+              Email <span class="text-destructive">*</span>
+            </Label>
+            <Input
               v-model="editEmail"
               type="email"
-              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="example@mail.ru"
             />
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">
-              Телефон <span class="text-red-500">*</span>
-            </label>
-            <input
+            <Label>
+              Телефон <span class="text-destructive">*</span>
+            </Label>
+            <Input
               v-model="editPhone"
               type="tel"
-              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="+7 (999) 123-45-67"
             />
           </div>
         </div>
 
         <div class="flex gap-3">
-          <button
-            @click="closeEditModal"
+          <Button
+            variant="outline"
+            class="flex-1"
             :disabled="editLoading"
-            class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+            @click="closeEditModal"
           >
             Отмена
-          </button>
-          <button
-            @click="confirmEdit"
+          </Button>
+          <Button
+            class="flex-1"
             :disabled="editLoading || !editName.trim() || !editEmail.trim() || !editPhone.trim()"
-            class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            @click="confirmEdit"
           >
             {{ editLoading ? 'Сохранение...' : 'Сохранить' }}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

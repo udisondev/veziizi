@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { offersApi, type MyOfferListItem } from '@/api/offers'
 import type { OfferStatus, OfferStatusFilter } from '@/types/freightRequest'
@@ -9,6 +9,7 @@ import {
   type Currency,
 } from '@/types/freightRequest'
 import { logger } from '@/utils/logger'
+import { useAsyncList } from '@/composables/useAsyncData'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -48,9 +49,18 @@ import {
 
 const router = useRouter()
 
-const items = ref<MyOfferListItem[]>([])
-const isLoading = ref(false)
-const error = ref<string | null>(null)
+const {
+  data: items,
+  isLoading,
+  error,
+  execute: loadItems,
+} = useAsyncList<MyOfferListItem>(
+  () => {
+    const params = statusFilter.value !== 'all' ? { status: statusFilter.value as OfferStatus } : undefined
+    return offersApi.listMy(params)
+  },
+  { immediate: true }
+)
 
 // Filters
 const statusFilter = ref<OfferStatusFilter>('all')
@@ -74,20 +84,6 @@ const showConfirmModal = ref(false)
 const confirmAction = ref<{ type: 'withdraw' | 'confirm' | 'decline'; item: MyOfferListItem } | null>(null)
 const declineReason = ref('')
 
-async function loadItems() {
-  isLoading.value = true
-  error.value = null
-
-  try {
-    const params = statusFilter.value !== 'all' ? { status: statusFilter.value as OfferStatus } : undefined
-    items.value = await offersApi.listMy(params)
-  } catch (e) {
-    error.value = 'Не удалось загрузить офферы'
-    logger.error('Failed to load offers', e)
-  } finally {
-    isLoading.value = false
-  }
-}
 
 function goToFreightRequest(frId: string) {
   router.push(`/freight-requests/${frId}`)
@@ -238,9 +234,6 @@ watch(statusFilter, () => {
   loadItems()
 })
 
-onMounted(() => {
-  loadItems()
-})
 </script>
 
 <template>
@@ -283,7 +276,7 @@ onMounted(() => {
 
     <!-- Empty state -->
     <EmptyState
-      v-else-if="items.length === 0"
+      v-else-if="(items ?? []).length === 0"
       :icon="HandCoins"
       title="Предложений пока нет"
       description="Вы ещё не делали предложений на заявки"
@@ -301,9 +294,9 @@ onMounted(() => {
     <!-- List -->
     <div v-else class="space-y-4">
       <Card
-        v-for="item in items"
+        v-for="item in (items ?? [])"
         :key="item.id"
-        class="hover:shadow-md transition-shadow"
+        interactive
       >
         <CardContent class="p-4">
           <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">

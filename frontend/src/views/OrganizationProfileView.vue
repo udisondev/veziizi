@@ -6,9 +6,12 @@ import type { OrganizationDetail, OrganizationRating, OrganizationReview, Organi
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { logger } from '@/utils/logger'
 
+// UI Components
+import { Card, CardContent } from '@/components/ui/card'
+import { AppLink } from '@/components/ui/app-link'
+
 // Shared Components
-import { DetailPageHeader } from '@/components/shared'
-import { LoadingSpinner } from '@/components/shared'
+import { DetailPageHeader, LoadingSpinner, ErrorBanner } from '@/components/shared'
 
 const route = useRoute()
 
@@ -37,10 +40,10 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  active: 'bg-green-100 text-green-800',
-  suspended: 'bg-red-100 text-red-800',
-  rejected: 'bg-gray-100 text-gray-800',
+  pending: 'bg-warning/10 text-warning',
+  active: 'bg-success/10 text-success',
+  suspended: 'bg-destructive/10 text-destructive',
+  rejected: 'bg-muted text-muted-foreground',
 }
 
 // Infinite scroll setup
@@ -134,158 +137,153 @@ watch(() => route.params.id, () => {
     <!-- Content -->
     <main class="max-w-4xl mx-auto px-4 py-6">
       <!-- Loading -->
-      <div v-if="isLoading" class="text-center py-12">
-        <div class="text-gray-500">Загрузка...</div>
-      </div>
+      <LoadingSpinner v-if="isLoading" text="Загрузка..." />
 
       <!-- Error -->
-      <div v-else-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-        {{ error }}
-        <button @click="loadData" class="ml-4 text-red-600 underline">Повторить</button>
-      </div>
+      <ErrorBanner v-else-if="error" :message="error" @retry="loadData" />
 
       <!-- Content -->
       <div v-else-if="organization" class="space-y-6">
         <!-- Header Card with Rating -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <div class="flex items-start justify-between">
-            <div>
-              <h1 class="text-2xl font-bold text-gray-900 break-words">{{ organization.name }}</h1>
-              <p class="text-gray-500 mt-1 break-words">{{ organization.legal_name }}</p>
+        <Card>
+          <CardContent class="p-6">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <h1 class="text-2xl font-bold text-foreground break-words">{{ organization.name }}</h1>
+                <p class="text-muted-foreground mt-1 break-words">{{ organization.legal_name }}</p>
 
-              <!-- Rating -->
-              <div v-if="rating" class="flex items-center gap-2 mt-3">
-                <div class="flex">
-                  <span
-                    v-for="star in 5"
-                    :key="star"
-                    :class="[
-                      'text-xl',
-                      star <= Math.round(rating.average_rating) ? 'text-yellow-400' : 'text-gray-300'
-                    ]"
-                  >&#9733;</span>
-                </div>
-                <span class="text-gray-700 font-medium">
-                  {{ rating.average_rating.toFixed(1) }}
-                </span>
-                <span class="text-gray-500 text-sm">
-                  ({{ rating.total_reviews }} {{ rating.total_reviews === 1 ? 'отзыв' : rating.total_reviews < 5 ? 'отзыва' : 'отзывов' }})
-                </span>
-              </div>
-
-              <!-- Stats -->
-              <div v-if="stats" class="flex flex-wrap gap-3 mt-4 text-sm">
-                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
-                  <span class="text-lg font-bold text-gray-900">{{ stats.total_freight_requests }}</span>
-                  <span class="text-gray-500 text-xs">Заявок</span>
-                </div>
-                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
-                  <span class="text-lg font-bold text-blue-600">{{ stats.active_freight_requests }}</span>
-                  <span class="text-gray-500 text-xs">Активных</span>
-                </div>
-                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
-                  <span class="text-lg font-bold text-green-600">{{ stats.completed_deals }}</span>
-                  <span class="text-gray-500 text-xs">Завершено</span>
-                </div>
-                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
-                  <span class="text-lg font-bold text-gray-900">{{ stats.total_offers_made }}</span>
-                  <span class="text-gray-500 text-xs">Предложений</span>
-                </div>
-                <div class="flex flex-col items-center px-3 py-2 bg-gray-50 rounded-lg min-w-[80px]">
-                  <span class="text-lg font-bold text-green-600">{{ stats.successful_offers }}</span>
-                  <span class="text-gray-500 text-xs">Успешных</span>
-                </div>
-              </div>
-            </div>
-            <span :class="[statusColors[organization.status], 'px-3 py-1 rounded-full text-sm font-medium']">
-              {{ statusLabels[organization.status] }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Details Card -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-900 mb-4">Информация</h2>
-          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <dt class="text-sm text-gray-500">ИНН</dt>
-              <dd class="text-gray-900 font-medium">{{ organization.inn }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-500">Страна</dt>
-              <dd class="text-gray-900">{{ countryLabels[organization.country] || organization.country }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-500">Телефон</dt>
-              <dd class="text-gray-900">{{ organization.phone }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-500">Email</dt>
-              <dd class="text-gray-900">{{ organization.email }}</dd>
-            </div>
-            <div class="sm:col-span-2">
-              <dt class="text-sm text-gray-500">Адрес</dt>
-              <dd class="text-gray-900 break-words">{{ organization.address }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-gray-500">Дата регистрации</dt>
-              <dd class="text-gray-900">{{ formatDate(organization.created_at) }}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <!-- Reviews Card -->
-        <div class="bg-white rounded-lg shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-900 mb-4">
-            Отзывы
-            <span v-if="rating && rating.total_reviews > 0" class="text-gray-500 font-normal">({{ rating.total_reviews }})</span>
-          </h2>
-
-          <div v-if="reviews.length === 0" class="text-center py-8 text-gray-500">
-            Пока нет отзывов
-          </div>
-
-          <div v-else class="space-y-4">
-            <div
-              v-for="review in reviews"
-              :key="review.id"
-              class="border border-gray-200 rounded-lg p-4"
-            >
-              <div class="flex items-start justify-between mb-2">
-                <div>
-                  <router-link
-                    :to="{ name: 'organization-profile', params: { id: review.reviewer_org_id } }"
-                    class="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    {{ review.reviewer_org_name || 'Организация' }}
-                  </router-link>
-                  <div class="flex mt-1">
+                <!-- Rating -->
+                <div v-if="rating" class="flex items-center gap-2 mt-3">
+                  <div class="flex">
                     <span
                       v-for="star in 5"
                       :key="star"
                       :class="[
-                        'text-lg',
-                        star <= review.rating ? 'text-yellow-400' : 'text-gray-300'
+                        'text-xl',
+                        star <= Math.round(rating.average_rating) ? 'text-warning' : 'text-muted-foreground/30'
                       ]"
                     >&#9733;</span>
                   </div>
+                  <span class="text-foreground font-medium">
+                    {{ rating.average_rating.toFixed(1) }}
+                  </span>
+                  <span class="text-muted-foreground text-sm">
+                    ({{ rating.total_reviews }} {{ rating.total_reviews === 1 ? 'отзыв' : rating.total_reviews < 5 ? 'отзыва' : 'отзывов' }})
+                  </span>
                 </div>
-                <div class="text-xs text-gray-400">
-                  {{ formatDateTime(review.created_at) }}
+
+                <!-- Stats -->
+                <div v-if="stats" class="flex flex-wrap gap-3 mt-4 text-sm">
+                  <div class="flex flex-col items-center px-3 py-2 bg-muted rounded-lg min-w-[80px]">
+                    <span class="text-lg font-bold text-foreground">{{ stats.total_freight_requests }}</span>
+                    <span class="text-muted-foreground text-xs">Заявок</span>
+                  </div>
+                  <div class="flex flex-col items-center px-3 py-2 bg-muted rounded-lg min-w-[80px]">
+                    <span class="text-lg font-bold text-primary">{{ stats.active_freight_requests }}</span>
+                    <span class="text-muted-foreground text-xs">Активных</span>
+                  </div>
+                  <div class="flex flex-col items-center px-3 py-2 bg-muted rounded-lg min-w-[80px]">
+                    <span class="text-lg font-bold text-success">{{ stats.completed_deals }}</span>
+                    <span class="text-muted-foreground text-xs">Завершено</span>
+                  </div>
+                  <div class="flex flex-col items-center px-3 py-2 bg-muted rounded-lg min-w-[80px]">
+                    <span class="text-lg font-bold text-foreground">{{ stats.total_offers_made }}</span>
+                    <span class="text-muted-foreground text-xs">Предложений</span>
+                  </div>
+                  <div class="flex flex-col items-center px-3 py-2 bg-muted rounded-lg min-w-[80px]">
+                    <span class="text-lg font-bold text-success">{{ stats.successful_offers }}</span>
+                    <span class="text-muted-foreground text-xs">Успешных</span>
+                  </div>
                 </div>
               </div>
-              <p v-if="review.comment" class="text-gray-700 mt-2 break-words">{{ review.comment }}</p>
+              <span :class="[statusColors[organization.status], 'px-3 py-1 rounded-full text-sm font-medium shrink-0']">
+                {{ statusLabels[organization.status] }}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Details Card -->
+        <Card>
+          <CardContent class="p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-4">Информация</h2>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <dt class="text-sm text-muted-foreground">ИНН</dt>
+                <dd class="text-foreground font-medium">{{ organization.inn }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-muted-foreground">Страна</dt>
+                <dd class="text-foreground">{{ countryLabels[organization.country] || organization.country }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-muted-foreground">Телефон</dt>
+                <dd class="text-foreground">{{ organization.phone }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-muted-foreground">Email</dt>
+                <dd class="text-foreground">{{ organization.email }}</dd>
+              </div>
+              <div class="sm:col-span-2">
+                <dt class="text-sm text-muted-foreground">Адрес</dt>
+                <dd class="text-foreground break-words">{{ organization.address }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-muted-foreground">Дата регистрации</dt>
+                <dd class="text-foreground">{{ formatDate(organization.created_at) }}</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+
+        <!-- Reviews Card -->
+        <Card>
+          <CardContent class="p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-4">
+              Отзывы
+              <span v-if="rating && rating.total_reviews > 0" class="text-muted-foreground font-normal">({{ rating.total_reviews }})</span>
+            </h2>
+
+            <div v-if="reviews.length === 0" class="text-center py-8 text-muted-foreground">
+              Пока нет отзывов
             </div>
 
-            <!-- Infinite scroll sentinel -->
-            <div
-              ref="sentinelRef"
-              class="h-12 flex items-center justify-center"
-            >
-              <LoadingSpinner v-if="isLoadingMore" text="Загрузка..." />
+            <div v-else class="space-y-4">
+              <div
+                v-for="review in reviews"
+                :key="review.id"
+                class="border border-border rounded-lg p-4"
+              >
+                <div class="flex items-start justify-between mb-2">
+                  <div>
+                    <AppLink :to="{ name: 'organization-profile', params: { id: review.reviewer_org_id } }">
+                      {{ review.reviewer_org_name || 'Организация' }}
+                    </AppLink>
+                    <div class="flex mt-1">
+                      <span
+                        v-for="star in 5"
+                        :key="star"
+                        :class="[
+                          'text-lg',
+                          star <= review.rating ? 'text-warning' : 'text-muted-foreground/30'
+                        ]"
+                      >&#9733;</span>
+                    </div>
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {{ formatDateTime(review.created_at) }}
+                  </div>
+                </div>
+                <p v-if="review.comment" class="text-muted-foreground mt-2 break-words">{{ review.comment }}</p>
+              </div>
+
+              <!-- Infinite scroll sentinel -->
+              <div ref="sentinelRef" class="h-12 flex items-center justify-center">
+                <LoadingSpinner v-if="isLoadingMore" text="Загрузка..." />
+              </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </main>
   </div>

@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { FormField } from '@/components/ui/form-field'
 import { ref, watch, computed } from 'vue'
+import { parseInputFloatOrUndefined } from '@/utils/inputParsers'
 import type { VehicleRequirementsForm, VehicleType, VehicleSubType, LoadingType } from '@/types/freightRequest'
 import {
   vehicleTypeOptions,
@@ -122,18 +126,15 @@ function toggleLoadingType(type: LoadingType) {
 }
 
 function handleCapacityInput(event: Event) {
-  const value = parseFloat((event.target as HTMLInputElement).value) || undefined
-  updateField('capacity', value)
+  updateField('capacity', parseInputFloatOrUndefined(event))
 }
 
 function handleVolumeInput(event: Event) {
-  const value = parseFloat((event.target as HTMLInputElement).value) || undefined
-  updateField('volume', value)
+  updateField('volume', parseInputFloatOrUndefined(event))
 }
 
 function handleDimensionInput(dimension: 'length' | 'width' | 'height', event: Event) {
-  const value = parseFloat((event.target as HTMLInputElement).value) || undefined
-  updateField(dimension, value)
+  updateField(dimension, parseInputFloatOrUndefined(event))
 }
 
 function handleTemperatureInput(field: 'min' | 'max', event: Event) {
@@ -152,11 +153,12 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
 <template>
   <div class="space-y-6">
     <!-- Vehicle type -->
-    <div data-tutorial="vehicle-type">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Тип транспорта <span class="text-red-500">*</span>
-      </label>
-
+    <FormField
+      label="Тип транспорта"
+      required
+      :error="errors.vehicle_type"
+      data-tutorial="vehicle-type"
+    >
       <SelectField
         :model-value="vehicle.vehicle_type"
         :options="vehicleTypeOptions"
@@ -167,18 +169,15 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
         clear-label="Не выбран"
         @update:model-value="handleVehicleTypeChange"
       />
-
-      <p v-if="errors.vehicle_type" class="mt-1 text-sm text-red-600">
-        {{ errors.vehicle_type }}
-      </p>
-    </div>
+    </FormField>
 
     <!-- Vehicle subtype (тип кузова) -->
-    <div data-tutorial="vehicle-subtype">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Тип кузова <span class="text-red-500">*</span>
-      </label>
-
+    <FormField
+      label="Тип кузова"
+      required
+      :error="errors.vehicle_subtype"
+      data-tutorial="vehicle-subtype"
+    >
       <SelectField
         :model-value="vehicle.vehicle_subtype"
         :options="availableSubTypes"
@@ -187,17 +186,13 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
         sheet-label="Тип кузова"
         @update:model-value="selectVehicleSubType($event as VehicleSubType)"
       />
-
-      <p v-if="errors.vehicle_subtype" class="mt-1 text-sm text-red-600">
-        {{ errors.vehicle_subtype }}
-      </p>
-    </div>
+    </FormField>
 
     <!-- Loading types -->
     <div data-tutorial="vehicle-loading">
-      <label class="block text-sm font-medium text-gray-700 mb-2">
+      <Label>
         Тип погрузки
-      </label>
+      </Label>
       <div class="flex flex-wrap gap-2">
         <button
           v-for="option in loadingTypeOptions"
@@ -206,90 +201,79 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
           :class="[
             'px-3 py-2 rounded-md text-sm font-medium border transition-colors',
             vehicle.loading_types?.includes(option.value)
-              ? 'bg-blue-100 border-blue-500 text-blue-700'
-              : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50',
+              ? 'bg-accent border-primary text-accent-foreground'
+              : 'bg-white border-input text-foreground hover:bg-muted',
           ]"
           @click="toggleLoadingType(option.value)"
         >
           {{ option.label }}
         </button>
       </div>
-      <p v-if="vehicle.loading_types?.length" class="mt-2 text-sm text-gray-500">
+      <p v-if="vehicle.loading_types?.length" class="mt-2 text-sm text-muted-foreground">
         Выбрано: {{ vehicle.loading_types.map(t => loadingTypeLabels[t]).join(', ') }}
       </p>
     </div>
 
     <!-- Capacity -->
     <div data-tutorial="vehicle-capacity">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
+      <Label>
         Грузоподъёмность, кг
-      </label>
-      <input
+      </Label>
+      <Input
         type="number"
         :value="vehicle.capacity || ''"
         placeholder="20000"
         min="0"
         step="100"
-        class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
         @input="handleCapacityInput"
       />
     </div>
 
     <!-- Volume -->
     <div data-tutorial="vehicle-volume">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
+      <Label>
         Объём кузова, м³
-      </label>
-      <input
+      </Label>
+      <Input
         type="number"
         :value="vehicle.volume || ''"
         placeholder="82"
         min="0"
         step="1"
-        class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
         @input="handleVolumeInput"
       />
     </div>
 
     <!-- Dimensions -->
     <div data-tutorial="vehicle-dimensions">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
+      <Label>
         Размеры кузова (Д × Ш × В), м
-      </label>
+      </Label>
       <div class="grid grid-cols-3 gap-3">
-        <div>
-          <input
-            type="number"
-            :value="vehicle.length || ''"
-            placeholder="13.6"
-            min="0"
-            step="0.1"
-            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            @input="handleDimensionInput('length', $event)"
-          />
-        </div>
-        <div>
-          <input
-            type="number"
-            :value="vehicle.width || ''"
-            placeholder="2.45"
-            min="0"
-            step="0.1"
-            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            @input="handleDimensionInput('width', $event)"
-          />
-        </div>
-        <div>
-          <input
-            type="number"
-            :value="vehicle.height || ''"
-            placeholder="2.7"
-            min="0"
-            step="0.1"
-            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            @input="handleDimensionInput('height', $event)"
-          />
-        </div>
+        <Input
+          type="number"
+          :value="vehicle.length || ''"
+          placeholder="13.6"
+          min="0"
+          step="0.1"
+          @input="handleDimensionInput('length', $event)"
+        />
+        <Input
+          type="number"
+          :value="vehicle.width || ''"
+          placeholder="2.45"
+          min="0"
+          step="0.1"
+          @input="handleDimensionInput('width', $event)"
+        />
+        <Input
+          type="number"
+          :value="vehicle.height || ''"
+          placeholder="2.7"
+          min="0"
+          step="0.1"
+          @input="handleDimensionInput('height', $event)"
+        />
       </div>
     </div>
 
@@ -300,54 +284,48 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
           id="show_temperature"
           v-model="showTemperature"
           type="checkbox"
-          class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          class="h-4 w-4 accent-primary rounded"
         />
-        <label for="show_temperature" class="text-sm text-gray-700">
+        <Label for="show_temperature" class="mb-0 inline cursor-pointer">
           Температурный режим
-        </label>
+        </Label>
       </div>
 
       <!-- Temperature fields (показываются по галочке) -->
       <div v-if="showTemperature" class="pl-7" data-tutorial="vehicle-temperature-range">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Диапазон температуры, °C <span class="text-red-500">*</span>
-        </label>
+        <Label>
+          Диапазон температуры, °C <span class="text-destructive">*</span>
+        </Label>
         <div class="flex items-center gap-3">
           <div class="flex-1">
-            <input
+            <Input
               type="number"
               :value="vehicle.temperature?.min ?? ''"
               placeholder="от"
               step="1"
-              :class="[
-                'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-                errors.temperature_min ? 'border-red-300' : 'border-gray-300'
-              ]"
+              :has-error="!!errors.temperature_min"
               @input="handleTemperatureInput('min', $event)"
             />
-            <p v-if="errors.temperature_min" class="mt-1 text-sm text-red-600">
+            <p v-if="errors.temperature_min" class="mt-1 text-sm text-destructive">
               {{ errors.temperature_min }}
             </p>
           </div>
-          <span class="text-gray-500">—</span>
+          <span class="text-muted-foreground">—</span>
           <div class="flex-1">
-            <input
+            <Input
               type="number"
               :value="vehicle.temperature?.max ?? ''"
               placeholder="до"
               step="1"
-              :class="[
-                'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-                errors.temperature_max ? 'border-red-300' : 'border-gray-300'
-              ]"
+              :has-error="!!errors.temperature_max"
               @input="handleTemperatureInput('max', $event)"
             />
-            <p v-if="errors.temperature_max" class="mt-1 text-sm text-red-600">
+            <p v-if="errors.temperature_max" class="mt-1 text-sm text-destructive">
               {{ errors.temperature_max }}
             </p>
           </div>
         </div>
-        <p v-if="errors.temperature" class="mt-1 text-sm text-red-600">
+        <p v-if="errors.temperature" class="mt-1 text-sm text-destructive">
           {{ errors.temperature }}
         </p>
       </div>
@@ -359,12 +337,12 @@ function handleTemperatureInput(field: 'min' | 'max', event: Event) {
         id="thermograph"
         :checked="vehicle.thermograph"
         type="checkbox"
-        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+        class="h-4 w-4 accent-primary rounded"
         @change="updateField('thermograph', ($event.target as HTMLInputElement).checked)"
       />
-      <label for="thermograph" class="text-sm text-gray-700">
+      <Label for="thermograph" class="mb-0 inline cursor-pointer">
         Термописец
-      </label>
+      </Label>
     </div>
   </div>
 </template>

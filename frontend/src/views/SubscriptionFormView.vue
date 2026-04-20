@@ -190,11 +190,12 @@ onMounted(async () => {
   <div>
     <DetailPageHeader :back-to="{ name: 'freight-subscriptions' }" back-label="К подпискам" />
 
-    <div class="max-w-5xl mx-auto py-6 px-4">
-      <Card>
-        <CardContent class="p-6">
+    <div class="min-h-screen bg-white md:bg-background md:py-6">
+      <div class="max-w-5xl mx-auto md:px-4">
+      <Card class="md:rounded-xl md:border md:border-border md:shadow-md rounded-none border-none shadow-none">
+        <CardContent class="px-4 py-6 md:px-6">
           <div class="mb-6">
-            <h1 class="text-2xl font-bold tracking-tight text-foreground mb-3">
+            <h1 class="text-xl font-bold text-foreground mb-3">
               {{ isEditing ? 'Редактировать подписку' : 'Создать подписку' }}
             </h1>
             <p class="text-muted-foreground">
@@ -207,7 +208,7 @@ onMounted(async () => {
 
           <form v-else class="space-y-6" @submit.prevent="handleSubmit">
             <div>
-              <Label for="name" class="text-base font-medium">Название подписки *</Label>
+              <Label for="name">Название подписки *</Label>
               <Input
                 id="name"
                 v-model="name"
@@ -259,6 +260,7 @@ onMounted(async () => {
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   </div>
 </template>

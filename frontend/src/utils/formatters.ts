@@ -87,6 +87,22 @@ const currencySymbols: Record<Currency, string> = {
 }
 
 /**
+ * Конвертирует копейки в рубли для отображения в input
+ * @example centsToAmount(150000) -> 1500
+ */
+export function centsToAmount(cents: number): number {
+  return cents / 100
+}
+
+/**
+ * Конвертирует рубли из input в копейки для хранения
+ * @example amountToCents(1500) -> 150000
+ */
+export function amountToCents(amount: number): number {
+  return Math.round(amount * 100)
+}
+
+/**
  * Форматирует деньги (из копеек в рубли с символом валюты)
  * @example formatMoney({ amount: 150000, currency: 'RUB' }) -> '1 500 ₽'
  */

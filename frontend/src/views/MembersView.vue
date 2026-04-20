@@ -282,11 +282,9 @@ onMounted(() => {
             <Card
               v-for="member in filteredMembers"
               :key="member.id"
+              :interactive="!(isSelectionMode && member.status !== 'active')"
               :class="cn(
-                'cursor-pointer transition-shadow',
-                isSelectionMode && member.status === 'active' && 'hover:shadow-md',
                 isSelectionMode && member.status !== 'active' && 'opacity-50 cursor-not-allowed',
-                !isSelectionMode && 'hover:shadow-md',
                 selectLoading && 'pointer-events-none'
               )"
               @click="isSelectionMode ? selectMember(member) : goToMember(member)"
@@ -409,11 +407,9 @@ onMounted(() => {
         <Card
           v-for="member in filteredMembers"
           :key="member.id"
+          :interactive="!(isSelectionMode && member.status !== 'active')"
           :class="cn(
-            'cursor-pointer transition-shadow',
-            isSelectionMode && member.status === 'active' && 'hover:shadow-md',
             isSelectionMode && member.status !== 'active' && 'opacity-50 cursor-not-allowed',
-            !isSelectionMode && 'hover:shadow-md',
             selectLoading && 'pointer-events-none'
           )"
           @click="isSelectionMode ? selectMember(member) : goToMember(member)"

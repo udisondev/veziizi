@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useConfirmModal } from '@/composables/useModal'
+import { validateEmail as validateEmailUtil } from '@/utils/validation'
 import { useAuthStore } from '@/stores/auth'
 import { vMaska } from 'maska/vue'
 import { invitationsApi } from '@/api/invitations'
@@ -91,11 +93,18 @@ const form = ref({
   phone: '',
 })
 
+const fieldErrors = ref<Record<string, string>>({})
+
+function validateEmail(): boolean {
+  const error = validateEmailUtil(form.value.email)
+  fieldErrors.value.email = error ?? ''
+  return !error
+}
+
 // Cancel invitation
 const cancellingId = ref<string | null>(null)
-const showCancelModal = ref(false)
-const cancellingInvitation = ref<InvitationListItem | null>(null)
 const cancelError = ref<string | null>(null)
+const cancelModal = useConfirmModal<InvitationListItem>()
 
 // Computed
 const hasActiveFilters = computed(() => statusFilter.value !== 'all')
@@ -124,6 +133,7 @@ watch(statusFilter, loadData)
 // CRUD
 async function createInvitation() {
   if (!auth.organizationId) return
+  if (!validateEmail()) return
 
   isSubmitting.value = true
   formError.value = null
@@ -139,6 +149,7 @@ async function createInvitation() {
 
     createdToken.value = response.token
     form.value = { email: '', role: 'employee', name: '', phone: '' }
+    fieldErrors.value = {}
     await loadData()
   } catch (e: unknown) {
     formError.value = e instanceof Error ? e.message : 'Не удалось создать приглашение'
@@ -156,26 +167,24 @@ function closeForm() {
 }
 
 function openCancelModal(item: InvitationListItem) {
-  cancellingInvitation.value = item
   cancelError.value = null
-  showCancelModal.value = true
+  cancelModal.open(item)
 }
 
 function closeCancelModal() {
-  showCancelModal.value = false
-  cancellingInvitation.value = null
   cancelError.value = null
+  cancelModal.close()
 }
 
 async function confirmCancel() {
-  if (!auth.organizationId || !cancellingInvitation.value) return
+  if (!auth.organizationId || !cancelModal.data.value) return
 
-  cancellingId.value = cancellingInvitation.value.id
+  cancellingId.value = cancelModal.data.value.id
   cancelError.value = null
 
   try {
-    await invitationsApi.cancel(auth.organizationId, cancellingInvitation.value.id)
-    const item = invitations.value.find((i) => i.id === cancellingInvitation.value!.id)
+    await invitationsApi.cancel(auth.organizationId, cancelModal.data.value.id)
+    const item = invitations.value.find((i) => i.id === cancelModal.data.value!.id)
     if (item) {
       item.status = 'cancelled'
     }
@@ -380,12 +389,20 @@ onMounted(() => {
             {{ formError }}
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-email"> Email <span class="text-destructive">*</span> </Label>
-            <Input id="inv-email" v-model="form.email" type="email" required placeholder="user@example.com" />
+            <Input
+              id="inv-email"
+              v-model="form.email"
+              type="email"
+              placeholder="user@example.com"
+              :has-error="!!fieldErrors.email"
+              @blur="validateEmail"
+            />
+            <p v-if="fieldErrors.email" class="mt-1 text-sm text-destructive">{{ fieldErrors.email }}</p>
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-role"> Роль <span class="text-destructive">*</span> </Label>
             <Select v-model="form.role">
               <SelectTrigger>
@@ -399,7 +416,7 @@ onMounted(() => {
             </Select>
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-name">
               ФИО
               <span class="text-muted-foreground font-normal">(опционально)</span>
@@ -408,7 +425,7 @@ onMounted(() => {
             <p class="text-xs text-muted-foreground">Если заполнить, приглашённый не сможет изменить</p>
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-phone">
               Телефон
               <span class="text-muted-foreground font-normal">(опционально)</span>
@@ -437,9 +454,9 @@ onMounted(() => {
 
     <!-- Cancel Dialog -->
     <ConfirmDialog
-      :open="showCancelModal"
+      :open="cancelModal.isOpen.value"
       title="Отменить приглашение?"
-      :description="`Вы уверены, что хотите отменить приглашение для ${cancellingInvitation?.email}? Пользователь не сможет принять это приглашение.`"
+      :description="`Вы уверены, что хотите отменить приглашение для ${cancelModal.data.value?.email}? Пользователь не сможет принять это приглашение.`"
       confirm-text="Отменить приглашение"
       confirm-variant="destructive"
       :loading="cancellingId !== null"

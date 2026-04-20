@@ -65,11 +65,11 @@ const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'destru
       </Card>
 
       <!-- Info Banner -->
-      <Card class="mt-6 max-w-xl border-blue-500/20 bg-blue-500/5">
+      <Card class="mt-6 max-w-xl border-primary/20 bg-accent">
         <CardContent class="flex items-start gap-3 py-4">
-          <AlertCircle class="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+          <AlertCircle class="h-5 w-5 text-primary shrink-0 mt-0.5" />
           <div>
-            <p class="text-sm font-medium text-blue-700 dark:text-blue-400">Редактирование недоступно</p>
+            <p class="text-sm font-medium text-accent-foreground">Редактирование недоступно</p>
             <p class="text-sm text-muted-foreground mt-1">
               Для изменения данных организации обратитесь в службу поддержки.
             </p>

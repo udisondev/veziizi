@@ -213,7 +213,7 @@ function openSheet() {
     </div>
 
     <BottomSheet v-model="sheetOpen" :label="sheetLabel">
-      <div v-if="props.options.length > 5" class="px-4 py-2 border-b border-gray-100 flex-shrink-0">
+      <div v-if="props.options.length > 5" class="px-4 py-2 border-b flex-shrink-0">
         <input
           v-model="sheetSearch"
           type="text"
@@ -241,7 +241,7 @@ function openSheet() {
             <HighlightText :text="option.label" :query="sheetSearch" />
           </span>
         </button>
-        <div v-if="filteredSheetOptions.length === 0" class="px-4 py-6 text-sm text-gray-500 text-center">
+        <div v-if="filteredSheetOptions.length === 0" class="px-4 py-6 text-sm text-muted-foreground text-center">
           {{ emptyText }}
         </div>
       </div>

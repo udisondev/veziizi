@@ -9,6 +9,7 @@ import { formatDateTime, formatMoney } from '@/utils/formatters'
 
 // UI Components
 import { Button } from '@/components/ui/button'
+import { AppLink } from '@/components/ui/app-link'
 import { StatusBadge } from '@/components/shared'
 import { Clock, Check, Building2 } from 'lucide-vue-next'
 
@@ -89,22 +90,22 @@ function formatPrice(amount: number, currency: Currency): string {
               <StatusBadge :status="offer.status" :status-map="offerStatusMap" />
             </div>
             <div v-if="offer.carrier_org_name || offer.carrier_member_name" class="mb-2 flex flex-wrap items-center gap-x-2">
-              <router-link
+              <AppLink
                 v-if="isOwner && offer.carrier_org_name"
                 :to="`/organizations/${offer.carrier_org_id}`"
-                class="text-primary hover:underline font-medium truncate"
+                class="truncate"
               >
                 <Building2 class="inline h-4 w-4 mr-1" />
                 {{ offer.carrier_org_name }}
-              </router-link>
+              </AppLink>
               <span v-if="isOwner && offer.carrier_org_name && offer.carrier_member_name" class="text-muted-foreground">•</span>
-              <router-link
+              <AppLink
                 v-if="offer.carrier_member_name"
                 :to="`/members/${offer.carrier_member_id}`"
-                class="text-primary hover:underline truncate"
+                class="truncate"
               >
                 {{ offer.carrier_member_name }}
-              </router-link>
+              </AppLink>
             </div>
             <div class="text-sm text-muted-foreground space-y-1">
               <p>

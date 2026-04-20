@@ -60,7 +60,7 @@ async function handleSubmit() {
             Не получили письмо? Проверьте папку «Спам» или
             <button
               type="button"
-              class="text-primary hover:underline"
+              class="text-accent-foreground font-medium hover:text-primary"
               @click="isSubmitted = false"
             >
               попробуйте ещё раз

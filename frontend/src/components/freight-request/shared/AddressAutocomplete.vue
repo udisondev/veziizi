@@ -110,9 +110,9 @@ watch(
       :placeholder="placeholder"
       :disabled="disabled"
       :class="[
-        'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-        error ? 'border-red-300' : 'border-gray-300',
-        disabled ? 'bg-gray-100 cursor-not-allowed' : '',
+        'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring',
+        error ? 'border-destructive' : 'border-input',
+        disabled ? 'bg-muted cursor-not-allowed' : '',
       ]"
       autocomplete="off"
       @input="handleInput"
@@ -126,7 +126,7 @@ watch(
       class="absolute right-3 top-1/2 -translate-y-1/2"
     >
       <svg
-        class="animate-spin h-5 w-5 text-gray-400"
+        class="animate-spin h-5 w-5 text-muted-foreground"
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 24 24"
@@ -150,7 +150,7 @@ watch(
     <!-- Coordinates indicator -->
     <div
       v-else-if="coordinates"
-      class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"
+      class="absolute right-3 top-1/2 -translate-y-1/2 text-success"
       title="Координаты определены"
     >
       <svg
@@ -171,30 +171,30 @@ watch(
     <div
       v-if="isOpen && results.length > 0"
       ref="dropdownRef"
-      class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"
+      class="absolute z-50 w-full mt-1 bg-white border border-border rounded-md shadow-lg max-h-60 overflow-auto"
     >
       <button
         v-for="(result, index) in results"
         :key="result.placeId"
         type="button"
         :class="[
-          'w-full px-3 py-2 text-left text-sm hover:bg-gray-100',
-          index === highlightedIndex ? 'bg-blue-50' : '',
+          'w-full px-3 py-2 text-left text-sm hover:bg-muted',
+          index === highlightedIndex ? 'bg-accent' : '',
         ]"
         @click="handleSelect(result)"
         @mouseenter="highlightedIndex = index"
       >
-        <div class="font-medium text-gray-900 truncate">
+        <div class="font-medium text-foreground truncate">
           {{ result.shortName }}
         </div>
-        <div class="text-gray-500 text-xs truncate">
+        <div class="text-muted-foreground text-xs truncate">
           {{ result.displayName }}
         </div>
       </button>
     </div>
 
     <!-- Error message -->
-    <p v-if="error" class="mt-1 text-sm text-red-600">
+    <p v-if="error" class="mt-1 text-sm text-destructive">
       {{ error }}
     </p>
   </div>

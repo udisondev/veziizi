@@ -96,6 +96,12 @@ const router = createRouter({
       component: () => import('@/views/FreightRequestEditView.vue'),
       meta: { title: 'Редактирование заявки' },
     },
+    {
+      path: '/freight-requests/:id/make-offer',
+      name: 'freight-request-make-offer',
+      component: () => import('@/views/MakeOfferView.vue'),
+      meta: { title: 'Сделать предложение' },
+    },
 
     // Organization profile (public view)
     {

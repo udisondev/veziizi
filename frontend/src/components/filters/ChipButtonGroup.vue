@@ -40,7 +40,7 @@ function isSelected(value: T): boolean {
 
 <template>
   <div>
-    <Label v-if="label" class="text-base font-medium mb-1.5 block">{{ label }}</Label>
+    <Label v-if="label">{{ label }}</Label>
     <div class="flex flex-wrap gap-2">
       <button
         v-for="option in options"
@@ -49,8 +49,8 @@ function isSelected(value: T): boolean {
         :class="[
           'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
           isSelected(option.value)
-            ? 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-200'
-            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300',
+            ? 'bg-accent border-primary text-accent-foreground'
+            : 'bg-white border-input text-foreground hover:bg-muted',
         ]"
         @click="toggle(option.value)"
       >

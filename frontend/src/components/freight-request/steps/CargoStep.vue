@@ -1,7 +1,12 @@
 <script setup lang="ts">
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { FormField } from '@/components/ui/form-field'
 import type { CargoInfo, ADRClass } from '@/types/freightRequest'
 import { adrClassOptions } from '@/types/freightRequest'
 import { SelectField } from '@/components/ui/select-field'
+import { parseInputFloat, parseInputFloatOrUndefined, parseInputInt } from '@/utils/inputParsers'
 
 interface Props {
   cargo: CargoInfo
@@ -25,18 +30,15 @@ function handleDescriptionInput(event: Event) {
 }
 
 function handleWeightInput(event: Event) {
-  const value = parseFloat((event.target as HTMLInputElement).value) || 0
-  updateField('weight', value)
+  updateField('weight', parseInputFloat(event))
 }
 
 function handleVolumeInput(event: Event) {
-  const value = parseFloat((event.target as HTMLInputElement).value) || undefined
-  updateField('volume', value)
+  updateField('volume', parseInputFloatOrUndefined(event))
 }
 
 function handleQuantityInput(event: Event) {
-  const value = parseInt((event.target as HTMLInputElement).value) || undefined
-  updateField('quantity', value)
+  updateField('quantity', parseInputInt(event))
 }
 
 function handleAdrClassChange(value: ADRClass) {
@@ -44,149 +46,125 @@ function handleAdrClassChange(value: ADRClass) {
 }
 
 function handleDimensionInput(dimension: 'length' | 'width' | 'height', event: Event) {
-  const value = parseFloat((event.target as HTMLInputElement).value) || 0
+  const value = parseInputFloat(event)
   const current = props.cargo.dimensions || { length: 0, width: 0, height: 0 }
   const updated = { ...current, [dimension]: value }
 
-  // Если все размеры 0, очищаем dimensions
   if (updated.length === 0 && updated.width === 0 && updated.height === 0) {
     updateField('dimensions', undefined)
   } else {
     updateField('dimensions', updated)
   }
 }
-
-const inputClass = (field: string) => [
-  'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-  props.errors[field] ? 'border-red-300' : 'border-gray-300',
-]
 </script>
 
 <template>
   <div class="space-y-6">
     <!-- Description -->
-    <div data-tutorial="cargo-description">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Описание груза <span class="text-red-500">*</span>
-      </label>
-      <textarea
+    <FormField
+      data-tutorial="cargo-description"
+      label="Описание груза"
+      required
+      :error="errors.description"
+    >
+      <Textarea
         :value="cargo.description"
         placeholder="Что перевозим? Например: Мебель, ДСП, упакованная"
         rows="3"
-        :class="inputClass('description')"
+        :class="errors.description ? 'border-destructive' : ''"
         @input="handleDescriptionInput"
         @blur="emit('validateField', 'description')"
       />
-      <p v-if="errors.description" class="mt-1 text-sm text-red-600">
-        {{ errors.description }}
-      </p>
-    </div>
+    </FormField>
 
     <!-- Weight and Volume -->
     <div class="grid grid-cols-2 gap-4">
-      <div data-tutorial="cargo-weight">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Вес, кг <span class="text-red-500">*</span>
-        </label>
-        <input
+      <FormField
+        data-tutorial="cargo-weight"
+        label="Вес, кг"
+        required
+        :error="errors.weight"
+      >
+        <Input
           type="number"
           :value="cargo.weight || ''"
           placeholder="0"
           min="0"
           step="0.1"
-          :class="inputClass('weight')"
+          :has-error="!!errors.weight"
           @input="handleWeightInput"
           @blur="emit('validateField', 'weight')"
         />
-        <p v-if="errors.weight" class="mt-1 text-sm text-red-600">
-          {{ errors.weight }}
-        </p>
-      </div>
+      </FormField>
 
-      <div data-tutorial="cargo-volume">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Объём, м³
-        </label>
-        <input
+      <FormField data-tutorial="cargo-volume" label="Объём, м³">
+        <Input
           type="number"
           :value="cargo.volume || ''"
           placeholder="0"
           min="0"
           step="0.1"
-          class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           @input="handleVolumeInput"
         />
-      </div>
+      </FormField>
     </div>
 
     <!-- Dimensions -->
     <div data-tutorial="cargo-dimensions">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Габариты (Д × Ш × В), м
-      </label>
+      <Label>Габариты (Д × Ш × В), м</Label>
       <div class="grid grid-cols-3 gap-3">
-        <div>
-          <input
-            type="number"
-            :value="cargo.dimensions?.length || ''"
-            placeholder="Длина"
-            min="0"
-            step="0.01"
-            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            @input="handleDimensionInput('length', $event)"
-          />
-        </div>
-        <div>
-          <input
-            type="number"
-            :value="cargo.dimensions?.width || ''"
-            placeholder="Ширина"
-            min="0"
-            step="0.01"
-            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            @input="handleDimensionInput('width', $event)"
-          />
-        </div>
-        <div>
-          <input
-            type="number"
-            :value="cargo.dimensions?.height || ''"
-            placeholder="Высота"
-            min="0"
-            step="0.01"
-            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            @input="handleDimensionInput('height', $event)"
-          />
-        </div>
+        <Input
+          type="number"
+          :value="cargo.dimensions?.length || ''"
+          placeholder="Длина"
+          min="0"
+          step="0.01"
+          @input="handleDimensionInput('length', $event)"
+        />
+        <Input
+          type="number"
+          :value="cargo.dimensions?.width || ''"
+          placeholder="Ширина"
+          min="0"
+          step="0.01"
+          @input="handleDimensionInput('width', $event)"
+        />
+        <Input
+          type="number"
+          :value="cargo.dimensions?.height || ''"
+          placeholder="Высота"
+          min="0"
+          step="0.01"
+          @input="handleDimensionInput('height', $event)"
+        />
       </div>
     </div>
 
     <!-- Quantity -->
-    <div data-tutorial="cargo-quantity">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Количество мест <span class="text-red-500">*</span>
-      </label>
-      <input
+    <FormField
+      data-tutorial="cargo-quantity"
+      label="Количество мест"
+      required
+      :error="errors.quantity"
+    >
+      <Input
         type="number"
         :value="cargo.quantity || ''"
         placeholder="1"
         min="1"
         step="1"
-        :class="inputClass('quantity')"
+        :has-error="!!errors.quantity"
         @input="handleQuantityInput"
         @blur="emit('validateField', 'quantity')"
       />
-      <p v-if="errors.quantity" class="mt-1 text-sm text-red-600">
-        {{ errors.quantity }}
-      </p>
-    </div>
+    </FormField>
 
     <!-- ADR Class -->
-    <div data-tutorial="cargo-adr">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Класс опасности груза
-      </label>
-
+    <FormField
+      data-tutorial="cargo-adr"
+      label="Класс опасности груза"
+      hint="Выберите класс, если груз относится к опасным"
+    >
       <SelectField
         :model-value="cargo.adr_class || 'none'"
         :options="adrClassOptions"
@@ -194,10 +172,6 @@ const inputClass = (field: string) => [
         sheet-label="Класс опасности груза"
         @update:model-value="handleAdrClassChange($event as ADRClass)"
       />
-
-      <p class="mt-1 text-sm text-gray-500">
-        Выберите класс, если груз относится к опасным
-      </p>
-    </div>
+    </FormField>
   </div>
 </template>

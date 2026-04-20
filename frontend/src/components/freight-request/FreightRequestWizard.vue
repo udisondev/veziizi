@@ -110,9 +110,9 @@ function handleNext() {
 </script>
 
 <template>
-  <div class="bg-white rounded-xl border border-border shadow-md">
+  <div class="bg-white md:rounded-xl md:border md:border-border md:shadow-md">
     <!-- Card header: title + stepper -->
-    <div class="px-6 pt-6 pb-4 border-b border-border">
+    <div class="pb-4 border-b border-border md:px-6 md:pt-6">
       <h2 v-if="title" class="text-xl font-bold text-foreground mb-6">{{ title }}</h2>
       <WizardStepIndicator
         :steps="steps"
@@ -124,13 +124,13 @@ function handleNext() {
     <!-- API Error -->
     <div
       v-if="apiError"
-      class="mx-6 mt-4 bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg"
+      class="mt-4 md:mx-6 bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg"
     >
       {{ apiError }}
     </div>
 
     <!-- Steps content -->
-    <div class="p-6">
+    <div class="py-6 md:px-6">
       <RouteStep
         v-if="form.currentStep.value === 1"
         data-tutorial="route-step"
@@ -174,7 +174,7 @@ function handleNext() {
     </div>
 
     <!-- Navigation buttons -->
-    <div class="px-6 py-4 border-t border-border flex items-center gap-3" data-tutorial="wizard-buttons">
+    <div class="py-4 border-t border-border flex items-center gap-3 md:px-6" data-tutorial="wizard-buttons">
       <Button
         v-if="form.currentStep.value > 1"
         type="button"

@@ -10,6 +10,7 @@ import { logger } from '@/utils/logger'
 
 // UI Components
 import { Button } from '@/components/ui/button'
+import { AppLink } from '@/components/ui/app-link'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -360,9 +361,7 @@ onMounted(() => {
         <CardFooter class="justify-center">
           <p class="text-sm text-muted-foreground">
             Уже есть аккаунт?
-            <router-link to="/login" class="text-primary hover:underline">
-              Войти
-            </router-link>
+            <AppLink to="/login">Войти</AppLink>
           </p>
         </CardFooter>
       </Card>
