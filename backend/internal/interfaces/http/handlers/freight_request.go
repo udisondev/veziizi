@@ -523,18 +523,13 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	fr, err := h.service.Get(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+		if errors.Is(err, eventstore.ErrAggregateNotFound) ||
+			errors.Is(err, frDomain.ErrFreightRequestNotFound) {
 			writeError(w, http.StatusNotFound, "freight request not found")
 			return
 		}
 		slog.Error("failed to get freight request", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	// Check if aggregate has events (exists)
-	if fr.Version() == 0 {
-		writeError(w, http.StatusNotFound, "freight request not found")
 		return
 	}
 

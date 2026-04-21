@@ -148,6 +148,13 @@ func (b *FreightRequestBuilder) WithPayment(amount int64, currency, vatType, met
 	return b
 }
 
+// WithDeferredDays sets the number of deferred payment days. Required when
+// Payment.Terms == "deferred" — domain validates deferred_days > 0.
+func (b *FreightRequestBuilder) WithDeferredDays(days int) *FreightRequestBuilder {
+	b.payment.DeferredDays = days
+	return b
+}
+
 // WithComment sets the comment.
 func (b *FreightRequestBuilder) WithComment(comment string) *FreightRequestBuilder {
 	b.comment = &comment

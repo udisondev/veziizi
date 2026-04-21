@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,13 +19,19 @@ import (
 // FraudsterHandlerSuite тестирует поведение FraudsterHandler при пометке/снятии
 // статуса фродстера с организации. Handler слушает FraudsterMarked/FraudsterUnmarked
 // и деактивирует/обновляет отзывы.
-// Использует изолированный suite (NewSuite) — тесты с pipeline требуют стабильный контекст.
+//
+// Использует изолированный NewSuite (свой Postgres + review workers). Попытка
+// перевести на shared suite давала стабильный timeout на review pipeline под
+// параллельной нагрузкой от других suites: watermill SQL polling + контеншн на
+// consumer group'ы review_analyzer/reviews_projection не успевал довести события
+// до approved за 60s. Отдельный контейнер решает проблему полностью.
 type FraudsterHandlerSuite struct {
 	suite.Suite
 	f *factory.Factory
 }
 
 func TestFraudsterHandlerSuite(t *testing.T) {
+	t.Parallel()
 	suite.Run(t, new(FraudsterHandlerSuite))
 }
 
@@ -60,8 +67,12 @@ func (s *FraudsterHandlerSuite) createAndApproveReview(reviewerOrgID, reviewedOr
 		FreightRequestID: uuid.New(),
 		ReviewerOrgID:    reviewerOrgID,
 		ReviewedOrgID:    reviewedOrgID,
-		Rating:           5,
-		Comment:          "excellent service",
+		// Разные Rating и уникальный Comment — иначе fraud-анализ триггерит
+		// text_similarity (0.4) + perfect_ratings (0.15) = 0.55 → pending_moderation,
+		// и тест никогда не дождётся approved. Нужно ≥3 отзыва, и все должны
+		// пройти auto-approve, чтобы потом проверить батч-деактивацию фродстера.
+		Rating:           3 + (int(reviewID[0]) % 3), // 3..5 — варируем rating
+		Comment:          "unique review comment " + reviewID.String(),
 		FreightAmount:    10_000_000, // 100K RUB — weight 1.0
 		FreightCurrency:  "RUB",
 		FreightCreatedAt: time.Now().Add(-48 * time.Hour),
@@ -69,7 +80,7 @@ func (s *FraudsterHandlerSuite) createAndApproveReview(reviewerOrgID, reviewedOr
 	})
 	s.Require().NoError(err, "CreateFromFreightReview для review %s", reviewID)
 
-	// Ожидаем auto-approval (3 хопа event pipeline: receiver → analyzer → projection)
+	// Ожидаем auto-approval (3 хопа event pipeline: receiver → analyzer → projection).
 	helpers.WaitWithConfig(s.T(), helpers.WaitConfig{
 		Timeout:  30 * time.Second,
 		Interval: 200 * time.Millisecond,
@@ -97,11 +108,19 @@ func (s *FraudsterHandlerSuite) TestFRH001_MarkDeactivatesApprovedReviews() {
 	s.insertMember(reviewerOrgID, time.Now().AddDate(0, -13, 0))
 	s.insertMember(reviewedOrgID, time.Now().AddDate(0, -13, 0))
 
-	// Создаём 3 отзыва через полный пайплайн (approved status)
+	// Создаём 3 отзыва и ждём approved параллельно — review pipeline (3 хопа через
+	// watermill под параллельной нагрузкой shared suite) медленный, так что параллельная
+	// приёмка сокращает общее время с 3*60s до ~60s.
 	reviewIDs := make([]uuid.UUID, 3)
+	var wg sync.WaitGroup
 	for i := range 3 {
-		reviewIDs[i] = s.createAndApproveReview(reviewerOrgID, reviewedOrgID)
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			reviewIDs[idx] = s.createAndApproveReview(reviewerOrgID, reviewedOrgID)
+		}(i)
 	}
+	wg.Wait()
 
 	// Деактивируем напрямую через BatchDeactivate (имитация fraudster handler)
 	reviewService := s.f.ReviewService()

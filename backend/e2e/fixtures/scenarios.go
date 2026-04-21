@@ -152,21 +152,11 @@ func (ctx *TestContext) AddMemberToOrg(org *CreatedOrganization, role string) *c
 		ctx.T.Fatalf("failed to create invitation: %s", string(invResp.RawBody))
 	}
 
-	// Wait for invitation with exponential backoff
+	// Ждём invitation в invitations_lookup на уровне БД — под нагрузкой consumer-lag
+	// делал HTTP polling ненадёжным, и следующий AcceptInvitation натыкался на "invitation not found".
 	token := invResp.Body.Token
-	backoff := 10 * time.Millisecond
-	maxBackoff := 200 * time.Millisecond
-	deadline := time.Now().Add(5 * time.Second)
-
-	for time.Now().Before(deadline) {
-		getResp, err := ctx.AnonClient.GetInvitationByToken(token)
-		if err == nil && getResp.StatusCode == 200 {
-			break
-		}
-		time.Sleep(backoff)
-		if backoff < maxBackoff {
-			backoff = min(backoff*2, maxBackoff)
-		}
+	if GetFactory() != nil {
+		WaitInvitationByToken(ctx.T, token, 15*time.Second)
 	}
 
 	// Accept invitation
@@ -184,24 +174,21 @@ func (ctx *TestContext) AddMemberToOrg(org *CreatedOrganization, role string) *c
 		ctx.T.Fatalf("failed to accept invitation: %s", string(acceptResp.RawBody))
 	}
 
-	// Wait for member with exponential backoff
-	memberClient := ctx.AnonClient.Clone()
-	backoff = 10 * time.Millisecond
-	deadline = time.Now().Add(10 * time.Second)
-
-	for time.Now().Before(deadline) {
-		loginResp, err := memberClient.Login(email, "password123")
-		if err == nil && loginResp.StatusCode == 200 {
-			return memberClient
-		}
-		time.Sleep(backoff)
-		if backoff < maxBackoff {
-			backoff = min(backoff*2, maxBackoff)
-		}
+	// Ждём появления нового member'а в members_lookup (status=active).
+	if GetFactory() != nil {
+		WaitMemberInProjection(ctx.T, email, 15*time.Second)
 	}
 
-	ctx.T.Fatalf("failed to login as new member after waiting")
-	return nil
+	memberClient := ctx.AnonClient.Clone()
+	loginResp, err := memberClient.Login(email, "password123")
+	if err != nil {
+		ctx.T.Fatalf("failed to login as new member: %v", err)
+	}
+	if loginResp.StatusCode != 200 {
+		ctx.T.Fatalf("login as new member returned %d: %s",
+			loginResp.StatusCode, string(loginResp.RawBody))
+	}
+	return memberClient
 }
 
 // QuickCustomer creates a new customer organization quickly.

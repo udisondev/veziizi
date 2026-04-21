@@ -417,20 +417,23 @@ func (s *AdminSuite) TestADM032_FraudsterDeactivatesReviews() {
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, markResp.StatusCode)
 
-	// Verify org is marked as fraudster
+	// Wait for fraudster-handler worker to mark org in org_reviewer_reputation.
+	// DB-level wait is more reliable than polling AdminListFraudsters under load.
+	fixtures.WaitOrgIsFraudster(s.T(), fraudOrg.OrganizationID, 30*time.Second)
+
+	// Sanity check through public API.
 	orgIDStr := fraudOrg.OrganizationID.String()
-	helpers.Wait(s.T(), func() bool {
-		fraudstersResp, err := s.ctx.AdminClient.AdminListFraudsters()
-		if err != nil || fraudstersResp.StatusCode != http.StatusOK {
-			return false
+	fraudstersResp, err := s.ctx.AdminClient.AdminListFraudsters()
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, fraudstersResp.StatusCode)
+	found := false
+	for _, f := range fraudstersResp.Body.Fraudsters {
+		if f.OrgID == orgIDStr {
+			found = true
+			break
 		}
-		for _, f := range fraudstersResp.Body.Fraudsters {
-			if f.OrgID == orgIDStr {
-				return true
-			}
-		}
-		return false
-	}, "org should be in fraudsters list")
+	}
+	s.Assert().True(found, "org should appear in AdminListFraudsters")
 
 	// Note: The fraudster-handler worker should deactivate reviews from this org
 	// This is an async process, so we just verify the mechanism is in place

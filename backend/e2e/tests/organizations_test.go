@@ -107,7 +107,9 @@ func (s *OrganizationsSuite) TestORG026_GetExistingOrganization() {
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
 	s.Assert().Equal(s.org.OrganizationID, resp.Body.ID, "id")
-	s.Assert().Equal("pending", resp.Body.Status, "status")
+	// s.org создаётся через NewActiveOrganization (регистрация + admin approve),
+	// поэтому статус — "active", а не "pending".
+	s.Assert().Equal("active", resp.Body.Status, "status")
 }
 
 func (s *OrganizationsSuite) TestORG028_GetWithoutAuth() {

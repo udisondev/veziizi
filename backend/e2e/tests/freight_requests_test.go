@@ -689,6 +689,7 @@ func (s *FreightRequestsSuite) TestFR133_FilterByPaymentTerms() {
 	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
 		WithPayment(50000, values.CurrencyRUB.String(), values.VatTypeIncluded.String(),
 			values.PaymentMethodBankTransfer.String(), values.PaymentTermsDeferred.String()).
+		WithDeferredDays(7).
 		Create()
 
 	helpers.Wait(s.T(), func() bool {

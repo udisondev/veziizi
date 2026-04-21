@@ -151,29 +151,22 @@ func (b *OrganizationBuilder) Create() *CreatedOrganization {
 		b.t.Fatalf("unexpected status code %d: %s", resp.StatusCode, string(resp.RawBody))
 	}
 
-	// Create a new client and login with exponential backoff
-	// (event handlers need time to process events into lookup tables)
-	orgClient := b.client.Clone()
-	var loginResp *client.Response[client.LoginResponse]
-	backoff := 10 * time.Millisecond
-	maxBackoff := 200 * time.Millisecond
-	deadline := time.Now().Add(3 * time.Second)
+	// Ждём пока members-projection консьюмер догонит OrganizationCreated event и
+	// member появится в members_lookup. Пока его там нет, Login вернёт 401, а
+	// CheckMemberStatus middleware на follow-up запросах — 500. Ждём state БД
+	// напрямую, чтобы не маскировать consumer lag HTTP-ретраями.
+	if GetFactory() != nil {
+		WaitMemberInProjection(b.t, b.owner.Email, 30*time.Second)
+	}
 
-	for time.Now().Before(deadline) {
-		loginResp, err = orgClient.Login(b.owner.Email, b.owner.Password)
-		if err != nil {
-			b.t.Fatalf("failed to login after registration: %v", err)
-		}
-		if loginResp.StatusCode == 200 {
-			break
-		}
-		time.Sleep(backoff)
-		if backoff < maxBackoff {
-			backoff = min(backoff*2, maxBackoff)
-		}
+	orgClient := b.client.Clone()
+	loginResp, err := orgClient.Login(b.owner.Email, b.owner.Password)
+	if err != nil {
+		b.t.Fatalf("failed to login after registration: %v", err)
 	}
 	if loginResp.StatusCode != 200 {
-		b.t.Fatalf("failed to login after retries: %s", string(loginResp.RawBody))
+		b.t.Fatalf("login after registration returned %d: %s",
+			loginResp.StatusCode, string(loginResp.RawBody))
 	}
 
 	return &CreatedOrganization{

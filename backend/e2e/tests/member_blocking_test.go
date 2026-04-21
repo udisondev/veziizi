@@ -5,21 +5,22 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
-	"github.com/udisondev/veziizi/backend/e2e/helpers"
 	"github.com/udisondev/veziizi/backend/e2e/setup"
 )
 
 // MemberBlockingSuite tests member blocking functionality.
 type MemberBlockingSuite struct {
 	suite.Suite
-	baseURL string
-	c       *client.Client
-	suite   *setup.Suite
+	baseURL     string
+	c           *client.Client
+	adminClient *client.Client
+	suite       *setup.Suite
 
 	// Shared organization for tests
 	org *fixtures.CreatedOrganization
@@ -35,14 +36,14 @@ func (s *MemberBlockingSuite) SetupSuite() {
 	s.baseURL = s.suite.BaseURL
 	s.c = client.New(s.baseURL)
 
-	// Setup admin client for approving organizations
-	adminClient := client.New(s.baseURL)
-	adminLogin, err := adminClient.AdminLogin("admin@veziizi.local", "admin123")
+	// Setup admin client for approving organizations (shared across tests)
+	s.adminClient = client.New(s.baseURL)
+	adminLogin, err := s.adminClient.AdminLogin("admin@veziizi.local", "admin123")
 	s.Require().NoError(err)
 	s.Require().Equal(200, adminLogin.StatusCode, "admin login failed")
 
 	// Create shared approved organization
-	s.org = fixtures.NewActiveOrganization(s.T(), s.c, adminClient).Create()
+	s.org = fixtures.NewActiveOrganization(s.T(), s.c, s.adminClient).Create()
 }
 
 // Helper: блокировка member через прямое обновление БД
@@ -227,8 +228,9 @@ func (s *MemberBlockingSuite) TestBLOCK007_LoginBlockedForBlockedMember() {
 // ==================== БЛОК-008: Заблокированный member не может смотреть профили ====================
 
 func (s *MemberBlockingSuite) TestBLOCK008_CannotAccessMemberProfiles() {
-	// Создаём отдельную организацию для этого теста
-	org := fixtures.NewOrganization(s.T(), s.c).Create()
+	// Нужна active организация: CreateInvitation domain-invariant требует status=active
+	// (иначе 403 ErrOrganizationNotActive через handleDomainError).
+	org := fixtures.NewActiveOrganization(s.T(), s.c, s.adminClient).Create()
 	testClient := s.c.Clone()
 
 	// Создаём второго member в организации через invitation
@@ -236,19 +238,19 @@ func (s *MemberBlockingSuite) TestBLOCK008_CannotAccessMemberProfiles() {
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, invResp.StatusCode)
 
+	// Unique email — избегает коллизий с параллельными запусками того же теста.
+	member2Email := "block008-member-" + uuid.New().String()[:8] + "@test.local"
+
 	createInvResp, err := testClient.CreateInvitation(org.OrganizationID, client.CreateInvitationRequest{
-		Email: "member2@test.local",
+		Email: member2Email,
 		Role:  "employee",
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusCreated, createInvResp.StatusCode)
 
-	// Wait for invitation to be available (projection sync)
+	// Wait for invitation at DB level (более надёжно чем HTTP polling под нагрузкой).
 	token := createInvResp.Body.Token
-	helpers.WaitFor(s.T(), func() (bool, bool) {
-		getResp, err := s.c.GetInvitationByToken(token)
-		return err == nil && getResp.StatusCode == 200, err == nil && getResp.StatusCode == 200
-	}, "invitation should be available")
+	fixtures.WaitInvitationByToken(s.T(), token, 15*time.Second)
 
 	// Accept invitation
 	member2Client := s.c.Clone()
@@ -262,11 +264,13 @@ func (s *MemberBlockingSuite) TestBLOCK008_CannotAccessMemberProfiles() {
 
 	member2ID := acceptResp.Body.MemberID
 
-	// Wait for member to be available (projection sync)
-	helpers.WaitFor(s.T(), func() (bool, bool) {
-		loginResp, err := member2Client.Login("member2@test.local", "password123")
-		return err == nil && loginResp.StatusCode == 200, err == nil && loginResp.StatusCode == 200
-	}, "member should be available")
+	// Wait for member at DB level.
+	fixtures.WaitMemberInProjection(s.T(), member2Email, 15*time.Second)
+
+	// Sanity check login.
+	loginMember2, err := member2Client.Login(member2Email, "password123")
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, loginMember2.StatusCode)
 
 	// Логинимся под owner заново (используем новый клиент)
 	ownerClient := s.c.Clone()

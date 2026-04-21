@@ -3,12 +3,14 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
+	reviewDomain "github.com/udisondev/veziizi/backend/internal/domain/review"
 	freightEvents "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
@@ -99,6 +101,22 @@ func (h *ReviewReceiverHandler) onReviewEdited(ctx context.Context, e freightEve
 		NewRating:  e.NewRating,
 		NewComment: e.NewComment,
 	}); err != nil {
+		// Domain-level состояния, в которых edit невозможен (review уже прошёл
+		// анализ / не существует / терминальный), — это legitimate race
+		// с аналайзером, а не баг. Ack'аем message, иначе watermill retry'ит
+		// бесконечно и блокирует consumer group на весь topic, тормозя все
+		// остальные projection pipeline.
+		if errors.Is(err, reviewDomain.ErrReviewNotEditable) ||
+			errors.Is(err, reviewDomain.ErrReviewAlreadyAnalyzed) ||
+			errors.Is(err, reviewDomain.ErrReviewNotFound) ||
+			errors.Is(err, reviewDomain.ErrReviewTerminalStatus) {
+			slog.Warn("review edit skipped (domain constraint)",
+				slog.String("freight_request_id", e.AggregateID().String()),
+				slog.String("review_id", e.ReviewID.String()),
+				slog.String("reason", err.Error()),
+			)
+			return nil
+		}
 		slog.Error("failed to edit review from freight request event",
 			slog.String("freight_request_id", e.AggregateID().String()),
 			slog.String("review_id", e.ReviewID.String()),

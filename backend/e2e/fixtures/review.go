@@ -2,6 +2,7 @@ package fixtures
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -221,4 +222,56 @@ func InsertReviewWithTiming(t *testing.T, f *factory.Factory, reviewerOrgID uuid
 	row := DefaultReviewLookupRow(reviewerOrgID, uuid.New())
 	row.CreatedAt = createdAt
 	InsertReviewLookup(t, f, row)
+}
+
+// SetUniqueOrgMetadata assigns a unique IP/fingerprint to an organization's members.
+// Needed because e2e organizations register via localhost — all end up with the same IP,
+// which triggers SameIP fraud signal on any review between them.
+func SetUniqueOrgMetadata(t *testing.T, f *factory.Factory, orgID uuid.UUID) {
+	t.Helper()
+
+	id := uuid.New()
+	b := id[:]
+	ip := fmt.Sprintf("10.%d.%d.%d", b[0], b[1], b[2])
+	SetMemberMetadata(t, f, orgID, ip, "fp-"+id.String())
+}
+
+// ForceActivateReview bypasses the 7–14 day activation delay and drives the review
+// through its full activation pipeline (ReviewService.Activate → ReviewActivated event →
+// reviews_projection handler → organization_ratings update).
+//
+// Strategy: the aggregate's activation_date is loaded from the ReviewAnalyzed event,
+// so we rewrite that event's JSON payload to set activation_date in the past. The
+// projection's activation_date column is updated too (cosmetic, for assertions).
+// Requires the review to already be in status=approved.
+func ForceActivateReview(t *testing.T, f *factory.Factory, reviewID uuid.UUID) {
+	t.Helper()
+
+	ctx := context.Background()
+	past := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339Nano)
+
+	if _, err := f.DB().Exec(ctx,
+		`UPDATE reviews_lookup SET activation_date = $2 WHERE id = $1`,
+		reviewID, past,
+	); err != nil {
+		t.Fatalf("backdate activation_date in projection: %v", err)
+	}
+
+	// Rewrite activation_date inside the stored ReviewAnalyzed event payload so the
+	// aggregate rehydrated from events has activation_date in the past.
+	res, err := f.DB().Exec(ctx, `
+		UPDATE events
+		SET data = jsonb_set(data, '{activation_date}', to_jsonb($2::text))
+		WHERE aggregate_id = $1 AND event_type = 'review.analyzed'
+	`, reviewID, past)
+	if err != nil {
+		t.Fatalf("backdate ReviewAnalyzed event: %v", err)
+	}
+	if res.RowsAffected() == 0 {
+		t.Fatalf("no ReviewAnalyzed event found for review %s — is it in status=approved?", reviewID)
+	}
+
+	if err := f.ReviewService().Activate(ctx, reviewID); err != nil {
+		t.Fatalf("activate review: %v", err)
+	}
 }

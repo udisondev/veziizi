@@ -23,6 +23,7 @@ import (
 	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
+	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	eventHandlers "github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
@@ -73,6 +74,11 @@ func GetSharedSuite(t *testing.T) *Suite {
 			t.Fatalf("failed to create shared suite: %v", err)
 		}
 		sharedSuite = suite
+
+		// Регистрируем Factory только для shared suite — isolated NewSuite не трогает
+		// global registry, иначе шаред-тесты начнут читать из чужой БД
+		// (gauge race condition между параллельными suites).
+		fixtures.RegisterFactory(suite.Factory)
 
 		// Cleanup will be handled by TestMain
 	})
@@ -212,7 +218,11 @@ func (s *Suite) startEventHandlers() error {
 	pool := s.Factory.MustPool()
 	db := s.Factory.DB()
 
-	// Helper to create subscriber with unique consumer group
+	// Helper to create subscriber with unique consumer group.
+	// PollInterval = 50ms: watermill по умолчанию poll'ит раз в секунду, что на
+	// пайплайн из 3 хопов (ReviewReceived → Analyzed → Approved → reviews_projection)
+	// даёт минимум 3+ секунды latency и накопляется под нагрузкой параллельных suites.
+	// В тестах хотим максимально быстрый event pipeline.
 	createSubscriber := func(consumerGroup, topic string) (message.Subscriber, error) {
 		sub, err := wmSql.NewSubscriber(
 			wmSql.BeginnerFromPgx(pool),
@@ -220,6 +230,7 @@ func (s *Suite) startEventHandlers() error {
 				SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
 				OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
 				ConsumerGroup:  consumerGroup,
+				PollInterval:   50 * time.Millisecond,
 			},
 			wmLogger,
 		)

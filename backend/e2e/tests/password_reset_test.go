@@ -248,9 +248,18 @@ func (s *PasswordResetSuite) TestPWD024_SuccessfulReset() {
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusUnauthorized, loginResp.StatusCode, "old password should not work")
 
-	// Verify new password works
-	loginResp, err = testClient.Login(org.OwnerEmail, newPassword)
-	s.Require().NoError(err)
+	// Verify new password works. Password reset эмитит PasswordChanged event →
+	// members-projection async обновляет password_hash. Под нагрузкой projection
+	// отстаёт от HTTP-reset-ответа; polling до успешного login или таймаута.
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		loginResp, err = testClient.Login(org.OwnerEmail, newPassword)
+		s.Require().NoError(err)
+		if loginResp.StatusCode == http.StatusOK {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	s.Require().Equal(http.StatusOK, loginResp.StatusCode, "new password should work")
 }
 
