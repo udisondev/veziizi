@@ -233,7 +233,7 @@ const userInitial = computed(() => {
               </DropdownMenuItem>
               <DropdownMenuSeparator class="bg-slate-700" />
               <DropdownMenuItem
-                class="text-red-400 focus:bg-slate-700 focus:text-red-300"
+                class="text-destructive focus:bg-slate-700 focus:text-destructive/80"
                 @click="logout"
               >
                 <LogOut class="mr-2 h-4 w-4" />

@@ -2,9 +2,11 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAsyncAction } from '@/composables/useAsyncData'
 
 // UI Components
 import { Button } from '@/components/ui/button'
+import { AppLink } from '@/components/ui/app-link'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,24 +20,13 @@ const auth = useAuthStore()
 
 const email = ref('')
 const password = ref('')
-const error = ref('')
-const isLoading = ref(false)
 const showRegistrationSuccess = computed(() => route.query.registered === 'true')
 
-async function handleSubmit() {
-  error.value = ''
-  isLoading.value = true
-
-  try {
-    await auth.login({ email: email.value, password: password.value })
-    const redirect = (route.query.redirect as string) || '/'
-    router.push(redirect)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Ошибка входа'
-  } finally {
-    isLoading.value = false
-  }
-}
+const { execute: handleSubmit, isLoading, error } = useAsyncAction(async () => {
+  await auth.login({ email: email.value, password: password.value })
+  const redirect = (route.query.redirect as string) || '/'
+  router.push(redirect)
+})
 </script>
 
 <template>
@@ -108,9 +99,7 @@ async function handleSubmit() {
       <CardFooter class="justify-center">
         <p class="text-sm text-muted-foreground">
           Нет аккаунта?
-          <router-link to="/register" class="text-primary hover:underline">
-            Регистрация организации
-          </router-link>
+          <AppLink to="/register">Регистрация организации</AppLink>
         </p>
       </CardFooter>
     </Card>

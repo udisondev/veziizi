@@ -55,7 +55,7 @@ function close() {
           <span class="text-base font-semibold text-foreground">{{ label }}</span>
           <button
             type="button"
-            class="p-1 rounded-full text-gray-400 hover:text-gray-600 active:text-gray-800 transition-colors"
+            class="p-1 rounded-full text-muted-foreground hover:text-foreground transition-colors"
             @click="close"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

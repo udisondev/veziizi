@@ -12,17 +12,17 @@ async function logout() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-orange-50">
+  <div class="min-h-screen flex items-center justify-center bg-warning/5">
     <div class="max-w-md w-full text-center space-y-6 p-8">
       <div class="text-6xl">⚠️</div>
-      <h1 class="text-2xl font-bold text-gray-900">Организация приостановлена</h1>
-      <p class="text-gray-600">
+      <h1 class="text-2xl font-bold text-foreground">Организация приостановлена</h1>
+      <p class="text-muted-foreground">
         Деятельность организации <strong>{{ auth.organization?.name }}</strong> временно приостановлена.
         Пожалуйста, свяжитесь с поддержкой.
       </p>
       <button
         @click="logout"
-        class="text-gray-500 hover:text-gray-700 underline"
+        class="text-muted-foreground hover:text-foreground underline"
       >
         Выйти
       </button>

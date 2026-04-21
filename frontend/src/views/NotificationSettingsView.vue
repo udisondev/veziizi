@@ -273,8 +273,8 @@ onUnmounted(() => {
       <Card class="mb-6">
         <CardHeader>
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
-              <MessageCircle class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
+              <MessageCircle class="h-5 w-5 text-accent-foreground" />
             </div>
             <div>
               <CardTitle class="text-lg">Telegram</CardTitle>
@@ -289,7 +289,7 @@ onUnmounted(() => {
           <div v-if="isTelegramConnected" class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div class="flex items-center gap-2 flex-wrap">
-                <Check class="h-5 w-5 text-green-500 shrink-0" />
+                <Check class="h-5 w-5 text-success shrink-0" />
                 <span class="font-medium">Подключён</span>
                 <Badge v-if="preferences.telegram.username" variant="secondary">
                   @{{ preferences.telegram.username }}
@@ -366,8 +366,8 @@ onUnmounted(() => {
       <Card class="mb-6">
         <CardHeader>
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
-              <Mail class="h-5 w-5 text-green-600 dark:text-green-400" />
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Mail class="h-5 w-5 text-success" />
             </div>
             <div>
               <CardTitle class="text-lg">Email</CardTitle>
@@ -382,7 +382,7 @@ onUnmounted(() => {
           <div v-if="isEmailConnected && isEmailVerified" class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div class="flex items-center gap-2 flex-wrap">
-                <Check class="h-5 w-5 text-green-500 shrink-0" />
+                <Check class="h-5 w-5 text-success shrink-0" />
                 <span class="font-medium">Подключён</span>
                 <Badge v-if="preferences?.email.email" variant="secondary">
                   {{ preferences.email.email }}
@@ -423,7 +423,7 @@ onUnmounted(() => {
           <!-- Подключён, но не верифицирован -->
           <div v-else-if="isEmailConnected && !isEmailVerified" class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div class="flex items-center gap-2 flex-wrap text-yellow-600 dark:text-yellow-400">
+              <div class="flex items-center gap-2 flex-wrap text-warning">
                 <AlertCircle class="h-5 w-5 shrink-0" />
                 <span class="font-medium">Ожидает подтверждения</span>
                 <Badge v-if="preferences?.email.email" variant="secondary">

@@ -12,14 +12,7 @@ import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
 import EventHistory from '@/components/EventHistory.vue'
 import FreightRequestOffersTab from '@/components/freight-request/FreightRequestOffersTab.vue'
 import StarRating from '@/components/freight-request/StarRating.vue'
-import type {
-  FreightRequest,
-  Offer,
-  MakeOfferRequest,
-  Currency,
-  VatType,
-  PaymentMethod,
-} from '@/types/freightRequest'
+import type { FreightRequest, Offer, Currency } from '@/types/freightRequest'
 import {
   vehicleTypeLabels,
   vehicleSubTypeLabels,
@@ -28,28 +21,18 @@ import {
   paymentMethodLabels,
   paymentTermsLabels,
   adrClassLabels,
-  currencyOptions,
-  vatTypeOptions,
-  paymentMethodOptions,
 } from '@/types/freightRequest'
 import { freightRequestStatusMap } from '@/constants/statusMaps'
 import { formatDate, formatDateTime, formatMoney } from '@/utils/formatters'
 
 // UI Components
 import { Button } from '@/components/ui/button'
+import { Tooltip } from '@/components/ui/tooltip'
+import { AppLink } from '@/components/ui/app-link'
 import RoutePoint from '@/components/freight-request/shared/RoutePoint.vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -172,7 +155,6 @@ const detailTabItems = computed((): TabItem[] => {
 })
 
 // Modals
-const showMakeOfferModal = ref(false)
 const showCancelModal = ref(false)
 const showActionsSheet = ref(false)
 const cancelReason = ref('')
@@ -206,19 +188,7 @@ const showUnselectModal = ref(false)
 const unselectOfferId = ref<string | null>(null)
 const unselectReason = ref('')
 
-// Make offer form
-const offerForm = ref<MakeOfferRequest>({
-  price: { amount: 0, currency: 'RUB' as Currency },
-  comment: '',
-  vat_type: 'included' as VatType,
-  payment_method: 'bank_transfer' as PaymentMethod,
-})
-const acceptRequestTerms = ref(false)
-
 // Computed
-const hasRequestRate = computed(() => {
-  return freightRequest.value?.payment?.price?.amount && freightRequest.value.payment.price.amount > 0
-})
 const isOwner = computed(() => {
   if (!freightRequest.value) return false
   return permissions.isFreightRequestOwner(freightRequest.value.customer_org_id)
@@ -348,33 +318,6 @@ const requestNumber = computed(() => {
   return freightRequest.value.request_number
 })
 
-// Watch для автозаполнения формы при согласии с условиями
-watch(acceptRequestTerms, (accepted) => {
-  if (!freightRequest.value) return
-
-  if (accepted && hasRequestRate.value) {
-    // Заполнить данными из заявки (amount в копейках -> конвертируем в рубли)
-    const payment = freightRequest.value.payment
-    offerForm.value.price.amount = payment.price!.amount / 100
-    offerForm.value.price.currency = payment.price!.currency
-    offerForm.value.vat_type = payment.vat_type
-    offerForm.value.payment_method = payment.method
-  } else {
-    // Сброс к значениям по умолчанию
-    offerForm.value.price.amount = 0
-    offerForm.value.price.currency = 'RUB'
-    offerForm.value.vat_type = 'included'
-    offerForm.value.payment_method = 'bank_transfer'
-  }
-})
-
-// Сброс галочки при закрытии модалки
-watch(showMakeOfferModal, (open) => {
-  if (!open) {
-    acceptRequestTerms.value = false
-  }
-})
-
 // Tutorial: emit event when completion confirm opens
 watch(showCompleteConfirm, (opened) => {
   if (opened) {
@@ -425,10 +368,10 @@ function getPointTypeLabel(point: { is_loading: boolean; is_unloading: boolean }
 }
 
 function getPointBadgeClass(point: { is_loading: boolean; is_unloading: boolean }): string {
-  if (point.is_loading && point.is_unloading) return 'bg-purple-100 text-purple-700 border-purple-200'
-  if (point.is_loading) return 'bg-blue-100 text-blue-700 border-blue-200'
-  if (point.is_unloading) return 'bg-green-100 text-green-700 border-green-200'
-  return 'bg-gray-100 text-gray-700 border-gray-200'
+  if (point.is_loading && point.is_unloading) return 'bg-accent border-primary/40 text-accent-foreground'
+  if (point.is_loading) return 'bg-accent border-primary/40 text-accent-foreground'
+  if (point.is_unloading) return 'bg-success/10 border-success/40 text-success'
+  return 'bg-muted border-border text-muted-foreground'
 }
 
 // Actions
@@ -443,32 +386,6 @@ async function handleCancel() {
   } finally {
     actionLoading.value = false
     showCancelModal.value = false
-  }
-}
-
-async function handleMakeOffer() {
-  if (!freightRequest.value) return
-  if (!offerForm.value.price.amount) {
-    error.value = 'Укажите цену'
-    return
-  }
-  actionLoading.value = true
-  try {
-    await freightRequestsApi.makeOffer(freightRequest.value.id, {
-      price: {
-        amount: Math.round(offerForm.value.price.amount * 100),
-        currency: offerForm.value.price.currency,
-      },
-      comment: offerForm.value.comment || undefined,
-      vat_type: offerForm.value.vat_type,
-      payment_method: offerForm.value.payment_method,
-    })
-    showMakeOfferModal.value = false
-    await loadData()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Ошибка'
-  } finally {
-    actionLoading.value = false
   }
 }
 
@@ -739,7 +656,7 @@ onUnmounted(() => {
             v-if="canMakeOffer && !myActiveOffer"
             data-tutorial="make-offer-btn"
             size="sm"
-            @click="showMakeOfferModal = true"
+            @click="router.push({ name: 'freight-request-make-offer', params: { id: freightRequest!.id } })"
           >
             Сделать предложение
           </Button>
@@ -845,80 +762,92 @@ onUnmounted(() => {
                         </h1>
                         <StatusBadge :status="freightRequest.status" :status-map="freightRequestStatusMap" />
                       </div>
-                      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-2">
+                      <div class="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2 text-sm">
                         <!-- Заказчик -->
-                        <router-link
+                        <span class="text-muted-foreground whitespace-nowrap">Заказчик</span>
+                        <AppLink
                           :to="`/organizations/${freightRequest.customer_org_id}`"
-                          class="inline-flex items-center gap-1 text-primary hover:underline max-w-[200px] sm:max-w-[280px]"
+                          class="inline-flex items-center gap-1 min-w-0"
                           :title="freightRequest.customer_org_name || 'Организация'"
                         >
                           <Building2 class="h-4 w-4 shrink-0" />
                           <span class="truncate">{{ freightRequest.customer_org_name || 'Организация' }}</span>
-                        </router-link>
+                        </AppLink>
 
                         <!-- Ответственный заказчика -->
-                        <div v-if="freightRequest.customer_member_name" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
-                          <Users class="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <router-link
-                            :to="`/members/${freightRequest.customer_member_id}`"
-                            class="text-primary hover:underline truncate"
-                            :title="freightRequest.customer_member_name"
-                          >
-                            {{ freightRequest.customer_member_name }}
-                          </router-link>
-                          <Button
-                            v-if="canReassign"
-                            variant="ghost"
-                            size="sm"
-                            class="h-auto p-0.5 shrink-0"
-                            @click="goToReassign"
-                          >
-                            <Pencil class="h-3 w-3" />
-                          </Button>
-                        </div>
+                        <template v-if="freightRequest.customer_member_name">
+                          <span class="text-muted-foreground whitespace-nowrap">Ответственный</span>
+                          <div class="inline-flex items-center gap-1 min-w-0">
+                            <AppLink
+                              :to="`/members/${freightRequest.customer_member_id}`"
+                              class="inline-flex items-center gap-1 min-w-0"
+                              :title="freightRequest.customer_member_name"
+                            >
+                              <Users class="h-4 w-4 shrink-0" />
+                              <span class="truncate">{{ freightRequest.customer_member_name }}</span>
+                            </AppLink>
+                            <Tooltip v-if="canReassign" text="Переназначить ответственного" side="top">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-auto p-0.5 shrink-0"
+                                @click="goToReassign"
+                              >
+                                <Pencil class="h-3 w-3" />
+                              </Button>
+                            </Tooltip>
+                          </div>
+                        </template>
 
                         <!-- Дата создания -->
-                        <span class="inline-flex items-center gap-1">
+                        <span class="text-muted-foreground whitespace-nowrap">Создано</span>
+                        <span class="inline-flex items-center gap-1 text-muted-foreground">
                           <Clock class="h-4 w-4 shrink-0" />
                           {{ formatDateTime(freightRequest.created_at) }}
                         </span>
                       </div>
 
                       <!-- Carrier Info (когда confirmed или для перевозчика) -->
-                      <div v-if="showCarrierInfo" data-tutorial="carrier-info" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-3 pt-2 border-t border-border">
+                      <div v-if="showCarrierInfo" data-tutorial="carrier-info" class="mt-3 pt-3 border-t border-border grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2 text-sm">
                         <!-- Организация перевозчика -->
-                        <router-link
-                          v-if="freightRequest.carrier_org_id"
-                          :to="`/organizations/${freightRequest.carrier_org_id}`"
-                          class="inline-flex items-center gap-1 text-primary hover:underline max-w-[200px] sm:max-w-[280px]"
-                          :title="freightRequest.carrier_org_name || 'Организация'"
-                          data-tutorial="carrier-org-link"
-                        >
-                          <Building2 class="h-4 w-4 shrink-0" />
-                          <span class="truncate">{{ freightRequest.carrier_org_name || 'Организация' }}</span>
-                        </router-link>
+                        <template v-if="freightRequest.carrier_org_id">
+                          <span class="text-muted-foreground whitespace-nowrap">Перевозчик</span>
+                          <AppLink
+                            :to="`/organizations/${freightRequest.carrier_org_id}`"
+                            class="inline-flex items-center gap-1 min-w-0"
+                            :title="freightRequest.carrier_org_name || 'Организация'"
+                            data-tutorial="carrier-org-link"
+                          >
+                            <Building2 class="h-4 w-4 shrink-0" />
+                            <span class="truncate">{{ freightRequest.carrier_org_name || 'Организация' }}</span>
+                          </AppLink>
+                        </template>
 
                         <!-- Ответственный перевозчика -->
-                        <div v-if="freightRequest.carrier_member_id && freightRequest.carrier_member_name" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
-                          <Users class="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <router-link
-                            :to="`/members/${freightRequest.carrier_member_id}`"
-                            class="text-primary hover:underline truncate"
-                            :title="freightRequest.carrier_member_name"
-                            data-tutorial="carrier-member-link"
-                          >
-                            {{ freightRequest.carrier_member_name }}
-                          </router-link>
-                          <Button
-                            v-if="canReassignCarrier"
-                            variant="ghost"
-                            size="sm"
-                            class="h-auto p-0.5 shrink-0"
-                            @click="goToReassignCarrier"
-                          >
-                            <Pencil class="h-3 w-3" />
-                          </Button>
-                        </div>
+                        <template v-if="freightRequest.carrier_member_id && freightRequest.carrier_member_name">
+                          <span class="text-muted-foreground whitespace-nowrap">Ответственный</span>
+                          <div class="inline-flex items-center gap-1 min-w-0">
+                            <AppLink
+                              :to="`/members/${freightRequest.carrier_member_id}`"
+                              class="inline-flex items-center gap-1 min-w-0"
+                              :title="freightRequest.carrier_member_name"
+                              data-tutorial="carrier-member-link"
+                            >
+                              <Users class="h-4 w-4 shrink-0" />
+                              <span class="truncate">{{ freightRequest.carrier_member_name }}</span>
+                            </AppLink>
+                            <Tooltip v-if="canReassignCarrier" text="Переназначить ответственного" side="top">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-auto p-0.5 shrink-0"
+                                @click="goToReassignCarrier"
+                              >
+                                <Pencil class="h-3 w-3" />
+                              </Button>
+                            </Tooltip>
+                          </div>
+                        </template>
                       </div>
                     </div>
 
@@ -1160,109 +1089,6 @@ onUnmounted(() => {
       </div>
     </main>
 
-    <!-- Make Offer Dialog -->
-    <Dialog v-model:open="showMakeOfferModal">
-      <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Сделать предложение</DialogTitle>
-          <DialogDescription>
-            Укажите условия вашего предложения
-          </DialogDescription>
-        </DialogHeader>
-
-        <div class="space-y-4">
-          <!-- Чекбокс "Согласен с условиями" - показывается только если есть ставка -->
-          <div v-if="hasRequestRate" class="flex items-center space-x-2">
-            <Checkbox
-              id="accept-terms"
-              :checked="acceptRequestTerms"
-              @update:checked="acceptRequestTerms = $event"
-            />
-            <label
-              for="accept-terms"
-              class="text-sm font-medium leading-none cursor-pointer"
-            >
-              Согласен с условиями заказчика
-            </label>
-          </div>
-
-          <div class="space-y-2">
-            <Label>Цена *</Label>
-            <div class="flex gap-2">
-              <Input
-                v-model.number="offerForm.price.amount"
-                type="number"
-                min="0"
-                step="100"
-                placeholder="0"
-                class="flex-1"
-                :disabled="acceptRequestTerms"
-              />
-              <Select v-model="offerForm.price.currency" :disabled="acceptRequestTerms">
-                <SelectTrigger class="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div class="space-y-2">
-            <Label>НДС</Label>
-            <Select v-model="offerForm.vat_type" :disabled="acceptRequestTerms">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="opt in vatTypeOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-2">
-            <Label>Способ оплаты</Label>
-            <Select v-model="offerForm.payment_method" :disabled="acceptRequestTerms">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="opt in paymentMethodOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-2">
-            <Label>Комментарий</Label>
-            <Textarea
-              v-model="offerForm.comment"
-              rows="2"
-              placeholder="Дополнительная информация..."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" @click="showMakeOfferModal = false">
-            Отмена
-          </Button>
-          <Button
-            :disabled="!offerForm.price.amount || actionLoading"
-            @click="handleMakeOffer"
-          >
-            {{ actionLoading ? 'Отправка...' : 'Отправить' }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
     <!-- Cancel Dialog -->
     <Dialog v-model:open="showCancelModal">
       <DialogContent class="sm:max-w-md">
@@ -1369,9 +1195,9 @@ onUnmounted(() => {
     <!-- Select Offer Dialog -->
     <Dialog v-model:open="showSelectModal">
       <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Выбрать предложение?</DialogTitle>
-          <DialogDescription>
+        <DialogHeader class="space-y-3">
+          <DialogTitle class="text-xl">Выбрать предложение?</DialogTitle>
+          <DialogDescription class="text-base">
             После выбора перевозчик получит уведомление и должен будет подтвердить своё участие.
             Если перевозчик подтвердит, все остальные предложения будут автоматически отклонены.
           </DialogDescription>

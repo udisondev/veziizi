@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { ref, computed, watch } from 'vue'
 import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.css'
@@ -31,9 +34,6 @@ function toISO(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-function toHHMM(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
 
 const { emit: emitTutorial } = useTutorialEvent()
 
@@ -176,7 +176,12 @@ const timeConfig = {
   noCalendar: true,
   dateFormat: 'H:i',
   time_24hr: true,
+  disableMobile: true,
   locale: Russian,
+}
+
+function toHHMM(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 function handleTimeChange(field: 'time_from' | 'time_to', selectedDates: Date[]) {
@@ -326,13 +331,13 @@ watch(() => [props.index, props.totalPoints], () => {
         <!-- Badge для первой/последней точки (не редактируемый) -->
         <span
           v-if="isFirstPoint"
-          class="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-300"
+          class="px-3 py-1 rounded-full text-xs font-medium bg-accent text-accent-foreground border border-primary/30"
         >
           Погрузка
         </span>
         <span
           v-if="isLastPoint"
-          class="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-300"
+          class="px-3 py-1 rounded-full text-xs font-medium bg-success/10 text-success border border-success/30"
         >
           Разгрузка
         </span>
@@ -358,7 +363,7 @@ watch(() => [props.index, props.totalPoints], () => {
 
     <!-- Чекбоксы для промежуточных точек -->
     <div v-if="!isFirstPoint && !isLastPoint" class="flex gap-4 mb-3">
-      <label class="flex items-center gap-2 cursor-pointer">
+      <Label class="inline-flex items-center gap-2 cursor-pointer font-normal mb-0">
         <input
           type="checkbox"
           :checked="point.is_loading"
@@ -366,8 +371,8 @@ watch(() => [props.index, props.totalPoints], () => {
           @change="toggleLoading"
         />
         <span class="text-sm text-foreground">Погрузка</span>
-      </label>
-      <label class="flex items-center gap-2 cursor-pointer">
+      </Label>
+      <Label class="inline-flex items-center gap-2 cursor-pointer font-normal mb-0">
         <input
           type="checkbox"
           :checked="point.is_unloading"
@@ -375,7 +380,7 @@ watch(() => [props.index, props.totalPoints], () => {
           @change="toggleUnloading"
         />
         <span class="text-sm text-foreground">Разгрузка</span>
-      </label>
+      </Label>
     </div>
 
     <div class="space-y-3">
@@ -392,9 +397,9 @@ watch(() => [props.index, props.totalPoints], () => {
 
       <!-- Date (обязательное) -->
       <div :data-tutorial="index === 0 ? 'route-date-fields' : (index === 1 ? 'route-date-fields-1' : (index === 2 ? 'route-date-fields-2' : undefined))">
-        <label class="block text-base font-medium text-foreground mb-1.5">
-          Дата <span class="text-red-500">*</span>
-        </label>
+        <Label>
+          Дата <span class="text-destructive">*</span>
+        </Label>
         <DatePicker
           :model-value="dateRangeValue"
           :config="dateRangeConfig"
@@ -403,10 +408,10 @@ watch(() => [props.index, props.totalPoints], () => {
           label="Выберите дату"
           @on-close="handleDateRangeChange"
         />
-        <p v-if="dateFromError" class="mt-1 text-sm text-red-600">
+        <p v-if="dateFromError" class="mt-1 text-sm text-destructive">
           {{ dateFromError }}
         </p>
-        <p v-if="dateToError" class="mt-1 text-sm text-red-600">
+        <p v-if="dateToError" class="mt-1 text-sm text-destructive">
           {{ dateToError }}
         </p>
       </div>
@@ -414,9 +419,9 @@ watch(() => [props.index, props.totalPoints], () => {
       <!-- Время (раскрывается по кнопке) -->
       <div v-if="showTime" :data-tutorial="index === 0 ? 'route-time-section' : undefined">
         <div class="flex items-center justify-between mb-1.5">
-          <label class="block text-base font-medium text-foreground">
+          <Label>
             Время
-          </label>
+          </Label>
           <button
             type="button"
             class="text-muted-foreground hover:text-destructive text-xs transition-colors"
@@ -449,9 +454,9 @@ watch(() => [props.index, props.totalPoints], () => {
       <!-- Контакт (раскрывается по кнопке) -->
       <div v-if="showContact" :data-tutorial="index === 0 ? 'route-contact-section' : undefined">
         <div class="flex items-center justify-between mb-1.5">
-          <label class="block text-base font-medium text-foreground">
+          <Label>
             Контакт
-          </label>
+          </Label>
           <button
             type="button"
             class="text-muted-foreground hover:text-destructive text-xs transition-colors"
@@ -463,26 +468,26 @@ watch(() => [props.index, props.totalPoints], () => {
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <input
+            <Input
               type="text"
               :value="point.contact_name || ''"
               placeholder="Имя"
-              :class="contactNameError ? inputErrorClass : inputClass"
+              :has-error="!!contactNameError"
               @input="handleContactNameChange"
             />
-            <p v-if="contactNameError" class="mt-1 text-sm text-red-600">
+            <p v-if="contactNameError" class="mt-1 text-sm text-destructive">
               {{ contactNameError }}
             </p>
           </div>
           <div>
-            <input
+            <Input
               type="tel"
               :value="formattedPhone"
               placeholder="+7 (___) ___-__-__"
-              :class="contactPhoneError ? inputErrorClass : inputClass"
+              :has-error="!!contactPhoneError"
               @input="handlePhoneInput"
             />
-            <p v-if="contactPhoneError" class="mt-1 text-sm text-red-600">
+            <p v-if="contactPhoneError" class="mt-1 text-sm text-destructive">
               {{ contactPhoneError }}
             </p>
           </div>
@@ -492,9 +497,9 @@ watch(() => [props.index, props.totalPoints], () => {
       <!-- Комментарий (раскрывается по кнопке) -->
       <div v-if="showComment" :data-tutorial="index === 0 ? 'route-comment-section' : undefined">
         <div class="flex items-center justify-between mb-1.5">
-          <label class="block text-base font-medium text-foreground">
+          <Label>
             Примечание
-          </label>
+          </Label>
           <button
             type="button"
             class="text-muted-foreground hover:text-destructive text-xs transition-colors"
@@ -504,11 +509,10 @@ watch(() => [props.index, props.totalPoints], () => {
             Убрать
           </button>
         </div>
-        <textarea
+        <Textarea
           :value="point.comment || ''"
           placeholder="Дополнительная информация"
           rows="2"
-          class="appearance-none block w-full px-3 py-2.5 border border-input rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary text-base resize-none"
           @input="handleCommentChange"
         />
       </div>

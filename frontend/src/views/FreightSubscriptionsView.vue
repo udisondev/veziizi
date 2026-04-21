@@ -62,10 +62,10 @@ onMounted(() => {
 
     <template v-else>
       <!-- Info Card -->
-      <Card class="mb-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+      <Card class="mb-6 bg-accent border-primary/20">
         <CardContent class="flex items-start gap-3 pt-6">
-          <Info class="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-          <div class="text-sm text-blue-800 dark:text-blue-200">
+          <Info class="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+          <div class="text-sm text-accent-foreground">
             <p class="font-medium mb-1">Как это работает</p>
             <p>
               Создайте подписки с нужными фильтрами, и вы будете получать уведомления
@@ -79,7 +79,7 @@ onMounted(() => {
       <!-- Stats -->
       <div class="flex items-center gap-6 mb-6 text-sm text-muted-foreground">
         <span>Всего подписок: <strong class="text-foreground">{{ subscriptionsCount }}</strong></span>
-        <span>Активных: <strong class="text-green-600">{{ activeCount }}</strong></span>
+        <span>Активных: <strong class="text-success">{{ activeCount }}</strong></span>
       </div>
 
       <!-- Subscriptions List -->

@@ -67,7 +67,6 @@ go test -v -count=1 ./backend/e2e/tests/...              # Run specific E2E test
 task create:admin          # Create platform admin (interactive)
 task create:admin:dev      # Create dev admin (admin@veziizi.local / admin123)
 task create:test-org       # Create test org (owner@test.local / test123)
-go run ./backend/cmd/tools/create-test-org --email="carrier@test.local" --password="test123" --name="Test Carrier" --org="Carrier Organization" --approve=true  # Create second test org (carrier@test.local / test123)
 
 # Geo & Seed Data
 task seed:geo         # Seed countries and cities (runs automatically with dev/dev:all)

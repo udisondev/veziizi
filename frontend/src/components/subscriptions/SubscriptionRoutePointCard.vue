@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed, nextTick } from 'vue'
+import { ref, watch, watchEffect, onMounted, computed, nextTick } from 'vue'
 import { useGeo, type City, searchCities } from '@/composables/useGeo'
 import { useCityDropdown } from '@/composables/useCityDropdown'
 import { useBreakpoint } from '@/composables/useBreakpoint'
@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import InputVue from '@/components/ui/input/Input.vue'
 import BottomSheet from '@/components/shared/BottomSheet.vue'
 import { Trash2, GripVertical } from 'lucide-vue-next'
 import type { AcceptableValue } from 'reka-ui'
@@ -100,6 +102,12 @@ const {
   isOpen: isCityDropdownOpen,
   onSelect: (city) => handleCitySelect(city),
   onClose: () => { isCityDropdownOpen.value = false },
+})
+
+// Ref to the Input component instance — used to sync cityInputRef with the inner DOM element
+const cityInputComponent = ref<InstanceType<typeof InputVue> | null>(null)
+watchEffect(() => {
+  cityInputRef.value = cityInputComponent.value?.inputEl ?? null
 })
 
 // Template refs used in template via ref="..." (vue-tsc false positive workaround)
@@ -251,7 +259,7 @@ onMounted(async () => {
     <div :class="plain ? 'space-y-3' : 'flex-1 space-y-3'">
       <!-- Country Select -->
       <div>
-        <Label class="text-base font-medium text-gray-700 mb-1.5 block">Страна *</Label>
+        <Label class="text-foreground">Страна *</Label>
 
         <!-- Desktop -->
         <template v-if="!isMobile">
@@ -268,10 +276,9 @@ onMounted(async () => {
               :side-offset="4"
             >
               <div class="px-2 py-1 bg-white border-b z-10">
-                <input
+                <Input
                   v-model="countrySearch"
                   type="text"
-                  class="w-full px-2 py-2 text-base border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder="Поиск страны..."
                   @click.stop
                   @keydown.stop
@@ -284,11 +291,11 @@ onMounted(async () => {
                   :value="country.id.toString()"
                 >
                   {{ country.name_ru || country.name }}
-                  <span v-if="country.name_ru && country.name !== country.name_ru" class="text-gray-500 text-xs ml-1">
+                  <span v-if="country.name_ru && country.name !== country.name_ru" class="text-muted-foreground text-xs ml-1">
                     ({{ country.name }})
                   </span>
                 </SelectItem>
-                <div v-if="filteredCountries.length === 0" class="px-2 py-3 text-sm text-gray-500 text-center">
+                <div v-if="filteredCountries.length === 0" class="px-2 py-3 text-sm text-muted-foreground text-center">
                   Страны не найдены
                 </div>
               </div>
@@ -301,19 +308,18 @@ onMounted(async () => {
           <button
             type="button"
             :disabled="isLoadingCountries"
-            class="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md text-base text-left bg-white disabled:bg-gray-100 disabled:text-gray-400"
+            class="appearance-none block w-full px-3 py-2.5 border border-input rounded-md text-base text-left bg-white disabled:bg-muted disabled:text-muted-foreground"
             @click="countrySheetOpen = true"
           >
-            <span v-if="point.countryId" class="text-gray-900">{{ point.countryName }}</span>
-            <span v-else class="text-gray-400">Выберите страну</span>
+            <span v-if="point.countryId" class="text-foreground">{{ point.countryName }}</span>
+            <span v-else class="text-muted-foreground">Выберите страну</span>
           </button>
 
           <BottomSheet v-model="countrySheetOpen" label="Страна">
-            <div class="px-4 py-2 border-b border-gray-100 flex-shrink-0">
-              <input
+            <div class="px-4 py-2 border-b flex-shrink-0">
+              <Input
                 v-model="countrySheetSearch"
                 type="text"
-                class="w-full px-3 py-2.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="Поиск страны..."
               />
             </div>
@@ -323,17 +329,17 @@ onMounted(async () => {
                 :key="country.id"
                 type="button"
                 :class="[
-                  'w-full px-4 py-3.5 text-left text-base border-b border-gray-50 active:bg-gray-100',
-                  country.id === point.countryId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900',
+                  'w-full px-4 py-3.5 text-left text-base border-b border-border/30 active:bg-muted',
+                  country.id === point.countryId ? 'bg-accent text-accent-foreground font-medium' : 'text-foreground',
                 ]"
                 @click="handleSheetCountrySelect(country.id)"
               >
                 {{ country.name_ru || country.name }}
-                <span v-if="country.name_ru && country.name !== country.name_ru" class="text-gray-500 text-xs ml-1">
+                <span v-if="country.name_ru && country.name !== country.name_ru" class="text-muted-foreground text-xs ml-1">
                   ({{ country.name }})
                 </span>
               </button>
-              <div v-if="filteredSheetCountries.length === 0" class="px-4 py-6 text-sm text-gray-500 text-center">
+              <div v-if="filteredSheetCountries.length === 0" class="px-4 py-6 text-sm text-muted-foreground text-center">
                 Страны не найдены
               </div>
             </div>
@@ -343,13 +349,11 @@ onMounted(async () => {
 
       <!-- City Autocomplete -->
       <div v-if="point.countryId">
-        <Label class="text-base font-medium text-gray-700 mb-1.5 block">Город (опционально)</Label>
+        <Label class="text-foreground">Город (опционально)</Label>
         <div class="relative">
-          <input
-            ref="cityInputRef"
-            type="text"
-            :value="citySearch"
-            class="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-base"
+          <Input
+            ref="cityInputComponent"
+            :model-value="citySearch"
             placeholder="Любой город"
             autocomplete="off"
             @input="handleCityInput"
@@ -358,14 +362,14 @@ onMounted(async () => {
 
           <!-- Loading indicator -->
           <div v-if="isLoadingCities" class="absolute right-3 top-1/2 -translate-y-1/2">
-            <svg class="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
           </div>
 
           <!-- Selected indicator -->
-          <div v-else-if="point.cityId" class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" title="Город выбран">
+          <div v-else-if="point.cityId" class="absolute right-3 top-1/2 -translate-y-1/2 text-success" title="Город выбран">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
             </svg>
@@ -376,7 +380,7 @@ onMounted(async () => {
             v-if="isCityDropdownOpen && cities.length > 0"
             ref="cityDropdownRef"
             :class="[
-              'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto',
+              'absolute z-50 w-full bg-white border border-border rounded-md shadow-lg max-h-60 overflow-auto',
               dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
             ]"
           >
@@ -384,12 +388,12 @@ onMounted(async () => {
               v-for="(city, idx) in cities"
               :key="city.id"
               type="button"
-              :class="['w-full px-3 py-2.5 text-left text-base hover:bg-gray-100', idx === highlightedIndex ? 'bg-blue-50' : '']"
+              :class="['w-full px-3 py-2.5 text-left text-base hover:bg-muted', idx === highlightedIndex ? 'bg-accent' : '']"
               @click="handleCitySelect(city)"
               @mouseenter="highlightedIndex = idx"
             >
-              <div class="font-medium text-gray-900">{{ city.name_ru || city.name }}</div>
-              <div v-if="city.name_ru && city.name !== city.name_ru" class="text-gray-500 text-xs">{{ city.name }}</div>
+              <div class="font-medium text-foreground">{{ city.name_ru || city.name }}</div>
+              <div v-if="city.name_ru && city.name !== city.name_ru" class="text-muted-foreground text-xs">{{ city.name }}</div>
             </button>
           </div>
 
@@ -397,7 +401,7 @@ onMounted(async () => {
           <div
             v-if="isCityDropdownOpen && cities.length === 0 && !isLoadingCities && citySearch.length > 0"
             :class="[
-              'absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg p-3 text-sm text-gray-500 text-center',
+              'absolute z-50 w-full bg-white border border-border rounded-md shadow-lg p-3 text-sm text-muted-foreground text-center',
               dropdownDirection === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
             ]"
           >

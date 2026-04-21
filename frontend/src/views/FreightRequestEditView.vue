@@ -55,7 +55,7 @@ async function loadFreightRequest() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background">
+  <div class="min-h-screen bg-white md:bg-background">
     <!-- Header -->
     <DetailPageHeader :back-to="backTo" back-label="Назад к заявке" />
 

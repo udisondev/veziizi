@@ -5,11 +5,11 @@
   /* Colors */
   --color-border: hsl(220 13% 80%);
   --color-input: hsl(220 13% 80%);
-  --color-ring: hsl(243 75% 58%);
+  --color-ring: hsl(186 80% 38%);
   --color-background: hsl(220 20% 96%);
   --color-foreground: hsl(222 47% 9%);
 
-  --color-primary: hsl(243 75% 58%);
+  --color-primary: hsl(186 80% 38%);
   --color-primary-foreground: hsl(0 0% 100%);
 
   --color-secondary: hsl(220 14% 91%);
@@ -21,8 +21,8 @@
   --color-muted: hsl(220 14% 91%);
   --color-muted-foreground: hsl(220 9% 46%);
 
-  --color-accent: hsl(243 40% 94%);
-  --color-accent-foreground: hsl(243 75% 40%);
+  --color-accent: hsl(186 40% 94%);
+  --color-accent-foreground: hsl(186 80% 28%);
 
   --color-popover: hsl(0 0% 100%);
   --color-popover-foreground: hsl(222 47% 9%);
@@ -242,6 +242,38 @@ body {
 .accordion-grid > * {
   overflow: hidden;
   min-height: 0;
+}
+
+/* App link */
+.app-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+
+.app-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  background-color: var(--color-primary);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.3s;
+}
+
+.app-link:hover::after,
+.app-link:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.app-link:focus-visible {
+  outline: none;
 }
 
 /* Screen reader only */

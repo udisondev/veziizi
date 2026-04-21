@@ -420,7 +420,7 @@ onMounted(() => {
             v-for="item in displayItems"
             :key="item.id"
             data-tutorial="freight-request-card"
-            class="hover:shadow-md transition-shadow cursor-pointer"
+            interactive
             @click="goToDetail(item.id)"
           >
             <CardContent class="p-4">

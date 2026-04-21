@@ -228,8 +228,12 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="routeOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="routeOpen" class="px-1 pt-3 pb-2">
-          <SubscriptionRouteStep :route-points="routePoints" plain-cards @add-point="emit('addRoutePoint')" @remove-point="(id) => emit('removeRoutePoint', id)" @update-point="(id, updates) => emit('updateRoutePoint', id, updates)" @reorder="(points) => emit('reorderRoutePoints', points)" />
+        <div :class="['accordion-grid', routeOpen ? 'is-open' : '']">
+          <div class="overflow-hidden">
+            <div class="px-1 pt-3 pb-2">
+              <SubscriptionRouteStep :route-points="routePoints" plain-cards @add-point="emit('addRoutePoint')" @remove-point="(id) => emit('removeRoutePoint', id)" @update-point="(id, updates) => emit('updateRoutePoint', id, updates)" @reorder="(points) => emit('reorderRoutePoints', points)" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -246,10 +250,14 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="cargoOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="cargoOpen" class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
-          <RangeInput :min-value="minWeight" :max-value="maxWeight" label="Вес груза, т" :min="0" step="0.1" @update:min-value="emit('update:minWeight', $event)" @update:max-value="emit('update:maxWeight', $event)" />
-          <RangeInput :min-value="minPrice" :max-value="maxPrice" label="Ставка, руб." :min="0" step="1000" @update:min-value="emit('update:minPrice', $event)" @update:max-value="emit('update:maxPrice', $event)" />
-          <RangeInput :min-value="minVolume" :max-value="maxVolume" label="Объём груза, м³" :min="0" step="1" @update:min-value="emit('update:minVolume', $event)" @update:max-value="emit('update:maxVolume', $event)" />
+        <div :class="['accordion-grid', cargoOpen ? 'is-open' : '']">
+          <div class="overflow-hidden">
+            <div class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
+              <RangeInput :min-value="minWeight" :max-value="maxWeight" label="Вес груза, т" :min="0" step="0.1" @update:min-value="emit('update:minWeight', $event)" @update:max-value="emit('update:maxWeight', $event)" />
+              <RangeInput :min-value="minPrice" :max-value="maxPrice" label="Ставка, руб." :min="0" step="1000" @update:min-value="emit('update:minPrice', $event)" @update:max-value="emit('update:maxPrice', $event)" />
+              <RangeInput :min-value="minVolume" :max-value="maxVolume" label="Объём груза, м³" :min="0" step="1" @update:min-value="emit('update:minVolume', $event)" @update:max-value="emit('update:maxVolume', $event)" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -266,8 +274,12 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="vehicleOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="vehicleOpen" class="px-1 pt-3 pb-2">
-          <MultiSelectField v-model="localVehicleSubTypes" :options="allVehicleSubTypeOptions" placeholder="Все типы кузова" sheet-label="Тип кузова" search-placeholder="Поиск типа кузова..." />
+        <div :class="['accordion-grid', vehicleOpen ? 'is-open' : '']">
+          <div class="overflow-hidden">
+            <div class="px-1 pt-3 pb-2">
+              <MultiSelectField v-model="localVehicleSubTypes" :options="allVehicleSubTypeOptions" placeholder="Все типы кузова" sheet-label="Тип кузова" search-placeholder="Поиск типа кузова..." />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -284,18 +296,22 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
             <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="paymentOpen ? 'rotate-180' : ''" />
           </div>
         </button>
-        <div v-if="paymentOpen" class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
-          <div class="space-y-1.5">
-            <Label class="text-sm font-semibold px-1">Способ оплаты</Label>
-            <MultiSelectField v-model="localPaymentMethods" :options="paymentMethodOptions" placeholder="Все способы" sheet-label="Способ оплаты" search-placeholder="Поиск..." />
-          </div>
-          <div class="space-y-1.5">
-            <Label class="text-sm font-semibold px-1">Условия оплаты</Label>
-            <MultiSelectField v-model="localPaymentTerms" :options="paymentTermsOptions" placeholder="Все условия" sheet-label="Условия оплаты" search-placeholder="Поиск..." />
-          </div>
-          <div class="space-y-1.5">
-            <Label class="text-sm font-semibold px-1">НДС</Label>
-            <MultiSelectField v-model="localVatTypes" :options="vatTypeOptions" placeholder="Все варианты" sheet-label="НДС" search-placeholder="Поиск..." />
+        <div :class="['accordion-grid', paymentOpen ? 'is-open' : '']">
+          <div class="overflow-hidden">
+            <div class="px-1 pt-3 pb-2 grid grid-cols-1 gap-4">
+              <div class="space-y-1.5">
+                <Label class="text-sm font-semibold px-1">Способ оплаты</Label>
+                <MultiSelectField v-model="localPaymentMethods" :options="paymentMethodOptions" placeholder="Все способы" sheet-label="Способ оплаты" search-placeholder="Поиск..." />
+              </div>
+              <div class="space-y-1.5">
+                <Label class="text-sm font-semibold px-1">Условия оплаты</Label>
+                <MultiSelectField v-model="localPaymentTerms" :options="paymentTermsOptions" placeholder="Все условия" sheet-label="Условия оплаты" search-placeholder="Поиск..." />
+              </div>
+              <div class="space-y-1.5">
+                <Label class="text-sm font-semibold px-1">НДС</Label>
+                <MultiSelectField v-model="localVatTypes" :options="vatTypeOptions" placeholder="Все варианты" sheet-label="НДС" search-placeholder="Поиск..." />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -339,15 +355,15 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
       <div class="space-y-4">
         <h4 class="font-semibold text-lg">Оплата</h4>
         <div class="space-y-2">
-          <Label class="text-base mb-1.5 block">Способ оплаты</Label>
+          <Label>Способ оплаты</Label>
           <MultiSelectField v-model="localPaymentMethods" :options="paymentMethodOptions" placeholder="Все способы" sheet-label="Способ оплаты" search-placeholder="Поиск..." />
         </div>
         <div class="space-y-2">
-          <Label class="text-base mb-1.5 block">Условия оплаты</Label>
+          <Label>Условия оплаты</Label>
           <MultiSelectField v-model="localPaymentTerms" :options="paymentTermsOptions" placeholder="Все условия" sheet-label="Условия оплаты" search-placeholder="Поиск..." />
         </div>
         <div class="space-y-2">
-          <Label class="text-base mb-1.5 block">НДС</Label>
+          <Label>НДС</Label>
           <MultiSelectField v-model="localVatTypes" :options="vatTypeOptions" placeholder="Все варианты" sheet-label="НДС" search-placeholder="Поиск..." />
         </div>
       </div>
