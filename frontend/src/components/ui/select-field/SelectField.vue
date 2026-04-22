@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import BottomSheet from '@/components/shared/BottomSheet.vue'
 import { ChevronDown, Check } from 'lucide-vue-next'
@@ -37,6 +37,7 @@ const containerRef = ref<HTMLElement | null>(null)
 const sheetOpen = ref(false)
 
 const dropdownStyle = ref({ top: '0px', left: '0px', width: '0px' })
+const dropdownRef = ref<HTMLElement | null>(null)
 
 function openDropdown() {
   if (!containerRef.value) return
@@ -61,18 +62,27 @@ function select(value: T | undefined) {
   sheetOpen.value = false
 }
 
-function onFocusOut(e: FocusEvent) {
-  const related = e.relatedTarget as Node | null
-  if (!containerRef.value?.contains(related)) {
+function handleClickOutside(e: MouseEvent) {
+  const target = e.target as Node
+  if (!containerRef.value?.contains(target) && !dropdownRef.value?.contains(target)) {
     dropdownOpen.value = false
   }
 }
+
+watch(dropdownOpen, (open) => {
+  document.removeEventListener('click', handleClickOutside)
+  if (open) document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
   <!-- Desktop -->
   <template v-if="!isMobile">
-    <div ref="containerRef" class="relative" @focusout="onFocusOut">
+    <div ref="containerRef" class="relative">
       <button
         type="button"
         :disabled="disabled"
@@ -94,6 +104,7 @@ function onFocusOut(e: FocusEvent) {
       <Teleport to="body">
         <div
           v-if="dropdownOpen"
+          ref="dropdownRef"
           class="fixed z-[200] bg-white border border-border rounded-lg shadow-lg overflow-hidden"
           :style="dropdownStyle"
           @mousedown.prevent
