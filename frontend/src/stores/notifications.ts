@@ -7,7 +7,19 @@ import type {
   NotificationFilters,
   NotificationCategory,
 } from '@/types/notification'
+import { allCategories } from '@/types/notification'
 import { logger } from '@/utils/logger'
+
+function normalizePreferences(prefs: NotificationPreferences): NotificationPreferences {
+  const defaultCategory = { in_app: false, telegram: false, email: false }
+  const normalized = { ...prefs, enabled_categories: { ...prefs.enabled_categories } }
+  for (const cat of allCategories) {
+    if (!normalized.enabled_categories[cat]) {
+      normalized.enabled_categories[cat] = { ...defaultCategory }
+    }
+  }
+  return normalized
+}
 
 export const useNotificationsStore = defineStore('notifications', () => {
   // ===============================
@@ -122,7 +134,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
   async function fetchPreferences(): Promise<void> {
     isLoadingPreferences.value = true
     try {
-      preferences.value = await notificationsApi.getPreferences()
+      preferences.value = normalizePreferences(await notificationsApi.getPreferences())
     } catch (e) {
       logger.error('Failed to fetch notification preferences', e)
     } finally {

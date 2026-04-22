@@ -48,8 +48,10 @@
 }
 
 /* Base styles */
-* {
-  border-color: var(--color-border);
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 }
 
 a,
@@ -239,9 +241,30 @@ body {
   grid-template-rows: 1fr;
 }
 
+@media (min-width: 1024px) {
+  .filters-accordion {
+    grid-template-rows: 1fr;
+  }
+  .filters-accordion > * {
+    overflow: visible;
+  }
+}
+
 .accordion-grid > * {
   overflow: hidden;
   min-height: 0;
+}
+
+/* flatpickr input — unified focus/hover states */
+.flatpickr-input {
+  transition: border-color 0.15s ease;
+}
+.flatpickr-input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+}
+.flatpickr-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 /* App link */

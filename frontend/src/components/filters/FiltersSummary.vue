@@ -12,7 +12,8 @@ import {
   type PaymentTerms,
   type VatType,
 } from '@/types/freightRequest'
-import { MapPin, Truck, CreditCard, Scale, Box } from 'lucide-vue-next'
+import { MapPin, Truck, CreditCard, Scale, Box, Banknote, Clock, Percent } from 'lucide-vue-next'
+import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 
 export interface RoutePointDisplay {
   countryId?: number
@@ -111,25 +112,42 @@ const vatTypesDisplay = computed(() => {
   return props.filters.vatTypes.map(t => vatTypeLabels[t]).join(', ')
 })
 
+function pointLabel(rp: RoutePointDisplay): string {
+  if (rp.cityName) return rp.cityName
+  return rp.countryName || `Страна #${rp.countryId}`
+}
+
+const sortedRoutePoints = computed(() => {
+  if (!props.filters.routePoints?.length) return []
+  return props.filters.routePoints.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+})
+
 const routeDisplay = computed(() => {
-  if (!props.filters.routePoints?.length) return null
-  return props.filters.routePoints
-    .slice()
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map(rp => {
-      if (rp.cityName) return rp.cityName
-      return rp.countryName || `Страна #${rp.countryId}`
-    })
-    .join(' → ')
+  if (!sortedRoutePoints.value.length) return null
+  return sortedRoutePoints.value.map(pointLabel).join(' → ')
+})
+
+const hasIntermediatePoints = computed(() => sortedRoutePoints.value.length > 2)
+
+const routeDisplayShort = computed(() => {
+  const pts = sortedRoutePoints.value
+  if (pts.length <= 2) return routeDisplay.value
+  const first = pts[0]
+  const last = pts[pts.length - 1]
+  if (!first || !last) return routeDisplay.value
+  return `${pointLabel(first)} → ... → ${pointLabel(last)}`
 })
 </script>
 
 <template>
-  <div v-if="hasFilters" :class="['space-y-2 text-sm', { 'text-xs': compact }]">
+  <div v-if="hasFilters" :class="['space-y-2', compact ? 'text-xs' : 'text-base']">
     <!-- Route -->
     <div v-if="routeDisplay" class="flex items-start gap-2">
       <MapPin :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
-      <span>{{ routeDisplay }}</span>
+      <Tooltip v-if="hasIntermediatePoints" :text="routeDisplay" side="top" content-class="max-w-[300px] whitespace-normal leading-relaxed">
+        <span class="cursor-help underline decoration-dotted underline-offset-2">{{ routeDisplayShort }}</span>
+      </Tooltip>
+      <span v-else>{{ routeDisplay }}</span>
     </div>
 
     <!-- Weight -->
@@ -150,35 +168,37 @@ const routeDisplay = computed(() => {
       <span>{{ priceRange }}</span>
     </div>
 
-    <!-- Vehicle Types -->
-    <div v-if="vehicleTypesDisplay" class="flex items-start gap-2">
-      <Truck :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
-      <span class="text-muted-foreground">Транспорт:</span>
-      <span>{{ vehicleTypesDisplay }}</span>
-    </div>
-
-    <!-- Vehicle Sub Types -->
-    <div v-if="vehicleSubTypesDisplay" class="flex items-start gap-2">
-      <Truck :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
-      <span class="text-muted-foreground">Тип кузова:</span>
-      <span>{{ vehicleSubTypesDisplay }}</span>
-    </div>
-
-    <!-- Payment Methods -->
-    <div v-if="paymentMethodsDisplay" class="flex items-start gap-2">
-      <CreditCard :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
-      <span class="text-muted-foreground">Оплата:</span>
-      <span>{{ paymentMethodsDisplay }}</span>
-    </div>
-
-    <!-- Payment Terms -->
-    <div v-if="paymentTermsDisplay" :class="['text-muted-foreground', compact ? 'pl-5' : 'pl-6']">
-      Условия: {{ paymentTermsDisplay }}
-    </div>
-
-    <!-- VAT Types -->
-    <div v-if="vatTypesDisplay" :class="['text-muted-foreground', compact ? 'pl-5' : 'pl-6']">
-      НДС: {{ vatTypesDisplay }}
+    <!-- Vehicle + Payment grid (unified for column alignment) -->
+    <div
+      v-if="vehicleTypesDisplay || vehicleSubTypesDisplay || paymentMethodsDisplay || paymentTermsDisplay || vatTypesDisplay"
+      class="grid gap-x-2 gap-y-2 items-start"
+      style="grid-template-columns: auto auto 1fr"
+    >
+      <template v-if="vehicleTypesDisplay">
+        <Truck :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
+        <span class="text-muted-foreground">Транспорт:</span>
+        <span>{{ vehicleTypesDisplay }}</span>
+      </template>
+      <template v-if="vehicleSubTypesDisplay">
+        <Truck :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
+        <span class="text-muted-foreground">Тип кузова:</span>
+        <span>{{ vehicleSubTypesDisplay }}</span>
+      </template>
+      <template v-if="paymentMethodsDisplay">
+        <Banknote :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
+        <span class="text-muted-foreground">Оплата:</span>
+        <span>{{ paymentMethodsDisplay }}</span>
+      </template>
+      <template v-if="paymentTermsDisplay">
+        <Clock :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
+        <span class="text-muted-foreground">Условия:</span>
+        <span>{{ paymentTermsDisplay }}</span>
+      </template>
+      <template v-if="vatTypesDisplay">
+        <Percent :class="['text-muted-foreground mt-0.5 flex-shrink-0', compact ? 'h-3 w-3' : 'h-4 w-4']" />
+        <span class="text-muted-foreground">НДС:</span>
+        <span>{{ vatTypesDisplay }}</span>
+      </template>
     </div>
   </div>
   <div v-else class="text-sm text-muted-foreground">

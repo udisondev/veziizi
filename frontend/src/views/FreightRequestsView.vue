@@ -326,7 +326,7 @@ onMounted(() => {
     </PageHeader>
 
     <!-- Mobile filter toggle -->
-    <div class="lg:hidden mb-4">
+    <div class="lg:hidden mb-2">
       <Button variant="outline" class="w-full" @click="mobileFiltersOpen = !mobileFiltersOpen">
         <SlidersHorizontal class="h-4 w-4 mr-2" />
         Фильтры
@@ -343,7 +343,10 @@ onMounted(() => {
     <div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
 
       <!-- Filters column -->
-      <div :class="['lg:sticky lg:top-6 space-y-2', mobileFiltersOpen ? 'block' : 'hidden lg:block']">
+      <div class="lg:sticky lg:top-6">
+      <div :class="['accordion-grid filters-accordion', mobileFiltersOpen ? 'is-open' : '']">
+      <div class="overflow-hidden lg:overflow-visible">
+      <div class="space-y-2 pb-2">
         <FreightFiltersForm
           compact
           :route-points="routePoints"
@@ -390,7 +393,10 @@ onMounted(() => {
             Сбросить фильтры
           </Button>
         </div>
-      </div>
+      </div><!-- end .space-y-2 -->
+      </div><!-- end overflow-hidden -->
+      </div><!-- end accordion-grid -->
+      </div><!-- end sticky -->
 
       <!-- List column -->
       <div>

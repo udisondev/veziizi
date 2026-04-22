@@ -36,6 +36,19 @@ const dropdownOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const sheetOpen = ref(false)
 
+const dropdownStyle = ref({ top: '0px', left: '0px', width: '0px' })
+
+function openDropdown() {
+  if (!containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  dropdownStyle.value = {
+    top: `${rect.bottom + 4}px`,
+    left: `${rect.left}px`,
+    width: `${rect.width}px`,
+  }
+  dropdownOpen.value = true
+}
+
 const selectedLabel = computed(
   () => props.options.find(o => o.value === modelValue.value)?.label ?? props.placeholder
 )
@@ -63,12 +76,11 @@ function onFocusOut(e: FocusEvent) {
       <button
         type="button"
         :disabled="disabled"
-        class="w-full h-11 px-3 py-2 border rounded-lg bg-white shadow-sm text-base text-left flex items-center justify-between gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+        class="w-full h-11 px-3 py-2 border rounded-lg bg-white shadow-sm text-base text-left flex items-center justify-between gap-2 transition-colors hover:border-primary/50 focus:outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
         :class="[
           hasError ? 'border-destructive' : 'border-input',
-          !disabled ? 'hover:bg-accent/30' : '',
         ]"
-        @click="dropdownOpen = !dropdownOpen"
+        @click="dropdownOpen ? dropdownOpen = false : openDropdown()"
       >
         <span :class="modelValue ? 'text-foreground' : 'text-muted-foreground'">
           {{ selectedLabel }}
@@ -79,37 +91,40 @@ function onFocusOut(e: FocusEvent) {
         />
       </button>
 
-      <div
-        v-if="dropdownOpen"
-        class="absolute z-50 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-lg overflow-hidden"
-        @mousedown.prevent
-      >
-        <button
-          v-if="clearable"
-          type="button"
-          class="w-full px-3 py-2.5 text-left text-base flex items-center gap-2 hover:bg-accent transition-colors text-muted-foreground"
-          @click="select(undefined)"
+      <Teleport to="body">
+        <div
+          v-if="dropdownOpen"
+          class="fixed z-[200] bg-white border border-border rounded-lg shadow-lg overflow-hidden"
+          :style="dropdownStyle"
+          @mousedown.prevent
         >
-          <span class="w-4 h-4 shrink-0" />
-          {{ clearLabel }}
-        </button>
-        <button
-          v-for="option in options"
-          :key="option.value"
-          type="button"
-          class="w-full px-3 py-2.5 text-left text-base flex items-center gap-2 hover:bg-accent transition-colors"
-          :class="isSelected(option.value) ? 'bg-accent' : ''"
-          @click="select(option.value)"
-        >
-          <Check
-            class="h-4 w-4 shrink-0 text-primary"
-            :class="isSelected(option.value) ? 'opacity-100' : 'opacity-0'"
-          />
-          <span :class="isSelected(option.value) ? 'font-medium text-primary' : 'text-foreground'">
-            {{ option.label }}
-          </span>
-        </button>
-      </div>
+          <button
+            v-if="clearable"
+            type="button"
+            class="w-full px-3 py-2.5 text-left text-base flex items-center gap-2 hover:bg-accent transition-colors text-muted-foreground"
+            @click="select(undefined)"
+          >
+            <span class="w-4 h-4 shrink-0" />
+            {{ clearLabel }}
+          </button>
+          <button
+            v-for="option in options"
+            :key="option.value"
+            type="button"
+            class="w-full px-3 py-2.5 text-left text-base flex items-center gap-2 hover:bg-accent transition-colors"
+            :class="isSelected(option.value) ? 'bg-accent' : ''"
+            @click="select(option.value)"
+          >
+            <Check
+              class="h-4 w-4 shrink-0 text-primary"
+              :class="isSelected(option.value) ? 'opacity-100' : 'opacity-0'"
+            />
+            <span :class="isSelected(option.value) ? 'font-medium text-primary' : 'text-foreground'">
+              {{ option.label }}
+            </span>
+          </button>
+        </div>
+      </Teleport>
     </div>
   </template>
 

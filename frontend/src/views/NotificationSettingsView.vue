@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 
 // Shared Components
-import { PageHeader, LoadingSpinner, BackLink } from '@/components/shared'
+import { PageHeader, LoadingSpinner, DetailPageHeader } from '@/components/shared'
 
 // Icons
 import { Bell, MessageCircle, Mail, Check, X, AlertCircle, Copy, ExternalLink, RefreshCw } from 'lucide-vue-next'
@@ -38,7 +38,11 @@ const authStore = useAuthStore()
 
 const isGeneratingCode = ref(false)
 const isDisconnecting = ref(false)
-const isSaving = ref(false)
+const savingKeys = ref(new Set<string>())
+
+function isSaving(category: string, channel: string): boolean {
+  return savingKeys.value.has(`${category}:${channel}`)
+}
 const linkCode = ref<TelegramLinkCodeResponse | null>(null)
 const countdown = ref(0)
 let countdownInterval: ReturnType<typeof setInterval> | null = null
@@ -63,12 +67,10 @@ async function toggleSetting(
   channel: 'in_app' | 'telegram' | 'email',
   value: boolean
 ) {
-  isSaving.value = true
+  const key = `${category}:${channel}`
+  savingKeys.value = new Set(savingKeys.value).add(key)
   try {
     await notificationsStore.updateCategorySetting(category, channel, value)
-    toast({
-      title: 'Настройки сохранены',
-    })
   } catch {
     toast({
       title: 'Ошибка',
@@ -76,7 +78,9 @@ async function toggleSetting(
       variant: 'destructive',
     })
   } finally {
-    isSaving.value = false
+    const next = new Set(savingKeys.value)
+    next.delete(key)
+    savingKeys.value = next
   }
 }
 
@@ -261,9 +265,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <BackLink to="/notifications" label="К уведомлениям" class="mb-4" />
+  <div>
+    <DetailPageHeader back-to="/notifications" back-label="К уведомлениям" />
 
+  <div class="max-w-5xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <PageHeader title="Настройки уведомлений" class="mb-6" />
 
     <LoadingSpinner v-if="isLoading" text="Загрузка настроек..." />
@@ -545,7 +550,7 @@ onUnmounted(() => {
               <label class="flex items-center gap-2 cursor-pointer">
                 <Switch
                   :checked="preferences.enabled_categories[category].in_app"
-                  :disabled="isSaving"
+                  :disabled="isSaving(category, 'in_app')"
                   @update:checked="(v: boolean) => toggleSetting(category, 'in_app', v)"
                 />
                 <span class="text-sm">В приложении</span>
@@ -555,7 +560,7 @@ onUnmounted(() => {
               <label v-if="isTelegramConnected" class="flex items-center gap-2 cursor-pointer">
                 <Switch
                   :checked="preferences.enabled_categories[category].telegram"
-                  :disabled="isSaving"
+                  :disabled="isSaving(category, 'telegram')"
                   @update:checked="(v: boolean) => toggleSetting(category, 'telegram', v)"
                 />
                 <span class="text-sm">Telegram</span>
@@ -565,7 +570,7 @@ onUnmounted(() => {
               <label v-if="isEmailConnected && isEmailVerified" class="flex items-center gap-2 cursor-pointer">
                 <Switch
                   :checked="preferences.enabled_categories[category].email"
-                  :disabled="isSaving"
+                  :disabled="isSaving(category, 'email')"
                   @update:checked="(v: boolean) => toggleSetting(category, 'email', v)"
                 />
                 <span class="text-sm">Email</span>
@@ -577,5 +582,6 @@ onUnmounted(() => {
         </CardContent>
       </Card>
     </template>
+  </div>
   </div>
 </template>

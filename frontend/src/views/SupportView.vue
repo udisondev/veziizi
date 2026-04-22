@@ -220,7 +220,7 @@ onMounted(() => {
         <Card
           v-for="course in courses"
           :key="course.id"
-          class="cursor-pointer transition-all hover:border-primary hover:shadow-md"
+          interactive
           @click="startCourse(course.id)"
         >
           <CardHeader class="flex-row items-start gap-4 p-4">

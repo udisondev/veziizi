@@ -56,8 +56,6 @@ function handleRemove(id: string) {
       handle=".drag-handle"
       ghost-class="opacity-50"
       animation="200"
-      :force-fallback="true"
-      :fallback-on-body="true"
       class="space-y-3"
     >
       <template #item="{ element, index }">

@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { usePermissions } from '@/composables/usePermissions'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import { tutorialBus } from '@/sandbox/events'
 
 // UI Components
@@ -11,14 +12,7 @@ import { Button } from '@/components/ui/button'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+import BottomSheet from '@/components/shared/BottomSheet.vue'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +25,6 @@ import {
 // Icons
 import {
   Menu,
-  Package,
   HandCoins,
   Bell,
   Users,
@@ -40,6 +33,7 @@ import {
   LogOut,
   Building2,
   HelpCircle,
+  Package,
 } from 'lucide-vue-next'
 import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 
@@ -49,7 +43,9 @@ const auth = useAuthStore()
 const onboarding = useOnboardingStore()
 const { canManageMembers } = usePermissions()
 
+const { isMobile } = useBreakpoint()
 const isMenuOpen = ref(false)
+const isProfileOpen = ref(false)
 
 // Эмит события при открытии/закрытии мобильного меню для туториала
 watch(isMenuOpen, (newValue) => {
@@ -98,52 +94,44 @@ const userInitial = computed(() => {
       <div class="flex items-center justify-between h-14">
         <!-- Left: Menu button + Title -->
         <div class="flex items-center gap-3">
-          <!-- Mobile menu (Sheet) -->
-          <Sheet v-model:open="isMenuOpen">
-            <SheetTrigger as-child>
-              <Button variant="ghost" size="icon" class="md:hidden text-slate-300 hover:text-white hover:bg-slate-800" data-tutorial="mobile-menu-btn">
-                <Menu class="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" class="w-72">
-              <SheetHeader>
-                <SheetTitle class="text-left">Меню</SheetTitle>
-                <SheetDescription class="sr-only">Навигация по приложению</SheetDescription>
-              </SheetHeader>
-              <nav class="mt-6 space-y-1">
-                <button
-                  v-for="item in menuItems"
-                  :key="item.to"
-                  @click="navigate(item.to)"
-                  :data-tutorial="
-                    item.to === '/' ? 'mobile-nav-requests' :
-                    item.to === '/my-offers' ? 'mobile-nav-my-offers' :
-                    item.to === '/subscriptions' ? 'mobile-nav-subscriptions' :
-                    item.to === '/members' ? 'mobile-nav-members' : undefined
-                  "
-                  :class="[
-                    'w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-3 transition-colors',
-                    route.path === item.to
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-foreground hover:bg-muted'
-                  ]"
-                >
-                  <component :is="item.icon" class="h-5 w-5" />
-                  <span>{{ item.label }}</span>
-                </button>
+          <!-- Mobile menu -->
+          <Button variant="ghost" size="icon" class="md:hidden text-slate-300 hover:text-white hover:bg-slate-800" data-tutorial="mobile-menu-btn" @click="isMenuOpen = true">
+            <Menu class="h-5 w-5" />
+          </Button>
+          <BottomSheet v-model="isMenuOpen" label="Меню">
+            <nav class="px-2 pb-4 space-y-1">
+              <button
+                v-for="item in menuItems"
+                :key="item.to"
+                @click="navigate(item.to)"
+                :data-tutorial="
+                  item.to === '/' ? 'mobile-nav-requests' :
+                  item.to === '/my-offers' ? 'mobile-nav-my-offers' :
+                  item.to === '/subscriptions' ? 'mobile-nav-subscriptions' :
+                  item.to === '/members' ? 'mobile-nav-members' : undefined
+                "
+                :class="[
+                  'w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 transition-colors',
+                  route.path === item.to
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-foreground hover:bg-muted'
+                ]"
+              >
+                <component :is="item.icon" class="h-5 w-5" />
+                <span>{{ item.label }}</span>
+              </button>
 
-                <Separator class="my-3" />
+              <Separator class="my-2" />
 
-                <button
-                  @click="logout"
-                  class="w-full text-left px-3 py-2 rounded-md text-sm text-destructive hover:bg-destructive/10 flex items-center gap-3 transition-colors"
-                >
-                  <LogOut class="h-5 w-5" />
-                  <span>Выйти</span>
-                </button>
-              </nav>
-            </SheetContent>
-          </Sheet>
+              <button
+                @click="logout"
+                class="w-full text-left px-3 py-3 rounded-md text-base text-destructive hover:bg-destructive/10 flex items-center gap-3 transition-colors"
+              >
+                <LogOut class="h-5 w-5" />
+                <span>Выйти</span>
+              </button>
+            </nav>
+          </BottomSheet>
 
           <!-- Desktop navigation -->
           <nav class="hidden md:flex items-center gap-1">
@@ -200,8 +188,50 @@ const userInitial = computed(() => {
           <!-- Notifications -->
           <NotificationBell />
 
-          <!-- User dropdown -->
-          <DropdownMenu>
+          <!-- Mobile: avatar + BottomSheet -->
+          <template v-if="isMobile">
+          <Button variant="ghost" class="relative h-9 w-9 rounded-full hover:bg-slate-800" @click="isProfileOpen = true">
+            <Avatar class="h-9 w-9">
+              <AvatarFallback class="bg-primary/20 text-primary-foreground">
+                {{ userInitial }}
+              </AvatarFallback>
+            </Avatar>
+          </Button>
+          <BottomSheet v-model="isProfileOpen" label="Профиль">
+            <div class="px-4 py-3 border-b flex-shrink-0">
+              <p class="text-base font-medium text-foreground">{{ auth.name }}</p>
+              <p class="text-sm text-muted-foreground">{{ auth.email }}</p>
+            </div>
+            <nav class="px-2 py-2 space-y-1">
+              <button
+                class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-foreground hover:bg-muted transition-colors"
+                @click="isProfileOpen = false; router.push('/profile')"
+              >
+                <User class="h-5 w-5" />
+                Профиль
+              </button>
+              <button
+                v-if="canManageMembers"
+                class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-foreground hover:bg-muted transition-colors"
+                @click="isProfileOpen = false; router.push('/organization/settings')"
+              >
+                <Settings class="h-5 w-5" />
+                Настройки
+              </button>
+              <Separator class="my-2" />
+              <button
+                class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-destructive hover:bg-destructive/10 transition-colors"
+                @click="isProfileOpen = false; logout()"
+              >
+                <LogOut class="h-5 w-5" />
+                Выйти
+              </button>
+            </nav>
+          </BottomSheet>
+          </template>
+
+          <!-- Desktop: DropdownMenu -->
+          <DropdownMenu v-else v-model:open="isProfileOpen">
             <DropdownMenuTrigger as-child>
               <Button variant="ghost" class="relative h-9 w-9 rounded-full hover:bg-slate-800">
                 <Avatar class="h-9 w-9">

@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import type { FreightSubscription } from '@/types/subscription'
 import type { VehicleType, VehicleSubType, PaymentMethod, PaymentTerms, VatType } from '@/types/freightRequest'
-import { useToast } from '@/components/ui/toast/use-toast'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -29,7 +28,6 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const { toast } = useToast()
 const isDeleteDialogOpen = ref(false)
 
 const localIsActive = ref(props.subscription.is_active)
@@ -96,14 +94,11 @@ function confirmDelete() {
 function handleDelete() {
   emit('delete', props.subscription.id)
   isDeleteDialogOpen.value = false
-  toast({
-    title: 'Подписка удалена',
-  })
 }
 </script>
 
 <template>
-  <Card :class="`transition-opacity ${!subscription.is_active ? 'opacity-60' : ''}`">
+  <Card :class="`flex flex-col transition-opacity ${!subscription.is_active ? 'opacity-60' : ''}`">
     <CardHeader class="pb-3">
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
@@ -125,12 +120,13 @@ function handleDelete() {
         </div>
       </div>
     </CardHeader>
-    <CardContent class="pt-0 space-y-3">
+    <CardContent class="pt-0 flex flex-col flex-1">
       <!-- Filters summary -->
-      <FiltersSummary v-if="hasFilters" :filters="filtersData" />
+      <FiltersSummary v-if="hasFilters" :filters="filtersData" class="flex-1" />
+      <div v-else class="flex-1" />
 
       <!-- Actions -->
-      <div class="flex items-center gap-2 pt-2 border-t">
+      <div class="flex items-center gap-2 pt-4 border-t mt-4">
         <Button variant="outline" size="sm" @click="handleEdit">
           <Pencil class="h-4 w-4 mr-1" />
           Изменить

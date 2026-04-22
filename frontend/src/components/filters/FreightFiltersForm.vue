@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { vMaska } from 'maska/vue'
 import type {
   VehicleSubType,
   PaymentMethod,
@@ -203,11 +204,19 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
         </div>
         <div v-if="showINN" class="space-y-1.5 pb-2">
           <Label class="text-sm font-semibold px-1">ИНН организации</Label>
-          <Input :model-value="orgINN" placeholder="Поиск по ИНН" @update:model-value="emit('update:orgINN', $event as string)" />
+          <Input
+            v-maska
+            :model-value="orgINN"
+            data-maska="############"
+            inputmode="numeric"
+            maxlength="12"
+            placeholder="10 или 12 цифр"
+            @update:model-value="emit('update:orgINN', $event as string)"
+          />
         </div>
         <div v-if="showRequestNumber" class="space-y-1.5 pb-2">
           <Label class="text-sm font-semibold px-1">Номер заявки</Label>
-          <Input :model-value="requestNumber ?? ''" type="number" placeholder="Поиск по номеру" @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)" />
+          <Input :model-value="requestNumber ?? ''" type="number" min="0" placeholder="Поиск по номеру" @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)" />
         </div>
         <div v-if="showStatuses" class="space-y-1.5 pb-3">
           <Label class="text-sm font-semibold px-1">Статус заявки</Label>

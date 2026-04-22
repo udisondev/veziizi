@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import BottomSheet from '@/components/shared/BottomSheet.vue'
 import HighlightText from '@/components/shared/HighlightText.vue'
@@ -74,7 +74,18 @@ function remove(value: T, event?: MouseEvent) {
   modelValue.value = modelValue.value.filter(v => v !== value)
 }
 
+const dropdownStyle = ref({ top: '0px', left: '0px', width: '0px' })
+const dropdownRef = ref<HTMLElement | null>(null)
+
 function openDesktop() {
+  if (containerRef.value) {
+    const rect = containerRef.value.getBoundingClientRect()
+    dropdownStyle.value = {
+      top: `${rect.bottom + 4}px`,
+      left: `${rect.left}px`,
+      width: `${rect.width}px`,
+    }
+  }
   dropdownOpen.value = true
   searchQuery.value = ''
 }
@@ -84,12 +95,21 @@ function closeDesktop() {
   searchQuery.value = ''
 }
 
-function onFocusOut(e: FocusEvent) {
-  const related = e.relatedTarget as Node | null
-  if (!containerRef.value?.contains(related)) {
+function handleClickOutside(e: MouseEvent) {
+  const target = e.target as Node
+  if (!containerRef.value?.contains(target) && !dropdownRef.value?.contains(target)) {
     closeDesktop()
   }
 }
+
+watch(dropdownOpen, (open) => {
+  document.removeEventListener('click', handleClickOutside)
+  if (open) document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 function openSheet() {
   sheetOpen.value = true
@@ -100,11 +120,11 @@ function openSheet() {
 <template>
   <!-- Desktop -->
   <template v-if="!isMobile">
-    <div ref="containerRef" class="relative" @focusout="onFocusOut">
+    <div ref="containerRef" class="relative">
       <!-- Trigger -->
       <button
         type="button"
-        class="w-full min-h-11 px-3 py-2 border border-input rounded-lg bg-white shadow-sm text-base text-left flex items-center gap-2 hover:bg-accent/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        class="w-full min-h-11 px-3 py-2 border border-input rounded-lg bg-white shadow-sm text-base text-left flex items-center gap-2 hover:border-primary/50 transition-colors focus:outline-none focus:border-primary"
         @click="dropdownOpen ? closeDesktop() : openDesktop()"
       >
         <span class="flex-1 flex flex-wrap gap-1 min-w-0">
@@ -132,11 +152,12 @@ function openSheet() {
       </button>
 
       <!-- Dropdown -->
+      <Teleport to="body">
       <div
         v-if="dropdownOpen"
-        class="absolute z-50 top-full mt-1 w-full bg-white border border-border rounded-lg shadow-lg flex flex-col"
-        style="max-height: 300px"
-        @mousedown.prevent
+        ref="dropdownRef"
+        class="fixed z-[200] bg-white border border-border rounded-lg shadow-lg flex flex-col"
+        :style="{ ...dropdownStyle, maxHeight: '300px' }"
       >
         <!-- Search -->
         <div v-if="props.options.length > 5" class="p-2 border-b border-border flex-shrink-0">
@@ -145,7 +166,7 @@ function openSheet() {
             <input
               v-model="searchQuery"
               type="text"
-              class="w-full pl-7 pr-2 py-2 text-base bg-white border border-input rounded-md outline-none focus:ring-2 focus:ring-ring"
+              class="w-full pl-7 pr-2 py-2 text-base bg-white border border-input rounded-md outline-none transition-colors hover:border-primary/50 focus:border-primary"
               :placeholder="searchPlaceholder"
               @keydown.escape="closeDesktop"
             />
@@ -176,6 +197,7 @@ function openSheet() {
           </div>
         </div>
       </div>
+      </Teleport>
     </div>
   </template>
 
@@ -217,7 +239,7 @@ function openSheet() {
         <input
           v-model="sheetSearch"
           type="text"
-          class="w-full px-3 py-2.5 text-base border border-input rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ring"
+          class="w-full px-3 py-2.5 text-base border border-input rounded-lg bg-white transition-colors hover:border-primary/50 focus:outline-none focus:border-primary"
           :placeholder="searchPlaceholder"
         />
       </div>

@@ -52,7 +52,7 @@ onMounted(() => {
           <Plus class="h-4 w-4 mr-2" />
           Создать подписку
         </Button>
-        <span v-else class="text-sm text-muted-foreground">
+        <span v-else class="text-sm text-warning font-medium">
           Достигнут лимит ({{ MAX_SUBSCRIPTIONS_PER_MEMBER }})
         </span>
       </template>
