@@ -154,7 +154,6 @@ async function handleSubmit() {
       return
     }
 
-    toast({ title: isEditing.value ? 'Подписка обновлена' : 'Подписка создана' })
     router.push({ name: 'freight-subscriptions' })
   } finally {
     isSaving.value = false

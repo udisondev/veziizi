@@ -8,7 +8,7 @@ const props = defineProps<SelectTriggerProps & { class?: string }>()
 
 const classes = computed(() =>
   cn(
-    'flex h-11 w-full items-center justify-between rounded-lg border border-input bg-white px-3 py-2 text-base text-left shadow-sm transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 [&>span]:text-left',
+    'flex h-11 w-full items-center justify-between rounded-lg border border-input bg-white px-3 py-2 text-base text-left shadow-sm transition-colors hover:border-primary/50 focus:outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 [&>span]:text-left',
     props.class
   )
 )

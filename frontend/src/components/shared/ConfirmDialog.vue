@@ -90,7 +90,7 @@ function handleConfirm() {
           </div>
           <div class="flex-1">
             <DialogTitle>{{ title }}</DialogTitle>
-            <DialogDescription :class="description ? '' : 'sr-only'">
+            <DialogDescription :class="description ? 'mt-2' : 'sr-only'">
               {{ description || title }}
             </DialogDescription>
           </div>

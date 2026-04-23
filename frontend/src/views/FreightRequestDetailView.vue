@@ -30,7 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { AppLink } from '@/components/ui/app-link'
 import RoutePoint from '@/components/freight-request/shared/RoutePoint.vue'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -1076,14 +1076,7 @@ onUnmounted(() => {
 
           <!-- History Tab -->
           <TabsContent value="history">
-            <Card>
-              <CardHeader>
-                <CardTitle>История изменений</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <EventHistory :load-fn="loadFreightRequestHistory" />
-              </CardContent>
-            </Card>
+            <EventHistory :load-fn="loadFreightRequestHistory" />
           </TabsContent>
         </Tabs>
       </div>

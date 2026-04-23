@@ -110,8 +110,8 @@ watch(
       :placeholder="placeholder"
       :disabled="disabled"
       :class="[
-        'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring',
-        error ? 'border-destructive' : 'border-input',
+        'appearance-none block w-full px-3 py-2 border rounded-md transition-colors focus:outline-none',
+        error ? 'border-destructive focus:border-destructive' : 'border-input hover:border-primary/50 focus:border-primary',
         disabled ? 'bg-muted cursor-not-allowed' : '',
       ]"
       autocomplete="off"

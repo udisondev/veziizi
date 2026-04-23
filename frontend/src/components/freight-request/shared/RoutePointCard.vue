@@ -282,8 +282,8 @@ const formattedPhone = computed(() => {
   return formatPhoneNumber(props.point.contact_phone.replace(/\D/g, ''))
 })
 
-const inputClass = 'appearance-none block w-full px-3 py-2.5 border border-input rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary text-base'
-const inputErrorClass = 'appearance-none block w-full px-3 py-2.5 border border-destructive rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-ring text-base'
+const inputClass = 'appearance-none block w-full px-3 py-2.5 border border-input rounded-lg bg-white shadow-sm transition-colors hover:border-primary/50 focus:outline-none focus:border-primary text-base'
+const inputErrorClass = 'appearance-none block w-full px-3 py-2.5 border border-destructive rounded-lg bg-white shadow-sm transition-colors focus:outline-none focus:border-destructive text-base'
 
 // Следим за изменениями позиции для автообновления типов
 watch(() => [props.index, props.totalPoints], () => {
