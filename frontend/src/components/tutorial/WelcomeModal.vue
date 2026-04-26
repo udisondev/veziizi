@@ -65,7 +65,7 @@ const scenarios = computed<ScenarioOption[]>(() => [
   {
     type: 'customer_flow',
     title: 'Создание заявки',
-    description: 'Научитесь создавать заявки на перевозку',
+    description: 'Научитесь создавать заявки на\u00A0перевозку',
     icon: Package,
     color: 'bg-blue-100 text-blue-600',
     show: true,

@@ -11,7 +11,7 @@ const props = defineProps<{
 const slots = useSlots()
 
 const classes = computed(() =>
-  cn('flex flex-row items-center justify-between gap-2', props.class)
+  cn('flex flex-row items-center justify-between gap-6', props.class)
 )
 
 // Если есть default слот, используем его вместо title prop

@@ -30,7 +30,7 @@ const { execute: handleSubmit, isLoading, error } = useAsyncAction(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-background py-12 px-4">
+  <div class="flex items-center justify-center bg-background py-12 px-4" style="min-height: calc(100vh - 3.5rem)">
     <Card class="w-full max-w-md">
       <CardHeader class="text-center">
         <CardTitle class="text-2xl">Вход в систему</CardTitle>
