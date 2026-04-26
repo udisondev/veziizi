@@ -6,6 +6,7 @@ import { useOnboardingStore } from '@/stores/onboarding'
 import { usePermissions } from '@/composables/usePermissions'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { tutorialBus } from '@/sandbox/events'
+import logoUrl from '@/assets/logo.svg'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -95,9 +96,14 @@ const userInitial = computed(() => {
         <!-- Left: Menu button + Title -->
         <div class="flex items-center gap-3">
           <!-- Mobile menu -->
-          <Button variant="ghost" size="icon" class="md:hidden text-slate-300 hover:text-white hover:bg-slate-800" data-tutorial="mobile-menu-btn" @click="isMenuOpen = true">
+          <Button variant="ghost" size="icon" class="lg:hidden text-slate-300 hover:text-white hover:bg-slate-800" data-tutorial="mobile-menu-btn" @click="isMenuOpen = true">
             <Menu class="h-5 w-5" />
           </Button>
+
+          <!-- Logo -->
+          <router-link to="/" class="shrink-0">
+            <img :src="logoUrl" alt="ВезиИзи" class="h-9 w-auto" />
+          </router-link>
           <BottomSheet v-model="isMenuOpen" label="Меню">
             <nav class="px-2 pb-4 space-y-1">
               <button
@@ -134,7 +140,7 @@ const userInitial = computed(() => {
           </BottomSheet>
 
           <!-- Desktop navigation -->
-          <nav class="hidden md:flex items-center gap-1">
+          <nav class="hidden lg:flex items-center gap-1 ml-3">
             <router-link
               v-for="item in menuItems.slice(0, 4)"
               :key="item.to"
@@ -158,16 +164,12 @@ const userInitial = computed(() => {
             </router-link>
           </nav>
 
-          <!-- Logo/Title -->
-          <router-link to="/" class="text-lg font-semibold text-white md:hidden">
-            Veziizi
-          </router-link>
         </div>
 
         <!-- Right: Organization + Notifications + User menu -->
         <div class="flex items-center gap-2">
           <!-- Organization name (desktop) -->
-          <div class="hidden sm:flex items-center gap-2 text-sm text-slate-200 mr-1">
+          <div class="hidden lg:flex items-center gap-2 text-sm text-slate-200 mr-1">
             <Building2 class="h-4 w-4" />
             <span class="max-w-40 truncate">{{ auth.organization?.name }}</span>
           </div>

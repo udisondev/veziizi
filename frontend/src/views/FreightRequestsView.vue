@@ -302,7 +302,7 @@ onMounted(() => {
 <template>
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <!-- Header -->
-    <PageHeader title="Заявки на перевозку" class="mb-6">
+    <PageHeader title="Заявки на&nbsp;перевозку" class="mb-6">
       <template #actions>
         <Tooltip text="Рассылка уведомлений">
           <Button
