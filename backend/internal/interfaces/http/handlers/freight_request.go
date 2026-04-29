@@ -334,7 +334,8 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		statusList := make([]string, 0, len(raw))
 		for _, s := range raw {
 			if _, err := values.ParseFreightRequestStatus(s); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid status: "+s)
+				slog.Warn("invalid status in filter", slog.String("value", s))
+				writeError(w, http.StatusBadRequest, "invalid status")
 				return
 			}
 			statusList = append(statusList, s)
