@@ -90,22 +90,28 @@ function buildParams(): FreightRequestListParams {
   }
 
   // Ownership filter
+  // ВАЖНО: всегда отправляем customer_org_id для своей организации,
+  // т.к. backend требует совпадения customer_org_id == currentOrgID,
+  // чтобы разрешить произвольные статусы (иначе форсит published-only).
   if (ownershipFilter.value === 'my_org' && auth.organizationId) {
     params.customer_org_id = auth.organizationId
   } else if (ownershipFilter.value === 'my' && auth.memberId) {
+    if (auth.organizationId) params.customer_org_id = auth.organizationId
     params.member_id = auth.memberId
   }
 
   if (orgINNFilter.value) params.org_inn = orgINNFilter.value
   if (requestNumber.value) params.request_number = requestNumber.value
 
-  // Numeric filters
-  if (minWeight.value !== undefined) params.min_weight = minWeight.value
-  if (maxWeight.value !== undefined) params.max_weight = maxWeight.value
-  if (minPrice.value !== undefined) params.min_price = minPrice.value
-  if (maxPrice.value !== undefined) params.max_price = maxPrice.value
-  if (minVolume.value !== undefined) params.min_volume = minVolume.value
-  if (maxVolume.value !== undefined) params.max_volume = maxVolume.value
+  // Numeric filters: 0/NaN/undefined трактуем как "фильтр выключен",
+  // иначе нижняя граница 0 исключит заявки с NULL-значением (cargo_weight/price/volume nullable).
+  const positive = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+  if (positive(minWeight.value)) params.min_weight = minWeight.value
+  if (positive(maxWeight.value)) params.max_weight = maxWeight.value
+  if (positive(minPrice.value)) params.min_price = minPrice.value
+  if (positive(maxPrice.value)) params.max_price = maxPrice.value
+  if (positive(minVolume.value)) params.min_volume = minVolume.value
+  if (positive(maxVolume.value)) params.max_volume = maxVolume.value
 
   // Vehicle filter
   if (vehicleSubTypes.value.length > 0) params.vehicle_subtypes = vehicleSubTypes.value.join(',')
@@ -269,9 +275,18 @@ const displayItems = computed<FreightRequestListItem[]>(() => {
 let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const FILTER_DEBOUNCE_MS = 300
 
+// Только заполненные точки маршрута влияют на запрос —
+// добавление пустой точки не должно триггерить перезагрузку.
+const meaningfulRoutePoints = computed(() =>
+  routePoints.value
+    .filter(rp => rp.cityId !== undefined || rp.countryId !== undefined)
+    .map(rp => `${rp.cityId ?? ''}:${rp.countryId ?? ''}`)
+    .join(',')
+)
+
 watch(
   [
-    ownershipFilter, orgINNFilter, requestNumber, statuses, routePoints,
+    ownershipFilter, orgINNFilter, requestNumber, statuses, meaningfulRoutePoints,
     minWeight, maxWeight, minPrice, maxPrice, minVolume, maxVolume,
     vehicleSubTypes, paymentMethods, paymentTerms, vatTypes,
   ],
