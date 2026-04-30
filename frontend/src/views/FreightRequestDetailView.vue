@@ -81,7 +81,11 @@ const error = ref('')
 const actionLoading = ref(false)
 
 // Tabs
-const currentTab = ref('details')
+const currentTab = ref((route.query.tab as string) || 'details')
+
+watch(() => route.query.tab, (tab) => {
+  if (tab && tab !== currentTab.value) currentTab.value = tab as string
+})
 
 // Отправляем событие для туториала при смене таба
 watch(currentTab, (newTab) => {
@@ -380,7 +384,7 @@ async function handleCancel() {
   actionLoading.value = true
   try {
     await freightRequestsApi.cancel(freightRequest.value.id, cancelReason.value || undefined)
-    router.push('/')
+    router.push({ path: '/', query: { tab: 'list' } })
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
   } finally {
@@ -625,7 +629,7 @@ onUnmounted(() => {
 <template>
   <div class="min-h-screen bg-background">
     <!-- Header -->
-    <DetailPageHeader back-to="/" back-label="К списку заявок">
+    <DetailPageHeader :back-to="{ path: '/', query: { tab: 'list' } }" back-label="К списку заявок">
       <template #actions>
         <div class="flex items-center gap-2">
           <!-- Завершение заявки и отзывы -->

@@ -45,7 +45,7 @@ func (r *OfferWithdrawnRule) Process(ctx context.Context, event eventstore.Event
 			NotificationType:  values.TypeOfferWithdrawn,
 			Title:             "Предложение отозвано",
 			Body:              fmt.Sprintf("Перевозчик отозвал своё предложение по заявке #%d", fr.RequestNumber),
-			Link:              fmt.Sprintf("/freight-requests/%s", fr.ID),
+			Link:              fmt.Sprintf("/freight-requests/%s?tab=offers", fr.ID),
 			EntityType:        values.EntityFreightRequest,
 			EntityID:          fr.ID,
 		},

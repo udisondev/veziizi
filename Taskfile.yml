@@ -370,6 +370,16 @@ tasks:
     cmds:
       - go run ./backend/cmd/tools/seed-orgs
 
+  seed:ui-users:
+    desc: Create test users for UI profile testing
+    cmds:
+      - go run ./backend/cmd/tools/seed-ui-users
+
+  seed:scenario:
+    desc: Seed scenario data (freight requests, offers, reviews) for UI testing
+    cmds:
+      - go run ./backend/cmd/tools/seed-scenario
+
   resend:telegram:
     desc: Resend failed telegram notifications
     cmds:

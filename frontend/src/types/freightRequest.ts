@@ -254,7 +254,7 @@ export interface FreightRequestListItem {
 }
 
 // Filter types
-export type OwnershipFilter = 'all' | 'my_org' | 'my'
+export type OwnershipFilter = 'all' | 'my_org' | 'my' | 'my_as_carrier'
 
 export type Country = 'RU' | 'KZ' | 'BY'
 

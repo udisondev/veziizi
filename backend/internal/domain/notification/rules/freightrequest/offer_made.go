@@ -46,7 +46,7 @@ func (r *OfferMadeRule) Process(ctx context.Context, event eventstore.Event) ([]
 			NotificationType:  values.TypeNewOffer,
 			Title:             "Новое предложение",
 			Body:              fmt.Sprintf("На заявку #%d поступило новое предложение", fr.RequestNumber),
-			Link:              fmt.Sprintf("/freight-requests/%s", fr.ID),
+			Link:              fmt.Sprintf("/freight-requests/%s?tab=offers", fr.ID),
 			EntityType:        values.EntityFreightRequest,
 			EntityID:          fr.ID,
 		},

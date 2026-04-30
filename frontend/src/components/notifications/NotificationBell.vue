@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
+import type { Notification } from '@/types/notification'
+import { getNotificationLink } from '@/types/notification'
 import { tutorialBus } from '@/sandbox/events'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 
@@ -39,11 +41,10 @@ const recentNotifications = computed(() => notificationsStore.recentNotification
 const unreadCount = computed(() => notificationsStore.unreadCount)
 const hasUnread = computed(() => notificationsStore.hasUnread)
 
-function handleNotificationClick(notification: { id: string; link?: string }) {
+function handleNotificationClick(notification: Notification) {
   isOpen.value = false
   notificationsStore.markAsRead(notification.id)
 
-  // Эмитим событие для tutorial
   if (onboarding.isSandboxMode) {
     tutorialBus.emit('notification:clicked', {
       id: notification.id,
@@ -51,9 +52,8 @@ function handleNotificationClick(notification: { id: string; link?: string }) {
     })
   }
 
-  if (notification.link) {
-    router.push(notification.link)
-  }
+  const link = getNotificationLink(notification)
+  if (link) router.push(link)
 }
 
 function goToAllNotifications() {

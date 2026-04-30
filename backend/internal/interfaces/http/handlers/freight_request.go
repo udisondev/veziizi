@@ -303,6 +303,7 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	// Определяем, запрашивает ли пользователь свои заявки
 	isOwnOrgFilter := false
+	currentMemberID, _ := h.session.GetMemberID(r)
 
 	// Опциональный фильтр по customer_org_id
 	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
@@ -322,6 +323,21 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithCustomerMemberID(memberID))
+		if memberID == currentMemberID {
+			isOwnOrgFilter = true
+		}
+	}
+
+	if carrierOrgIDStr := r.URL.Query().Get("carrier_org_id"); carrierOrgIDStr != "" {
+		carrierOrgID, err := uuid.Parse(carrierOrgIDStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid carrier_org_id")
+			return
+		}
+		opts = append(opts, projections.WithCarrierOrgIDFilter(carrierOrgID))
+		if carrierOrgID == currentOrgID {
+			isOwnOrgFilter = true
+		}
 	}
 
 	// SEC: Если пользователь не фильтрует по своей организации,
@@ -452,6 +468,10 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		if len(types) > 0 {
 			opts = append(opts, projections.WithVatTypes(types))
 		}
+	}
+
+	if r.URL.Query().Get("has_pending_offers") == "true" {
+		opts = append(opts, projections.WithHasPendingOffers())
 	}
 
 	// Cursor-based pagination

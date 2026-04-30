@@ -1,6 +1,6 @@
 import { api } from './client'
 import type { RegisterRequest, RegisterResponse } from '@/types/registration'
-import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats } from '@/types/admin'
+import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats, PendingOfferItem } from '@/types/admin'
 import { type CursorPaginatedResponse } from './freightRequests'
 
 export const organizationsApi = {
@@ -31,5 +31,10 @@ export const organizationsApi = {
     const queryStr = query.toString()
     const result = await api.get<CursorPaginatedResponse<OrganizationReview> | null>(`/organizations/${id}/reviews${queryStr ? `?${queryStr}` : ''}`)
     return result ?? { items: [], has_more: false }
+  },
+
+  async getPendingOffers(id: string, limit = 20): Promise<PendingOfferItem[]> {
+    const result = await api.get<{ items: PendingOfferItem[] }>(`/organizations/${id}/pending-offers?limit=${limit}`)
+    return result?.items ?? []
   },
 }
