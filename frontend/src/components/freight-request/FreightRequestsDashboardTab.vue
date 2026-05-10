@@ -7,7 +7,7 @@ import { freightRequestsApi } from '@/api/freightRequests'
 import { offersApi, type MyOfferListItem } from '@/api/offers'
 import { organizationsApi } from '@/api/organizations'
 import type { FreightRequestListItem, FreightRequestStatus, OwnershipFilter } from '@/types/freightRequest'
-import type { OrganizationStats, OrganizationRating, PendingOfferItem } from '@/types/admin'
+import type { OrganizationStats, DashboardStats, OrganizationRating, PendingOfferItem } from '@/types/admin'
 import { currencyLabels } from '@/types/freightRequest'
 import { formatRelativeTime } from '@/utils/formatters'
 import { logger } from '@/utils/logger'
@@ -37,6 +37,7 @@ function goToPendingOffers() {
 }
 
 const orgStats = ref<OrganizationStats | null>(null)
+const dashboardStats = ref<DashboardStats | null>(null)
 const orgRating = ref<OrganizationRating | null>(null)
 const recentItems = ref<FreightRequestListItem[]>([])
 const selectedOffers = ref<MyOfferListItem[]>([])
@@ -76,21 +77,21 @@ const offerSuccessRate = computed(() => {
 })
 
 const hasCustomerActivity = computed(() =>
-  !!orgStats.value && (orgStats.value.as_customer_published + orgStats.value.as_customer_selected + orgStats.value.as_customer_confirmed) > 0
+  !!dashboardStats.value && (dashboardStats.value.as_customer_published + dashboardStats.value.as_customer_selected + dashboardStats.value.as_customer_confirmed) > 0
 )
 
 const hasCarrierActivity = computed(() =>
-  !!orgStats.value && (orgStats.value.as_carrier_confirmed + orgStats.value.as_carrier_partially_completed) > 0
+  !!dashboardStats.value && (dashboardStats.value.as_carrier_confirmed + dashboardStats.value.as_carrier_partially_completed) > 0
 )
 
 const activeAsCustomer = computed(() =>
-  (orgStats.value?.as_customer_published ?? 0) +
-  (orgStats.value?.as_customer_selected ?? 0) +
-  (orgStats.value?.as_customer_confirmed ?? 0)
+  (dashboardStats.value?.as_customer_published ?? 0) +
+  (dashboardStats.value?.as_customer_selected ?? 0) +
+  (dashboardStats.value?.as_customer_confirmed ?? 0)
 )
 
 const pipelineStages = computed(() => {
-  const s = orgStats.value
+  const s = dashboardStats.value
   const stages: { label: string; value: number; color: string; statuses: FreightRequestStatus[]; ownership: OwnershipFilter }[] = [
     { label: 'Ищут перевозчика',  value: s?.as_customer_published ?? 0,          color: 'text-primary',      statuses: ['published'],           ownership: 'my_org' },
     { label: 'Перевозчик выбран', value: s?.as_customer_selected ?? 0,            color: 'text-amber-500',    statuses: ['selected'],            ownership: 'my_org' },
@@ -120,34 +121,41 @@ const formattedDate = computed(() =>
   new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 )
 
+function fulfilled<T>(label: string, r: PromiseSettledResult<T>): T | null {
+  if (r.status === 'fulfilled') return r.value
+  logger.error(`Dashboard: failed to load ${label}`, r.reason)
+  return null
+}
+
 async function loadData() {
   if (!auth.organizationId) return
+  const orgID = auth.organizationId
   isLoadingStats.value = true
   isLoadingRecent.value = true
   isLoadingAttention.value = true
   try {
-    const [statsRes, ratingRes, recentRes, selectedOffersRes, myActiveRes, pendingOffersRes, ticketsRes] = await Promise.all([
-      organizationsApi.getStats(auth.organizationId),
-      organizationsApi.getRating(auth.organizationId),
+    const [statsRes, dashboardRes, ratingRes, recentRes, selectedOffersRes, myActiveRes, pendingOffersRes, ticketsRes] = await Promise.allSettled([
+      organizationsApi.getStats(orgID),
+      organizationsApi.getDashboardStats(orgID),
+      organizationsApi.getRating(orgID),
       freightRequestsApi.list({ statuses: 'published', limit: 10 }),
       offersApi.listMy({ status: 'selected', limit: 10 }),
       freightRequestsApi.list({
-        customer_org_id: auth.organizationId,
+        customer_org_id: orgID,
         statuses: 'published,partially_completed',
         limit: 50,
       }),
-      organizationsApi.getPendingOffers(auth.organizationId, 15),
+      organizationsApi.getPendingOffers(orgID, 15),
       getMyTickets({ status: 'open' }),
     ])
-    orgStats.value = statsRes
-    orgRating.value = ratingRes
-    recentItems.value = recentRes.items ?? []
-    selectedOffers.value = selectedOffersRes
-    myActiveRequests.value = myActiveRes.items ?? []
-    pendingOffersOnMyRequests.value = pendingOffersRes
-    openTickets.value = ticketsRes ?? []
-  } catch (e) {
-    logger.error('Failed to load dashboard data', e)
+    orgStats.value = fulfilled('stats', statsRes)
+    dashboardStats.value = fulfilled('dashboard-stats', dashboardRes)
+    orgRating.value = fulfilled('rating', ratingRes)
+    recentItems.value = fulfilled('recent', recentRes)?.items ?? []
+    selectedOffers.value = fulfilled('selected-offers', selectedOffersRes) ?? []
+    myActiveRequests.value = fulfilled('my-active', myActiveRes)?.items ?? []
+    pendingOffersOnMyRequests.value = fulfilled('pending-offers', pendingOffersRes) ?? []
+    openTickets.value = fulfilled('tickets', ticketsRes) ?? []
   } finally {
     isLoadingStats.value = false
     isLoadingRecent.value = false
@@ -297,15 +305,15 @@ onMounted(loadData)
             <div class="flex items-center gap-2.5">
               <h2 class="text-sm font-semibold text-foreground">Офферы на мои заявки</h2>
               <span
-                v-if="(orgStats?.pending_offers_count ?? 0) > 0"
+                v-if="(dashboardStats?.pending_offers_count ?? 0) > 0"
                 class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
-              >{{ orgStats!.pending_offers_count }}</span>
+              >{{ dashboardStats!.pending_offers_count }}</span>
               <span
-                v-if="(orgStats?.pending_offers_today ?? 0) > 0"
+                v-if="(dashboardStats?.pending_offers_today ?? 0) > 0"
                 class="flex items-center gap-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
               >
                 <TrendingUp class="h-3 w-3" />
-                +{{ orgStats!.pending_offers_today }} за сутки
+                +{{ dashboardStats!.pending_offers_today }} за сутки
               </span>
             </div>
             <button
@@ -364,11 +372,11 @@ onMounted(loadData)
             <div class="flex items-center gap-2.5">
               <h2 class="text-sm font-semibold text-foreground">Новые заявки на рынке</h2>
               <span
-                v-if="(orgStats?.market_published_today ?? 0) > 0"
+                v-if="(dashboardStats?.market_published_today ?? 0) > 0"
                 class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary"
-              >{{ orgStats!.market_published_today }}</span>
+              >{{ dashboardStats!.market_published_today }}</span>
               <span
-                v-if="(orgStats?.market_published_today ?? 0) > 0"
+                v-if="(dashboardStats?.market_published_today ?? 0) > 0"
                 class="flex items-center gap-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
               >
                 <TrendingUp class="h-3 w-3" />

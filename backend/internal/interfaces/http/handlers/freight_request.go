@@ -334,7 +334,7 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid carrier_org_id")
 			return
 		}
-		opts = append(opts, projections.WithCarrierOrgIDFilter(carrierOrgID))
+		opts = append(opts, projections.WithFreightCarrierOrgID(carrierOrgID))
 		if carrierOrgID == currentOrgID {
 			isOwnOrgFilter = true
 		}
@@ -345,8 +345,17 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	if !isOwnOrgFilter {
 		opts = append(opts, projections.WithStatuses([]string{"published"}))
 	} else if statuses := r.URL.Query().Get("statuses"); statuses != "" {
-		// Свои заявки — разрешаем фильтр по статусам
-		statusList := splitComma(statuses)
+		// Свои заявки — разрешаем фильтр по статусам, но валидируем через enum
+		raw := splitComma(statuses)
+		statusList := make([]string, 0, len(raw))
+		for _, s := range raw {
+			if _, err := values.ParseFreightRequestStatus(s); err != nil {
+				slog.Warn("invalid status in filter", slog.String("value", s))
+				writeError(w, http.StatusBadRequest, "invalid status")
+				return
+			}
+			statusList = append(statusList, s)
+		}
 		if len(statusList) > 0 {
 			opts = append(opts, projections.WithStatuses(statusList))
 		}
@@ -401,10 +410,6 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		if p, err := parseInt64(maxPrice); err == nil {
 			opts = append(opts, projections.WithMaxPrice(p))
 		}
-	}
-
-	if vehicleType := r.URL.Query().Get("vehicle_type"); vehicleType != "" {
-		opts = append(opts, projections.WithVehicleType(vehicleType))
 	}
 
 	if vehicleTypes := r.URL.Query().Get("vehicle_types"); vehicleTypes != "" {

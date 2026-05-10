@@ -61,7 +61,7 @@ func WithCustomerOrgID(id uuid.UUID) FilterOption {
 	}
 }
 
-func WithCarrierOrgIDFilter(id uuid.UUID) FilterOption {
+func WithFreightCarrierOrgID(id uuid.UUID) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where(squirrel.Eq{"carrier_org_id": id})
 	}
@@ -186,15 +186,6 @@ func WithMinPrice(price int64) FilterOption {
 func WithMaxPrice(price int64) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where(squirrel.LtOrEq{"price_amount": price})
-	}
-}
-
-func WithVehicleType(vt string) FilterOption {
-	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		if vt == "" {
-			return b
-		}
-		return b.Where(squirrel.Eq{"vehicle_type": vt})
 	}
 }
 
@@ -655,33 +646,17 @@ func (p *FreightRequestsProjection) HaveSharedConfirmedFreight(ctx context.Conte
 	return true, nil
 }
 
-// OrgStats содержит агрегированную статистику организации
+// OrgStats — публичная агрегированная статистика организации.
+// Симметрично с GetRating: эти счётчики и так показываются на публичном профиле.
 type OrgStats struct {
-	// Суммарные поля (используются в профиле организации)
 	TotalFreightRequests  int `json:"total_freight_requests"`
 	ActiveFreightRequests int `json:"active_freight_requests"`
 	CompletedDeals        int `json:"completed_deals"`
 	TotalOffersMade       int `json:"total_offers_made"`
 	SuccessfulOffers      int `json:"successful_offers"`
-
-	// Разбивка как заказчик (для дашборда)
-	AsCustomerPublished int `json:"as_customer_published"`
-	AsCustomerSelected  int `json:"as_customer_selected"`
-	AsCustomerConfirmed int `json:"as_customer_confirmed"`
-
-	// Разбивка как перевозчик (для дашборда)
-	AsCarrierConfirmed          int `json:"as_carrier_confirmed"`
-	AsCarrierPartiallyCompleted int `json:"as_carrier_partially_completed"`
-
-	// Офферы на мои заявки (для дашборда заказчика)
-	PendingOffersCount int `json:"pending_offers_count"`
-	PendingOffersToday int `json:"pending_offers_today"`
-
-	// Рынок
-	MarketPublishedToday int `json:"market_published_today"`
 }
 
-// GetOrgStats возвращает статистику организации по freight requests и offers
+// GetOrgStats возвращает публичную статистику организации.
 func (p *FreightRequestsProjection) GetOrgStats(ctx context.Context, orgID uuid.UUID) (*OrgStats, error) {
 	query := `
 		SELECT
@@ -689,7 +664,40 @@ func (p *FreightRequestsProjection) GetOrgStats(ctx context.Context, orgID uuid.
 			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status IN ('published', 'selected', 'confirmed')),
 			(SELECT COUNT(*) FROM freight_requests_lookup WHERE (customer_org_id = $1 OR carrier_org_id = $1) AND status = 'completed'),
 			(SELECT COUNT(*) FROM offers_lookup WHERE carrier_org_id = $1),
-			(SELECT COUNT(*) FROM offers_lookup WHERE carrier_org_id = $1 AND status = 'confirmed'),
+			(SELECT COUNT(*) FROM offers_lookup WHERE carrier_org_id = $1 AND status = 'confirmed')
+	`
+
+	var stats OrgStats
+	if err := p.db.QueryRow(ctx, query, orgID).Scan(
+		&stats.TotalFreightRequests,
+		&stats.ActiveFreightRequests,
+		&stats.CompletedDeals,
+		&stats.TotalOffersMade,
+		&stats.SuccessfulOffers,
+	); err != nil {
+		return nil, fmt.Errorf("get org stats: %w", err)
+	}
+
+	return &stats, nil
+}
+
+// DashboardStats — операционные показатели в моменте: пайплайн, входящие офферы, рынок.
+// Доступны только членам организации (см. handler).
+type DashboardStats struct {
+	AsCustomerPublished         int `json:"as_customer_published"`
+	AsCustomerSelected          int `json:"as_customer_selected"`
+	AsCustomerConfirmed         int `json:"as_customer_confirmed"`
+	AsCarrierConfirmed          int `json:"as_carrier_confirmed"`
+	AsCarrierPartiallyCompleted int `json:"as_carrier_partially_completed"`
+	PendingOffersCount          int `json:"pending_offers_count"`
+	PendingOffersToday          int `json:"pending_offers_today"`
+	MarketPublishedToday        int `json:"market_published_today"`
+}
+
+// GetDashboardStats возвращает моментальные операционные показатели организации.
+func (p *FreightRequestsProjection) GetDashboardStats(ctx context.Context, orgID uuid.UUID) (*DashboardStats, error) {
+	query := `
+		SELECT
 			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status = 'published'),
 			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status = 'selected'),
 			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status = 'confirmed'),
@@ -700,13 +708,8 @@ func (p *FreightRequestsProjection) GetOrgStats(ctx context.Context, orgID uuid.
 			(SELECT COUNT(*) FROM freight_requests_lookup WHERE status = 'published' AND customer_org_id != $1 AND created_at >= NOW() - INTERVAL '24 hours')
 	`
 
-	var stats OrgStats
+	var stats DashboardStats
 	if err := p.db.QueryRow(ctx, query, orgID).Scan(
-		&stats.TotalFreightRequests,
-		&stats.ActiveFreightRequests,
-		&stats.CompletedDeals,
-		&stats.TotalOffersMade,
-		&stats.SuccessfulOffers,
 		&stats.AsCustomerPublished,
 		&stats.AsCustomerSelected,
 		&stats.AsCustomerConfirmed,
@@ -716,7 +719,7 @@ func (p *FreightRequestsProjection) GetOrgStats(ctx context.Context, orgID uuid.
 		&stats.PendingOffersToday,
 		&stats.MarketPublishedToday,
 	); err != nil {
-		return nil, fmt.Errorf("get org stats: %w", err)
+		return nil, fmt.Errorf("get dashboard stats: %w", err)
 	}
 
 	return &stats, nil

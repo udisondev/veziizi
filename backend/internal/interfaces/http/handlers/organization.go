@@ -45,7 +45,8 @@ func (h *OrganizationHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/api/v1/organizations/{id}/full", h.GetFull) // SEC-019: полные данные только для членов
 	r.Get("/api/v1/organizations/{id}/rating", h.GetRating)
 	r.Get("/api/v1/organizations/{id}/stats", h.GetStats)
-	r.Get("/api/v1/organizations/{id}/pending-offers", h.GetPendingOffers)
+	r.Get("/api/v1/organizations/{id}/dashboard-stats", h.GetDashboardStats) // только для членов
+	r.Get("/api/v1/organizations/{id}/pending-offers", h.GetPendingOffers)   // только для членов
 	r.Get("/api/v1/organizations/{id}/reviews", h.ListReviews)
 	r.Post("/api/v1/organizations/{id}/invitations", h.CreateInvitation)
 	r.Get("/api/v1/organizations/{id}/invitations", h.ListInvitations)
@@ -880,6 +881,19 @@ func (h *OrganizationHandler) GetPendingOffers(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if _, ok := h.session.GetMemberID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// SEC: входящие офферы — приватные данные (адреса, цены, контрагенты).
+	// Доступ только членам организации.
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != id {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
 	limit := 20
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
@@ -899,6 +913,36 @@ func (h *OrganizationHandler) GetPendingOffers(w http.ResponseWriter, r *http.Re
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// GetDashboardStats возвращает моментальные операционные показатели организации.
+// SEC: данные о пайплайне и входящих офферах — только для членов.
+func (h *OrganizationHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+
+	if _, ok := h.session.GetMemberID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	sessionOrgID, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrgID != id {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
+	stats, err := h.freightRequestProj.GetDashboardStats(r.Context(), id)
+	if err != nil {
+		slog.Error("failed to get dashboard stats", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to get dashboard stats")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, stats)
 }
 
 func (h *OrganizationHandler) ListReviews(w http.ResponseWriter, r *http.Request) {

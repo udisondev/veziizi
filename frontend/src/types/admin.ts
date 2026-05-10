@@ -59,6 +59,9 @@ export interface OrganizationStats {
   completed_deals: number
   total_offers_made: number
   successful_offers: number
+}
+
+export interface DashboardStats {
   as_customer_published: number
   as_customer_selected: number
   as_customer_confirmed: number

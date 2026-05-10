@@ -1,6 +1,6 @@
 import { api } from './client'
 import type { RegisterRequest, RegisterResponse } from '@/types/registration'
-import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats, PendingOfferItem } from '@/types/admin'
+import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats, DashboardStats, PendingOfferItem } from '@/types/admin'
 import { type CursorPaginatedResponse } from './freightRequests'
 
 export const organizationsApi = {
@@ -22,6 +22,10 @@ export const organizationsApi = {
 
   getStats(id: string): Promise<OrganizationStats> {
     return api.get(`/organizations/${id}/stats`)
+  },
+
+  getDashboardStats(id: string): Promise<DashboardStats> {
+    return api.get(`/organizations/${id}/dashboard-stats`)
   },
 
   async getReviews(id: string, params?: { limit?: number; cursor?: string }): Promise<CursorPaginatedResponse<OrganizationReview>> {

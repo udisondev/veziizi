@@ -99,13 +99,15 @@ function buildParams(): FreightRequestListParams {
   if (orgINNFilter.value) params.org_inn = orgINNFilter.value
   if (requestNumber.value) params.request_number = requestNumber.value
 
-  // Numeric filters
-  if (minWeight.value !== undefined) params.min_weight = minWeight.value
-  if (maxWeight.value !== undefined) params.max_weight = maxWeight.value
-  if (minPrice.value !== undefined) params.min_price = minPrice.value
-  if (maxPrice.value !== undefined) params.max_price = maxPrice.value
-  if (minVolume.value !== undefined) params.min_volume = minVolume.value
-  if (maxVolume.value !== undefined) params.max_volume = maxVolume.value
+  // Numeric filters: 0/NaN/undefined трактуем как "фильтр выключен",
+  // иначе нижняя граница 0 исключит заявки с NULL-значением (cargo_weight/price/volume nullable).
+  const positive = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+  if (positive(minWeight.value)) params.min_weight = minWeight.value
+  if (positive(maxWeight.value)) params.max_weight = maxWeight.value
+  if (positive(minPrice.value)) params.min_price = minPrice.value
+  if (positive(maxPrice.value)) params.max_price = maxPrice.value
+  if (positive(minVolume.value)) params.min_volume = minVolume.value
+  if (positive(maxVolume.value)) params.max_volume = maxVolume.value
 
   // Vehicle filter
   if (vehicleSubTypes.value.length > 0) params.vehicle_subtypes = vehicleSubTypes.value.join(',')
