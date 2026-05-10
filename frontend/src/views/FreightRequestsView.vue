@@ -90,9 +90,13 @@ function buildParams(): FreightRequestListParams {
   }
 
   // Ownership filter
+  // ВАЖНО: всегда отправляем customer_org_id для своей организации,
+  // т.к. backend требует совпадения customer_org_id == currentOrgID,
+  // чтобы разрешить произвольные статусы (иначе форсит published-only).
   if (ownershipFilter.value === 'my_org' && auth.organizationId) {
     params.customer_org_id = auth.organizationId
   } else if (ownershipFilter.value === 'my' && auth.memberId) {
+    if (auth.organizationId) params.customer_org_id = auth.organizationId
     params.member_id = auth.memberId
   }
 
@@ -271,9 +275,18 @@ const displayItems = computed<FreightRequestListItem[]>(() => {
 let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const FILTER_DEBOUNCE_MS = 300
 
+// Только заполненные точки маршрута влияют на запрос —
+// добавление пустой точки не должно триггерить перезагрузку.
+const meaningfulRoutePoints = computed(() =>
+  routePoints.value
+    .filter(rp => rp.cityId !== undefined || rp.countryId !== undefined)
+    .map(rp => `${rp.cityId ?? ''}:${rp.countryId ?? ''}`)
+    .join(',')
+)
+
 watch(
   [
-    ownershipFilter, orgINNFilter, requestNumber, statuses, routePoints,
+    ownershipFilter, orgINNFilter, requestNumber, statuses, meaningfulRoutePoints,
     minWeight, maxWeight, minPrice, maxPrice, minVolume, maxVolume,
     vehicleSubTypes, paymentMethods, paymentTerms, vatTypes,
   ],

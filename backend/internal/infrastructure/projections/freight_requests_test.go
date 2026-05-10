@@ -24,47 +24,29 @@ func buildFreightSQL(t *testing.T, opts ...FilterOption) (string, []any) {
 	return sql, args
 }
 
-func TestWithCursor_NotPublished(t *testing.T) {
-	sql, args := buildFreightSQL(t, WithCursor(FreightRequestCursor{
-		IsPublished:   false,
-		RequestNumber: 100,
-	}))
-
-	// На не-published курсоре отдаём только не-published с меньшим номером.
-	if !strings.Contains(sql, "status <> $1") {
-		t.Errorf("expected 'status <> $1' in SQL, got: %s", sql)
+func TestWithCursor(t *testing.T) {
+	cases := []struct {
+		name    string
+		cursor  FreightRequestCursor
+		wantArg int64
+	}{
+		{"normal", FreightRequestCursor{RequestNumber: 100}, 100},
+		{"zero", FreightRequestCursor{RequestNumber: 0}, 0},
+		{"large", FreightRequestCursor{RequestNumber: 9_999_999_999}, 9_999_999_999},
 	}
-	if !strings.Contains(sql, "request_number < $2") {
-		t.Errorf("expected 'request_number < $2' in SQL, got: %s", sql)
-	}
-	if len(args) != 2 || args[0] != "published" || args[1] != int64(100) {
-		t.Errorf("expected args [published, 100], got %v", args)
-	}
-}
-
-func TestWithCursor_Published(t *testing.T) {
-	sql, args := buildFreightSQL(t, WithCursor(FreightRequestCursor{
-		IsPublished:   true,
-		RequestNumber: 50,
-	}))
-
-	// На published курсоре отдаём:
-	//   1. published с меньшим номером, ИЛИ
-	//   2. любые не-published.
-	if !strings.Contains(sql, "OR") {
-		t.Errorf("expected OR in SQL, got: %s", sql)
-	}
-	if !strings.Contains(sql, "status = $1") {
-		t.Errorf("expected 'status = $1' in SQL, got: %s", sql)
-	}
-	if !strings.Contains(sql, "request_number < $2") {
-		t.Errorf("expected 'request_number < $2' in SQL, got: %s", sql)
-	}
-	if !strings.Contains(sql, "status <> $3") {
-		t.Errorf("expected 'status <> $3' in SQL, got: %s", sql)
-	}
-	if len(args) != 3 || args[0] != "published" || args[1] != int64(50) || args[2] != "published" {
-		t.Errorf("expected args [published, 50, published], got %v", args)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sql, args := buildFreightSQL(t, WithCursor(tc.cursor))
+			if !strings.Contains(sql, "request_number < $1") {
+				t.Errorf("expected 'request_number < $1' in SQL, got: %s", sql)
+			}
+			if strings.Contains(sql, "status") {
+				t.Errorf("cursor must not reference status anymore, got: %s", sql)
+			}
+			if len(args) != 1 || args[0] != tc.wantArg {
+				t.Errorf("expected args [%d], got %v", tc.wantArg, args)
+			}
+		})
 	}
 }
 
@@ -80,6 +62,7 @@ func TestWithStatuses_Empty(t *testing.T) {
 
 func TestWithStatuses_Single(t *testing.T) {
 	sql, args := buildFreightSQL(t, WithStatuses([]string{"published"}))
+	// squirrel.Eq всегда даёт IN-форму при работе со слайсом, даже из 1 элемента.
 	if !strings.Contains(sql, "status IN ($1)") {
 		t.Errorf("expected 'status IN ($1)', got: %s", sql)
 	}
@@ -90,6 +73,7 @@ func TestWithStatuses_Single(t *testing.T) {
 
 func TestWithStatuses_Multiple(t *testing.T) {
 	sql, args := buildFreightSQL(t, WithStatuses([]string{"published", "confirmed"}))
+	// squirrel.Eq with slice → IN clause
 	if !strings.Contains(sql, "status IN ($1,$2)") {
 		t.Errorf("expected 'status IN ($1,$2)', got: %s", sql)
 	}
@@ -103,6 +87,7 @@ func assertUUIDArg(t *testing.T, args []any, want uuid.UUID) {
 	if len(args) != 1 {
 		t.Fatalf("expected 1 arg, got %d: %v", len(args), args)
 	}
+	// squirrel.Eq вызывает driver.Valuer на uuid.UUID → в args приходит строка.
 	got, ok := args[0].(string)
 	if !ok {
 		t.Fatalf("expected arg of type string, got %T", args[0])
@@ -200,12 +185,13 @@ func TestCombinedFilters_AreANDed(t *testing.T) {
 	sql, _ := buildFreightSQL(t,
 		WithCustomerOrgID(id),
 		WithStatuses([]string{"confirmed"}),
-		WithCursor(FreightRequestCursor{IsPublished: false, RequestNumber: 50}),
+		WithCursor(FreightRequestCursor{RequestNumber: 50}),
 	)
+	// Все три условия должны присутствовать — AND-семантика.
 	for _, want := range []string{
 		"customer_org_id = $1",
 		"status IN ($2)",
-		"request_number < $4",
+		"request_number < $3",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("expected %q in combined SQL, got: %s", want, sql)

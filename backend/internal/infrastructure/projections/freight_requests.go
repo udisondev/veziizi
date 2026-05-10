@@ -95,39 +95,15 @@ func WithOffset(offset int) FilterOption {
 }
 
 // FreightRequestCursor для keyset pagination.
-// Сортировка: (status = 'published') DESC, request_number DESC
+// Сортировка: request_number DESC (request_number — UNIQUE, обеспечивает стабильный порядок).
 type FreightRequestCursor struct {
-	IsPublished   bool  `json:"p"` // status == 'published'
-	RequestNumber int64 `json:"n"` // request_number
+	RequestNumber int64 `json:"n"`
 }
 
-// WithCursor добавляет условие keyset pagination.
-// Возвращает записи "после" cursor в порядке сортировки.
+// WithCursor добавляет условие keyset pagination — записи "после" cursor.
 func WithCursor(cursor FreightRequestCursor) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		if cursor.IsPublished {
-			// Cursor на published записи.
-			// Следующие записи:
-			//   1. published с меньшим request_number, ИЛИ
-			//   2. не-published (любой request_number)
-			return b.Where(
-				squirrel.Or{
-					squirrel.And{
-						squirrel.Eq{"status": "published"},
-						squirrel.Lt{"request_number": cursor.RequestNumber},
-					},
-					squirrel.NotEq{"status": "published"},
-				},
-			)
-		}
-		// Cursor на не-published записи.
-		// Следующие записи: не-published с меньшим request_number.
-		return b.Where(
-			squirrel.And{
-				squirrel.NotEq{"status": "published"},
-				squirrel.Lt{"request_number": cursor.RequestNumber},
-			},
-		)
+		return b.Where(squirrel.Lt{"request_number": cursor.RequestNumber})
 	}
 }
 
@@ -341,7 +317,7 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 			"carrier_org_id", "carrier_member_id", "confirmed_at",
 		).
 		From("freight_requests_lookup").
-		OrderBy("(status = 'published') DESC", "request_number DESC")
+		OrderBy("request_number DESC")
 
 	for _, opt := range opts {
 		builder = opt(builder)
