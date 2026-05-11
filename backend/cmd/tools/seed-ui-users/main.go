@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/google/uuid"
@@ -26,7 +27,9 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
 	pool, err := pgxpool.New(ctx, cfg.Database.URL)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
@@ -77,18 +80,16 @@ func main() {
 			OwnerPhone:    "+79001110001",
 		})
 		if err != nil {
-			return fmt.Errorf("Profile 1: register org: %w", err)
+			return fmt.Errorf("profile 1: register org: %w", err)
 		}
 		fmt.Printf("  Org ID: %s\n", out1.OrganizationID)
 		fmt.Printf("  Owner:    ui1.owner@test.local / test123 (ID: %s)\n", out1.MemberID)
-
-		time.Sleep(300 * time.Millisecond)
 
 		if err = adminService.Approve(ctx, admin.ApproveInput{
 			OrganizationID: out1.OrganizationID,
 			AdminID:        uuid.Nil,
 		}); err != nil {
-			return fmt.Errorf("Profile 1: approve: %w", err)
+			return fmt.Errorf("profile 1: approve: %w", err)
 		}
 		fmt.Println("  Status: ACTIVE")
 
@@ -102,7 +103,7 @@ func main() {
 			Role:           values.MemberRoleAdministrator,
 		})
 		if err != nil {
-			return fmt.Errorf("Profile 1: add admin: %w", err)
+			return fmt.Errorf("profile 1: add admin: %w", err)
 		}
 		fmt.Printf("  Admin:    ui1.admin@test.local / test123 (ID: %s)\n", adminID)
 
@@ -116,7 +117,7 @@ func main() {
 			Role:           values.MemberRoleEmployee,
 		})
 		if err != nil {
-			return fmt.Errorf("Profile 1: add employee: %w", err)
+			return fmt.Errorf("profile 1: add employee: %w", err)
 		}
 		fmt.Printf("  Employee: ui1.employee@test.local / test123 (ID: %s)\n", empID)
 
@@ -130,10 +131,8 @@ func main() {
 			Role:           values.MemberRoleEmployee,
 		})
 		if err != nil {
-			return fmt.Errorf("Profile 1: add blocked employee: %w", err)
+			return fmt.Errorf("profile 1: add blocked employee: %w", err)
 		}
-
-		time.Sleep(300 * time.Millisecond)
 
 		if err = orgService.BlockMember(ctx, organization.BlockMemberInput{
 			OrganizationID: out1.OrganizationID,
@@ -141,12 +140,10 @@ func main() {
 			MemberID:       blockedID,
 			Reason:         "UI test — заблокированный пользователь",
 		}); err != nil {
-			return fmt.Errorf("Profile 1: block employee: %w", err)
+			return fmt.Errorf("profile 1: block employee: %w", err)
 		}
 		fmt.Printf("  Blocked:  ui1.blocked@test.local / test123 (ID: %s) [BLOCKED]\n", blockedID)
 		fmt.Println()
-
-		time.Sleep(300 * time.Millisecond)
 
 		// ─── Профиль 2: Организация на модерации ───────────────────────────────────
 
@@ -166,14 +163,12 @@ func main() {
 			OwnerPhone:    "+79001110010",
 		})
 		if err != nil {
-			return fmt.Errorf("Profile 2: register org: %w", err)
+			return fmt.Errorf("profile 2: register org: %w", err)
 		}
 		fmt.Printf("  Org ID: %s\n", out2.OrganizationID)
 		fmt.Printf("  Owner:  ui2.owner@test.local / test123\n")
 		fmt.Printf("  Status: PENDING (на модерации)\n")
 		fmt.Println()
-
-		time.Sleep(300 * time.Millisecond)
 
 		// ─── Профиль 3: Приостановленная организация ───────────────────────────────
 
@@ -193,44 +188,33 @@ func main() {
 			OwnerPhone:    "+79001110020",
 		})
 		if err != nil {
-			return fmt.Errorf("Profile 3: register org: %w", err)
+			return fmt.Errorf("profile 3: register org: %w", err)
 		}
 		fmt.Printf("  Org ID: %s\n", out3.OrganizationID)
 
-		time.Sleep(300 * time.Millisecond)
-
-		// Approve first
-		if err := adminService.Approve(ctx, admin.ApproveInput{
+		if err = adminService.Approve(ctx, admin.ApproveInput{
 			OrganizationID: out3.OrganizationID,
 			AdminID:        uuid.Nil,
 		}); err != nil {
-			return fmt.Errorf("Profile 3: approve: %w", err)
+			return fmt.Errorf("profile 3: approve: %w", err)
 		}
 
-		time.Sleep(300 * time.Millisecond)
-
-		// Load org and suspend
 		org3, err := adminService.GetOrganization(ctx, out3.OrganizationID)
 		if err != nil {
-			return fmt.Errorf("Profile 3: load org: %w", err)
+			return fmt.Errorf("profile 3: load org: %w", err)
 		}
 		if err := org3.Suspend(uuid.Nil, "UI test — приостановленная организация"); err != nil {
-			return fmt.Errorf("Profile 3: suspend org: %w", err)
+			return fmt.Errorf("profile 3: suspend org: %w", err)
 		}
 
 		changes := org3.Changes()
-		if err := txManager.InTx(ctx, func(ctx context.Context) error {
-			if err := evtStore.Save(ctx, changes...); err != nil {
-				return fmt.Errorf("failed to save: %w", err)
-			}
-			if err := publisher.Publish(ctx, "organization.events", changes...); err != nil {
-				return fmt.Errorf("failed to publish: %w", err)
-			}
-			org3.ClearChanges()
-			return nil
-		}); err != nil {
-			return fmt.Errorf("Profile 3: save suspension: %w", err)
+		if err := evtStore.Save(ctx, changes...); err != nil {
+			return fmt.Errorf("profile 3: save suspension: %w", err)
 		}
+		if err := publisher.Publish(ctx, "organization.events", changes...); err != nil {
+			return fmt.Errorf("profile 3: publish suspension: %w", err)
+		}
+		org3.ClearChanges()
 
 		fmt.Printf("  Owner:  ui3.owner@test.local / test123\n")
 		fmt.Printf("  Status: SUSPENDED (приостановлена)\n")
