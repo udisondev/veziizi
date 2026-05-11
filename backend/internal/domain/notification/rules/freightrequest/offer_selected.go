@@ -52,7 +52,7 @@ func (r *OfferSelectedRule) Process(ctx context.Context, event eventstore.Event)
 			NotificationType:  values.TypeOfferSelected,
 			Title:             "Предложение выбрано",
 			Body:              fmt.Sprintf("Ваше предложение по заявке #%d выбрано", fr.RequestNumber),
-			Link:              fmt.Sprintf("/freight-requests/%s", fr.ID),
+			Link:              fmt.Sprintf("/freight-requests/%s?tab=offers", fr.ID),
 			EntityType:        values.EntityFreightRequest,
 			EntityID:          fr.ID,
 		},

@@ -42,6 +42,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   const paymentMethods = ref<PaymentMethod[]>([])
   const paymentTerms = ref<PaymentTerms[]>([])
   const vatTypes = ref<VatType[]>([])
+  const hasPendingOffers = ref(false)
 
   // Helper для проверки что статусы изменены относительно дефолта
   const isStatusesChanged = computed(() => {
@@ -108,6 +109,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     paymentMethods?: PaymentMethod[]
     paymentTerms?: PaymentTerms[]
     vatTypes?: VatType[]
+    hasPendingOffers?: boolean
   }) {
     if (filters.ownership !== undefined) ownershipFilter.value = filters.ownership
     if (filters.orgINN !== undefined) orgINNFilter.value = filters.orgINN
@@ -124,6 +126,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     if (filters.paymentMethods !== undefined) paymentMethods.value = filters.paymentMethods
     if (filters.paymentTerms !== undefined) paymentTerms.value = filters.paymentTerms
     if (filters.vatTypes !== undefined) vatTypes.value = filters.vatTypes
+    if (filters.hasPendingOffers !== undefined) hasPendingOffers.value = filters.hasPendingOffers
   }
 
   // Pagination actions
@@ -156,6 +159,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     paymentMethods.value = []
     paymentTerms.value = []
     vatTypes.value = []
+    hasPendingOffers.value = false
     // Сброс пагинации при сбросе фильтров
     resetPagination()
   }
@@ -207,6 +211,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     paymentMethods,
     paymentTerms,
     vatTypes,
+    hasPendingOffers,
 
     // Pagination state
     cursor,

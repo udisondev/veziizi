@@ -101,7 +101,7 @@ const userInitial = computed(() => {
           </Button>
 
           <!-- Logo -->
-          <router-link to="/" class="shrink-0">
+          <router-link :to="{ path: '/', query: { tab: 'dashboard' } }" class="shrink-0">
             <img :src="logoUrl" alt="ВезиИзи" class="h-9 w-auto" />
           </router-link>
           <BottomSheet v-model="isMenuOpen" label="Меню">

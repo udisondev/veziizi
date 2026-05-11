@@ -144,3 +144,16 @@ export function getCategoryByType(type: NotificationType): NotificationCategory 
       return 'organization'
   }
 }
+
+const categoryTabMap: Partial<Record<NotificationCategory, string>> = {
+  offers: 'offers',
+}
+
+export function getNotificationLink(notification: Notification): string | undefined {
+  if (!notification.link) return undefined
+  const tab = categoryTabMap[getCategoryByType(notification.notification_type)]
+  if (!tab) return notification.link
+  if (notification.link.includes(`tab=${tab}`)) return notification.link
+  const sep = notification.link.includes('?') ? '&' : '?'
+  return `${notification.link}${sep}tab=${tab}`
+}

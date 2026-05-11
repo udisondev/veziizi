@@ -1,0 +1,472 @@
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
+import { useOnboardingStore } from '@/stores/onboarding'
+import { useFreightFiltersStore } from '@/stores/freightFilters'
+import { usePermissions } from '@/composables/usePermissions'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
+import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
+import type { FreightRequestListItem } from '@/types/freightRequest'
+import {
+  vehicleTypeLabels,
+  vehicleSubTypeLabels,
+  currencyLabels,
+} from '@/types/freightRequest'
+import { freightRequestStatusMap } from '@/constants/statusMaps'
+import { formatDateShort, formatWeight } from '@/utils/formatters'
+import { logger } from '@/utils/logger'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  StatusBadge,
+  LoadingSpinner,
+  EmptyState,
+  ErrorBanner,
+} from '@/components/shared'
+import { FreightFiltersForm } from '@/components/filters'
+import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer } from 'lucide-vue-next'
+
+const PAGE_SIZE = 20
+
+const router = useRouter()
+const auth = useAuthStore()
+const onboarding = useOnboardingStore()
+const filtersStore = useFreightFiltersStore()
+const { canCreateFreightRequest, canCreateOffer } = usePermissions()
+
+const emit = defineEmits<{
+  'go-to-new': []
+}>()
+
+const items = ref<FreightRequestListItem[]>([])
+const isLoading = ref(false)
+const isLoadingMore = ref(false)
+const error = ref<string | null>(null)
+const mobileFiltersOpen = ref(false)
+
+const {
+  ownershipFilter,
+  orgINNFilter,
+  requestNumber,
+  statuses,
+  routePoints,
+  minWeight,
+  maxWeight,
+  minPrice,
+  maxPrice,
+  minVolume,
+  maxVolume,
+  vehicleSubTypes,
+  paymentMethods,
+  paymentTerms,
+  vatTypes,
+  hasPendingOffers,
+  hasActiveFilters,
+  cursor,
+  hasMore,
+} = storeToRefs(filtersStore)
+
+function buildParams(): FreightRequestListParams {
+  const params: FreightRequestListParams = { limit: PAGE_SIZE }
+
+  if (statuses.value.length > 0) {
+    params.statuses = statuses.value.join(',')
+  }
+
+  if (ownershipFilter.value === 'my_org' && auth.organizationId) {
+    params.customer_org_id = auth.organizationId
+  } else if (ownershipFilter.value === 'my_as_carrier' && auth.organizationId) {
+    params.carrier_org_id = auth.organizationId
+  } else if (ownershipFilter.value === 'my' && auth.memberId) {
+    params.member_id = auth.memberId
+  }
+
+  if (orgINNFilter.value) params.org_inn = orgINNFilter.value
+  if (requestNumber.value) params.request_number = requestNumber.value
+
+  // 0/NaN/undefined → фильтр выключен; иначе нижняя граница 0 исключит NULL-значения.
+  const positive = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+  if (positive(minWeight.value)) params.min_weight = minWeight.value
+  if (positive(maxWeight.value)) params.max_weight = maxWeight.value
+  if (positive(minPrice.value)) params.min_price = minPrice.value
+  if (positive(maxPrice.value)) params.max_price = maxPrice.value
+  if (positive(minVolume.value)) params.min_volume = minVolume.value
+  if (positive(maxVolume.value)) params.max_volume = maxVolume.value
+
+  if (vehicleSubTypes.value.length > 0) params.vehicle_subtypes = vehicleSubTypes.value.join(',')
+  if (paymentMethods.value.length > 0) params.payment_methods = paymentMethods.value.join(',')
+  if (paymentTerms.value.length > 0) params.payment_terms = paymentTerms.value.join(',')
+  if (vatTypes.value.length > 0) params.vat_types = vatTypes.value.join(',')
+  if (hasPendingOffers.value) params.has_pending_offers = true
+
+  if (routePoints.value.length > 0) {
+    const cityIds = routePoints.value
+      .filter(rp => rp.cityId !== undefined)
+      .map(rp => rp.cityId)
+    if (cityIds.length > 0) params.route_city_ids = cityIds.join(',')
+
+    const countryIds = routePoints.value
+      .filter(rp => rp.countryId !== undefined && rp.cityId === undefined)
+      .map(rp => rp.countryId)
+    if (countryIds.length > 0) params.route_country_ids = countryIds.join(',')
+  }
+
+  return params
+}
+
+async function loadItems() {
+  isLoading.value = true
+  error.value = null
+  filtersStore.resetPagination()
+  items.value = []
+
+  try {
+    const params = buildParams()
+    const response = await freightRequestsApi.list(params)
+    items.value = response.items ?? []
+    filtersStore.setCursor(response.next_cursor)
+    filtersStore.setHasMore(response.has_more)
+  } catch (e) {
+    error.value = 'Не удалось загрузить заявки'
+    logger.error('Failed to load freight requests', e)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function loadMoreItems() {
+  if (!hasMore.value || isLoadingMore.value || !cursor.value) return
+
+  isLoadingMore.value = true
+  try {
+    const params = buildParams()
+    params.cursor = cursor.value
+    const response = await freightRequestsApi.list(params)
+    items.value.push(...(response.items ?? []))
+    filtersStore.setCursor(response.next_cursor)
+    filtersStore.setHasMore(response.has_more)
+  } catch (e) {
+    logger.error('Failed to load more freight requests', e)
+  } finally {
+    isLoadingMore.value = false
+  }
+}
+
+const canLoadMore = computed(() => hasMore.value && !isLoadingMore.value && cursor.value !== undefined)
+const { sentinelRef, reset: resetInfiniteScroll } = useInfiniteScroll(loadMoreItems, {
+  threshold: 300,
+  enabled: canLoadMore,
+})
+
+void sentinelRef
+
+function goToDetail(id: string) {
+  router.push(`/freight-requests/${id}`)
+}
+
+function formatPrice(amount?: number, currency?: string): string {
+  if (!amount || !currency) return '—'
+  const value = amount / 100
+  const symbol = currencyLabels[currency as keyof typeof currencyLabels] || currency
+  return `${value.toLocaleString('ru-RU')} ${symbol}`
+}
+
+function formatWeightDisplay(weight?: number): string {
+  if (!weight) return '—'
+  return formatWeight(weight * 1000)
+}
+
+function getTransitPointsCount(item: FreightRequestListItem): number {
+  if (!item.route?.points || item.route.points.length <= 2) return 0
+  return item.route.points.length - 2
+}
+
+function formatVehicleType(type?: string, subtype?: string): string {
+  if (!type) return '—'
+  const typeLabel = vehicleTypeLabels[type as keyof typeof vehicleTypeLabels] || type
+  if (subtype) {
+    const subtypeLabel = vehicleSubTypeLabels[subtype as keyof typeof vehicleSubTypeLabels] || subtype
+    return `${typeLabel} (${subtypeLabel})`
+  }
+  return typeLabel
+}
+
+function isExpiringSoon(expiresAt: string): boolean {
+  const expires = new Date(expiresAt)
+  const now = new Date()
+  const diffDays = (expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+  return diffDays > 0 && diffDays <= 3
+}
+
+function sandboxRequestToListItem(req: NonNullable<typeof onboarding.sandboxCreatedRequest>): FreightRequestListItem {
+  return {
+    id: req.id,
+    request_number: 1,
+    customer_org_id: 'sandbox-org-1',
+    status: req.status as 'published',
+    origin_address: req.origin_address,
+    destination_address: req.destination_address,
+    cargo_weight: req.cargo_weight / 1000,
+    vehicle_type: req.vehicle_type,
+    vehicle_subtype: req.vehicle_subtype,
+    price_amount: req.price_amount,
+    price_currency: req.price_currency,
+    created_at: req.created_at,
+    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    customer_org_name: 'Моя организация',
+  }
+}
+
+const displayItems = computed<FreightRequestListItem[]>(() => {
+  if (onboarding.isSandboxMode && onboarding.sandboxCreatedRequest) {
+    return [sandboxRequestToListItem(onboarding.sandboxCreatedRequest)]
+  }
+  return items.value
+})
+
+let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const FILTER_DEBOUNCE_MS = 300
+
+watch(
+  [
+    ownershipFilter, orgINNFilter, requestNumber, statuses, routePoints,
+    minWeight, maxWeight, minPrice, maxPrice, minVolume, maxVolume,
+    vehicleSubTypes, paymentMethods, paymentTerms, vatTypes, hasPendingOffers,
+  ],
+  () => {
+    if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+    filterDebounceTimer = setTimeout(async () => {
+      await loadItems()
+      await nextTick()
+      resetInfiniteScroll()
+    }, FILTER_DEBOUNCE_MS)
+  },
+  { deep: true }
+)
+
+onUnmounted(() => {
+  if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+})
+
+onMounted(() => {
+  loadItems()
+})
+</script>
+
+<template>
+  <div>
+    <!-- Toolbar -->
+    <div class="flex items-center justify-between mb-4 gap-2">
+      <div class="flex items-center gap-2">
+        <span v-if="hasActiveFilters" class="text-sm text-muted-foreground">
+          Активны фильтры
+        </span>
+        <Button
+          v-if="hasActiveFilters"
+          variant="ghost"
+          size="sm"
+          @click="filtersStore.resetFilters"
+        >
+          Сбросить
+        </Button>
+      </div>
+    </div>
+
+    <!-- Mobile filter toggle -->
+    <div class="lg:hidden mb-2">
+      <Button variant="outline" class="w-full" @click="mobileFiltersOpen = !mobileFiltersOpen">
+        <SlidersHorizontal class="h-4 w-4 mr-2" />
+        Фильтры
+        <span
+          v-if="hasActiveFilters"
+          class="ml-2 inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium"
+        >
+          ●
+        </span>
+      </Button>
+    </div>
+
+    <!-- 2-column layout: filters | list -->
+    <div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
+
+      <!-- Filters -->
+      <div class="lg:sticky lg:top-6">
+        <div :class="['accordion-grid filters-accordion', mobileFiltersOpen ? 'is-open' : '']">
+          <div class="overflow-hidden lg:overflow-visible">
+            <div class="space-y-2 pb-2">
+              <FreightFiltersForm
+                compact
+                :route-points="routePoints"
+                :min-weight="minWeight"
+                :max-weight="maxWeight"
+                :min-price="minPrice"
+                :max-price="maxPrice"
+                :min-volume="minVolume"
+                :max-volume="maxVolume"
+                :vehicle-sub-types="vehicleSubTypes"
+                :payment-methods="paymentMethods"
+                :payment-terms="paymentTerms"
+                :vat-types="vatTypes"
+                show-ownership
+                :ownership="ownershipFilter"
+                show-i-n-n
+                :org-i-n-n="orgINNFilter"
+                show-request-number
+                :request-number="requestNumber"
+                show-statuses
+                :statuses="statuses"
+                data-tutorial="filters-btn"
+                @add-route-point="filtersStore.addRoutePoint"
+                @remove-route-point="filtersStore.removeRoutePoint"
+                @update-route-point="filtersStore.updateRoutePoint"
+                @reorder-route-points="filtersStore.reorderRoutePoints"
+                @update:min-weight="filtersStore.setFilters({ minWeight: $event })"
+                @update:max-weight="filtersStore.setFilters({ maxWeight: $event })"
+                @update:min-price="filtersStore.setFilters({ minPrice: $event })"
+                @update:max-price="filtersStore.setFilters({ maxPrice: $event })"
+                @update:min-volume="filtersStore.setFilters({ minVolume: $event })"
+                @update:max-volume="filtersStore.setFilters({ maxVolume: $event })"
+                @update:vehicle-sub-types="filtersStore.setFilters({ vehicleSubTypes: $event })"
+                @update:payment-methods="filtersStore.setFilters({ paymentMethods: $event })"
+                @update:payment-terms="filtersStore.setFilters({ paymentTerms: $event })"
+                @update:vat-types="filtersStore.setFilters({ vatTypes: $event })"
+                @update:ownership="filtersStore.setFilters({ ownership: $event })"
+                @update:org-i-n-n="filtersStore.setFilters({ orgINN: $event })"
+                @update:request-number="filtersStore.setFilters({ requestNumber: $event })"
+                @update:statuses="filtersStore.setFilters({ statuses: $event })"
+              />
+              <div v-if="hasActiveFilters" class="flex justify-center pt-1">
+                <Button variant="ghost" size="sm" @click="filtersStore.resetFilters">
+                  Сбросить фильтры
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- List -->
+      <div>
+        <LoadingSpinner v-if="isLoading" text="Загрузка заявок..." />
+
+        <ErrorBanner
+          v-else-if="error"
+          :message="error"
+          @retry="loadItems"
+        />
+
+        <EmptyState
+          v-else-if="displayItems.length === 0"
+          :icon="Package"
+          title="Заявок пока нет"
+          :description="hasActiveFilters ? 'Нет заявок по заданным фильтрам' : 'Создайте первую заявку на перевозку'"
+          :action-label="canCreateFreightRequest && !hasActiveFilters ? 'Создать заявку' : undefined"
+          @action="emit('go-to-new')"
+        />
+
+        <div v-else class="space-y-3">
+          <Card
+            v-for="item in displayItems"
+            :key="item.id"
+            data-tutorial="freight-request-card"
+            interactive
+            @click="goToDetail(item.id)"
+          >
+            <CardContent class="p-4">
+
+              <!-- Header: number + status | price -->
+              <div class="flex items-start justify-between gap-3 mb-3">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-sm font-medium text-muted-foreground">#{{ item.request_number }}</span>
+                  <StatusBadge :status="item.status" :status-map="freightRequestStatusMap" />
+                  <span
+                    v-if="item.status === 'published' && isExpiringSoon(item.expires_at)"
+                    class="inline-flex items-center gap-1 text-xs text-destructive"
+                  >
+                    <Clock class="h-3 w-3" />
+                    Истекает {{ formatDateShort(item.expires_at) }}
+                  </span>
+                </div>
+                <div v-if="item.price_amount" class="text-base font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                  {{ formatPrice(item.price_amount, item.price_currency) }}
+                </div>
+              </div>
+
+              <!-- Route -->
+              <div class="flex items-stretch gap-3 mb-3">
+                <div class="flex flex-col items-center py-2">
+                  <div class="w-2 h-2 rounded-full bg-primary shrink-0" />
+                  <div class="w-px flex-1 min-h-[18px] border-l border-dashed border-muted-foreground/40" />
+                  <div class="w-2 h-2 rounded-full bg-muted-foreground/50 shrink-0" />
+                </div>
+                <div class="flex flex-col justify-between flex-1 min-w-0">
+                  <div class="flex items-baseline gap-1.5 min-w-0">
+                    <span class="text-base font-semibold text-foreground truncate">{{ item.origin_address || '—' }}</span>
+                    <span
+                      v-if="getTransitPointsCount(item) > 0"
+                      class="text-xs text-primary font-medium shrink-0"
+                    >+{{ getTransitPointsCount(item) }}</span>
+                  </div>
+                  <div class="text-base text-muted-foreground truncate">
+                    {{ item.destination_address || '—' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer: meta + offer button -->
+              <div class="flex items-center justify-between gap-3 pt-2.5 border-t">
+                <div class="flex items-center gap-3 flex-wrap text-xs text-muted-foreground min-w-0">
+                  <span v-if="item.cargo_weight" class="flex items-center gap-1">
+                    <Weight class="h-3.5 w-3.5 shrink-0" />
+                    {{ formatWeightDisplay(item.cargo_weight) }}
+                  </span>
+                  <span v-if="item.vehicle_type" class="flex items-center gap-1 shrink-0">
+                    <Truck class="h-3.5 w-3.5 shrink-0" />
+                    {{ formatVehicleType(item.vehicle_type, item.vehicle_subtype) }}
+                  </span>
+                  <span v-if="item.customer_org_name" class="flex items-center gap-1 truncate max-w-40">
+                    <Building2 class="h-3.5 w-3.5 shrink-0" />
+                    {{ item.customer_org_name }}
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <CalendarDays class="h-3.5 w-3.5 shrink-0" />
+                    {{ formatDateShort(item.created_at) }}
+                  </span>
+                  <span v-if="item.status === 'published' && item.expires_at && !isExpiringSoon(item.expires_at)" class="flex items-center gap-1">
+                    <Timer class="h-3.5 w-3.5 shrink-0" />
+                    до {{ formatDateShort(item.expires_at) }}
+                  </span>
+                </div>
+                <Button
+                  v-if="item.status === 'published' && canCreateOffer(item.customer_org_id)"
+                  size="sm"
+                  variant="outline"
+                  class="shrink-0 text-xs h-7"
+                  @click.stop="router.push({ name: 'freight-request-make-offer', params: { id: item.id } })"
+                >
+                  Сделать оффер
+                </Button>
+              </div>
+
+            </CardContent>
+          </Card>
+
+          <!-- Infinite scroll sentinel -->
+          <div ref="sentinelRef" class="h-16 flex items-center justify-center">
+            <template v-if="isLoadingMore">
+              <LoadingSpinner text="Загрузка..." />
+            </template>
+            <template v-else-if="!hasMore && items.length > 0">
+              <span class="text-sm text-muted-foreground">
+                Все заявки загружены ({{ items.length }})
+              </span>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

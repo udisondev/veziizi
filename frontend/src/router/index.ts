@@ -75,7 +75,7 @@ const router = createRouter({
     {
       path: '/',
       name: 'freight-requests',
-      component: () => import('@/views/FreightRequestsView.vue'),
+      component: () => import('@/views/FreightRequestsMainView.vue'),
       meta: { title: 'Заявки' },
     },
     {

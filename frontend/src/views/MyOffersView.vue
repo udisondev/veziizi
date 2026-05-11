@@ -10,6 +10,8 @@ import {
 } from '@/types/freightRequest'
 import { logger } from '@/utils/logger'
 import { useAsyncList } from '@/composables/useAsyncData'
+import { useNotificationsStore } from '@/stores/notifications'
+import { getCategoryByType } from '@/types/notification'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -86,7 +88,7 @@ const declineReason = ref('')
 
 
 function goToFreightRequest(frId: string) {
-  router.push(`/freight-requests/${frId}`)
+  router.push(`/freight-requests/${frId}?tab=offers`)
 }
 
 function formatDate(dateStr: string): string {
@@ -232,6 +234,17 @@ async function executeAction() {
 // Watch filters
 watch(statusFilter, () => {
   loadItems()
+})
+
+// Обновляем список когда приходит уведомление об изменении оффера
+const notificationsStore = useNotificationsStore()
+const lastOfferNotificationId = computed(() =>
+  notificationsStore.notifications.find(
+    n => getCategoryByType(n.notification_type) === 'offers'
+  )?.id ?? null
+)
+watch(lastOfferNotificationId, (newId, oldId) => {
+  if (newId && newId !== oldId) loadItems()
 })
 
 </script>

@@ -45,7 +45,7 @@ func (r *OfferConfirmedRule) Process(ctx context.Context, event eventstore.Event
 			NotificationType:  values.TypeOfferConfirmed,
 			Title:             "Предложение подтверждено",
 			Body:              fmt.Sprintf("По заявке #%d создан заказ", fr.RequestNumber),
-			Link:              fmt.Sprintf("/freight-requests/%s", fr.ID),
+			Link:              fmt.Sprintf("/freight-requests/%s?tab=offers", fr.ID),
 			EntityType:        values.EntityFreightRequest,
 			EntityID:          fr.ID,
 		},

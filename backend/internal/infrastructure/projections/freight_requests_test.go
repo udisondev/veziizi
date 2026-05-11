@@ -26,8 +26,8 @@ func buildFreightSQL(t *testing.T, opts ...FilterOption) (string, []any) {
 
 func TestWithCursor(t *testing.T) {
 	cases := []struct {
-		name   string
-		cursor FreightRequestCursor
+		name    string
+		cursor  FreightRequestCursor
 		wantArg int64
 	}{
 		{"normal", FreightRequestCursor{RequestNumber: 100}, 100},
@@ -106,6 +106,15 @@ func TestWithCustomerOrgID(t *testing.T) {
 	assertUUIDArg(t, args, id)
 }
 
+func TestWithFreightCarrierOrgID(t *testing.T) {
+	id := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	sql, args := buildFreightSQL(t, WithFreightCarrierOrgID(id))
+	if !strings.Contains(sql, "carrier_org_id = $1") {
+		t.Errorf("expected 'carrier_org_id = $1', got: %s", sql)
+	}
+	assertUUIDArg(t, args, id)
+}
+
 func TestWithCustomerMemberID(t *testing.T) {
 	id := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	sql, args := buildFreightSQL(t, WithCustomerMemberID(id))
@@ -155,6 +164,19 @@ func TestWithRouteCountries_NonEmpty(t *testing.T) {
 	}
 	if len(args) != 1 || args[0] != "{7,8}" {
 		t.Errorf("expected args [\"{7,8}\"], got %v", args)
+	}
+}
+
+func TestWithHasPendingOffers(t *testing.T) {
+	sql, _ := buildFreightSQL(t, WithHasPendingOffers())
+	if !strings.Contains(sql, "EXISTS") {
+		t.Errorf("expected EXISTS subquery, got: %s", sql)
+	}
+	if !strings.Contains(sql, "offers_lookup") {
+		t.Errorf("expected offers_lookup reference, got: %s", sql)
+	}
+	if !strings.Contains(sql, "o.status = 'pending'") {
+		t.Errorf("expected pending status filter, got: %s", sql)
 	}
 }
 

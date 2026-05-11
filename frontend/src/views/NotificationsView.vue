@@ -2,8 +2,8 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
-import type { NotificationCategory } from '@/types/notification'
-import { categoryLabels, allCategories } from '@/types/notification'
+import type { Notification, NotificationCategory } from '@/types/notification'
+import { categoryLabels, allCategories, getNotificationLink } from '@/types/notification'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -70,11 +70,10 @@ async function loadNotifications() {
   })
 }
 
-function handleNotificationClick(notification: { id: string; link?: string }) {
+function handleNotificationClick(notification: Notification) {
   notificationsStore.markAsRead(notification.id)
-  if (notification.link) {
-    router.push(notification.link)
-  }
+  const link = getNotificationLink(notification)
+  if (link) router.push(link)
 }
 
 function goToSettings() {

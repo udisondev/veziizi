@@ -45,7 +45,7 @@ func (r *OfferDeclinedRule) Process(ctx context.Context, event eventstore.Event)
 			NotificationType:  values.TypeOfferDeclined,
 			Title:             "Предложение отклонено",
 			Body:              fmt.Sprintf("Перевозчик отклонил выбранное предложение по заявке #%d", fr.RequestNumber),
-			Link:              fmt.Sprintf("/freight-requests/%s", fr.ID),
+			Link:              fmt.Sprintf("/freight-requests/%s?tab=offers", fr.ID),
 			EntityType:        values.EntityFreightRequest,
 			EntityID:          fr.ID,
 		},

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFreightRequestForm } from '@/composables/useFreightRequestForm'
 import { useTutorialEvent } from '@/composables/useTutorialEvent'
@@ -7,6 +7,10 @@ import { useOnboardingStore } from '@/stores/onboarding'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { scrollToFirstError } from '@/utils/scrollToError'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from '@/components/ui/dialog'
 import WizardStepIndicator from './WizardStepIndicator.vue'
 import RouteStep from './steps/RouteStep.vue'
 import CargoStep from './steps/CargoStep.vue'
@@ -33,6 +37,26 @@ const onboarding = useOnboardingStore()
 
 const isLoading = ref(false)
 const apiError = ref('')
+const showCancelConfirm = ref(false)
+
+function handleCancel() {
+  showCancelConfirm.value = true
+}
+
+function confirmCancel() {
+  showCancelConfirm.value = false
+  form.resetForm()
+  router.push(props.editMode && props.freightRequestId ? `/freight-requests/${props.freightRequestId}` : '/')
+}
+
+const hasFormData = computed(() => {
+  const hasRoute = form.routePoints.value.some(p => p.address || p.city_id)
+  const hasCargo = !!form.cargo.description || (form.cargo.weight ?? 0) > 0
+  const hasVehicle = !!form.vehicle.vehicle_type
+  const hasPayment = !!form.payment.price || form.payment.no_price
+  const hasComment = !!form.comment.value
+  return hasRoute || hasCargo || hasVehicle || hasPayment || hasComment
+})
 
 const steps = ['Маршрут', 'Груз', 'Транспорт', 'Оплата', 'Готово']
 
@@ -174,25 +198,36 @@ function handleNext() {
     </div>
 
     <!-- Navigation buttons -->
-    <div class="py-4 border-t border-border flex items-center gap-3 md:px-6" data-tutorial="wizard-buttons">
-      <Button
-        v-if="form.currentStep.value > 1"
+    <div class="py-4 border-t border-border flex items-center justify-between gap-3 md:px-6" data-tutorial="wizard-buttons">
+      <button
+        v-if="hasFormData"
         type="button"
-        variant="outline"
-        class="h-12 text-base md:h-10 md:text-sm"
-        data-tutorial="back-btn"
-        @click="form.prevStep"
+        class="text-base md:text-sm text-muted-foreground hover:text-foreground transition-colors"
+        @click="handleCancel"
       >
-        Назад
-      </Button>
+        Сбросить форму
+      </button>
+      <div v-else />
 
-      <Button
-        type="button"
-        class="h-12 text-base md:h-10 md:text-sm"
-        data-tutorial="submit-btn"
-        :disabled="isLoading"
-        @click="handleNext"
-      >
+      <div class="flex items-center gap-3">
+        <Button
+          v-if="form.currentStep.value > 1"
+          type="button"
+          variant="outline"
+          class="h-12 text-base md:h-10 md:text-sm"
+          data-tutorial="back-btn"
+          @click="form.prevStep"
+        >
+          Назад
+        </Button>
+
+        <Button
+          type="button"
+          class="h-12 text-base md:h-10 md:text-sm"
+          data-tutorial="submit-btn"
+          :disabled="isLoading"
+          @click="handleNext"
+        >
         <svg v-if="isLoading" class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -204,13 +239,26 @@ function handleNext() {
             : 'Далее'
         }}
       </Button>
-
-      <router-link
-        :to="editMode && freightRequestId ? `/freight-requests/${freightRequestId}` : '/'"
-        class="text-base md:text-sm text-muted-foreground hover:text-foreground transition-colors ml-1"
-      >
-        Отмена
-      </router-link>
+      </div>
     </div>
   </div>
+
+  <Dialog v-model:open="showCancelConfirm">
+    <DialogContent class="w-auto gap-8">
+      <DialogHeader class="space-y-3">
+        <DialogTitle>Отменить создание заявки?</DialogTitle>
+        <DialogDescription>
+          Все введённые данные будут потеряны.
+        </DialogDescription>
+      </DialogHeader>
+      <DialogFooter class="gap-3">
+        <Button variant="outline" @click="showCancelConfirm = false">
+          Продолжить заполнение
+        </Button>
+        <Button variant="destructive" @click="confirmCancel">
+          Сбросить форму
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>

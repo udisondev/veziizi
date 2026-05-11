@@ -61,6 +61,12 @@ func WithCustomerOrgID(id uuid.UUID) FilterOption {
 	}
 }
 
+func WithFreightCarrierOrgID(id uuid.UUID) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"carrier_org_id": id})
+	}
+}
+
 func WithStatus(status string) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where(squirrel.Eq{"status": status})
@@ -227,6 +233,12 @@ func joinInts(nums []int) string {
 		fmt.Fprintf(&result, ",%d", nums[i])
 	}
 	return result.String()
+}
+
+func WithHasPendingOffers() FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where("EXISTS (SELECT 1 FROM offers_lookup o WHERE o.freight_request_id = freight_requests_lookup.id AND o.status = 'pending')")
+	}
 }
 
 func WithRouteCities(cityIDs []int) FilterOption {
@@ -610,7 +622,8 @@ func (p *FreightRequestsProjection) HaveSharedConfirmedFreight(ctx context.Conte
 	return true, nil
 }
 
-// OrgStats содержит агрегированную статистику организации
+// OrgStats — публичная агрегированная статистика организации.
+// Симметрично с GetRating: эти счётчики и так показываются на публичном профиле.
 type OrgStats struct {
 	TotalFreightRequests  int `json:"total_freight_requests"`
 	ActiveFreightRequests int `json:"active_freight_requests"`
@@ -619,7 +632,7 @@ type OrgStats struct {
 	SuccessfulOffers      int `json:"successful_offers"`
 }
 
-// GetOrgStats возвращает статистику организации по freight requests и offers
+// GetOrgStats возвращает публичную статистику организации.
 func (p *FreightRequestsProjection) GetOrgStats(ctx context.Context, orgID uuid.UUID) (*OrgStats, error) {
 	query := `
 		SELECT
@@ -642,4 +655,124 @@ func (p *FreightRequestsProjection) GetOrgStats(ctx context.Context, orgID uuid.
 	}
 
 	return &stats, nil
+}
+
+// DashboardStats — операционные показатели в моменте: пайплайн, входящие офферы, рынок.
+// Доступны только членам организации (см. handler).
+type DashboardStats struct {
+	AsCustomerPublished         int `json:"as_customer_published"`
+	AsCustomerSelected          int `json:"as_customer_selected"`
+	AsCustomerConfirmed         int `json:"as_customer_confirmed"`
+	AsCarrierConfirmed          int `json:"as_carrier_confirmed"`
+	AsCarrierPartiallyCompleted int `json:"as_carrier_partially_completed"`
+	PendingOffersCount          int `json:"pending_offers_count"`
+	PendingOffersToday          int `json:"pending_offers_today"`
+	MarketPublishedToday        int `json:"market_published_today"`
+}
+
+// GetDashboardStats возвращает моментальные операционные показатели организации.
+func (p *FreightRequestsProjection) GetDashboardStats(ctx context.Context, orgID uuid.UUID) (*DashboardStats, error) {
+	query := `
+		SELECT
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status = 'published'),
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status = 'selected'),
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE customer_org_id = $1 AND status = 'confirmed'),
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE carrier_org_id = $1 AND status = 'confirmed'),
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE carrier_org_id = $1 AND status = 'partially_completed'),
+			(SELECT COUNT(DISTINCT fr.id) FROM offers_lookup o JOIN freight_requests_lookup fr ON fr.id = o.freight_request_id WHERE fr.customer_org_id = $1 AND o.status = 'pending'),
+			(SELECT COUNT(DISTINCT fr.id) FROM offers_lookup o JOIN freight_requests_lookup fr ON fr.id = o.freight_request_id WHERE fr.customer_org_id = $1 AND o.status = 'pending' AND o.created_at >= NOW() - INTERVAL '24 hours'),
+			(SELECT COUNT(*) FROM freight_requests_lookup WHERE status = 'published' AND customer_org_id != $1 AND created_at >= NOW() - INTERVAL '24 hours')
+	`
+
+	var stats DashboardStats
+	if err := p.db.QueryRow(ctx, query, orgID).Scan(
+		&stats.AsCustomerPublished,
+		&stats.AsCustomerSelected,
+		&stats.AsCustomerConfirmed,
+		&stats.AsCarrierConfirmed,
+		&stats.AsCarrierPartiallyCompleted,
+		&stats.PendingOffersCount,
+		&stats.PendingOffersToday,
+		&stats.MarketPublishedToday,
+	); err != nil {
+		return nil, fmt.Errorf("get dashboard stats: %w", err)
+	}
+
+	return &stats, nil
+}
+
+// PendingOfferItem — заявка с pending-офферами (по одной строке на заявку, последний оффер)
+type PendingOfferItem struct {
+	ID                 uuid.UUID  `json:"id"`
+	FreightRequestID   uuid.UUID  `json:"freight_request_id"`
+	RequestNumber      int        `json:"request_number"`
+	CarrierOrgID       uuid.UUID  `json:"carrier_org_id"`
+	CarrierOrgName     string     `json:"carrier_org_name"`
+	OriginAddress      string     `json:"origin_address"`
+	DestinationAddress string     `json:"destination_address"`
+	PriceAmount        *int64     `json:"price_amount,omitempty"`
+	PriceCurrency      *string    `json:"price_currency,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	OffersCount        int        `json:"offers_count"`
+}
+
+// GetPendingOffersOnMyRequests возвращает по одной строке на заявку (последний оффер), с общим числом офферов
+func (p *FreightRequestsProjection) GetPendingOffersOnMyRequests(ctx context.Context, customerOrgID uuid.UUID, limit int) ([]PendingOfferItem, error) {
+	query := `
+		SELECT
+			sub.id, sub.freight_request_id, sub.request_number,
+			sub.carrier_org_id, sub.carrier_org_name,
+			sub.origin_address, sub.destination_address,
+			sub.price_amount, sub.price_currency,
+			sub.created_at,
+			sub.offers_count
+		FROM (
+			SELECT DISTINCT ON (o.freight_request_id)
+				o.id, o.freight_request_id, fr.request_number,
+				o.carrier_org_id, COALESCE(org.name, '') AS carrier_org_name,
+				fr.origin_address, fr.destination_address,
+				fr.price_amount, fr.price_currency,
+				o.created_at,
+				COUNT(*) OVER (PARTITION BY o.freight_request_id) AS offers_count
+			FROM offers_lookup o
+			JOIN freight_requests_lookup fr ON fr.id = o.freight_request_id
+			LEFT JOIN organizations_lookup org ON org.id = o.carrier_org_id
+			WHERE fr.customer_org_id = $1 AND o.status = 'pending'
+			ORDER BY o.freight_request_id, o.created_at DESC
+		) sub
+		ORDER BY sub.created_at DESC
+		LIMIT $2
+	`
+
+	rows, err := p.db.Query(ctx, query, customerOrgID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query pending offers on my requests: %w", err)
+	}
+	defer rows.Close()
+
+	var result []PendingOfferItem
+	for rows.Next() {
+		var item PendingOfferItem
+		if err := rows.Scan(
+			&item.ID,
+			&item.FreightRequestID,
+			&item.RequestNumber,
+			&item.CarrierOrgID,
+			&item.CarrierOrgName,
+			&item.OriginAddress,
+			&item.DestinationAddress,
+			&item.PriceAmount,
+			&item.PriceCurrency,
+			&item.CreatedAt,
+			&item.OffersCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan pending offer: %w", err)
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
+
+	return result, nil
 }
