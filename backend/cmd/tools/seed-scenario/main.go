@@ -174,7 +174,6 @@ func main() {
 			if err != nil {
 				return fmt.Errorf("deal %d: create: %w", i, err)
 			}
-			time.Sleep(200 * time.Millisecond)
 
 			offerID, err := frService.MakeOffer(ctx, frApp.MakeOfferInput{
 				FreightRequestID: frID,
@@ -187,7 +186,6 @@ func main() {
 			if err != nil {
 				return fmt.Errorf("deal %d: make offer: %w", i, err)
 			}
-			time.Sleep(200 * time.Millisecond)
 
 			if err := frService.SelectOffer(ctx, frApp.SelectOfferInput{
 				FreightRequestID: frID,
@@ -197,7 +195,6 @@ func main() {
 			}); err != nil {
 				return fmt.Errorf("deal %d: select offer: %w", i, err)
 			}
-			time.Sleep(200 * time.Millisecond)
 
 			if err := frService.ConfirmOffer(ctx, frApp.ConfirmOfferInput{
 				FreightRequestID: frID,
@@ -208,7 +205,6 @@ func main() {
 			}); err != nil {
 				return fmt.Errorf("deal %d: confirm offer: %w", i, err)
 			}
-			time.Sleep(200 * time.Millisecond)
 
 			// Завершают обе стороны
 			if err := frService.Complete(ctx, frApp.CompleteInput{
@@ -218,7 +214,6 @@ func main() {
 			}); err != nil {
 				return fmt.Errorf("deal %d: complete (carrier): %w", i, err)
 			}
-			time.Sleep(200 * time.Millisecond)
 
 			if err := frService.Complete(ctx, frApp.CompleteInput{
 				FreightRequestID: frID,
@@ -227,7 +222,6 @@ func main() {
 			}); err != nil {
 				return fmt.Errorf("deal %d: complete (customer): %w", i, err)
 			}
-			time.Sleep(200 * time.Millisecond)
 
 			// ui1 оставляет отзыв перевозчику
 			if _, err := frService.LeaveReview(ctx, frApp.LeaveReviewInput{
@@ -239,7 +233,6 @@ func main() {
 			}); err != nil {
 				return fmt.Errorf("deal %d: leave review by customer: %w", i, err)
 			}
-			time.Sleep(200 * time.Millisecond)
 
 			// Перевозчик оставляет отзыв ui1
 			if _, err := frService.LeaveReview(ctx, frApp.LeaveReviewInput{
@@ -253,7 +246,6 @@ func main() {
 			}
 
 			fmt.Printf("  ✓ Сделка с %s — завершена, отзывы оставлены\n", d.carrierName)
-			time.Sleep(500 * time.Millisecond)
 		}
 		fmt.Println()
 
@@ -288,7 +280,6 @@ func main() {
 			return fmt.Errorf("published: create: %w", err)
 		}
 		fmt.Printf("  ✓ Опубликована (ждёт перевозчика): %s\n", frPublished)
-		time.Sleep(200 * time.Millisecond)
 
 		// Три pending-оффера от разных перевозчиков — видны в фиде дашборда
 		pendingOffers := []struct {
@@ -314,9 +305,7 @@ func main() {
 				return fmt.Errorf("pending offer from %s: %w", po.name, err)
 			}
 			fmt.Printf("    → оффер от %s (%.0f₽)\n", po.name, float64(po.price)/100)
-			time.Sleep(150 * time.Millisecond)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		// 2б) Выбран перевозчик — ждёт подтверждения
 		routeSelected, err := buildRoute(
@@ -345,7 +334,6 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("selected: create: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		offerSelectedID, err := frService.MakeOffer(ctx, frApp.MakeOfferInput{
 			FreightRequestID: frSelected,
@@ -358,7 +346,6 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("selected: make offer: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		if err = frService.SelectOffer(ctx, frApp.SelectOfferInput{
 			FreightRequestID: frSelected,
@@ -369,7 +356,6 @@ func main() {
 			return fmt.Errorf("selected: select offer: %w", err)
 		}
 		fmt.Printf("  ✓ Перевозчик выбран (ждёт подтверждения): %s\n", frSelected)
-		time.Sleep(300 * time.Millisecond)
 
 		// 2в) Подтверждена — в пути
 		routeConfirmed, err := buildRoute(
@@ -398,7 +384,6 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("confirmed: create: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		offerConfirmedID, err := frService.MakeOffer(ctx, frApp.MakeOfferInput{
 			FreightRequestID: frConfirmed,
@@ -411,7 +396,6 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("confirmed: make offer: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		if err = frService.SelectOffer(ctx, frApp.SelectOfferInput{
 			FreightRequestID: frConfirmed,
@@ -421,7 +405,6 @@ func main() {
 		}); err != nil {
 			return fmt.Errorf("confirmed: select offer: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		if err = frService.ConfirmOffer(ctx, frApp.ConfirmOfferInput{
 			FreightRequestID: frConfirmed,
@@ -433,7 +416,6 @@ func main() {
 			return fmt.Errorf("confirmed: confirm offer: %w", err)
 		}
 		fmt.Printf("  ✓ В пути (подтверждена): %s\n", frConfirmed)
-		time.Sleep(300 * time.Millisecond)
 
 		// 2г) Ещё одна опубликованная заявка — 2 оффера
 		routePublished2, err := buildRoute(
@@ -462,7 +444,6 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("published2: create: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		for _, po := range []struct {
 			orgID    uuid.UUID
@@ -485,7 +466,6 @@ func main() {
 				return fmt.Errorf("pending offer2 from %s: %w", po.name, err)
 			}
 			fmt.Printf("    → оффер от %s (%.0f₽)\n", po.name, float64(po.price)/100)
-			time.Sleep(150 * time.Millisecond)
 		}
 		fmt.Printf("  ✓ Вторая опубликованная заявка с 2 офферами: %s\n", frPublished2)
 		fmt.Println()
@@ -521,7 +501,6 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("carrier scenario: create: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		offerUI1ID, err := frService.MakeOffer(ctx, frApp.MakeOfferInput{
 			FreightRequestID: frAlphaCustomer,
@@ -534,7 +513,6 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("carrier scenario: make offer: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		if err := frService.SelectOffer(ctx, frApp.SelectOfferInput{
 			FreightRequestID: frAlphaCustomer,
@@ -544,7 +522,6 @@ func main() {
 		}); err != nil {
 			return fmt.Errorf("carrier scenario: select offer: %w", err)
 		}
-		time.Sleep(200 * time.Millisecond)
 
 		if err := frService.ConfirmOffer(ctx, frApp.ConfirmOfferInput{
 			FreightRequestID: frAlphaCustomer,
@@ -602,7 +579,6 @@ func main() {
 				return fmt.Errorf("expiring soon %d: create: %w", i, err)
 			}
 			fmt.Printf("  ✓ %s → %s (%s): %s\n", exp.from, exp.to, exp.comment, frID)
-			time.Sleep(200 * time.Millisecond)
 		}
 
 		return nil
