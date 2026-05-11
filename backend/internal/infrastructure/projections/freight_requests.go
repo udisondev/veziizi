@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -222,19 +221,6 @@ func WithVatTypes(types []string) FilterOption {
 	}
 }
 
-// joinInts joins integers with comma for PostgreSQL array literal
-func joinInts(nums []int) string {
-	if len(nums) == 0 {
-		return ""
-	}
-	var result strings.Builder
-	fmt.Fprintf(&result, "%d", nums[0])
-	for i := 1; i < len(nums); i++ {
-		fmt.Fprintf(&result, ",%d", nums[i])
-	}
-	return result.String()
-}
-
 func WithHasPendingOffers() FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where("EXISTS (SELECT 1 FROM offers_lookup o WHERE o.freight_request_id = freight_requests_lookup.id AND o.status = 'pending')")
@@ -246,8 +232,10 @@ func WithRouteCities(cityIDs []int) FilterOption {
 		if len(cityIDs) == 0 {
 			return b
 		}
-		// route_city_ids is an array, use @> operator to check that ALL specified cities are in route
-		return b.Where("route_city_ids @> ?::integer[]", fmt.Sprintf("{%s}", joinInts(cityIDs)))
+		// pgx нативно маршалит []int → integer[]: ни fmt.Sprintf, ни ручной
+		// joinInts здесь не нужны. Раньше строили "{1,2,3}" вручную — тот же
+		// фрагильный паттерн, что фиксили в WithLoadingType.
+		return b.Where("route_city_ids @> ?", cityIDs)
 	}
 }
 
@@ -256,8 +244,7 @@ func WithRouteCountries(countryIDs []int) FilterOption {
 		if len(countryIDs) == 0 {
 			return b
 		}
-		// route_country_ids is an array, use @> operator to check that ALL specified countries are in route
-		return b.Where("route_country_ids @> ?::integer[]", fmt.Sprintf("{%s}", joinInts(countryIDs)))
+		return b.Where("route_country_ids @> ?", countryIDs)
 	}
 }
 
