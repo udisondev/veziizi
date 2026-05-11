@@ -146,6 +146,21 @@ type Factory struct {
 	emailVerificationProjection *projections.EmailVerificationProjection
 	emailVerificationOnce       sync.Once
 
+	// Проекции автопарка
+	vehiclesProjection *projections.VehiclesProjection
+	vehiclesProjOnce   sync.Once
+
+	pendingVehiclesProjection *projections.PendingVehiclesProjection
+	pendingVehiclesProjOnce   sync.Once
+
+	// Лог приглашений перевозчиков на заявку (CarrierInvited)
+	freightInvitesProjection *projections.FreightInvitesProjection
+	freightInvitesProjOnce   sync.Once
+
+	// История просмотров заявок (per-member)
+	freightRequestViewsProjection *projections.FreightRequestViewsProjection
+	freightRequestViewsProjOnce   sync.Once
+
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
 	analyzerOnce   sync.Once
@@ -331,7 +346,7 @@ func (f *Factory) AdminService() *adminApp.Service {
 func (f *Factory) FreightRequestService() *frApp.Service {
 	f.frOnce.Do(func() {
 		memberChecker := adapters.NewMemberCheckerAdapter(f.OrganizationService())
-		f.frService = frApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.SequenceGenerator(), memberChecker)
+		f.frService = frApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.SequenceGenerator(), memberChecker, f.VehiclesProjection(), f.FreightInvitesProjection())
 	})
 	return f.frService
 }
@@ -410,6 +425,34 @@ func (f *Factory) PendingOrganizationsProjection() *projections.PendingOrganizat
 	return f.pendingOrgsProjection
 }
 
+func (f *Factory) VehiclesProjection() *projections.VehiclesProjection {
+	f.vehiclesProjOnce.Do(func() {
+		f.vehiclesProjection = projections.NewVehiclesProjection(f.DB())
+	})
+	return f.vehiclesProjection
+}
+
+func (f *Factory) PendingVehiclesProjection() *projections.PendingVehiclesProjection {
+	f.pendingVehiclesProjOnce.Do(func() {
+		f.pendingVehiclesProjection = projections.NewPendingVehiclesProjection(f.DB())
+	})
+	return f.pendingVehiclesProjection
+}
+
+func (f *Factory) FreightInvitesProjection() *projections.FreightInvitesProjection {
+	f.freightInvitesProjOnce.Do(func() {
+		f.freightInvitesProjection = projections.NewFreightInvitesProjection(f.DB())
+	})
+	return f.freightInvitesProjection
+}
+
+func (f *Factory) FreightRequestViewsProjection() *projections.FreightRequestViewsProjection {
+	f.freightRequestViewsProjOnce.Do(func() {
+		f.freightRequestViewsProjection = projections.NewFreightRequestViewsProjection(f.DB())
+	})
+	return f.freightRequestViewsProjection
+}
+
 func (f *Factory) FreightRequestsProjection() *projections.FreightRequestsProjection {
 	f.frProjOnce.Do(func() {
 		f.frProjection = projections.NewFreightRequestsProjection(f.DB())
@@ -440,7 +483,11 @@ func (f *Factory) ReviewsProjection() *projections.ReviewsProjection {
 
 func (f *Factory) SessionFraudProjection() *projections.SessionFraudProjection {
 	f.sessionFraudOnce.Do(func() {
-		f.sessionFraudProjection = projections.NewSessionFraudProjection(f.DB())
+		// Use per-instance thresholds seeded from the global default. This
+		// keeps parallel suites isolated: each Factory has its own pointer,
+		// tests can override fields without racing with other suites.
+		t := projections.SessionFraudThresholds
+		f.sessionFraudProjection = projections.NewSessionFraudProjectionWithThresholds(f.DB(), &t)
 	})
 	return f.sessionFraudProjection
 }
@@ -590,6 +637,7 @@ func (f *Factory) NotificationRulesRegistry() *rules.Registry {
 		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCreatedRule(deps, subscriptionMatcher))
 		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCompletedRule(deps))
 		f.notificationRulesRegistry.Register(frRules.NewCancelledAfterConfirmedRule(deps))
+		f.notificationRulesRegistry.Register(frRules.NewCarrierInvitedRule(deps))
 	})
 	return f.notificationRulesRegistry
 }

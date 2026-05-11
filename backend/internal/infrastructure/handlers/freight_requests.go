@@ -15,19 +15,22 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/organization"
 	orgEvents "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 type FreightRequestsHandler struct {
 	db         dbtx.TxManager
 	eventStore eventstore.Store
+	invites    *projections.FreightInvitesProjection
 	psql       squirrel.StatementBuilderType
 }
 
-func NewFreightRequestsHandler(db dbtx.TxManager, eventStore eventstore.Store) *FreightRequestsHandler {
+func NewFreightRequestsHandler(db dbtx.TxManager, eventStore eventstore.Store, invites *projections.FreightInvitesProjection) *FreightRequestsHandler {
 	return &FreightRequestsHandler{
 		db:         db,
 		eventStore: eventStore,
+		invites:    invites,
 		psql:       squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
 }
@@ -91,8 +94,25 @@ func (h *FreightRequestsHandler) handleEvent(ctx context.Context, evt eventstore
 		return h.onCancelledAfterConfirmed(ctx, e)
 	case events.CarrierMemberReassigned:
 		return h.onCarrierMemberReassigned(ctx, e)
+	case events.CarrierInvited:
+		return h.onCarrierInvited(ctx, e)
 	}
 	return nil
+}
+
+func (h *FreightRequestsHandler) onCarrierInvited(ctx context.Context, e events.CarrierInvited) error {
+	// Use the InviteID baked into the event so projection replays keep a
+	// stable row identity (the service has already inserted with this ID inside
+	// the event-store transaction; this insert is a no-op via ON CONFLICT, kept
+	// for replay/backfill scenarios where the projection is reset).
+	return h.invites.Insert(ctx, projections.FreightInviteLogItem{
+		ID:               e.InviteID,
+		FreightRequestID: e.AggregateID(),
+		CarrierOrgID:     e.CarrierOrgID,
+		VehicleID:        e.VehicleID,
+		InvitedBy:        e.InvitedBy,
+		InvitedAt:        e.OccurredAt(),
+	})
 }
 
 func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.FreightRequestCreated) error {

@@ -3,11 +3,13 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
+	reviewDomain "github.com/udisondev/veziizi/backend/internal/domain/review"
 	reviewEvents "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
@@ -90,6 +92,15 @@ func (h *ReviewAnalyzerHandler) onReviewReceived(ctx context.Context, e reviewEv
 		RequiresModeration: result.RequiresModeration,
 		ActivationDate:     result.ActivationDate,
 	}); err != nil {
+		// Idempotency: another worker (or a sync test seed) has already
+		// transitioned the review out of pending_analysis. Treat as success so
+		// the watermill subscriber doesn't retry forever and starve the rest
+		// of the topic.
+		if errors.Is(err, reviewDomain.ErrReviewAlreadyAnalyzed) {
+			slog.Debug("review already analyzed, skipping",
+				slog.String("review_id", e.AggregateID().String()))
+			return nil
+		}
 		slog.Error("failed to record analysis",
 			slog.String("review_id", e.AggregateID().String()),
 			slog.String("error", err.Error()),

@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/udisondev/veziizi/backend/e2e/helpers"
-	"github.com/udisondev/veziizi/backend/e2e/setup"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -29,7 +28,7 @@ func TestFraudsterHandlerSuite(t *testing.T) {
 }
 
 func (s *FraudsterHandlerSuite) SetupSuite() {
-	testSuite := setup.NewSuite(s.T())
+	testSuite := getSuite(s.T())
 	s.f = testSuite.Factory
 }
 
@@ -46,9 +45,17 @@ func (s *FraudsterHandlerSuite) insertMember(orgID uuid.UUID, createdAt time.Tim
 	s.Require().NoError(err, "insert member lookup")
 }
 
-// createAndApproveReview создаёт review через сервис и ждёт auto-approval.
-// Возвращает reviewID. Требует заранее вставленных members для обеих организаций.
-func (s *FraudsterHandlerSuite) createAndApproveReview(reviewerOrgID, reviewedOrgID uuid.UUID) uuid.UUID {
+// seedApprovedReview синхронно создаёт review в статусе approved, минуя async
+// event pipeline (review-receiver → review-analyzer → reviews-projection).
+//
+// Тест проверяет BatchDeactivate, а не сам pipeline — поэтому нет смысла гонять
+// 3 отзыва через 3 watermill-сабскрайбера и ждать каждого до 30с. Pipeline
+// auto-approve уже покрыт TestReviewLifecycle/TestRLC001_FullPipelineCleanReview.
+//
+// Sync setup: CreateFromFreightReview (status=pending_analysis) →
+// RecordAnalysis с RequiresModeration=false (aggregate сам эмитит ReviewApproved
+// внутри одного Apply, см. review.RecordAnalysis в aggregate.go).
+func (s *FraudsterHandlerSuite) seedApprovedReview(reviewerOrgID, reviewedOrgID uuid.UUID) uuid.UUID {
 	s.T().Helper()
 
 	ctx := context.Background()
@@ -62,24 +69,23 @@ func (s *FraudsterHandlerSuite) createAndApproveReview(reviewerOrgID, reviewedOr
 		ReviewedOrgID:    reviewedOrgID,
 		Rating:           5,
 		Comment:          "excellent service",
-		FreightAmount:    10_000_000, // 100K RUB — weight 1.0
+		FreightAmount:    10_000_000,
 		FreightCurrency:  "RUB",
 		FreightCreatedAt: time.Now().Add(-48 * time.Hour),
 		CompletedAt:      time.Now().Add(-24 * time.Hour),
 	})
 	s.Require().NoError(err, "CreateFromFreightReview для review %s", reviewID)
 
-	// Ожидаем auto-approval (3 хопа event pipeline: receiver → analyzer → projection)
-	helpers.WaitWithConfig(s.T(), helpers.WaitConfig{
-		Timeout:  30 * time.Second,
-		Interval: 200 * time.Millisecond,
-	}, func() bool {
-		row, err := s.f.ReviewsProjection().GetReviewByID(ctx, reviewID)
-		if err != nil {
-			return false
-		}
-		return row.Status == values.StatusApproved.String()
-	}, "review "+reviewID.String()+" to become approved")
+	// Прямой record analysis с RequiresModeration=false → aggregate сам уйдёт в Approved.
+	err = reviewService.RecordAnalysis(ctx, reviewApp.RecordAnalysisInput{
+		ReviewID:           reviewID,
+		RawWeight:          1.0,
+		FraudSignals:       nil,
+		FraudScore:         0,
+		RequiresModeration: false,
+		ActivationDate:     time.Now().AddDate(0, 0, 7),
+	})
+	s.Require().NoError(err, "RecordAnalysis для review %s", reviewID)
 
 	return reviewID
 }
@@ -97,30 +103,27 @@ func (s *FraudsterHandlerSuite) TestFRH001_MarkDeactivatesApprovedReviews() {
 	s.insertMember(reviewerOrgID, time.Now().AddDate(0, -13, 0))
 	s.insertMember(reviewedOrgID, time.Now().AddDate(0, -13, 0))
 
-	// Создаём 3 отзыва через полный пайплайн (approved status)
+	// Synchronously seed 3 approved reviews — без async pipeline, без таймаутов.
 	reviewIDs := make([]uuid.UUID, 3)
 	for i := range 3 {
-		reviewIDs[i] = s.createAndApproveReview(reviewerOrgID, reviewedOrgID)
+		reviewIDs[i] = s.seedApprovedReview(reviewerOrgID, reviewedOrgID)
 	}
 
-	// Деактивируем напрямую через BatchDeactivate (имитация fraudster handler)
+	// Деактивируем напрямую через BatchDeactivate (имитация fraudster handler).
 	reviewService := s.f.ReviewService()
 	reason := "reviewer marked as fraudster"
 	result := reviewService.BatchDeactivate(ctx, reviewIDs, reason)
 
-	s.Assert().Equal(3, result.SuccessCount,
-		"все 3 отзыва должны быть деактивированы")
+	s.Assert().Equal(3, result.SuccessCount, "все 3 отзыва должны быть деактивированы")
 	s.Assert().Empty(result.FailedIDs, "не должно быть ошибок деактивации")
 
-	// Проверяем статус в reviews_lookup
+	// Проверяем статус через event store (aggregate state) — это authoritative,
+	// не зависит от reviews-projection worker, без waitFor.
 	for _, id := range reviewIDs {
-		helpers.Wait(s.T(), func() bool {
-			row, err := s.f.ReviewsProjection().GetReviewByID(ctx, id)
-			if err != nil {
-				return false
-			}
-			return row.Status == values.StatusDeactivated.String()
-		}, "review "+id.String()+" to become deactivated")
+		r, err := reviewService.Get(ctx, id)
+		s.Require().NoError(err, "load aggregate %s", id)
+		s.Assert().Equal(values.StatusDeactivated, r.Status(),
+			"review %s должен быть deactivated в aggregate state", id)
 	}
 }
 
@@ -202,8 +205,8 @@ func (s *FraudsterHandlerSuite) TestFRH003_BatchDeactivatePartialFailure() {
 	s.insertMember(reviewerOrgID, time.Now().AddDate(0, -13, 0))
 	s.insertMember(reviewedOrgID, time.Now().AddDate(0, -13, 0))
 
-	// 1 валидный отзыв (approved)
-	validReviewID := s.createAndApproveReview(reviewerOrgID, reviewedOrgID)
+	// 1 валидный отзыв (approved) — seed синхронно
+	validReviewID := s.seedApprovedReview(reviewerOrgID, reviewedOrgID)
 
 	// 1 несуществующий ID
 	nonExistentID := uuid.New()

@@ -60,6 +60,10 @@ func (m Member) CanManageOrganization() bool {
 	return m.IsActive() && m.role.CanManageOrganization()
 }
 
+func (m Member) CanManageVehicles() bool {
+	return m.IsActive() && m.role.CanManageVehicles()
+}
+
 func (m Member) CanBeRemoved() bool {
 	return m.role.CanBeRemoved()
 }

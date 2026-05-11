@@ -3,7 +3,7 @@
 
 // Built By: go install
 
-package values
+package transport
 
 import (
 	"database/sql/driver"
@@ -96,7 +96,7 @@ func (x *LoadingType) AppendText(b []byte) ([]byte, error) {
 var errLoadingTypeNilPtr = errors.New("value pointer is nil") // one per type for package clashes
 
 // Scan implements the Scanner interface.
-func (x *LoadingType) Scan(value interface{}) (err error) {
+func (x *LoadingType) Scan(value any) (err error) {
 	if value == nil {
 		*x = LoadingType("")
 		return

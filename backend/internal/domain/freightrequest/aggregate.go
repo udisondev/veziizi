@@ -795,6 +795,33 @@ func (f *FreightRequest) ReassignCarrierMember(actorID uuid.UUID, newMemberID uu
 	return nil
 }
 
+// InviteCarrier emits a fire-and-forget CarrierInvited event. It does not change
+// aggregate state — anti-spam checks are performed against freight_request_invites_log
+// at the service layer (race-free via the unique constraint on the log).
+//
+// The inviteID is passed in by the service so the projection row keeps a stable
+// identity across replays.
+func (f *FreightRequest) InviteCarrier(actorID, carrierOrgID, vehicleID, inviteID uuid.UUID) error {
+	if f.IsExpired() {
+		return ErrFreightRequestExpired
+	}
+	if !f.CanAcceptOffers() {
+		return ErrFreightRequestNotPublished
+	}
+	if f.customerOrgID == carrierOrgID {
+		return ErrCannotInviteOwnOrg
+	}
+
+	f.Apply(events.CarrierInvited{
+		BaseEvent:    eventstore.NewBaseEvent(f.ID(), events.AggregateType, f.Version()+1),
+		InviteID:     inviteID,
+		CarrierOrgID: carrierOrgID,
+		VehicleID:    vehicleID,
+		InvitedBy:    actorID,
+	})
+	return nil
+}
+
 // Apply applies event and records it as change
 func (f *FreightRequest) Apply(evt eventstore.Event) {
 	f.apply(evt)
@@ -967,6 +994,12 @@ func (f *FreightRequest) apply(evt eventstore.Event) {
 
 	case events.CarrierMemberReassigned:
 		f.carrierMemberID = &e.NewMemberID
+
+	case events.CarrierInvited:
+		// Fire-and-forget event: state of the aggregate is not changed.
+		// The event triggers a notification rule and is logged in
+		// freight_request_invites_log by the freight-requests worker.
+		_ = e
 	}
 }
 

@@ -118,7 +118,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		); err != nil {
 			slog.Error("failed to record login history", slog.String("error", err.Error()))
 		}
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		// Distinct response for blocked members so clients can surface the right
+		// UX message ("account blocked") instead of generic "wrong password".
+		writeError(w, http.StatusForbidden, "account is blocked")
 		return
 	}
 

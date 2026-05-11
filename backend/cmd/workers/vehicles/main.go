@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/ThreeDotsLabs/watermill/message"
-	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -11,12 +10,12 @@ import (
 
 func main() {
 	worker.Run(worker.Config{
-		Name:          "freight-requests",
-		Topic:         "freightrequest.events",
-		ConsumerGroup: "freight_requests_projection",
-		LogFile:       "freight-requests-worker.log",
+		Name:          "vehicles",
+		Topic:         "organization.events",
+		ConsumerGroup: "vehicles_projection",
+		LogFile:       "vehicles-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewFreightRequestsHandler(f.DB(), f.EventStore(), f.FreightInvitesProjection()).Handle
+			return handlers.NewVehiclesHandler(f.DB(), f.VehiclesProjection(), f.PendingVehiclesProjection()).Handle
 		},
 	})
 }

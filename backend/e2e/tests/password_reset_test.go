@@ -12,7 +12,6 @@ import (
 	"github.com/udisondev/veziizi/backend/e2e/client"
 	"github.com/udisondev/veziizi/backend/e2e/fixtures"
 	"github.com/udisondev/veziizi/backend/e2e/setup"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
 // PasswordResetSuite combines all password reset tests with shared context.
@@ -90,9 +89,10 @@ func (s *PasswordResetSuite) TestPWD005_ExistingEmailCreatesToken() {
 }
 
 func (s *PasswordResetSuite) TestPWD006_RateLimit() {
-	// Temporarily set lower rate limits for this test
-	projections.SetPasswordResetRateLimits(3, 5)
-	defer projections.SetPasswordResetRateLimits(10000, 10000) // Restore after test
+	// Per-instance rate limits — суиты параллельны, поэтому глобал недопустим.
+	proj := s.suite.Factory.PasswordResetProjection()
+	proj.SetRateLimits(3, 5)
+	defer proj.SetRateLimits(10000, 10000)
 
 	// Create a new organization for this test
 	org := fixtures.NewOrganization(s.T(), s.c).Create()

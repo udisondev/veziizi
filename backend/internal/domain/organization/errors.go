@@ -26,4 +26,8 @@ var (
 	ErrNotFraudster                = errors.New("organization is not marked as fraudster")
 	ErrDisposableEmail             = errors.New("disposable email addresses are not allowed")
 	ErrRegistrationVelocity        = errors.New("too many registration attempts")
+	ErrVehicleNotFound             = errors.New("vehicle not found")
+	ErrVehicleAlreadyExists        = errors.New("vehicle with this registration number already exists in the fleet")
+	ErrVehicleArchived             = errors.New("vehicle is archived")
+	ErrVehicleNotPending           = errors.New("vehicle is not pending moderation")
 )

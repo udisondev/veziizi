@@ -24,15 +24,26 @@ var (
 
 // PasswordResetProjection handles password reset token operations
 type PasswordResetProjection struct {
-	db   dbtx.TxManager
-	psql squirrel.StatementBuilderType
+	db                 dbtx.TxManager
+	psql               squirrel.StatementBuilderType
+	maxPerMemberPerHr  int
+	maxPerIPPerHour    int
 }
 
 func NewPasswordResetProjection(db dbtx.TxManager) *PasswordResetProjection {
 	return &PasswordResetProjection{
-		db:   db,
-		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		db:                db,
+		psql:              squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		maxPerMemberPerHr: maxTokensPerMemberPerHour,
+		maxPerIPPerHour:   maxTokensPerIPPerHour,
 	}
+}
+
+// SetRateLimits sets per-instance rate limits. Tests use this to avoid the
+// package-level globals (which race when suites run in parallel).
+func (p *PasswordResetProjection) SetRateLimits(perMember, perIP int) {
+	p.maxPerMemberPerHr = perMember
+	p.maxPerIPPerHour = perIP
 }
 
 // PasswordResetToken represents a password reset token
@@ -182,7 +193,7 @@ func (p *PasswordResetProjection) CheckRateLimit(ctx context.Context, memberID u
 		return fmt.Errorf("check member rate limit: %w", err)
 	}
 
-	if memberCount >= maxTokensPerMemberPerHour {
+	if memberCount >= p.maxPerMemberPerHr {
 		return ErrTooManyResets
 	}
 
@@ -199,7 +210,7 @@ func (p *PasswordResetProjection) CheckRateLimit(ctx context.Context, memberID u
 			return fmt.Errorf("check IP rate limit: %w", err)
 		}
 
-		if ipCount >= maxTokensPerIPPerHour {
+		if ipCount >= p.maxPerIPPerHour {
 			return ErrTooManyResets
 		}
 	}

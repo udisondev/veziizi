@@ -114,7 +114,7 @@ func (a *SessionAnalyzer) checkGeoJump(ctx context.Context, input LoginAnalysisI
 	)
 
 	// Skip if distance is too small
-	if distance < projections.SessionFraudThresholds.MinDistanceForCheck {
+	if distance < a.sessionFraud.Thresholds().MinDistanceForCheck {
 		return nil
 	}
 
@@ -131,7 +131,7 @@ func (a *SessionAnalyzer) checkGeoJump(ctx context.Context, input LoginAnalysisI
 	requiredSpeed := distance / hoursSinceLastLogin
 
 	// Check if impossible
-	if requiredSpeed > projections.SessionFraudThresholds.MaxKmPerHour {
+	if requiredSpeed > a.sessionFraud.Thresholds().MaxKmPerHour {
 		result.IsSuspicious = true
 		result.Signals = append(result.Signals, projections.SignalLoginGeoJump)
 
@@ -142,7 +142,7 @@ func (a *SessionAnalyzer) checkGeoJump(ctx context.Context, input LoginAnalysisI
 			Severity:       "high",
 			Description: fmt.Sprintf(
 				"Impossible travel detected: %.0f km in %.1f hours (%.0f km/h required, max %.0f km/h)",
-				distance, hoursSinceLastLogin, requiredSpeed, projections.SessionFraudThresholds.MaxKmPerHour,
+				distance, hoursSinceLastLogin, requiredSpeed, a.sessionFraud.Thresholds().MaxKmPerHour,
 			),
 			ScoreImpact: 0.4,
 			Evidence: fmt.Sprintf(
@@ -170,7 +170,7 @@ func (a *SessionAnalyzer) checkGeoJump(ctx context.Context, input LoginAnalysisI
 // checkSessionAnomaly checks for unusual login patterns
 func (a *SessionAnalyzer) checkSessionAnomaly(ctx context.Context, input LoginAnalysisInput, behavior *projections.MemberSessionBehavior, result *LoginAnalysisResult) error {
 	// Need enough login history
-	if behavior == nil || behavior.TotalLogins < projections.SessionFraudThresholds.MinLoginsForPattern {
+	if behavior == nil || behavior.TotalLogins < a.sessionFraud.Thresholds().MinLoginsForPattern {
 		return nil
 	}
 
@@ -180,7 +180,7 @@ func (a *SessionAnalyzer) checkSessionAnomaly(ctx context.Context, input LoginAn
 		return fmt.Errorf("get typical login hour: %w", err)
 	}
 
-	if totalLogins < projections.SessionFraudThresholds.MinLoginsForPattern {
+	if totalLogins < a.sessionFraud.Thresholds().MinLoginsForPattern {
 		return nil
 	}
 
@@ -192,7 +192,7 @@ func (a *SessionAnalyzer) checkSessionAnomaly(ctx context.Context, input LoginAn
 	}
 
 	// Check if unusual
-	if hourDiff >= projections.SessionFraudThresholds.UnusualHourThreshold {
+	if hourDiff >= a.sessionFraud.Thresholds().UnusualHourThreshold {
 		result.IsSuspicious = true
 		result.Signals = append(result.Signals, projections.SignalSessionAnomaly)
 
@@ -376,7 +376,7 @@ func (a *SessionAnalyzer) CheckAPIAbuse(ctx context.Context, memberID, orgID uui
 	activity, err := a.sessionFraud.GetRecentAPIActivity(ctx, memberID, 10)
 	if err != nil {
 		slog.Error("failed to get API activity", slog.String("error", err.Error()))
-	} else if activity != nil && activity.GetRequests >= projections.SessionFraudThresholds.ScrapingThreshold && activity.PostRequests == 0 {
+	} else if activity != nil && activity.GetRequests >= a.sessionFraud.Thresholds().ScrapingThreshold && activity.PostRequests == 0 {
 		result.IsSuspicious = true
 		result.Signals = append(result.Signals, projections.SignalAPIAbuse)
 

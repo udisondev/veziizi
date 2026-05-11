@@ -240,11 +240,14 @@ func (s *SessionFraudSuite) TestSFR006_APIRateLimiting() {
 	err := s.sessionFraud.ResetRateLimit(ctx, key)
 	s.Require().NoError(err)
 
-	// Сохраняем оригинальный лимит и ставим низкий для теста
-	origLimit := projections.SessionFraudThresholds.MaxRequestsPerMinute
-	projections.SessionFraudThresholds.MaxRequestsPerMinute = 5
+	// Сохраняем оригинальный лимит и ставим низкий для теста.
+	// Используем per-instance Thresholds() — это поле на projection, не глобал,
+	// поэтому параллельные suites не дерутся.
+	thresholds := s.sessionFraud.Thresholds()
+	origLimit := thresholds.MaxRequestsPerMinute
+	thresholds.MaxRequestsPerMinute = 5
 	defer func() {
-		projections.SessionFraudThresholds.MaxRequestsPerMinute = origLimit
+		thresholds.MaxRequestsPerMinute = origLimit
 	}()
 
 	// Делаем 6 запросов (> 5 лимита)
@@ -271,14 +274,16 @@ func (s *SessionFraudSuite) TestSFR007_ScrapingDetection() {
 	err := s.sessionFraud.ResetRateLimit(ctx, key)
 	s.Require().NoError(err)
 
-	// Сохраняем и ставим высокий лимит чтобы rate limit не блокировал
-	origLimit := projections.SessionFraudThresholds.MaxRequestsPerMinute
-	projections.SessionFraudThresholds.MaxRequestsPerMinute = 100000
-	origScraping := projections.SessionFraudThresholds.ScrapingThreshold
-	projections.SessionFraudThresholds.ScrapingThreshold = 5 // порог скрейпинга = 5 для теста
+	// Сохраняем и ставим высокий лимит чтобы rate limit не блокировал.
+	// Per-instance Thresholds() — без race с другими параллельными suites.
+	thresholds := s.sessionFraud.Thresholds()
+	origLimit := thresholds.MaxRequestsPerMinute
+	thresholds.MaxRequestsPerMinute = 100000
+	origScraping := thresholds.ScrapingThreshold
+	thresholds.ScrapingThreshold = 5 // порог скрейпинга = 5 для теста
 	defer func() {
-		projections.SessionFraudThresholds.MaxRequestsPerMinute = origLimit
-		projections.SessionFraudThresholds.ScrapingThreshold = origScraping
+		thresholds.MaxRequestsPerMinute = origLimit
+		thresholds.ScrapingThreshold = origScraping
 	}()
 
 	// Записываем 6 GET запросов без POST (> 5 scraping threshold)
