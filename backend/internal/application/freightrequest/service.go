@@ -39,7 +39,12 @@ type VehicleLookup interface {
 // was actually inserted (i.e. no prior invite existed for the pair). The
 // service runs it inside the event-store transaction so concurrent customer
 // invocations are serialized by the unique constraint at the DB level.
+// LockFreight takes a transaction-scoped advisory lock so the count check
+// against maxInvitesPerFreight is race-free for invites of *different*
+// carriers on the same freight request — the unique constraint only catches
+// duplicates of the same (freight, carrier) pair.
 type InvitesLog interface {
+	LockFreight(ctx context.Context, freightRequestID uuid.UUID) error
 	CountByFreight(ctx context.Context, freightRequestID uuid.UUID) (int, error)
 	TryInsert(ctx context.Context, item projections.FreightInviteLogItem) (bool, error)
 }
@@ -342,6 +347,12 @@ func (s *Service) InviteCarrier(ctx context.Context, input InviteCarrierInput) e
 			return freightrequest.ErrNotFreightRequestOwner
 		}
 
+		// Advisory lock — иначе два параллельных InviteCarrier с разными
+		// перевозчиками оба пройдут проверку count<limit и слегка превысят
+		// maxInvitesPerFreight.
+		if err := s.invitesLog.LockFreight(ctx, input.FreightRequestID); err != nil {
+			return err
+		}
 		count, err := s.invitesLog.CountByFreight(ctx, input.FreightRequestID)
 		if err != nil {
 			return fmt.Errorf("count invites: %w", err)

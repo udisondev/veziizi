@@ -62,7 +62,10 @@ func (p *FreightRequestViewsProjection) ListViewedByMember(
 	cursor *ViewsCursor,
 	limit int,
 ) ([]ViewedFreightRequest, error) {
-	if limit <= 0 || limit > 100 {
+	// Cap matches the handler's max user-facing limit (100) plus one extra
+	// row used as a hasMore lookahead. Without the +1 slack a request for
+	// ?limit=100 silently collapses to 50 and the cursor never advances.
+	if limit <= 0 || limit > 101 {
 		limit = 50
 	}
 	builder := p.psql.

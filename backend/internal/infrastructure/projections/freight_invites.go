@@ -64,6 +64,21 @@ func (p *FreightInvitesProjection) TryInsert(ctx context.Context, item FreightIn
 	return tag.RowsAffected() > 0, nil
 }
 
+// LockFreight берёт транзакционный advisory-lock на freight_request_id, чтобы
+// сериализовать параллельные попытки пригласить перевозчиков. Без него два
+// конкурирующих InviteCarrier с *разными* carrier_org_id оба прочитают
+// count<limit (уникальный индекс на (freight, carrier) ловит только дубль
+// пары) и оба вставят строку, превысив maxInvitesPerFreight. Замок снимается
+// при коммите/откате — обязан вызываться внутри InTx до CountByFreight.
+func (p *FreightInvitesProjection) LockFreight(ctx context.Context, freightRequestID uuid.UUID) error {
+	if _, err := p.db.Exec(ctx,
+		"SELECT pg_advisory_xact_lock(hashtext('freight_invite_count'), hashtext($1::text))",
+		freightRequestID.String()); err != nil {
+		return fmt.Errorf("lock freight invites: %w", err)
+	}
+	return nil
+}
+
 func (p *FreightInvitesProjection) CountByFreight(ctx context.Context, freightRequestID uuid.UUID) (int, error) {
 	query, args, err := p.psql.
 		Select("COUNT(*)").
