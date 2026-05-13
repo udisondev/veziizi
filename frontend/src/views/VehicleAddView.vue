@@ -3,6 +3,8 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { vehiclesApi } from '@/api/vehicles'
+import { getErrorMessage } from '@/api/errors'
+import { logger } from '@/utils/logger'
 import type { CreateVehicleRequest } from '@/types/vehicle'
 import {
   vehicleTypeOptions,
@@ -138,8 +140,9 @@ async function handleSubmit() {
   try {
     await vehiclesApi.create(auth.organizationId, formToRequest(form.value))
     router.push({ name: 'fleet' })
-  } catch {
-    formError.value = 'Не удалось сохранить. Попробуйте ещё раз'
+  } catch (e) {
+    logger.error('Failed to create vehicle', e)
+    formError.value = getErrorMessage(e)
   } finally {
     isSaving.value = false
   }

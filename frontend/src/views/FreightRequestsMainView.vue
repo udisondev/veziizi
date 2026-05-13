@@ -15,7 +15,11 @@ const router = useRouter()
 const { canCreateFreightRequest } = usePermissions()
 const filtersStore = useFreightFiltersStore()
 
-const activeTab = ref<TabValue>((route.query.tab as TabValue) || 'list')
+function parseTab(raw: unknown): TabValue {
+  return raw === 'new' || raw === 'list' ? raw : 'list'
+}
+
+const activeTab = ref<TabValue>(parseTab(route.query.tab))
 const wizardMounted = ref(activeTab.value === 'new')
 
 const tabs = computed<TabSliderItem[]>(() => {
@@ -38,11 +42,10 @@ watch(activeTab, (tab) => {
 })
 
 watch(
-  () => route.query.tab as TabValue | undefined,
+  () => route.query.tab,
   (tab) => {
-    if (tab && tab !== activeTab.value) {
-      activeTab.value = tab
-    }
+    const parsed = parseTab(tab)
+    if (parsed !== activeTab.value) activeTab.value = parsed
   }
 )
 </script>

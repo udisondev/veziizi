@@ -15,10 +15,13 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/components/shared'
+import { useToast } from '@/components/ui/toast/use-toast'
+import { logger } from '@/utils/logger'
 import { Truck, Plus, Trash2, AlertCircle, ChevronRight } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { toast } = useToast()
 
 const vehicles = ref<Vehicle[]>([])
 const isLoading = ref(false)
@@ -49,6 +52,9 @@ async function confirmDelete() {
     await vehiclesApi.remove(auth.organizationId, deletingVehicle.value.id)
     deletingVehicle.value = null
     await loadVehicles()
+  } catch (e) {
+    logger.error('Failed to remove vehicle', e)
+    toast({ title: 'Не удалось убрать транспорт из автопарка', variant: 'destructive' })
   } finally {
     isDeleting.value = false
   }

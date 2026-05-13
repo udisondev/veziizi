@@ -3,7 +3,9 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { vehiclesApi } from '@/api/vehicles'
+import { getErrorMessage } from '@/api/errors'
 import { useToast } from '@/components/ui/toast/use-toast'
+import { logger } from '@/utils/logger'
 import type { Vehicle, CreateVehicleRequest } from '@/types/vehicle'
 import {
   vehicleTypeOptions,
@@ -168,8 +170,9 @@ async function handleSubmit() {
   try {
     await vehiclesApi.update(auth.organizationId, vehicle.value.id, formToRequest(form.value))
     router.push({ name: 'fleet' })
-  } catch {
-    formError.value = 'Не удалось сохранить. Попробуйте ещё раз'
+  } catch (e) {
+    logger.error('Failed to update vehicle', e)
+    formError.value = getErrorMessage(e)
   } finally {
     isSaving.value = false
   }
