@@ -154,7 +154,7 @@ type OrganizationMemberDetail struct {
 }
 
 type OrganizationFullResponse struct {
-	ID        string                     `json:"id"`
+	ID        uuid.UUID                  `json:"id"`
 	Name      string                     `json:"name"`
 	INN       string                     `json:"inn"`
 	LegalName string                     `json:"legal_name"`

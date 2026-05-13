@@ -68,7 +68,9 @@ func main() {
 	orgService := orgApp.NewService(txManager, evtStore, publisher, invitations, members, organizations)
 	seqGen := sequence.NewGenerator(txManager)
 	memberChecker := adapters.NewMemberCheckerAdapter(orgService)
-	frService := frApp.NewService(txManager, evtStore, publisher, seqGen, memberChecker)
+	vehicles := projections.NewVehiclesProjection(txManager)
+	invitesLog := projections.NewFreightInvitesProjection(txManager)
+	frService := frApp.NewService(txManager, evtStore, publisher, seqGen, memberChecker, vehicles, invitesLog)
 
 	fmt.Println("=== Создание сценарных данных ===")
 	fmt.Println()

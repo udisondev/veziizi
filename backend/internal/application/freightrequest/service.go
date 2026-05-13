@@ -16,6 +16,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/sequence"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
@@ -27,12 +28,35 @@ type MemberChecker interface {
 	CanManageMembers(ctx context.Context, orgID, memberID uuid.UUID) (orgValues.MemberRole, error)
 }
 
+// VehicleLookup is used to validate that a vehicle exists, is verified and to
+// resolve its owner organization (carrier_org_id).
+type VehicleLookup interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*projections.VehicleListItem, error)
+}
+
+// InvitesLog is used for anti-spam checks before emitting CarrierInvited.
+// TryInsert is the race-proof claim primitive: it returns true only if the row
+// was actually inserted (i.e. no prior invite existed for the pair). The
+// service runs it inside the event-store transaction so concurrent customer
+// invocations are serialized by the unique constraint at the DB level.
+// LockFreight takes a transaction-scoped advisory lock so the count check
+// against maxInvitesPerFreight is race-free for invites of *different*
+// carriers on the same freight request — the unique constraint only catches
+// duplicates of the same (freight, carrier) pair.
+type InvitesLog interface {
+	LockFreight(ctx context.Context, freightRequestID uuid.UUID) error
+	CountByFreight(ctx context.Context, freightRequestID uuid.UUID) (int, error)
+	TryInsert(ctx context.Context, item projections.FreightInviteLogItem) (bool, error)
+}
+
 type Service struct {
 	db            dbtx.TxManager
 	eventStore    eventstore.Store
 	publisher     *messaging.EventPublisher
 	seqGen        *sequence.Generator
 	memberChecker MemberChecker
+	vehicles      VehicleLookup
+	invitesLog    InvitesLog
 }
 
 func NewService(
@@ -41,6 +65,8 @@ func NewService(
 	publisher *messaging.EventPublisher,
 	seqGen *sequence.Generator,
 	memberChecker MemberChecker,
+	vehicles VehicleLookup,
+	invitesLog InvitesLog,
 ) *Service {
 	return &Service{
 		db:            db,
@@ -48,6 +74,8 @@ func NewService(
 		publisher:     publisher,
 		seqGen:        seqGen,
 		memberChecker: memberChecker,
+		vehicles:      vehicles,
+		invitesLog:    invitesLog,
 	}
 }
 
@@ -270,6 +298,94 @@ func (s *Service) MakeOffer(ctx context.Context, input MakeOfferInput) (uuid.UUI
 		slog.String("carrier_org_id", input.CarrierOrgID.String()))
 
 	return offerID, nil
+}
+
+type InviteCarrierInput struct {
+	FreightRequestID uuid.UUID
+	ActorOrgID       uuid.UUID // customer organization
+	ActorMemberID    uuid.UUID // customer member who clicked "invite"
+	VehicleID        uuid.UUID
+}
+
+const maxInvitesPerFreight = 20
+
+// InviteCarrier pings a carrier organization about an active freight request.
+// The implementation is fire-and-forget: it emits a CarrierInvited event (which
+// triggers a notification) and logs the invitation in freight_request_invites_log
+// for anti-spam and customer-side visibility.
+//
+// Race safety: the duplicate check is enforced by the unique constraint on
+// (freight_request_id, carrier_org_id) — we INSERT first inside the event-store
+// transaction and only emit the event if the row was actually claimed. Two
+// concurrent invites for the same pair will have exactly one winner.
+func (s *Service) InviteCarrier(ctx context.Context, input InviteCarrierInput) error {
+	// Verify the actor is a member of the customer organization.
+	if err := s.memberChecker.MemberExists(ctx, input.ActorOrgID, input.ActorMemberID); err != nil {
+		return err
+	}
+
+	// Resolve carrier_org_id from the vehicle and check it is verified.
+	vehicle, err := s.vehicles.GetByID(ctx, input.VehicleID)
+	if err != nil {
+		return fmt.Errorf("load vehicle: %w", err)
+	}
+	if vehicle == nil {
+		return freightrequest.ErrVehicleNotEligible
+	}
+	if vehicle.Status != orgValues.VehicleStatusVerified.String() {
+		return freightrequest.ErrVehicleNotEligible
+	}
+
+	carrierOrgID := vehicle.OrgID
+
+	return s.db.InTx(ctx, func(ctx context.Context) error {
+		fr, err := s.Get(ctx, input.FreightRequestID)
+		if err != nil {
+			return err
+		}
+		if fr.CustomerOrgID() != input.ActorOrgID {
+			return freightrequest.ErrNotFreightRequestOwner
+		}
+
+		// Advisory lock — иначе два параллельных InviteCarrier с разными
+		// перевозчиками оба пройдут проверку count<limit и слегка превысят
+		// maxInvitesPerFreight.
+		if err := s.invitesLog.LockFreight(ctx, input.FreightRequestID); err != nil {
+			return err
+		}
+		count, err := s.invitesLog.CountByFreight(ctx, input.FreightRequestID)
+		if err != nil {
+			return fmt.Errorf("count invites: %w", err)
+		}
+		if count >= maxInvitesPerFreight {
+			return freightrequest.ErrInvitationLimitReached
+		}
+
+		// Claim the (freight, carrier_org) pair via DB unique constraint
+		// before emitting the event — eliminates the read-then-write race
+		// the prior Exists() check had against the eventually-consistent
+		// projection.
+		inviteID := uuid.New()
+		claimed, err := s.invitesLog.TryInsert(ctx, projections.FreightInviteLogItem{
+			ID:               inviteID,
+			FreightRequestID: input.FreightRequestID,
+			CarrierOrgID:     carrierOrgID,
+			VehicleID:        input.VehicleID,
+			InvitedBy:        input.ActorMemberID,
+			InvitedAt:        time.Now().UTC(),
+		})
+		if err != nil {
+			return fmt.Errorf("claim invite: %w", err)
+		}
+		if !claimed {
+			return freightrequest.ErrCarrierAlreadyInvited
+		}
+
+		if err := fr.InviteCarrier(input.ActorMemberID, carrierOrgID, input.VehicleID, inviteID); err != nil {
+			return err
+		}
+		return s.saveAndPublish(ctx, fr)
+	})
 }
 
 type WithdrawOfferInput struct {

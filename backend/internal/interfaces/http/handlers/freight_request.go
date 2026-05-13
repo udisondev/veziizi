@@ -29,6 +29,8 @@ type FreightRequestHandler struct {
 	orgService        *organization.Service
 	projection        *projections.FreightRequestsProjection
 	membersProjection *projections.MembersProjection
+	invitesProjection *projections.FreightInvitesProjection
+	viewsProjection   *projections.FreightRequestViewsProjection
 	session           *session.Manager
 }
 
@@ -37,6 +39,8 @@ func NewFreightRequestHandler(
 	orgService *organization.Service,
 	projection *projections.FreightRequestsProjection,
 	membersProjection *projections.MembersProjection,
+	invitesProjection *projections.FreightInvitesProjection,
+	viewsProjection *projections.FreightRequestViewsProjection,
 	session *session.Manager,
 ) *FreightRequestHandler {
 	return &FreightRequestHandler{
@@ -44,6 +48,8 @@ func NewFreightRequestHandler(
 		orgService:        orgService,
 		projection:        projection,
 		membersProjection: membersProjection,
+		invitesProjection: invitesProjection,
+		viewsProjection:   viewsProjection,
 		session:           session,
 	}
 }
@@ -224,6 +230,11 @@ func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/api/v1/freight-requests/{id}/reassign-carrier", h.ReassignCarrierMember)
 	// My offers (for current organization)
 	r.Get("/api/v1/offers", h.ListMyOffers)
+	// Carrier invitations (customer pings a carrier about an active freight request)
+	r.Post("/api/v1/freight-requests/{id}/invite-carrier", h.InviteCarrier)
+	r.Get("/api/v1/freight-requests/{id}/invites", h.ListInvites)
+	// View history (per-member)
+	r.Get("/api/v1/freight-requests/viewed/list", h.ListViewed)
 }
 
 type CreateFreightRequestRequest struct {
@@ -544,10 +555,13 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	// Получаем текущую организацию пользователя
 	currentOrgID, _ := h.session.GetOrganizationID(r)
+	currentMemberID, _ := h.session.GetMemberID(r)
 
 	fr, err := h.service.Get(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+		// Application service wraps eventstore.ErrAggregateNotFound into the
+		// domain-specific ErrFreightRequestNotFound, so check that directly.
+		if errors.Is(err, frDomain.ErrFreightRequestNotFound) || errors.Is(err, eventstore.ErrAggregateNotFound) {
 			writeError(w, http.StatusNotFound, "freight request not found")
 			return
 		}
@@ -619,6 +633,11 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 		} else {
 			resp.RequestNumber = lookup.RequestNumber
 		}
+	}
+
+	// Track view synchronously. Don't count the customer viewing their own request.
+	if currentMemberID != uuid.Nil && !isCustomer {
+		h.trackView(r.Context(), currentMemberID, id)
 	}
 
 	writeJSON(w, http.StatusOK, resp)

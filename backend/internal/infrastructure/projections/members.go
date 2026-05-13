@@ -393,6 +393,34 @@ func (p *MembersProjection) GetMemberMetadata(ctx context.Context, orgID uuid.UU
 	return metadata, nil
 }
 
+// ListActiveByOrg returns IDs of all active members of the given organization.
+// Used by notification rules to broadcast events to the whole carrier crew.
+func (p *MembersProjection) ListActiveByOrg(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error) {
+	query, args, err := p.psql.
+		Select("id").
+		From("members_lookup").
+		Where(squirrel.Eq{"organization_id": orgID, "status": "active"}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build list active members: %w", err)
+	}
+	rows, err := p.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query active members: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan member id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // RegistrationVelocity contains velocity check thresholds
 var RegistrationVelocity = struct {
 	MaxRegistrationsPerIPPerHour         int

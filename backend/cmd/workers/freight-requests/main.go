@@ -16,7 +16,7 @@ func main() {
 		ConsumerGroup: "freight_requests_projection",
 		LogFile:       "freight-requests-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewFreightRequestsHandler(f.DB(), f.EventStore()).Handle
+			return handlers.NewFreightRequestsHandler(f.DB(), f.EventStore(), f.FreightInvitesProjection()).Handle
 		},
 	})
 }

@@ -16,3 +16,4 @@ email-sender: ./bin/worker-email-sender
 telegram-bot: ./bin/telegram-bot
 support: ./bin/worker-support-tickets
 rate-limiter: ./bin/worker-rate-limiter-cleanup
+vehicles: ./bin/worker-vehicles

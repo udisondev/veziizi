@@ -33,7 +33,10 @@ type SessionFraudThresholdsConfig struct {
 	ScrapingThreshold    int
 }
 
-// SessionFraudThresholds — глобальные пороги, инициализируются из конфига через InitSessionFraudThresholds
+// SessionFraudThresholds — глобальные пороги, инициализируются из конфига через InitSessionFraudThresholds.
+// Production code reads from this var. Tests must NOT mutate it (parallel test
+// races); they should create a projection with NewSessionFraudProjectionWithThresholds
+// and use the returned Thresholds() pointer to override per-instance.
 var SessionFraudThresholds = SessionFraudThresholdsConfig{
 	MaxKmPerHour:         900,
 	MinDistanceForCheck:  100,
@@ -50,15 +53,18 @@ func InitSessionFraudThresholds(cfg SessionFraudThresholdsConfig) {
 	SessionFraudThresholds = cfg
 }
 
-// SetSessionFraudLimits allows configuring session fraud limits for testing.
+// SetSessionFraudLimits allows configuring session fraud limits globally.
+// Tests must NOT use this (it's a race in parallel suites); use the per-instance
+// Thresholds() pointer on a projection built with NewSessionFraudProjectionWithThresholds.
 func SetSessionFraudLimits(maxRequestsPerMinute, maxRequestsPerHour int) {
 	SessionFraudThresholds.MaxRequestsPerMinute = maxRequestsPerMinute
 	SessionFraudThresholds.MaxRequestsPerHour = maxRequestsPerHour
 }
 
 type SessionFraudProjection struct {
-	db   dbtx.TxManager
-	psql squirrel.StatementBuilderType
+	db         dbtx.TxManager
+	psql       squirrel.StatementBuilderType
+	thresholds *SessionFraudThresholdsConfig // optional per-instance override
 }
 
 func NewSessionFraudProjection(db dbtx.TxManager) *SessionFraudProjection {
@@ -66,6 +72,25 @@ func NewSessionFraudProjection(db dbtx.TxManager) *SessionFraudProjection {
 		db:   db,
 		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
+}
+
+// NewSessionFraudProjectionWithThresholds builds a projection with its own
+// thresholds config (used by parallel e2e suites to avoid the global var).
+func NewSessionFraudProjectionWithThresholds(db dbtx.TxManager, thresholds *SessionFraudThresholdsConfig) *SessionFraudProjection {
+	return &SessionFraudProjection{
+		db:         db,
+		psql:       squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		thresholds: thresholds,
+	}
+}
+
+// Thresholds returns the effective thresholds. Falls back to the global var
+// when the projection was built without per-instance config.
+func (p *SessionFraudProjection) Thresholds() *SessionFraudThresholdsConfig {
+	if p.thresholds != nil {
+		return p.thresholds
+	}
+	return &SessionFraudThresholds
 }
 
 // SessionEvent represents a session event
@@ -323,9 +348,10 @@ func (p *SessionFraudProjection) CheckRateLimit(ctx context.Context, key string)
 	}
 
 	// Check if exceeded limit
-	if count > SessionFraudThresholds.MaxRequestsPerMinute {
+	thresholds := p.Thresholds()
+	if count > thresholds.MaxRequestsPerMinute {
 		// Block the key
-		blockUntil := time.Now().Add(time.Duration(SessionFraudThresholds.BlockDurationMinutes) * time.Minute)
+		blockUntil := time.Now().Add(time.Duration(thresholds.BlockDurationMinutes) * time.Minute)
 		if _, err := p.db.Exec(ctx,
 			"UPDATE api_rate_limits SET blocked_until = $1 WHERE key = $2",
 			blockUntil, key,

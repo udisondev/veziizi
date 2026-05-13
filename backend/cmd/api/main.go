@@ -154,7 +154,7 @@ func main() {
 		)
 		passwordResetHandler.RegisterRoutes(r)
 
-		frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), sessionManager)
+		frHandler := handlers.NewFreightRequestHandler(f.FreightRequestService(), f.OrganizationService(), f.FreightRequestsProjection(), f.MembersProjection(), f.FreightInvitesProjection(), f.FreightRequestViewsProjection(), sessionManager)
 		frHandler.RegisterRoutes(r)
 
 		historyHandler := handlers.NewHistoryHandler(f.HistoryService(), f.FreightRequestService(), sessionManager)
@@ -190,6 +190,15 @@ func main() {
 		)
 		supportHandler.RegisterRoutes(r)
 
+		// Vehicles (fleet management)
+		vehicleHandler := handlers.NewVehicleHandler(
+			f.OrganizationService(),
+			f.VehiclesProjection(),
+			f.PendingVehiclesProjection(),
+			sessionManager,
+		)
+		vehicleHandler.RegisterRoutes(r)
+
 		// Admin subrouter with RequireAdminAuth
 		adminHandler := handlers.NewAdminHandler(f.AdminService(), adminRepository, adminSessionManager, f.ReviewService(), f.ReviewsProjection(), f.FraudDataProjection())
 		r.Route("/api/v1/admin", func(r chi.Router) {
@@ -210,6 +219,15 @@ func main() {
 				adminSessionManager,
 			)
 			adminEmailTemplatesHandler.RegisterRoutes(r)
+
+			// Admin vehicles moderation
+			adminVehicleHandler := handlers.NewAdminVehicleHandler(
+				f.OrganizationService(),
+				f.PendingVehiclesProjection(),
+				f.VehiclesProjection(),
+				adminSessionManager,
+			)
+			adminVehicleHandler.RegisterRoutes(r)
 		})
 
 		// Dev handler (only in development mode)

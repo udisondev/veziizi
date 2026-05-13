@@ -149,21 +149,31 @@ func TestWithRouteCities_Empty(t *testing.T) {
 
 func TestWithRouteCities_NonEmpty(t *testing.T) {
 	sql, args := buildFreightSQL(t, WithRouteCities([]int{1, 5, 42}))
-	if !strings.Contains(sql, "route_city_ids @> $1::integer[]") {
-		t.Errorf("expected 'route_city_ids @> $1::integer[]', got: %s", sql)
+	if !strings.Contains(sql, "route_city_ids @> $1") {
+		t.Errorf("expected 'route_city_ids @> $1', got: %s", sql)
 	}
-	if len(args) != 1 || args[0] != "{1,5,42}" {
-		t.Errorf("expected args [\"{1,5,42}\"], got %v", args)
+	// pgx маршалит []int → integer[] нативно; в args приходит сам срез,
+	// без ручного "{1,5,42}".
+	if len(args) != 1 {
+		t.Fatalf("expected 1 arg, got %v", args)
+	}
+	got, ok := args[0].([]int)
+	if !ok || len(got) != 3 || got[0] != 1 || got[1] != 5 || got[2] != 42 {
+		t.Errorf("expected args [[]int{1,5,42}], got %v (type %T)", args[0], args[0])
 	}
 }
 
 func TestWithRouteCountries_NonEmpty(t *testing.T) {
 	sql, args := buildFreightSQL(t, WithRouteCountries([]int{7, 8}))
-	if !strings.Contains(sql, "route_country_ids @> $1::integer[]") {
-		t.Errorf("expected 'route_country_ids @> $1::integer[]', got: %s", sql)
+	if !strings.Contains(sql, "route_country_ids @> $1") {
+		t.Errorf("expected 'route_country_ids @> $1', got: %s", sql)
 	}
-	if len(args) != 1 || args[0] != "{7,8}" {
-		t.Errorf("expected args [\"{7,8}\"], got %v", args)
+	if len(args) != 1 {
+		t.Fatalf("expected 1 arg, got %v", args)
+	}
+	got, ok := args[0].([]int)
+	if !ok || len(got) != 2 || got[0] != 7 || got[1] != 8 {
+		t.Errorf("expected args [[]int{7,8}], got %v (type %T)", args[0], args[0])
 	}
 }
 

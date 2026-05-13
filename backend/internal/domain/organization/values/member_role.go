@@ -25,3 +25,9 @@ func (r MemberRole) CanBeRemoved() bool {
 func (r MemberRole) CanManageFreightRequests() bool {
 	return r == MemberRoleOwner || r == MemberRoleAdministrator
 }
+
+// CanManageVehicles returns true if role can add/edit/archive vehicles
+// (submitting them for moderation). Limited to owner and administrator.
+func (r MemberRole) CanManageVehicles() bool {
+	return r == MemberRoleOwner || r == MemberRoleAdministrator
+}

@@ -15,6 +15,9 @@ const (
 	TypeOfferDeclined  NotificationType = "offer_declined"  // Выбранное предложение отклонено перевозчиком
 	TypeOfferWithdrawn NotificationType = "offer_withdrawn" // Предложение отозвано
 
+	// Carrier invitation (customer pings carrier about an active freight request)
+	TypeFreightInvitation NotificationType = "freight_invitation"
+
 	// Freight completion (завершение перевозки)
 	TypeFreightCompleted          NotificationType = "freight_completed"           // Перевозка завершена
 	TypeFreightCancelledConfirmed NotificationType = "freight_cancelled_confirmed" // Перевозка отменена после подтверждения
@@ -40,7 +43,7 @@ func (t NotificationType) Category() NotificationCategory {
 	switch t {
 	case TypeNewFreightRequest, TypeFreightCompleted, TypeFreightCancelledConfirmed:
 		return CategoryFreightRequests
-	case TypeNewOffer, TypeOfferSelected, TypeOfferRejected, TypeOfferConfirmed, TypeOfferDeclined, TypeOfferWithdrawn:
+	case TypeNewOffer, TypeOfferSelected, TypeOfferRejected, TypeOfferConfirmed, TypeOfferDeclined, TypeOfferWithdrawn, TypeFreightInvitation:
 		return CategoryOffers
 	case TypeOrderCreated, TypeOrderMessage, TypeOrderDocument, TypeOrderCompleted, TypeOrderCancelled:
 		return CategoryOrders

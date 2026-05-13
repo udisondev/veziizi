@@ -106,6 +106,17 @@ func NewSuite(t *testing.T) *Suite {
 	return suite
 }
 
+// NewSuiteUnmanaged creates an isolated test suite without binding its
+// lifecycle to t. Callers are responsible for invoking Shutdown() themselves
+// (typically from TestMain when running per-test-class shared suites).
+func NewSuiteUnmanaged(t *testing.T) *Suite {
+	suite, err := newSuite(t)
+	if err != nil {
+		t.Fatalf("failed to create suite: %v", err)
+	}
+	return suite
+}
+
 func newSuite(t *testing.T) (*Suite, error) {
 	// Increase rate limits for tests (10000 requests per window)
 	middleware.SetRateLimits(10000, 10000)
@@ -127,14 +138,20 @@ func newSuite(t *testing.T) (*Suite, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Start PostgreSQL container
-	pgContainer, err := StartPostgres(ctx)
+	// Reuse a process-wide Postgres container; each suite gets its own
+	// database inside it. Much faster than spawning a container per suite
+	// (no docker daemon contention, no per-suite startup wait).
+	if _, err := GetSharedPostgres(ctx); err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to start shared postgres: %w", err)
+	}
+	dsn, err := CreateTestDatabase(ctx, t.Name())
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("failed to start postgres container: %w", err)
+		return nil, fmt.Errorf("failed to create per-suite database: %w", err)
 	}
 
-	cfg := testConfigWithDSN(pgContainer.DSN)
+	cfg := testConfigWithDSN(dsn)
 
 	f := factory.New(cfg)
 
@@ -176,14 +193,15 @@ func newSuite(t *testing.T) (*Suite, error) {
 	cfg.HTTP.Addr = fmt.Sprintf("127.0.0.1:%d", port)
 
 	suite := &Suite{
-		T:                 t,
-		BaseURL:           baseURL,
-		Factory:           f,
-		Config:            cfg,
-		listener:          listener,
-		ctx:               ctx,
-		cancel:            cancel,
-		postgresContainer: pgContainer,
+		T:        t,
+		BaseURL:  baseURL,
+		Factory:  f,
+		Config:   cfg,
+		listener: listener,
+		ctx:      ctx,
+		cancel:   cancel,
+		// postgresContainer left nil: lifecycle owned by GetSharedPostgres /
+		// StopSharedPostgres (called from TestMain).
 	}
 
 	// Start event handlers (watermill subscribers for projections)
@@ -212,7 +230,10 @@ func (s *Suite) startEventHandlers() error {
 	pool := s.Factory.MustPool()
 	db := s.Factory.DB()
 
-	// Helper to create subscriber with unique consumer group
+	// Helper to create subscriber with unique consumer group.
+	// PollInterval is shortened to 50ms (default 1s) so async event-driven tests
+	// (review pipeline, fraudster handler, freight reassign) don't time out
+	// when several suites run in parallel and share the same subscriber pool.
 	createSubscriber := func(consumerGroup, topic string) (message.Subscriber, error) {
 		sub, err := wmSql.NewSubscriber(
 			wmSql.BeginnerFromPgx(pool),
@@ -220,6 +241,7 @@ func (s *Suite) startEventHandlers() error {
 				SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
 				OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
 				ConsumerGroup:  consumerGroup,
+				PollInterval:   50 * time.Millisecond,
 			},
 			wmLogger,
 		)
@@ -272,7 +294,7 @@ func (s *Suite) startEventHandlers() error {
 	if err != nil {
 		return err
 	}
-	freightRequestsHandler := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore())
+	freightRequestsHandler := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore(), s.Factory.FreightInvitesProjection())
 	router.AddConsumerHandler("freight_requests", "freightrequest.events", frSub, freightRequestsHandler.Handle)
 
 	// Support event handlers
@@ -367,7 +389,7 @@ func (s *Suite) startServer() {
 			adminSupportHandler.RegisterRoutes(r)
 		})
 
-		frHandler := handlers.NewFreightRequestHandler(s.Factory.FreightRequestService(), s.Factory.OrganizationService(), s.Factory.FreightRequestsProjection(), s.Factory.MembersProjection(), sessionManager)
+		frHandler := handlers.NewFreightRequestHandler(s.Factory.FreightRequestService(), s.Factory.OrganizationService(), s.Factory.FreightRequestsProjection(), s.Factory.MembersProjection(), s.Factory.FreightInvitesProjection(), s.Factory.FreightRequestViewsProjection(), sessionManager)
 		frHandler.RegisterRoutes(r)
 
 		historyHandler := handlers.NewHistoryHandler(s.Factory.HistoryService(), s.Factory.FreightRequestService(), sessionManager)

@@ -1,4 +1,4 @@
-package values
+package transport
 
 //go:generate go-enum --marshal --sql --names --ptr
 
