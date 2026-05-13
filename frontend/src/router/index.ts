@@ -74,6 +74,12 @@ const router = createRouter({
     // Protected routes
     {
       path: '/',
+      name: 'dashboard',
+      component: () => import('@/views/DashboardView.vue'),
+      meta: { title: 'Дашборд' },
+    },
+    {
+      path: '/requests',
       name: 'freight-requests',
       component: () => import('@/views/FreightRequestsMainView.vue'),
       meta: { title: 'Заявки' },
@@ -131,8 +137,27 @@ const router = createRouter({
       name: 'org-settings',
       component: () => import('@/views/OrgSettingsView.vue'),
       meta: { title: 'Настройки организации' },
-      beforeEnter: roleGuard(['owner', 'administrator']),
+      beforeEnter: roleGuard(['owner']),
     },
+    {
+      path: '/fleet',
+      name: 'fleet',
+      component: () => import('@/views/FleetView.vue'),
+      meta: { title: 'Автопарк' },
+    },
+    {
+      path: '/fleet/new',
+      name: 'vehicle-add',
+      component: () => import('@/views/VehicleAddView.vue'),
+      meta: { title: 'Добавить автомобиль' },
+    },
+    {
+      path: '/fleet/:id/edit',
+      name: 'vehicle-edit',
+      component: () => import('@/views/VehicleEditView.vue'),
+      meta: { title: 'Редактировать автомобиль' },
+    },
+
     // My offers (any organization can make offers now)
     {
       path: '/my-offers',

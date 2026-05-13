@@ -416,6 +416,12 @@ func WithOfferStatusAlias(status string) OfferFilterOption {
 	}
 }
 
+func WithCarrierMemberIDAlias(id uuid.UUID) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"o.carrier_member_id": id})
+	}
+}
+
 func (p *FreightRequestsProjection) GetOfferByID(ctx context.Context, id uuid.UUID) (*OfferListItem, error) {
 	query, args, err := p.psql.
 		Select("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").

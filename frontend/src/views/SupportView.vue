@@ -310,7 +310,7 @@ onMounted(() => {
             <div
               v-for="ticket in recentTickets"
               :key="ticket.id"
-              class="p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+              class="p-3 rounded-lg border bg-card shadow-sm hover:shadow-md cursor-pointer transition-shadow"
               @click="router.push(`/support/tickets/${ticket.id}`)"
             >
               <div class="flex items-start justify-between gap-2">

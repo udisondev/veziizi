@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
+import { useFreightFiltersStore } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { tutorialBus } from '@/sandbox/events'
@@ -35,6 +36,8 @@ import {
   Building2,
   HelpCircle,
   Package,
+  LayoutDashboard,
+  Truck,
 } from 'lucide-vue-next'
 import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 
@@ -42,6 +45,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const onboarding = useOnboardingStore()
+const filtersStore = useFreightFiltersStore()
 const { canManageMembers } = usePermissions()
 
 const { isMobile } = useBreakpoint()
@@ -57,8 +61,10 @@ watch(isMenuOpen, (newValue) => {
 
 const menuItems = computed(() => {
   const items = [
-    { to: '/', label: 'Заявки', icon: Package },
+    { to: '/', label: 'Дашборд', icon: LayoutDashboard },
+    { to: '/requests', label: 'Заявки', icon: Package },
     { to: '/my-offers', label: 'Предложения', icon: HandCoins },
+    { to: '/fleet', label: 'Автопарк', icon: Truck },
     { to: '/subscriptions', label: 'Рассылка', icon: Bell },
     { to: '/members', label: 'Штат', icon: Users },
   ]
@@ -75,8 +81,14 @@ const menuItems = computed(() => {
 })
 
 function navigate(to: string) {
+  if (to === '/requests') filtersStore.resetFilters()
   router.push(to)
   isMenuOpen.value = false
+}
+
+function handleNavClick(to: string) {
+  if (to === '/requests') filtersStore.resetFilters()
+  if (to === '/requests' && onboarding.isSandboxMode) tutorialBus.emit('nav:requestsClicked')
 }
 
 async function logout() {
@@ -101,7 +113,7 @@ const userInitial = computed(() => {
           </Button>
 
           <!-- Logo -->
-          <router-link :to="{ path: '/', query: { tab: 'dashboard' } }" class="shrink-0">
+          <router-link to="/" class="shrink-0">
             <img :src="logoUrl" alt="ВезиИзи" class="h-9 w-auto" />
           </router-link>
           <BottomSheet v-model="isMenuOpen" label="Меню">
@@ -111,7 +123,7 @@ const userInitial = computed(() => {
                 :key="item.to"
                 @click="navigate(item.to)"
                 :data-tutorial="
-                  item.to === '/' ? 'mobile-nav-requests' :
+                  item.to === '/requests' ? 'mobile-nav-requests' :
                   item.to === '/my-offers' ? 'mobile-nav-my-offers' :
                   item.to === '/subscriptions' ? 'mobile-nav-subscriptions' :
                   item.to === '/members' ? 'mobile-nav-members' : undefined
@@ -142,11 +154,11 @@ const userInitial = computed(() => {
           <!-- Desktop navigation -->
           <nav class="hidden lg:flex items-center gap-1 ml-3">
             <router-link
-              v-for="item in menuItems.slice(0, 4)"
+              v-for="item in menuItems.slice(0, 6)"
               :key="item.to"
               :to="item.to"
               :data-tutorial="
-                item.to === '/' ? 'nav-requests' :
+                item.to === '/requests' ? 'nav-requests' :
                 item.to === '/my-offers' ? 'nav-my-offers' :
                 item.to === '/subscriptions' ? 'nav-subscriptions' :
                 item.to === '/members' ? 'nav-members' : undefined
@@ -157,7 +169,7 @@ const userInitial = computed(() => {
                   ? 'bg-white/15 text-white'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               ]"
-              @click="item.to === '/' && onboarding.isSandboxMode && tutorialBus.emit('nav:requestsClicked')"
+              @click="handleNavClick(item.to)"
             >
               <component :is="item.icon" class="h-4 w-4" />
               <span>{{ item.label }}</span>
@@ -169,7 +181,7 @@ const userInitial = computed(() => {
         <!-- Right: Organization + Notifications + User menu -->
         <div class="flex items-center gap-2">
           <!-- Organization name (desktop) -->
-          <div class="hidden lg:flex items-center gap-2 text-sm text-slate-200 mr-1">
+          <div class="hidden min-[1240px]:flex items-center gap-2 text-sm text-slate-200 mr-1">
             <Building2 class="h-4 w-4" />
             <span class="max-w-40 truncate">{{ auth.organization?.name }}</span>
           </div>

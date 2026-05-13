@@ -121,11 +121,10 @@ function loadFreightRequestHistory(limit: number, offset: number) {
   return historyApi.getFreightRequestHistory(id, { limit, offset })
 }
 
-// Check if user can view history
+// История заявки доступна всем сотрудникам организации-заказчика
 const canViewHistory = computed(() => {
   if (!freightRequest.value) return false
-  if (freightRequest.value.customer_org_id !== auth.organizationId) return false
-  return auth.role === 'owner' || auth.role === 'administrator'
+  return freightRequest.value.customer_org_id === auth.organizationId
 })
 
 const tabItems = computed((): TabItem[] => {
@@ -384,7 +383,7 @@ async function handleCancel() {
   actionLoading.value = true
   try {
     await freightRequestsApi.cancel(freightRequest.value.id, cancelReason.value || undefined)
-    router.push({ path: '/', query: { tab: 'list' } })
+    router.push({ path: '/requests', query: { tab: 'list' } })
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
   } finally {
@@ -629,7 +628,7 @@ onUnmounted(() => {
 <template>
   <div class="min-h-screen bg-background">
     <!-- Header -->
-    <DetailPageHeader :back-to="{ path: '/', query: { tab: 'list' } }" back-label="К списку заявок">
+    <DetailPageHeader :back-to="{ path: '/requests', query: { tab: 'list' } }" back-label="К списку заявок">
       <template #actions>
         <div class="flex items-center gap-2">
           <!-- Завершение заявки и отзывы -->

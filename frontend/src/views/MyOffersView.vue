@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { offersApi, type MyOfferListItem } from '@/api/offers'
 import type { OfferStatus, OfferStatusFilter } from '@/types/freightRequest'
 import {
@@ -14,6 +15,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { getCategoryByType } from '@/types/notification'
 
 // UI Components
+import { TabsSlider } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -50,6 +52,16 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
+const auth = useAuthStore()
+
+// Filters
+const ownershipFilter = ref<'org' | 'my'>('org')
+const statusFilter = ref<OfferStatusFilter>('all')
+
+const ownershipItems = [
+  { value: 'org', label: 'Организации' },
+  { value: 'my', label: 'Мои' },
+]
 
 const {
   data: items,
@@ -58,14 +70,13 @@ const {
   execute: loadItems,
 } = useAsyncList<MyOfferListItem>(
   () => {
-    const params = statusFilter.value !== 'all' ? { status: statusFilter.value as OfferStatus } : undefined
-    return offersApi.listMy(params)
+    return offersApi.listMy({
+      status: statusFilter.value !== 'all' ? statusFilter.value as OfferStatus : undefined,
+      member_id: ownershipFilter.value === 'my' ? auth.memberId ?? undefined : undefined,
+    })
   },
   { immediate: true }
 )
-
-// Filters
-const statusFilter = ref<OfferStatusFilter>('all')
 
 // Status map for StatusBadge
 const offerStatusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'secondary' }> = {
@@ -87,8 +98,8 @@ const confirmAction = ref<{ type: 'withdraw' | 'confirm' | 'decline'; item: MyOf
 const declineReason = ref('')
 
 
-function goToFreightRequest(frId: string) {
-  router.push(`/freight-requests/${frId}?tab=offers`)
+function goToFreightRequest(frId: string, tab: 'offers' | 'details' = 'offers') {
+  router.push(`/freight-requests/${frId}?tab=${tab}`)
 }
 
 function formatDate(dateStr: string): string {
@@ -232,7 +243,7 @@ async function executeAction() {
 }
 
 // Watch filters
-watch(statusFilter, () => {
+watch([statusFilter, ownershipFilter], () => {
   loadItems()
 })
 
@@ -254,13 +265,16 @@ watch(lastOfferNotificationId, (newId, oldId) => {
     <!-- Header -->
     <PageHeader title="Предложения" class="mb-6" />
 
-    <!-- Inline filter -->
-    <div class="mb-6 w-48">
-      <SelectField
-        v-model="statusFilter"
-        :options="offerStatusOptions"
-        sheet-label="Статус"
-      />
+    <!-- Filters -->
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
+      <TabsSlider v-model="ownershipFilter" :items="ownershipItems" />
+      <div class="w-full sm:w-48">
+        <SelectField
+          v-model="statusFilter"
+          :options="offerStatusOptions"
+          sheet-label="Статус"
+        />
+      </div>
     </div>
 
     <!-- Action error -->
@@ -296,7 +310,7 @@ watch(lastOfferNotificationId, (newId, oldId) => {
     >
       <template #action>
         <Button as-child>
-          <router-link to="/">
+          <router-link to="/requests">
             <Package class="mr-2 h-4 w-4" />
             Найти заявки
           </router-link>
@@ -383,7 +397,7 @@ watch(lastOfferNotificationId, (newId, oldId) => {
               <Button
                 variant="outline"
                 size="sm"
-                @click.stop="goToFreightRequest(item.freight_request_id)"
+                @click.stop="goToFreightRequest(item.freight_request_id, 'details')"
               >
                 К заявке
                 <ArrowRight class="ml-1 h-4 w-4" />

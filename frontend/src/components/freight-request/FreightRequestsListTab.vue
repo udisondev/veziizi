@@ -19,6 +19,7 @@ import { formatDateShort, formatWeight } from '@/utils/formatters'
 import { logger } from '@/utils/logger'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   StatusBadge,
@@ -27,7 +28,7 @@ import {
   ErrorBanner,
 } from '@/components/shared'
 import { FreightFiltersForm } from '@/components/filters'
-import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer } from 'lucide-vue-next'
+import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer, X } from 'lucide-vue-next'
 
 const PAGE_SIZE = 20
 
@@ -260,17 +261,23 @@ onMounted(() => {
   <div>
     <!-- Toolbar -->
     <div class="flex items-center justify-between mb-4 gap-2">
-      <div class="flex items-center gap-2">
-        <span v-if="hasActiveFilters" class="text-sm text-muted-foreground">
-          Активны фильтры
-        </span>
+      <div class="flex items-center gap-2 flex-wrap">
+        <Badge
+          v-if="hasPendingOffers"
+          variant="secondary"
+          class="cursor-pointer gap-1 pr-1.5"
+          @click="filtersStore.setFilters({ hasPendingOffers: false })"
+        >
+          С предложениями
+          <X class="h-3 w-3" />
+        </Badge>
         <Button
           v-if="hasActiveFilters"
           variant="ghost"
           size="sm"
           @click="filtersStore.resetFilters"
         >
-          Сбросить
+          Сбросить всё
         </Button>
       </div>
     </div>

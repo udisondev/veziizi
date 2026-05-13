@@ -11,9 +11,9 @@ func (r MemberRole) CanManageMembers() bool {
 	return r == MemberRoleOwner || r == MemberRoleAdministrator
 }
 
-// CanManageOrganization returns true if role can edit organization settings
+// CanManageOrganization returns true if role can edit organization settings (owner only)
 func (r MemberRole) CanManageOrganization() bool {
-	return r == MemberRoleOwner || r == MemberRoleAdministrator
+	return r == MemberRoleOwner
 }
 
 // CanBeRemoved returns true if member with this role can be removed

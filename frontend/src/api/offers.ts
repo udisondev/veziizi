@@ -16,6 +16,7 @@ export interface MyOfferListItem {
 
 export interface OfferListParams {
   status?: OfferStatus
+  member_id?: string
   limit?: number
   offset?: number
 }
@@ -24,6 +25,7 @@ export const offersApi = {
   async listMy(params?: OfferListParams): Promise<MyOfferListItem[]> {
     const searchParams = new URLSearchParams()
     if (params?.status) searchParams.set('status', params.status)
+    if (params?.member_id) searchParams.set('member_id', params.member_id)
     if (params?.limit) searchParams.set('limit', params.limit.toString())
     if (params?.offset) searchParams.set('offset', params.offset.toString())
 

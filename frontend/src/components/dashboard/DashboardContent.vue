@@ -3,19 +3,21 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFreightFiltersStore } from '@/stores/freightFilters'
-import { freightRequestsApi } from '@/api/freightRequests'
+import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
 import { offersApi, type MyOfferListItem } from '@/api/offers'
 import { organizationsApi } from '@/api/organizations'
+import { subscriptionsApi } from '@/api/subscriptions'
 import type { FreightRequestListItem, FreightRequestStatus, OwnershipFilter } from '@/types/freightRequest'
 import type { OrganizationStats, DashboardStats, OrganizationRating, PendingOfferItem } from '@/types/admin'
-import { currencyLabels } from '@/types/freightRequest'
+import type { FreightSubscription } from '@/types/subscription'
+import { currencyLabels, vehicleTypeSubTypes } from '@/types/freightRequest'
 import { formatRelativeTime } from '@/utils/formatters'
 import { logger } from '@/utils/logger'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/shared'
 import StarRating from '@/components/freight-request/StarRating.vue'
 import { getMyTickets, type TicketListItem } from '@/api/support'
-import { ChevronRight, TrendingUp, Star, Headset, HandCoins } from 'lucide-vue-next'
+import { ChevronRight, TrendingUp, Star, Headset, HandCoins, Bell, Clock } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   'go-to-new': []
@@ -27,11 +29,13 @@ const auth = useAuthStore()
 const filtersStore = useFreightFiltersStore()
 
 function goToListFiltered(statuses: FreightRequestStatus[], ownership: OwnershipFilter) {
+  filtersStore.resetFilters()
   filtersStore.setFilters({ statuses, ownership })
   emit('go-to-list', true)
 }
 
 function goToPendingOffers() {
+  filtersStore.resetFilters()
   filtersStore.setFilters({ ownership: 'my_org', hasPendingOffers: true })
   emit('go-to-list', true)
 }
@@ -44,10 +48,12 @@ const selectedOffers = ref<MyOfferListItem[]>([])
 const myActiveRequests = ref<FreightRequestListItem[]>([])
 const pendingOffersOnMyRequests = ref<PendingOfferItem[]>([])
 const openTickets = ref<TicketListItem[]>([])
+const subscriptionMatches = ref<{ sub: FreightSubscription; items: FreightRequestListItem[] }[]>([])
 
 const isLoadingStats = ref(false)
 const isLoadingRecent = ref(false)
 const isLoadingAttention = ref(false)
+const isLoadingSubscriptions = ref(false)
 
 const partiallyCompletedRequests = computed(() =>
   myActiveRequests.value.filter(i => i.status === 'partially_completed')
@@ -62,7 +68,7 @@ const expiringSoonRequests = computed(() =>
 )
 
 const hasAttentionItems = computed(
-  () => selectedOffers.value.length + partiallyCompletedRequests.value.length + expiringSoonRequests.value.length > 0
+  () => selectedOffers.value.length + partiallyCompletedRequests.value.length > 0
 )
 
 const ratingValue = computed(() => orgRating.value?.average_rating ?? 0)
@@ -84,11 +90,17 @@ const hasCarrierActivity = computed(() =>
   !!dashboardStats.value && (dashboardStats.value.as_carrier_confirmed + dashboardStats.value.as_carrier_partially_completed) > 0
 )
 
-const activeAsCustomer = computed(() =>
-  (dashboardStats.value?.as_customer_published ?? 0) +
-  (dashboardStats.value?.as_customer_selected ?? 0) +
-  (dashboardStats.value?.as_customer_confirmed ?? 0)
-)
+const totalActivePipeline = computed(() => {
+  const s = dashboardStats.value
+  return (
+    (s?.as_customer_published ?? 0) +
+    (s?.as_customer_selected ?? 0) +
+    (s?.as_customer_confirmed ?? 0) +
+    (hasCarrierActivity.value
+      ? (s?.as_carrier_confirmed ?? 0) + (s?.as_carrier_partially_completed ?? 0)
+      : 0)
+  )
+})
 
 const pipelineStages = computed(() => {
   const s = dashboardStats.value
@@ -101,12 +113,11 @@ const pipelineStages = computed(() => {
     stages.push({ label: 'Везу сейчас',     value: s?.as_carrier_confirmed ?? 0,          color: 'text-emerald-500', statuses: ['confirmed'],           ownership: 'my_as_carrier' })
     stages.push({ label: 'Нужно завершить', value: s?.as_carrier_partially_completed ?? 0, color: 'text-amber-500',  statuses: ['partially_completed'], ownership: 'my_as_carrier' })
   }
-  stages.push({ label: 'Истекают скоро', value: expiringSoonRequests.value.length, color: 'text-destructive', statuses: ['published'], ownership: 'my_org' })
   return stages
 })
 
 const pipelineGridClass = computed(() =>
-  pipelineStages.value.length === 6 ? 'sm:grid-cols-6' : 'sm:grid-cols-4'
+  pipelineStages.value.length === 5 ? 'sm:grid-cols-5' : 'sm:grid-cols-3'
 )
 
 
@@ -173,7 +184,93 @@ function daysUntilExpiry(expiresAt: string): number {
   return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
-onMounted(loadData)
+function daysLabel(expiresAt: string): string {
+  const d = daysUntilExpiry(expiresAt)
+  if (d === 1) return `${d} день`
+  if (d >= 2 && d <= 4) return `${d} дня`
+  return `${d} дней`
+}
+
+function subscriptionToParams(sub: FreightSubscription) {
+  const params: FreightRequestListParams = {
+    statuses: 'published',
+    limit: 5,
+  }
+  if (sub.vehicle_types?.length) params.vehicle_types = sub.vehicle_types.join(',')
+  if (sub.vehicle_subtypes?.length) params.vehicle_subtypes = sub.vehicle_subtypes.join(',')
+  if (sub.payment_methods?.length) params.payment_methods = sub.payment_methods.join(',')
+  if (sub.payment_terms?.length) params.payment_terms = sub.payment_terms.join(',')
+  if (sub.vat_types?.length) params.vat_types = sub.vat_types.join(',')
+  if (sub.min_weight !== undefined) params.min_weight = sub.min_weight
+  if (sub.max_weight !== undefined) params.max_weight = sub.max_weight
+  if (sub.min_price !== undefined) params.min_price = sub.min_price
+  if (sub.max_price !== undefined) params.max_price = sub.max_price
+  if (sub.min_volume !== undefined) params.min_volume = sub.min_volume
+  if (sub.max_volume !== undefined) params.max_volume = sub.max_volume
+  if (sub.route_points?.length) {
+    const cityIds = sub.route_points.filter(p => p.city_id).map(p => p.city_id!)
+    const countryIds = sub.route_points.filter(p => !p.city_id).map(p => p.country_id)
+    if (cityIds.length) params.route_city_ids = cityIds.join(',')
+    if (countryIds.length) params.route_country_ids = [...new Set(countryIds)].join(',')
+  }
+  return params
+}
+
+function goToSubscriptionResults(sub: FreightSubscription) {
+  filtersStore.resetFilters()
+  // Если подтипы не указаны явно — разворачиваем типы ТС в соответствующие подтипы
+  const resolvedSubTypes = sub.vehicle_subtypes?.length
+    ? sub.vehicle_subtypes
+    : (sub.vehicle_types ?? []).flatMap(t => vehicleTypeSubTypes[t] ?? [])
+  filtersStore.setFilters({
+    vehicleSubTypes: resolvedSubTypes,
+    paymentMethods: sub.payment_methods ?? [],
+    paymentTerms: sub.payment_terms ?? [],
+    vatTypes: sub.vat_types ?? [],
+    minWeight: sub.min_weight,
+    maxWeight: sub.max_weight,
+    minPrice: sub.min_price,
+    maxPrice: sub.max_price,
+    minVolume: sub.min_volume,
+    maxVolume: sub.max_volume,
+    routePoints: (sub.route_points ?? []).map(rp => ({
+      id: `rp-${rp.order}`,
+      countryId: rp.country_id,
+      countryName: rp.country_name,
+      cityId: rp.city_id,
+      cityName: rp.city_name,
+      order: rp.order,
+    })),
+  })
+  emit('go-to-list', true)
+}
+
+async function loadSubscriptions() {
+  isLoadingSubscriptions.value = true
+  try {
+    const subs = await subscriptionsApi.list()
+    const active = subs.filter(s => s.is_active)
+    if (!active.length) return
+    const results = await Promise.allSettled(
+      active.map(sub => freightRequestsApi.list(subscriptionToParams(sub)))
+    )
+    subscriptionMatches.value = active.flatMap((sub, i) => {
+      const r = results[i]
+      if (!r) return []
+      const items = r.status === 'fulfilled' ? (r.value.items ?? []) : []
+      return items.length > 0 ? [{ sub, items }] : []
+    })
+  } catch (e) {
+    logger.error('Dashboard: failed to load subscription matches', e)
+  } finally {
+    isLoadingSubscriptions.value = false
+  }
+}
+
+onMounted(() => {
+  loadData()
+  loadSubscriptions()
+})
 </script>
 
 <template>
@@ -205,7 +302,7 @@ onMounted(loadData)
       <div class="rounded-lg border-t-[3px] border border-t-primary bg-card p-5 text-left">
         <div class="flex items-center justify-between mb-4">
           <span class="text-xs text-muted-foreground">Мои активные заявки</span>
-          <span class="text-xs font-semibold text-muted-foreground">{{ activeAsCustomer }} всего</span>
+          <span class="text-xs font-semibold text-muted-foreground">{{ totalActivePipeline }} всего</span>
         </div>
 
         <!-- Пайплайн -->
@@ -230,8 +327,9 @@ onMounted(loadData)
           </button>
         </div>
 
-        <div v-else class="text-sm text-muted-foreground">
-          Нет активных заявок
+        <div v-else class="flex items-center justify-between">
+          <span class="text-sm text-muted-foreground">Нет активных заявок</span>
+          <Button size="sm" variant="outline" @click="emit('go-to-new')">Создать заявку</Button>
         </div>
       </div>
 
@@ -243,7 +341,7 @@ onMounted(loadData)
       <div
         v-for="offer in selectedOffers"
         :key="offer.id"
-        class="flex items-center gap-4 rounded-lg border bg-card px-4 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+        class="flex items-center gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3.5 cursor-pointer hover:bg-primary/10 transition-colors"
         @click="router.push(`/freight-requests/${offer.freight_request_id}?tab=offers`)"
       >
         <div class="w-1 self-stretch rounded-full bg-primary shrink-0" />
@@ -260,7 +358,7 @@ onMounted(loadData)
       <div
         v-for="item in partiallyCompletedRequests"
         :key="item.id"
-        class="flex items-center gap-4 rounded-lg border bg-card px-4 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+        class="flex items-center gap-4 rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-3.5 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
         @click="router.push(`/freight-requests/${item.id}`)"
       >
         <div class="w-1 self-stretch rounded-full bg-amber-500 shrink-0" />
@@ -273,23 +371,6 @@ onMounted(loadData)
         <Button size="sm" variant="outline" class="shrink-0">Открыть</Button>
       </div>
 
-      <div
-        v-for="item in expiringSoonRequests"
-        :key="item.id"
-        class="flex items-center gap-4 rounded-lg border bg-card px-4 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
-        @click="router.push(`/freight-requests/${item.id}`)"
-      >
-        <div class="w-1 self-stretch rounded-full bg-destructive shrink-0" />
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-semibold text-foreground">
-            Заявка истекает через {{ daysUntilExpiry(item.expires_at) }} {{ daysUntilExpiry(item.expires_at) === 1 ? 'день' : 'дня' }}
-          </div>
-          <div class="text-xs text-muted-foreground mt-0.5 truncate">
-            #{{ item.request_number }} · {{ item.origin_address }} → {{ item.destination_address }}
-          </div>
-        </div>
-        <Button size="sm" variant="outline" class="shrink-0">Посмотреть</Button>
-      </div>
 
     </div>
 
@@ -298,6 +379,102 @@ onMounted(loadData)
 
       <!-- Офферы на мои заявки / Новые заявки на рынке -->
       <div class="space-y-4">
+
+        <!-- Заявки по рассылкам -->
+        <template v-if="isLoadingSubscriptions">
+          <div class="rounded-lg border bg-card overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-4 border-b">
+              <div class="h-3 bg-muted animate-pulse rounded w-36" />
+              <div class="h-3 bg-muted animate-pulse rounded w-8" />
+            </div>
+            <div class="px-5 py-8 flex justify-center">
+              <LoadingSpinner text="Загрузка..." />
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="subscriptionMatches.length > 0">
+          <div
+            v-for="match in subscriptionMatches"
+            :key="match.sub.id"
+            class="rounded-lg border bg-card overflow-hidden"
+          >
+            <div class="flex items-center justify-between px-5 py-4 border-b">
+              <div class="flex items-center gap-2.5">
+                <Bell class="h-4 w-4 text-muted-foreground shrink-0" />
+                <h2 class="text-sm font-semibold text-foreground">{{ match.sub.name }}</h2>
+                <span class="text-xs text-muted-foreground">рассылка</span>
+              </div>
+              <button
+                class="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+                @click="goToSubscriptionResults(match.sub)"
+              >
+                Все <ChevronRight class="h-4 w-4" />
+              </button>
+            </div>
+
+            <div>
+              <div
+                v-for="(item, index) in match.items"
+                :key="item.id"
+                class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+                :class="index < match.items.length - 1 ? 'border-b' : ''"
+                @click="router.push(`/freight-requests/${item.id}`)"
+              >
+                <div class="w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5 text-sm">
+                    <span class="text-xs text-muted-foreground shrink-0">#{{ item.request_number }}</span>
+                    <span class="font-medium text-foreground truncate">
+                      {{ item.origin_address || '—' }} → {{ item.destination_address || '—' }}
+                    </span>
+                  </div>
+                  <div v-if="item.customer_org_name" class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                    <span>{{ item.customer_org_name }}</span>
+                    <span>·</span>
+                    <span>{{ formatRelativeTime(item.created_at) }}</span>
+                  </div>
+                </div>
+                <div class="text-sm font-semibold text-foreground shrink-0">
+                  {{ formatPrice(item.price_amount, item.price_currency) || '—' }}
+                </div>
+                <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Заявки истекают скоро -->
+        <div v-if="expiringSoonRequests.length > 0" class="rounded-lg border bg-card overflow-hidden">
+          <div class="flex items-center gap-2.5 px-5 py-4 border-b">
+            <Clock class="h-4 w-4 text-destructive shrink-0" />
+            <h2 class="text-sm font-semibold text-foreground">Истекают скоро</h2>
+            <span class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive">{{ expiringSoonRequests.length }}</span>
+          </div>
+          <div>
+            <div
+              v-for="(item, index) in expiringSoonRequests"
+              :key="item.id"
+              class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+              :class="index < expiringSoonRequests.length - 1 ? 'border-b' : ''"
+              @click="router.push(`/freight-requests/${item.id}`)"
+            >
+              <div class="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5 text-sm">
+                  <span class="text-xs text-muted-foreground shrink-0">#{{ item.request_number }}</span>
+                  <span class="font-medium text-foreground truncate">
+                    {{ item.origin_address || '—' }} → {{ item.destination_address || '—' }}
+                  </span>
+                </div>
+                <div class="text-xs text-destructive mt-0.5">
+                  Истекает через {{ daysLabel(item.expires_at) }}
+                </div>
+              </div>
+              <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
+            </div>
+          </div>
+        </div>
 
         <!-- Офферы на мои заявки -->
         <div class="rounded-lg border bg-card overflow-hidden">
