@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
+import { useFreightFiltersStore } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { tutorialBus } from '@/sandbox/events'
@@ -44,6 +45,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const onboarding = useOnboardingStore()
+const filtersStore = useFreightFiltersStore()
 const { canManageMembers } = usePermissions()
 
 const { isMobile } = useBreakpoint()
@@ -79,8 +81,14 @@ const menuItems = computed(() => {
 })
 
 function navigate(to: string) {
+  if (to === '/requests') filtersStore.resetFilters()
   router.push(to)
   isMenuOpen.value = false
+}
+
+function handleNavClick(to: string) {
+  if (to === '/requests') filtersStore.resetFilters()
+  if (to === '/requests' && onboarding.isSandboxMode) tutorialBus.emit('nav:requestsClicked')
 }
 
 async function logout() {
@@ -161,7 +169,7 @@ const userInitial = computed(() => {
                   ? 'bg-white/15 text-white'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               ]"
-              @click="item.to === '/requests' && onboarding.isSandboxMode && tutorialBus.emit('nav:requestsClicked')"
+              @click="handleNavClick(item.to)"
             >
               <component :is="item.icon" class="h-4 w-4" />
               <span>{{ item.label }}</span>

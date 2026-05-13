@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/shared'
 import StarRating from '@/components/freight-request/StarRating.vue'
 import { getMyTickets, type TicketListItem } from '@/api/support'
-import { ChevronRight, TrendingUp, Star, Headset, HandCoins, Bell } from 'lucide-vue-next'
+import { ChevronRight, TrendingUp, Star, Headset, HandCoins, Bell, Clock } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   'go-to-new': []
@@ -29,11 +29,13 @@ const auth = useAuthStore()
 const filtersStore = useFreightFiltersStore()
 
 function goToListFiltered(statuses: FreightRequestStatus[], ownership: OwnershipFilter) {
+  filtersStore.resetFilters()
   filtersStore.setFilters({ statuses, ownership })
   emit('go-to-list', true)
 }
 
 function goToPendingOffers() {
+  filtersStore.resetFilters()
   filtersStore.setFilters({ ownership: 'my_org', hasPendingOffers: true })
   emit('go-to-list', true)
 }
@@ -66,7 +68,7 @@ const expiringSoonRequests = computed(() =>
 )
 
 const hasAttentionItems = computed(
-  () => selectedOffers.value.length + partiallyCompletedRequests.value.length + expiringSoonRequests.value.length > 0
+  () => selectedOffers.value.length + partiallyCompletedRequests.value.length > 0
 )
 
 const ratingValue = computed(() => orgRating.value?.average_rating ?? 0)
@@ -111,12 +113,11 @@ const pipelineStages = computed(() => {
     stages.push({ label: 'Везу сейчас',     value: s?.as_carrier_confirmed ?? 0,          color: 'text-emerald-500', statuses: ['confirmed'],           ownership: 'my_as_carrier' })
     stages.push({ label: 'Нужно завершить', value: s?.as_carrier_partially_completed ?? 0, color: 'text-amber-500',  statuses: ['partially_completed'], ownership: 'my_as_carrier' })
   }
-  stages.push({ label: 'Истекают скоро', value: expiringSoonRequests.value.length, color: 'text-destructive', statuses: ['published'], ownership: 'my_org' })
   return stages
 })
 
 const pipelineGridClass = computed(() =>
-  pipelineStages.value.length === 6 ? 'sm:grid-cols-6' : 'sm:grid-cols-4'
+  pipelineStages.value.length === 5 ? 'sm:grid-cols-5' : 'sm:grid-cols-3'
 )
 
 
@@ -181,6 +182,13 @@ function formatPrice(amount?: number | null, currency?: string | null): string {
 
 function daysUntilExpiry(expiresAt: string): number {
   return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+}
+
+function daysLabel(expiresAt: string): string {
+  const d = daysUntilExpiry(expiresAt)
+  if (d === 1) return `${d} день`
+  if (d >= 2 && d <= 4) return `${d} дня`
+  return `${d} дней`
 }
 
 function subscriptionToParams(sub: FreightSubscription) {
@@ -249,7 +257,7 @@ async function loadSubscriptions() {
     subscriptionMatches.value = active.flatMap((sub, i) => {
       const r = results[i]
       if (!r) return []
-      const items = r.status === 'fulfilled' ? r.value.items : []
+      const items = r.status === 'fulfilled' ? (r.value.items ?? []) : []
       return items.length > 0 ? [{ sub, items }] : []
     })
   } catch (e) {
@@ -319,8 +327,9 @@ onMounted(() => {
           </button>
         </div>
 
-        <div v-else class="text-sm text-muted-foreground">
-          Нет активных заявок
+        <div v-else class="flex items-center justify-between">
+          <span class="text-sm text-muted-foreground">Нет активных заявок</span>
+          <Button size="sm" variant="outline" @click="emit('go-to-new')">Создать заявку</Button>
         </div>
       </div>
 
@@ -332,7 +341,7 @@ onMounted(() => {
       <div
         v-for="offer in selectedOffers"
         :key="offer.id"
-        class="flex items-center gap-4 rounded-lg border bg-card px-4 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+        class="flex items-center gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3.5 cursor-pointer hover:bg-primary/10 transition-colors"
         @click="router.push(`/freight-requests/${offer.freight_request_id}?tab=offers`)"
       >
         <div class="w-1 self-stretch rounded-full bg-primary shrink-0" />
@@ -349,7 +358,7 @@ onMounted(() => {
       <div
         v-for="item in partiallyCompletedRequests"
         :key="item.id"
-        class="flex items-center gap-4 rounded-lg border bg-card px-4 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+        class="flex items-center gap-4 rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-3.5 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
         @click="router.push(`/freight-requests/${item.id}`)"
       >
         <div class="w-1 self-stretch rounded-full bg-amber-500 shrink-0" />
@@ -362,23 +371,6 @@ onMounted(() => {
         <Button size="sm" variant="outline" class="shrink-0">Открыть</Button>
       </div>
 
-      <div
-        v-for="item in expiringSoonRequests"
-        :key="item.id"
-        class="flex items-center gap-4 rounded-lg border bg-card px-4 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
-        @click="router.push(`/freight-requests/${item.id}`)"
-      >
-        <div class="w-1 self-stretch rounded-full bg-destructive shrink-0" />
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-semibold text-foreground">
-            Заявка истекает через {{ daysUntilExpiry(item.expires_at) }} {{ daysUntilExpiry(item.expires_at) === 1 ? 'день' : 'дня' }}
-          </div>
-          <div class="text-xs text-muted-foreground mt-0.5 truncate">
-            #{{ item.request_number }} · {{ item.origin_address }} → {{ item.destination_address }}
-          </div>
-        </div>
-        <Button size="sm" variant="outline" class="shrink-0">Посмотреть</Button>
-      </div>
 
     </div>
 
@@ -387,6 +379,102 @@ onMounted(() => {
 
       <!-- Офферы на мои заявки / Новые заявки на рынке -->
       <div class="space-y-4">
+
+        <!-- Заявки по рассылкам -->
+        <template v-if="isLoadingSubscriptions">
+          <div class="rounded-lg border bg-card overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-4 border-b">
+              <div class="h-3 bg-muted animate-pulse rounded w-36" />
+              <div class="h-3 bg-muted animate-pulse rounded w-8" />
+            </div>
+            <div class="px-5 py-8 flex justify-center">
+              <LoadingSpinner text="Загрузка..." />
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="subscriptionMatches.length > 0">
+          <div
+            v-for="match in subscriptionMatches"
+            :key="match.sub.id"
+            class="rounded-lg border bg-card overflow-hidden"
+          >
+            <div class="flex items-center justify-between px-5 py-4 border-b">
+              <div class="flex items-center gap-2.5">
+                <Bell class="h-4 w-4 text-muted-foreground shrink-0" />
+                <h2 class="text-sm font-semibold text-foreground">{{ match.sub.name }}</h2>
+                <span class="text-xs text-muted-foreground">рассылка</span>
+              </div>
+              <button
+                class="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+                @click="goToSubscriptionResults(match.sub)"
+              >
+                Все <ChevronRight class="h-4 w-4" />
+              </button>
+            </div>
+
+            <div>
+              <div
+                v-for="(item, index) in match.items"
+                :key="item.id"
+                class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+                :class="index < match.items.length - 1 ? 'border-b' : ''"
+                @click="router.push(`/freight-requests/${item.id}`)"
+              >
+                <div class="w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5 text-sm">
+                    <span class="text-xs text-muted-foreground shrink-0">#{{ item.request_number }}</span>
+                    <span class="font-medium text-foreground truncate">
+                      {{ item.origin_address || '—' }} → {{ item.destination_address || '—' }}
+                    </span>
+                  </div>
+                  <div v-if="item.customer_org_name" class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                    <span>{{ item.customer_org_name }}</span>
+                    <span>·</span>
+                    <span>{{ formatRelativeTime(item.created_at) }}</span>
+                  </div>
+                </div>
+                <div class="text-sm font-semibold text-foreground shrink-0">
+                  {{ formatPrice(item.price_amount, item.price_currency) || '—' }}
+                </div>
+                <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Заявки истекают скоро -->
+        <div v-if="expiringSoonRequests.length > 0" class="rounded-lg border bg-card overflow-hidden">
+          <div class="flex items-center gap-2.5 px-5 py-4 border-b">
+            <Clock class="h-4 w-4 text-destructive shrink-0" />
+            <h2 class="text-sm font-semibold text-foreground">Истекают скоро</h2>
+            <span class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive">{{ expiringSoonRequests.length }}</span>
+          </div>
+          <div>
+            <div
+              v-for="(item, index) in expiringSoonRequests"
+              :key="item.id"
+              class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+              :class="index < expiringSoonRequests.length - 1 ? 'border-b' : ''"
+              @click="router.push(`/freight-requests/${item.id}`)"
+            >
+              <div class="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5 text-sm">
+                  <span class="text-xs text-muted-foreground shrink-0">#{{ item.request_number }}</span>
+                  <span class="font-medium text-foreground truncate">
+                    {{ item.origin_address || '—' }} → {{ item.destination_address || '—' }}
+                  </span>
+                </div>
+                <div class="text-xs text-destructive mt-0.5">
+                  Истекает через {{ daysLabel(item.expires_at) }}
+                </div>
+              </div>
+              <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
+            </div>
+          </div>
+        </div>
 
         <!-- Офферы на мои заявки -->
         <div class="rounded-lg border bg-card overflow-hidden">
@@ -517,70 +605,6 @@ onMounted(() => {
             </div>
           </div>
         </div>
-
-        <!-- Заявки по рассылкам -->
-        <template v-if="isLoadingSubscriptions">
-          <div class="rounded-lg border bg-card overflow-hidden">
-            <div class="flex items-center justify-between px-5 py-4 border-b">
-              <div class="h-3 bg-muted animate-pulse rounded w-36" />
-              <div class="h-3 bg-muted animate-pulse rounded w-8" />
-            </div>
-            <div class="px-5 py-8 flex justify-center">
-              <LoadingSpinner text="Загрузка..." />
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="subscriptionMatches.length > 0">
-          <div
-            v-for="match in subscriptionMatches"
-            :key="match.sub.id"
-            class="rounded-lg border bg-card overflow-hidden"
-          >
-            <div class="flex items-center justify-between px-5 py-4 border-b">
-              <div class="flex items-center gap-2.5">
-                <Bell class="h-4 w-4 text-muted-foreground shrink-0" />
-                <h2 class="text-sm font-semibold text-foreground">{{ match.sub.name }}</h2>
-                <span class="text-xs text-muted-foreground">рассылка</span>
-              </div>
-              <button
-                class="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
-                @click="goToSubscriptionResults(match.sub)"
-              >
-                Все <ChevronRight class="h-4 w-4" />
-              </button>
-            </div>
-
-            <div>
-              <div
-                v-for="(item, index) in match.items"
-                :key="item.id"
-                class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
-                :class="index < match.items.length - 1 ? 'border-b' : ''"
-                @click="router.push(`/freight-requests/${item.id}`)"
-              >
-                <div class="w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0" />
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1.5 text-sm">
-                    <span class="text-xs text-muted-foreground shrink-0">#{{ item.request_number }}</span>
-                    <span class="font-medium text-foreground truncate">
-                      {{ item.origin_address || '—' }} → {{ item.destination_address || '—' }}
-                    </span>
-                  </div>
-                  <div v-if="item.customer_org_name" class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                    <span>{{ item.customer_org_name }}</span>
-                    <span>·</span>
-                    <span>{{ formatRelativeTime(item.created_at) }}</span>
-                  </div>
-                </div>
-                <div class="text-sm font-semibold text-foreground shrink-0">
-                  {{ formatPrice(item.price_amount, item.price_currency) || '—' }}
-                </div>
-                <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
-              </div>
-            </div>
-          </div>
-        </template>
 
       </div>
 

@@ -1,24 +1,25 @@
-// TODO: подключить к реальному API когда бэкенд будет готов
+import { api } from './client'
 import type { Vehicle, CreateVehicleRequest, UpdateVehicleRequest } from '@/types/vehicle'
 
 export const vehiclesApi = {
-  async list(_organizationId: string): Promise<Vehicle[]> {
-    // TODO: GET /organizations/:id/vehicles
-    return []
+  async list(organizationId: string): Promise<Vehicle[]> {
+    const result = await api.get<{ items: Vehicle[] }>(`/organizations/${organizationId}/vehicles`)
+    return result?.items ?? []
   },
 
-  async create(_organizationId: string, _data: CreateVehicleRequest): Promise<Vehicle> {
-    // TODO: POST /organizations/:id/vehicles
-    throw new Error('Not implemented')
+  async get(vehicleId: string): Promise<Vehicle> {
+    return await api.get<Vehicle>(`/vehicles/${vehicleId}`)
   },
 
-  async update(_organizationId: string, _vehicleId: string, _data: UpdateVehicleRequest): Promise<Vehicle> {
-    // TODO: PUT /organizations/:id/vehicles/:vehicleId
-    throw new Error('Not implemented')
+  async create(organizationId: string, data: CreateVehicleRequest): Promise<void> {
+    await api.post(`/organizations/${organizationId}/vehicles`, data)
   },
 
-  async remove(_organizationId: string, _vehicleId: string): Promise<void> {
-    // TODO: DELETE /organizations/:id/vehicles/:vehicleId
-    throw new Error('Not implemented')
+  async update(organizationId: string, vehicleId: string, data: UpdateVehicleRequest): Promise<void> {
+    await api.patch(`/organizations/${organizationId}/vehicles/${vehicleId}`, data)
+  },
+
+  async remove(organizationId: string, vehicleId: string): Promise<void> {
+    await api.delete(`/organizations/${organizationId}/vehicles/${vehicleId}`)
   },
 }

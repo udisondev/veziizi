@@ -145,6 +145,18 @@ const router = createRouter({
       component: () => import('@/views/FleetView.vue'),
       meta: { title: 'Автопарк' },
     },
+    {
+      path: '/fleet/new',
+      name: 'vehicle-add',
+      component: () => import('@/views/VehicleAddView.vue'),
+      meta: { title: 'Добавить автомобиль' },
+    },
+    {
+      path: '/fleet/:id/edit',
+      name: 'vehicle-edit',
+      component: () => import('@/views/VehicleEditView.vue'),
+      meta: { title: 'Редактировать автомобиль' },
+    },
 
     // My offers (any organization can make offers now)
     {

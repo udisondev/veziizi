@@ -89,6 +89,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     if (paymentMethods.value.length > 0) count++
     if (paymentTerms.value.length > 0) count++
     if (vatTypes.value.length > 0) count++
+    if (hasPendingOffers.value) count++
     return count
   })
 

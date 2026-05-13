@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useFreightFiltersStore } from '@/stores/freightFilters'
-import FreightRequestsDashboardTab from '@/components/freight-request/FreightRequestsDashboardTab.vue'
+import DashboardContent from '@/components/dashboard/DashboardContent.vue'
 
 const router = useRouter()
 const filtersStore = useFreightFiltersStore()
@@ -18,7 +18,7 @@ function handleGoToNew() {
 
 <template>
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <FreightRequestsDashboardTab
+    <DashboardContent
       @go-to-new="handleGoToNew"
       @go-to-list="handleGoToList"
     />

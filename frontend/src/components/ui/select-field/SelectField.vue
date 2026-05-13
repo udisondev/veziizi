@@ -36,7 +36,7 @@ const dropdownOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const sheetOpen = ref(false)
 
-const dropdownStyle = ref({ top: '0px', left: '0px', width: '0px' })
+const dropdownStyle = ref({ top: '0px', left: '0px', width: '0px', maxHeight: '280px' })
 const dropdownRef = ref<HTMLElement | null>(null)
 
 function openDropdown() {
@@ -46,6 +46,7 @@ function openDropdown() {
     top: `${rect.bottom + 4}px`,
     left: `${rect.left}px`,
     width: `${rect.width}px`,
+    maxHeight: `${Math.min(window.innerHeight - rect.bottom - 8, 280)}px`,
   }
   dropdownOpen.value = true
 }
@@ -105,7 +106,7 @@ onUnmounted(() => {
         <div
           v-if="dropdownOpen"
           ref="dropdownRef"
-          class="fixed z-[200] bg-white border border-border rounded-lg shadow-lg overflow-hidden"
+          class="fixed z-[200] bg-white border border-border rounded-lg shadow-lg overflow-y-auto"
           :style="dropdownStyle"
           @mousedown.prevent
         >

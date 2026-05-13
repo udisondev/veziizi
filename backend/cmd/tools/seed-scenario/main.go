@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os/signal"
@@ -14,12 +15,16 @@ import (
 	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"
 
 	"github.com/google/uuid"
 	frApp "github.com/udisondev/veziizi/backend/internal/application/freightrequest"
 	orgApp "github.com/udisondev/veziizi/backend/internal/application/organization"
+	supportApp "github.com/udisondev/veziizi/backend/internal/application/support"
+	"github.com/udisondev/veziizi/backend/internal/domain/organization"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/domain/transport"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/adapters"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
@@ -67,6 +72,7 @@ func main() {
 
 	orgService := orgApp.NewService(txManager, evtStore, publisher, invitations, members, organizations)
 	seqGen := sequence.NewGenerator(txManager)
+	supportService := supportApp.NewService(txManager, evtStore, publisher, seqGen)
 	memberChecker := adapters.NewMemberCheckerAdapter(orgService)
 	vehicles := projections.NewVehiclesProjection(txManager)
 	invitesLog := projections.NewFreightInvitesProjection(txManager)
@@ -583,10 +589,133 @@ func main() {
 			fmt.Printf("  ✓ %s → %s (%s): %s\n", exp.from, exp.to, exp.comment, frID)
 		}
 
+		// ─── Сценарий 5: Автопарк ui1 ────────────────────────────────────────────
+
+		fmt.Println()
+		fmt.Println("--- Сценарий 5: Автопарк ui1 ---")
+
+		fleet := []orgApp.AddVehicleInput{
+			{
+				OrganizationID: ui1OrgID,
+				ActorID:        ui1Owner.ID,
+				Specs: orgApp.VehicleSpecsInput{
+					RegistrationNumber: "А777ВВ 77",
+					Brand:              "Volvo",
+					Model:              "FH16",
+					VehicleType:        transport.VehicleTypeHeavyTruck,
+					VehicleSubType:     transport.VehicleSubTypeSemiTrailer,
+					Capacity:           20,
+					Volume:             92,
+					Length:             13.6,
+					Width:              2.45,
+					Height:             2.7,
+					LoadingTypes:       []transport.LoadingType{transport.LoadingTypeRear, transport.LoadingTypeSide},
+				},
+			},
+			{
+				OrganizationID: ui1OrgID,
+				ActorID:        ui1Owner.ID,
+				Specs: orgApp.VehicleSpecsInput{
+					RegistrationNumber: "В123АА 77",
+					Brand:              "Mercedes-Benz",
+					Model:              "Actros",
+					VehicleType:        transport.VehicleTypeVan,
+					VehicleSubType:     transport.VehicleSubTypeRefrigerator,
+					Capacity:           10,
+					Volume:             40,
+					Temperature:        &transport.Temperature{Min: -20, Max: 0},
+					Thermograph:        true,
+					LoadingTypes:       []transport.LoadingType{transport.LoadingTypeRear},
+				},
+			},
+			{
+				OrganizationID: ui1OrgID,
+				ActorID:        ui1Owner.ID,
+				Specs: orgApp.VehicleSpecsInput{
+					RegistrationNumber: "К456ОО 77",
+					Brand:              "MAN",
+					Model:              "TGX",
+					VehicleType:        transport.VehicleTypeVan,
+					VehicleSubType:     transport.VehicleSubTypeCurtainSide,
+					Capacity:           20,
+					Volume:             86,
+					Length:             13.6,
+					Width:              2.45,
+					Height:             2.7,
+					LoadingTypes:       []transport.LoadingType{transport.LoadingTypeRear, transport.LoadingTypeSide, transport.LoadingTypeFullUntarp},
+				},
+			},
+			{
+				OrganizationID: ui1OrgID,
+				ActorID:        ui1Owner.ID,
+				Specs: orgApp.VehicleSpecsInput{
+					RegistrationNumber: "Х999УУ 177",
+					Brand:              "KAMAZ",
+					Model:              "65115",
+					VehicleType:        transport.VehicleTypeDumpTruck,
+					VehicleSubType:     transport.VehicleSubTypeRearDump,
+					Capacity:           15,
+					Volume:             10,
+					LoadingTypes:       []transport.LoadingType{transport.LoadingTypeTop},
+				},
+			},
+			{
+				OrganizationID: ui1OrgID,
+				ActorID:        ui1Owner.ID,
+				Specs: orgApp.VehicleSpecsInput{
+					RegistrationNumber: "Е321КМ 99",
+					Brand:              "Scania",
+					Model:              "R450",
+					VehicleType:        transport.VehicleTypeFlatbed,
+					VehicleSubType:     transport.VehicleSubTypeStandardFlatbed,
+					Capacity:           24,
+					Length:             13.6,
+					Width:              2.45,
+					RequiresADR:        true,
+					LoadingTypes:       []transport.LoadingType{transport.LoadingTypeTop, transport.LoadingTypeSide},
+				},
+			},
+		}
+
+		for _, input := range fleet {
+			vid, err := orgService.AddVehicle(ctx, input)
+			if errors.Is(err, organization.ErrVehicleAlreadyExists) {
+				fmt.Printf("  ~ %s уже существует, пропуск\n", input.Specs.RegistrationNumber)
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("fleet: add vehicle %s: %w", input.Specs.RegistrationNumber, err)
+			}
+			fmt.Printf("  ✓ %s %s %s [%s]: %s\n",
+				input.Specs.RegistrationNumber, input.Specs.Brand, input.Specs.Model,
+				input.Specs.VehicleSubType, vid)
+		}
+
 		return nil
 	}); err != nil {
 		log.Fatalf("seed scenario failed (rolled back): %v", err)
 	}
+
+	// ─── Сценарий 6: тикет поддержки от ui1 ──────────────────────────────────
+	fmt.Println("--- Сценарий 6: тикет поддержки ---")
+
+	tickets := []struct{ subject, message string }{
+		{"Не могу добавить сотрудника", "Пытаюсь пригласить нового сотрудника, но кнопка неактивна. Что делать?"},
+		{"Вопрос по статусу заявки", "Заявка висит в статусе 'На модерации' уже 2 дня. Когда будет проверена?"},
+	}
+	for _, t := range tickets {
+		tid, err := supportService.CreateTicket(ctx, supportApp.CreateTicketInput{
+			MemberID:       ui1Owner.ID,
+			OrgID:          ui1OrgID,
+			Subject:        t.subject,
+			InitialMessage: t.message,
+		})
+		if err != nil {
+			log.Fatalf("создание тикета: %v", err)
+		}
+		fmt.Printf("  ✓ тикет: %q → %s\n", t.subject, tid)
+	}
+	fmt.Println()
 
 	fmt.Println()
 	fmt.Println("=== Готово! ===")

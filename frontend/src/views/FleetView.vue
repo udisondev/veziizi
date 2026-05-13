@@ -1,57 +1,25 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { vehiclesApi } from '@/api/vehicles'
-import type { Vehicle, CreateVehicleRequest, UpdateVehicleRequest } from '@/types/vehicle'
+import type { Vehicle, VehicleStatus } from '@/types/vehicle'
 import {
-  vehicleTypeLabels, vehicleTypeOptions,
-  getVehicleSubTypeOptions, vehicleSubTypeLabels,
-  loadingTypeOptions, loadingTypeLabels,
-  type VehicleType, type VehicleSubType, type LoadingType,
+  vehicleTypeLabels,
+  vehicleSubTypeLabels,
 } from '@/types/freightRequest'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
-import { SelectField } from '@/components/ui/select-field'
-import { TabsSlider, type TabSliderItem } from '@/components/ui/tabs'
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
-} from '@/components/ui/sheet'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
-import { LoadingSpinner, EmptyState } from '@/components/shared'
-import { Truck, Plus, Pencil, Trash2, Weight, Box, List } from 'lucide-vue-next'
+import { LoadingSpinner } from '@/components/shared'
+import { Truck, Plus, Trash2, AlertCircle, ChevronRight } from 'lucide-vue-next'
 
-type TabValue = 'list' | 'add'
-
-const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-// --- Табы ---
-const activeTab = ref<TabValue>((route.query.tab as TabValue) || 'list')
-
-const tabs: TabSliderItem[] = [
-  { value: 'list', label: 'Список', icon: List },
-  { value: 'add', label: 'Добавить', icon: Plus },
-]
-
-watch(activeTab, (tab) => {
-  router.replace({ query: { ...route.query, tab } })
-  if (tab === 'add') resetForm()
-})
-
-watch(
-  () => route.query.tab as TabValue | undefined,
-  (tab) => { if (tab && tab !== activeTab.value) activeTab.value = tab }
-)
-
-// --- Список ---
 const vehicles = ref<Vehicle[]>([])
 const isLoading = ref(false)
 const loadError = ref<string | null>(null)
@@ -71,117 +39,6 @@ async function loadVehicles() {
 
 loadVehicles()
 
-// --- Форма добавления ---
-const addForm = ref<CreateVehicleRequest>(emptyForm())
-const addError = ref<string | null>(null)
-const isSaving = ref(false)
-
-function emptyForm(): CreateVehicleRequest {
-  return {
-    vehicle_type: '' as VehicleType,
-    vehicle_subtype: '' as VehicleSubType,
-    registration_number: '',
-    year: undefined,
-    capacity: undefined,
-    volume: undefined,
-    loading_types: [],
-  }
-}
-
-function resetForm() {
-  addForm.value = emptyForm()
-  addError.value = null
-}
-
-const addSubtypeOptions = computed(() =>
-  addForm.value.vehicle_type ? getVehicleSubTypeOptions(addForm.value.vehicle_type) : []
-)
-
-watch(() => addForm.value.vehicle_type, () => {
-  addForm.value.vehicle_subtype = '' as VehicleSubType
-})
-
-function toggleAddLoadingType(type: LoadingType) {
-  const cur = addForm.value.loading_types ?? []
-  addForm.value.loading_types = cur.includes(type) ? cur.filter(t => t !== type) : [...cur, type]
-}
-
-async function saveAdd() {
-  if (!auth.organizationId) return
-  if (!addForm.value.vehicle_type || !addForm.value.vehicle_subtype || !addForm.value.registration_number.trim()) {
-    addError.value = 'Заполните обязательные поля'
-    return
-  }
-  isSaving.value = true
-  addError.value = null
-  try {
-    await vehiclesApi.create(auth.organizationId, addForm.value)
-    activeTab.value = 'list'
-    await loadVehicles()
-  } catch {
-    addError.value = 'Не удалось сохранить. Попробуйте ещё раз'
-  } finally {
-    isSaving.value = false
-  }
-}
-
-// --- Редактирование (Sheet в списке) ---
-const editingVehicle = ref<Vehicle | null>(null)
-const editForm = ref<UpdateVehicleRequest>({})
-const isEditSheetOpen = ref(false)
-const isEditSaving = ref(false)
-const editError = ref<string | null>(null)
-
-const editSubtypeOptions = computed(() =>
-  (editForm.value.vehicle_type as VehicleType | undefined)
-    ? getVehicleSubTypeOptions(editForm.value.vehicle_type as VehicleType)
-    : []
-)
-
-watch(() => editForm.value.vehicle_type, () => {
-  editForm.value.vehicle_subtype = '' as VehicleSubType
-})
-
-function openEdit(vehicle: Vehicle) {
-  editingVehicle.value = vehicle
-  editForm.value = {
-    vehicle_type: vehicle.vehicle_type,
-    vehicle_subtype: vehicle.vehicle_subtype,
-    registration_number: vehicle.registration_number,
-    year: vehicle.year,
-    capacity: vehicle.capacity,
-    volume: vehicle.volume,
-    loading_types: vehicle.loading_types ?? [],
-  }
-  editError.value = null
-  isEditSheetOpen.value = true
-}
-
-function toggleEditLoadingType(type: LoadingType) {
-  const cur = editForm.value.loading_types ?? []
-  editForm.value.loading_types = cur.includes(type) ? cur.filter(t => t !== type) : [...cur, type]
-}
-
-async function saveEdit() {
-  if (!auth.organizationId || !editingVehicle.value) return
-  if (!editForm.value.vehicle_type || !editForm.value.vehicle_subtype || !editForm.value.registration_number?.trim()) {
-    editError.value = 'Заполните обязательные поля'
-    return
-  }
-  isEditSaving.value = true
-  editError.value = null
-  try {
-    await vehiclesApi.update(auth.organizationId, editingVehicle.value.id, editForm.value)
-    isEditSheetOpen.value = false
-    await loadVehicles()
-  } catch {
-    editError.value = 'Не удалось сохранить. Попробуйте ещё раз'
-  } finally {
-    isEditSaving.value = false
-  }
-}
-
-// --- Удаление ---
 const deletingVehicle = ref<Vehicle | null>(null)
 const isDeleting = ref(false)
 
@@ -197,309 +54,144 @@ async function confirmDelete() {
   }
 }
 
-// --- Helpers ---
-function formatCapacity(kg?: number) {
-  if (!kg) return null
-  return kg >= 1000 ? `${(kg / 1000).toLocaleString('ru-RU')} т` : `${kg} кг`
+const statusConfig: Record<VehicleStatus, { label: string; class: string }> = {
+  pending:  { label: 'На модерации', class: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' },
+  verified: { label: 'Проверен',     class: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' },
+  rejected: { label: 'Отклонён',     class: 'bg-destructive/10 text-destructive' },
+  archived: { label: 'Архив',        class: 'bg-muted text-muted-foreground' },
+}
+
+function formatCapacity(val?: number) {
+  if (!val) return null
+  return `${val.toLocaleString('ru-RU')} т`
 }
 </script>
 
 <template>
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <!-- Табы -->
-    <div class="mb-6">
-      <TabsSlider v-model="activeTab" :items="tabs" />
+    <LoadingSpinner v-if="isLoading" text="Загрузка автопарка..." />
+
+    <div
+      v-else-if="loadError"
+      class="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+    >
+      {{ loadError }}
     </div>
 
-    <!-- === Список === -->
-    <template v-if="activeTab === 'list'">
-      <LoadingSpinner v-if="isLoading" text="Загрузка автопарка..." />
-
-      <div
-        v-else-if="loadError"
-        class="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
-      >
-        {{ loadError }}
+    <div v-else class="rounded-lg border bg-card overflow-hidden">
+      <!-- Хедер -->
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <div class="flex items-center gap-2.5">
+          <h2 class="text-sm font-semibold text-foreground">Автопарк</h2>
+          <span
+            v-if="vehicles.length > 0"
+            class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary"
+          >{{ vehicles.length }}</span>
+        </div>
+        <Button size="sm" variant="outline" @click="router.push({ name: 'vehicle-add' })">
+          <Plus class="h-4 w-4 mr-1.5" />
+          Добавить
+        </Button>
       </div>
 
-      <EmptyState
-        v-else-if="vehicles.length === 0"
-        :icon="Truck"
-        title="Автопарк пуст"
-        description="Добавьте первый автомобиль вашей организации"
-      >
-        <template #action>
-          <Button @click="activeTab = 'add'">
-            <Plus class="mr-2 h-4 w-4" />
-            Добавить автомобиль
-          </Button>
-        </template>
-      </EmptyState>
-
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Card v-for="vehicle in vehicles" :key="vehicle.id">
-          <CardContent class="p-4">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <div class="font-semibold text-foreground">
-                  {{ vehicleTypeLabels[vehicle.vehicle_type] }}
-                </div>
-                <div class="text-sm text-muted-foreground">
-                  {{ vehicleSubTypeLabels[vehicle.vehicle_subtype] }}
-                </div>
-              </div>
-              <div class="flex items-center gap-1 shrink-0">
-                <Button variant="ghost" size="icon" class="h-8 w-8" @click="openEdit(vehicle)">
-                  <Pencil class="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="h-8 w-8 text-destructive hover:text-destructive"
-                  @click="deletingVehicle = vehicle"
-                >
-                  <Trash2 class="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div class="mt-3 space-y-1.5">
-              <div class="flex items-center gap-1.5 text-sm">
-                <Truck class="h-4 w-4 text-muted-foreground shrink-0" />
-                <span class="font-mono font-medium">{{ vehicle.registration_number }}</span>
-                <span v-if="vehicle.year" class="text-muted-foreground">· {{ vehicle.year }}</span>
-              </div>
-              <div v-if="vehicle.capacity" class="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Weight class="h-4 w-4 shrink-0" />
-                {{ formatCapacity(vehicle.capacity) }}
-              </div>
-              <div v-if="vehicle.volume" class="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Box class="h-4 w-4 shrink-0" />
-                {{ vehicle.volume }} м³
-              </div>
-              <div v-if="vehicle.loading_types?.length" class="text-xs text-muted-foreground">
-                {{ vehicle.loading_types.map(t => loadingTypeLabels[t]).join(', ') }}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <!-- Пустое состояние -->
+      <div v-if="vehicles.length === 0" class="px-5 py-10 text-center text-sm text-muted-foreground">
+        Нет транспортных средств
       </div>
-    </template>
 
-    <!-- === Добавить === -->
-    <template v-if="activeTab === 'add'">
-      <div class="flex justify-center">
-      <div class="w-full max-w-lg bg-card border border-border rounded-xl shadow-sm p-6 space-y-5">
-        <div class="space-y-1.5">
-          <Label>Тип транспорта <span class="text-destructive">*</span></Label>
-          <SelectField
-            v-model="addForm.vehicle_type"
-            :options="vehicleTypeOptions"
-            sheet-label="Тип транспорта"
-          />
-        </div>
+      <!-- Строки -->
+      <div v-else>
+        <div
+          v-for="(vehicle, index) in vehicles"
+          :key="vehicle.id"
+          class="flex items-center gap-4 px-5 py-4 transition-colors"
+          :class="[
+            index < vehicles.length - 1 ? 'border-b' : '',
+            vehicle.status !== 'archived' ? 'cursor-pointer hover:bg-muted/40' : 'opacity-60',
+          ]"
+          @click="vehicle.status !== 'archived' && router.push({ name: 'vehicle-edit', params: { id: vehicle.id } })"
+        >
+          <Truck class="h-6 w-6 text-muted-foreground shrink-0" />
 
-        <div class="space-y-1.5">
-          <Label>Тип кузова <span class="text-destructive">*</span></Label>
-          <SelectField
-            v-model="addForm.vehicle_subtype"
-            :options="addSubtypeOptions"
-            :disabled="!addForm.vehicle_type"
-            sheet-label="Тип кузова"
-          />
-        </div>
+          <div class="flex-1 min-w-0">
+            <!-- Строка 1: гос. номер + статус -->
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <span class="font-mono font-bold text-base">{{ vehicle.registration_number }}</span>
+              <span v-if="vehicle.brand || vehicle.model" class="text-sm text-muted-foreground">
+                {{ [vehicle.brand, vehicle.model].filter(Boolean).join(' ') }}
+              </span>
+              <span
+                class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full shrink-0"
+                :class="statusConfig[vehicle.status].class"
+              >{{ statusConfig[vehicle.status].label }}</span>
+            </div>
 
-        <div class="space-y-1.5">
-          <Label for="reg-number">Гос. номер <span class="text-destructive">*</span></Label>
-          <Input
-            id="reg-number"
-            v-model="addForm.registration_number"
-            placeholder="А123БВ 77"
-            class="font-mono uppercase"
-          />
-        </div>
+            <!-- Строка 2: тип, кузов, характеристики -->
+            <div class="flex items-center gap-1.5 text-sm text-muted-foreground mt-1 flex-wrap">
+              <span>{{ vehicleTypeLabels[vehicle.vehicle_type] }}</span>
+              <span>·</span>
+              <span>{{ vehicleSubTypeLabels[vehicle.vehicle_subtype] }}</span>
+              <template v-if="vehicle.capacity">
+                <span>·</span>
+                <span>{{ formatCapacity(vehicle.capacity) }}</span>
+              </template>
+              <template v-if="vehicle.volume">
+                <span>·</span>
+                <span>{{ vehicle.volume }} м³</span>
+              </template>
+              <template v-if="vehicle.requires_adr">
+                <span>·</span>
+                <span class="text-orange-600 dark:text-orange-400 font-medium">ADR</span>
+              </template>
+              <template v-if="vehicle.thermograph">
+                <span>·</span>
+                <span class="text-blue-600 dark:text-blue-400 font-medium">Термограф</span>
+              </template>
+            </div>
 
-        <div class="space-y-1.5">
-          <Label for="year">Год выпуска</Label>
-          <Input
-            id="year"
-            v-model.number="addForm.year"
-            type="number"
-            placeholder="2020"
-            min="1980"
-            :max="new Date().getFullYear()"
-          />
-        </div>
-
-        <div class="space-y-1.5">
-          <Label for="capacity">Грузоподъёмность, кг</Label>
-          <Input
-            id="capacity"
-            v-model.number="addForm.capacity"
-            type="number"
-            placeholder="20000"
-            min="0"
-          />
-        </div>
-
-        <div class="space-y-1.5">
-          <Label for="volume">Объём кузова, м³</Label>
-          <Input
-            id="volume"
-            v-model.number="addForm.volume"
-            type="number"
-            placeholder="82"
-            min="0"
-          />
-        </div>
-
-        <div class="space-y-2">
-          <Label>Типы погрузки</Label>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in loadingTypeOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'px-3 py-1.5 rounded-full text-sm border transition-colors',
-                addForm.loading_types?.includes(option.value as LoadingType)
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground',
-              ]"
-              @click="toggleAddLoadingType(option.value as LoadingType)"
+            <!-- Строка 3: причина отклонения -->
+            <div
+              v-if="vehicle.status === 'rejected' && vehicle.rejection_reason"
+              class="flex items-center gap-1 text-sm text-destructive mt-1"
             >
-              {{ option.label }}
-            </button>
-          </div>
-        </div>
-
-        <p v-if="addError" class="text-sm text-destructive">{{ addError }}</p>
-
-        <div class="flex items-center gap-3 pt-2">
-          <Button variant="outline" @click="activeTab = 'list'">Отмена</Button>
-          <Button :disabled="isSaving" @click="saveAdd">
-            {{ isSaving ? 'Сохранение...' : 'Добавить' }}
-          </Button>
-        </div>
-      </div>
-      </div>
-    </template>
-
-    <!-- Sheet редактирования -->
-    <Sheet v-model:open="isEditSheetOpen">
-      <SheetContent class="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader class="mb-6">
-          <SheetTitle>Редактировать автомобиль</SheetTitle>
-        </SheetHeader>
-
-        <div class="space-y-5">
-          <div class="space-y-1.5">
-            <Label>Тип транспорта <span class="text-destructive">*</span></Label>
-            <SelectField
-              v-model="editForm.vehicle_type"
-              :options="vehicleTypeOptions"
-              sheet-label="Тип транспорта"
-            />
-          </div>
-
-          <div class="space-y-1.5">
-            <Label>Тип кузова <span class="text-destructive">*</span></Label>
-            <SelectField
-              v-model="editForm.vehicle_subtype"
-              :options="editSubtypeOptions"
-              :disabled="!editForm.vehicle_type"
-              sheet-label="Тип кузова"
-            />
-          </div>
-
-          <div class="space-y-1.5">
-            <Label>Гос. номер <span class="text-destructive">*</span></Label>
-            <Input
-              v-model="editForm.registration_number"
-              placeholder="А123БВ 77"
-              class="font-mono uppercase"
-            />
-          </div>
-
-          <div class="space-y-1.5">
-            <Label>Год выпуска</Label>
-            <Input
-              v-model.number="editForm.year"
-              type="number"
-              placeholder="2020"
-              min="1980"
-              :max="new Date().getFullYear()"
-            />
-          </div>
-
-          <div class="space-y-1.5">
-            <Label>Грузоподъёмность, кг</Label>
-            <Input
-              v-model.number="editForm.capacity"
-              type="number"
-              placeholder="20000"
-              min="0"
-            />
-          </div>
-
-          <div class="space-y-1.5">
-            <Label>Объём кузова, м³</Label>
-            <Input
-              v-model.number="editForm.volume"
-              type="number"
-              placeholder="82"
-              min="0"
-            />
-          </div>
-
-          <div class="space-y-2">
-            <Label>Типы погрузки</Label>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="option in loadingTypeOptions"
-                :key="option.value"
-                type="button"
-                :class="[
-                  'px-3 py-1.5 rounded-full text-sm border transition-colors',
-                  editForm.loading_types?.includes(option.value as LoadingType)
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground',
-                ]"
-                @click="toggleEditLoadingType(option.value as LoadingType)"
-              >
-                {{ option.label }}
-              </button>
+              <AlertCircle class="h-3.5 w-3.5 shrink-0" />
+              <span>{{ vehicle.rejection_reason }}</span>
             </div>
           </div>
 
-          <p v-if="editError" class="text-sm text-destructive">{{ editError }}</p>
-        </div>
-
-        <SheetFooter class="mt-8 gap-3">
-          <Button variant="outline" class="flex-1" @click="isEditSheetOpen = false">Отмена</Button>
-          <Button class="flex-1" :disabled="isEditSaving" @click="saveEdit">
-            {{ isEditSaving ? 'Сохранение...' : 'Сохранить' }}
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-9 w-9 text-muted-foreground hover:text-destructive shrink-0"
+            :disabled="vehicle.status === 'archived'"
+            @click.stop="deletingVehicle = vehicle"
+          >
+            <Trash2 class="h-5 w-5" />
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
 
-    <!-- Диалог удаления -->
+          <ChevronRight
+            class="h-5 w-5 text-muted-foreground shrink-0"
+            :class="vehicle.status === 'archived' ? 'invisible' : ''"
+          />
+        </div>
+      </div>
+    </div>
+
     <Dialog :open="!!deletingVehicle" @update:open="v => { if (!v) deletingVehicle = null }">
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Удалить автомобиль?</DialogTitle>
+        <DialogHeader class="space-y-4">
+          <DialogTitle>Убрать из автопарка?</DialogTitle>
           <DialogDescription>
             <template v-if="deletingVehicle">
               {{ vehicleTypeLabels[deletingVehicle.vehicle_type] }} · {{ deletingVehicle.registration_number }}
             </template>
-            будет удалён из автопарка.
+            будет удалён из вашего автопарка.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter class="gap-3">
           <Button variant="outline" @click="deletingVehicle = null">Отмена</Button>
           <Button variant="destructive" :disabled="isDeleting" @click="confirmDelete">
-            {{ isDeleting ? 'Удаление...' : 'Удалить' }}
+            {{ isDeleting ? 'Удаление...' : 'Убрать' }}
           </Button>
         </DialogFooter>
       </DialogContent>
