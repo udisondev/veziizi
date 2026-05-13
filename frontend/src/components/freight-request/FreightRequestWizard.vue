@@ -46,7 +46,7 @@ function handleCancel() {
 function confirmCancel() {
   showCancelConfirm.value = false
   form.resetForm()
-  router.push(props.editMode && props.freightRequestId ? `/freight-requests/${props.freightRequestId}` : '/')
+  router.push(props.editMode && props.freightRequestId ? `/freight-requests/${props.freightRequestId}` : '/requests')
 }
 
 const hasFormData = computed(() => {
@@ -93,7 +93,7 @@ async function handleSubmit() {
       created_at: new Date().toISOString(),
     })
     emitTutorial('freightRequest:created', { id: 'sandbox-request' })
-    router.push('/')
+    router.push('/requests')
     return
   }
 

@@ -10,7 +10,7 @@ export function usePermissions() {
   )
 
   const canManageOrganization = computed(
-    () => auth.role === 'owner' || auth.role === 'administrator'
+    () => auth.role === 'owner'
   )
 
   const canManageInvitations = computed(
@@ -52,10 +52,9 @@ export function usePermissions() {
     if (!isOrgActive.value || !isFreightRequestOwner(customerOrgId)) {
       return false
     }
-    // Владелец или администратор организации, либо создатель заявки
-    const isOwnerOrAdmin = auth.role === 'owner' || auth.role === 'administrator'
-    const isCreator = customerMemberId === auth.memberId
-    return isOwnerOrAdmin || isCreator
+    // Только ответственный сотрудник может редактировать заявку
+    // Owner/admin должны сначала переназначить заявку на себя
+    return customerMemberId === auth.memberId
   }
 
   const canCancelFreightRequest = (customerOrgId: string, customerMemberId?: string): boolean => {

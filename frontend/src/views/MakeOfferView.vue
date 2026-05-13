@@ -99,7 +99,7 @@ onMounted(loadData)
 <template>
   <div class="min-h-screen bg-background">
     <DetailPageHeader
-      :back-to="{ path: '/', query: { tab: 'list' } }"
+      :back-to="{ path: '/requests', query: { tab: 'list' } }"
       back-label="К списку заявок"
     />
 

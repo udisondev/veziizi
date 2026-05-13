@@ -236,54 +236,52 @@ watch(() => route.params.id, () => {
           </CardContent>
         </Card>
 
-        <!-- Reviews Card -->
-        <Card>
-          <CardContent class="p-6">
-            <h2 class="text-lg font-semibold text-foreground mb-4">
-              Отзывы
-              <span v-if="rating && rating.total_reviews > 0" class="text-muted-foreground font-normal">({{ rating.total_reviews }})</span>
-            </h2>
+        <!-- Reviews -->
+        <div>
+          <h2 class="text-lg font-semibold text-foreground mb-4">
+            Отзывы
+            <span v-if="rating && rating.total_reviews > 0" class="text-muted-foreground font-normal">({{ rating.total_reviews }})</span>
+          </h2>
 
-            <div v-if="reviews.length === 0" class="text-center py-8 text-muted-foreground">
-              Пока нет отзывов
-            </div>
+          <div v-if="reviews.length === 0" class="text-center py-8 text-muted-foreground">
+            Пока нет отзывов
+          </div>
 
-            <div v-else class="space-y-4">
-              <div
-                v-for="review in reviews"
-                :key="review.id"
-                class="border border-border rounded-lg p-4"
-              >
-                <div class="flex items-start justify-between mb-2">
-                  <div>
-                    <AppLink :to="{ name: 'organization-profile', params: { id: review.reviewer_org_id } }">
-                      {{ review.reviewer_org_name || 'Организация' }}
-                    </AppLink>
-                    <div class="flex mt-1">
-                      <span
-                        v-for="star in 5"
-                        :key="star"
-                        :class="[
-                          'text-lg',
-                          star <= review.rating ? 'text-warning' : 'text-muted-foreground/30'
-                        ]"
-                      >&#9733;</span>
-                    </div>
-                  </div>
-                  <div class="text-xs text-muted-foreground">
-                    {{ formatDateTime(review.created_at) }}
+          <div v-else class="space-y-4">
+            <div
+              v-for="review in reviews"
+              :key="review.id"
+              class="bg-card border border-border rounded-lg p-4 shadow-sm"
+            >
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <AppLink :to="{ name: 'organization-profile', params: { id: review.reviewer_org_id } }">
+                    {{ review.reviewer_org_name || 'Организация' }}
+                  </AppLink>
+                  <div class="flex mt-1">
+                    <span
+                      v-for="star in 5"
+                      :key="star"
+                      :class="[
+                        'text-lg',
+                        star <= review.rating ? 'text-warning' : 'text-muted-foreground/30'
+                      ]"
+                    >&#9733;</span>
                   </div>
                 </div>
-                <p v-if="review.comment" class="text-muted-foreground mt-2 break-words">{{ review.comment }}</p>
+                <div class="text-xs text-muted-foreground">
+                  {{ formatDateTime(review.created_at) }}
+                </div>
               </div>
-
-              <!-- Infinite scroll sentinel -->
-              <div ref="sentinelRef" class="h-12 flex items-center justify-center">
-                <LoadingSpinner v-if="isLoadingMore" text="Загрузка..." />
-              </div>
+              <p v-if="review.comment" class="text-muted-foreground mt-2 break-words">{{ review.comment }}</p>
             </div>
-          </CardContent>
-        </Card>
+
+            <!-- Infinite scroll sentinel -->
+            <div ref="sentinelRef" class="h-12 flex items-center justify-center">
+              <LoadingSpinner v-if="isLoadingMore" text="Загрузка..." />
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   </div>

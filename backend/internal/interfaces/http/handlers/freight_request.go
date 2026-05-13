@@ -913,6 +913,15 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		opts = append(opts, projections.WithOfferStatusAlias(status))
 	}
 
+	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
+		memberID, err := uuid.Parse(memberIDStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid member_id")
+			return
+		}
+		opts = append(opts, projections.WithCarrierMemberIDAlias(memberID))
+	}
+
 	// SEC-016: Валидированная пагинация
 	pagination := httputil.ParsePagination(r)
 	opts = append(opts, projections.WithOfferLimit(pagination.Limit))
