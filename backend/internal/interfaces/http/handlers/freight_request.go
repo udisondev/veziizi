@@ -355,8 +355,14 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Если пользователь не фильтрует строго по своей организации, разрешаем
 	// видеть либо свои заявки в любом статусе, либо published — чужие.
 	// Поверх этого работает пользовательский фильтр по статусам.
-	if !isOwnOrgFilter && currentOrgID != uuid.Nil {
-		opts = append(opts, projections.WithOwnedOrPublished(currentOrgID))
+	// Fail-safe: если по какой-то причине у сессии нет org_id, ведём себя
+	// как маркетплейс-режим (только published), а не открываем всё.
+	if !isOwnOrgFilter {
+		if currentOrgID != uuid.Nil {
+			opts = append(opts, projections.WithOwnedOrPublished(currentOrgID))
+		} else {
+			opts = append(opts, projections.WithStatuses([]string{"published"}))
+		}
 	}
 
 	// Опциональный фильтр по статусам (CSV) — применяется поверх SEC-ограничения выше.
