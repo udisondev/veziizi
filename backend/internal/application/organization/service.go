@@ -616,7 +616,7 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 		}
 
 		// Publish to message bus - watermill subscribers will update projections async
-		if err := s.publisher.Publish(ctx, "organization.events", changes...); err != nil {
+		if err := s.publisher.Publish(ctx, changes...); err != nil {
 			slog.Error("failed to publish organization events",
 				slog.String("organization_id", org.ID().String()),
 				slog.Int("event_count", len(changes)),
