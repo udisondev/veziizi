@@ -8,6 +8,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/message"
+	wmMiddleware "github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
@@ -50,8 +51,10 @@ func (p *EventPublisher) Publish(ctx context.Context, topic string, events ...ev
 
 	// Извлекаем metadata из контекста для аудита
 	var metadata map[string]string
+	var correlationID string
 	if meta, ok := httputil.EventMetaFromCtx(ctx); ok {
 		metadata = meta.ToMap()
+		correlationID = meta.CorrelationID
 	}
 
 	for _, event := range events {
@@ -69,6 +72,13 @@ func (p *EventPublisher) Publish(ctx context.Context, topic string, events ...ev
 		msg.Metadata.Set("aggregate_id", event.AggregateID().String())
 		msg.Metadata.Set("aggregate_type", event.AggregateType())
 		msg.Metadata.Set("event_type", event.EventType())
+		// Дублируем correlation_id в watermill metadata, чтобы CorrelationID
+		// middleware прокинул его в любые исходящие сообщения, которые handler
+		// опубликует в ответ. В envelope.Metadata он уже лежит для долговременной
+		// истории в event store.
+		if correlationID != "" {
+			wmMiddleware.SetCorrelationID(correlationID, msg)
+		}
 
 		messages = append(messages, msg)
 	}
