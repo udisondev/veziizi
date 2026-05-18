@@ -309,14 +309,18 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Преаллокация: ~22 возможных фильтров + pagination
 	opts := make([]projections.FilterOption, 0, 25)
 
-	// Текущая организация пользователя (для авторизации фильтров)
+	// SEC-invariant: видимость заявок в списке. Применяется БЕЗУСЛОВНО до
+	// разбора пользовательских фильтров, чтобы любая будущая ветка
+	// маршрутизации фильтров не могла случайно открыть приватные стадии
+	// чужих заявок. Fail-safe: без org_id в сессии — только published.
 	currentOrgID, _ := h.session.GetOrganizationID(r)
+	if currentOrgID != uuid.Nil {
+		opts = append(opts, projections.WithVisibleToOrg(currentOrgID))
+	} else {
+		opts = append(opts, projections.WithStatuses([]string{"published"}))
+	}
 
-	// Определяем, запрашивает ли пользователь свои заявки
-	isOwnOrgFilter := false
-	currentMemberID, _ := h.session.GetMemberID(r)
-
-	// Опциональный фильтр по customer_org_id
+	// Опциональный фильтр по customer_org_id (сужает SEC-выдачу).
 	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
 		orgID, err := uuid.Parse(orgIDStr)
 		if err != nil {
@@ -324,7 +328,6 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithCustomerOrgID(orgID))
-		isOwnOrgFilter = orgID == currentOrgID
 	}
 
 	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
@@ -334,9 +337,6 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithCustomerMemberID(memberID))
-		if memberID == currentMemberID {
-			isOwnOrgFilter = true
-		}
 	}
 
 	if carrierOrgIDStr := r.URL.Query().Get("carrier_org_id"); carrierOrgIDStr != "" {
@@ -346,23 +346,6 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithFreightCarrierOrgID(carrierOrgID))
-		if carrierOrgID == currentOrgID {
-			isOwnOrgFilter = true
-		}
-	}
-
-	// SEC: ограничение видимости приватных стадий чужих заявок.
-	// Если пользователь не фильтрует строго по своей организации, разрешаем
-	// видеть либо свои заявки в любом статусе, либо published — чужие.
-	// Поверх этого работает пользовательский фильтр по статусам.
-	// Fail-safe: если по какой-то причине у сессии нет org_id, ведём себя
-	// как маркетплейс-режим (только published), а не открываем всё.
-	if !isOwnOrgFilter {
-		if currentOrgID != uuid.Nil {
-			opts = append(opts, projections.WithOwnedOrPublished(currentOrgID))
-		} else {
-			opts = append(opts, projections.WithStatuses([]string{"published"}))
-		}
 	}
 
 	// Опциональный фильтр по статусам (CSV) — применяется поверх SEC-ограничения выше.
