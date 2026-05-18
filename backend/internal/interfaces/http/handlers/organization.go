@@ -901,7 +901,17 @@ func (h *OrganizationHandler) GetPendingOffers(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	items, err := h.freightRequestProj.GetPendingOffersOnMyRequests(r.Context(), id, limit)
+	var memberID uuid.UUID
+	if mStr := r.URL.Query().Get("member_id"); mStr != "" {
+		m, err := uuid.Parse(mStr)
+		if err != nil || m == uuid.Nil {
+			writeError(w, http.StatusBadRequest, "invalid member_id")
+			return
+		}
+		memberID = m
+	}
+
+	items, err := h.freightRequestProj.GetPendingOffersOnMyRequests(r.Context(), id, memberID, limit)
 	if err != nil {
 		slog.Error("failed to get pending offers", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "failed to get pending offers")
