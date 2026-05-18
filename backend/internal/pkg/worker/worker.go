@@ -97,6 +97,8 @@ func Run(cfg Config) {
 		os.Exit(1)
 	}
 
+	applyStandardMiddleware(router, appCfg.Worker, wmLogger)
+
 	router.AddConsumerHandler(cfg.Name+"_handler", cfg.Topic, subscriber, cfg.Handler(f))
 
 	go func() {

@@ -95,8 +95,7 @@ func TestEventGroupProcessor_DispatchesByType(t *testing.T) {
 		}),
 	))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go func() {
 		if err := router.Run(ctx); err != nil {
 			t.Logf("router stopped: %v", err)
