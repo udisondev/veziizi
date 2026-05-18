@@ -2,17 +2,13 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/components/cqrs"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
@@ -48,47 +44,6 @@ func NewReviewsProjectionHandler(
 		ratings:   ratings,
 		dedup:     dedup,
 	}
-}
-
-func (h *ReviewsProjectionHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", "error", err, "action", "skipped_retry")
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", "error", err, "action", "skipped_retry")
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-
-	// CQRS-pipeline кладёт оригинальный msg в ctx сам; в legacy Handle
-	// (e2e setup) этого не происходит. Без CtxWithOriginalMessage наш
-	// eventIDFromCtx не сможет достать event_id из msg.Metadata, и dedup
-	// упадёт с "no original message in ctx".
-	ctx := cqrs.CtxWithOriginalMessage(msg.Context(), msg)
-	return h.handleEvent(ctx, evt)
-}
-
-func (h *ReviewsProjectionHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.ReviewReceived:
-		return h.OnReceived(ctx, &e)
-	case events.ReviewEdited:
-		return h.OnEdited(ctx, &e)
-	case events.ReviewAnalyzed:
-		return h.OnAnalyzed(ctx, &e)
-	case events.ReviewApproved:
-		return h.OnApproved(ctx, &e)
-	case events.ReviewRejected:
-		return h.OnRejected(ctx, &e)
-	case events.ReviewActivated:
-		return h.OnActivated(ctx, &e)
-	case events.ReviewDeactivated:
-		return h.OnDeactivated(ctx, &e)
-	}
-	return nil
 }
 
 // withDedup оборачивает накопительные операции проекции в общую tx с

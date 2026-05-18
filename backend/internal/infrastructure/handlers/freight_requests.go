@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
@@ -33,68 +32,6 @@ func NewFreightRequestsHandler(db dbtx.TxManager, eventStore eventstore.Store, i
 		invites:    invites,
 		psql:       squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
-}
-
-func (h *FreightRequestsHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *FreightRequestsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.FreightRequestCreated:
-		return h.OnCreated(ctx, &e)
-	case events.FreightRequestUpdated:
-		return h.OnUpdated(ctx, &e)
-	case events.FreightRequestReassigned:
-		return h.OnReassigned(ctx, &e)
-	case events.FreightRequestCancelled:
-		return h.OnCancelled(ctx, &e)
-	case events.FreightRequestExpired:
-		return h.OnExpired(ctx, &e)
-	case events.OfferMade:
-		return h.OnOfferMade(ctx, &e)
-	case events.OfferWithdrawn:
-		return h.OnOfferWithdrawn(ctx, &e)
-	case events.OfferSelected:
-		return h.OnOfferSelected(ctx, &e)
-	case events.OfferRejected:
-		return h.OnOfferRejected(ctx, &e)
-	case events.OfferConfirmed:
-		return h.OnOfferConfirmed(ctx, &e)
-	case events.OfferDeclined:
-		return h.OnOfferDeclined(ctx, &e)
-	case events.OfferUnselected:
-		return h.OnOfferUnselected(ctx, &e)
-	case events.OfferCancelledWithRequest:
-		return h.OnOfferCancelledWithRequest(ctx, &e)
-	case events.CustomerCompleted:
-		return h.OnCustomerCompleted(ctx, &e)
-	case events.CarrierCompleted:
-		return h.OnCarrierCompleted(ctx, &e)
-	case events.FreightRequestCompleted:
-		return h.OnFreightRequestCompleted(ctx, &e)
-	case events.ReviewLeft:
-		return h.OnReviewLeft(ctx, &e)
-	case events.CancelledAfterConfirmed:
-		return h.OnCancelledAfterConfirmed(ctx, &e)
-	case events.CarrierMemberReassigned:
-		return h.OnCarrierMemberReassigned(ctx, &e)
-	case events.CarrierInvited:
-		return h.OnCarrierInvited(ctx, &e)
-	}
-	return nil
 }
 
 // OnOfferWithdrawn / OnOfferRejected / OnOfferCancelledWithRequest — обёртки

@@ -2,15 +2,12 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	freightEvents "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
 // ReviewReceiverHandler listens for FreightRequest.ReviewLeft events
@@ -22,30 +19,6 @@ type ReviewReceiverHandler struct {
 func NewReviewReceiverHandler(reviewService *reviewApp.Service) *ReviewReceiverHandler {
 	return &ReviewReceiverHandler{
 		reviewService: reviewService,
-	}
-}
-
-func (h *ReviewReceiverHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-
-	switch e := evt.(type) {
-	case freightEvents.ReviewLeft:
-		return h.OnReviewLeft(msg.Context(), &e)
-	case freightEvents.ReviewEdited:
-		return h.OnReviewEdited(msg.Context(), &e)
-	default:
-		// Ignore other freight request events
-		return nil
 	}
 }
 

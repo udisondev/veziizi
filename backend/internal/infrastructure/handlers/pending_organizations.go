@@ -2,15 +2,12 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
@@ -24,35 +21,6 @@ func NewPendingOrganizationsHandler(db dbtx.TxManager) *PendingOrganizationsHand
 		db:   db,
 		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
-}
-
-// Handle обрабатывает watermill message. Возвращает nil для ack, error для nack.
-func (h *PendingOrganizationsHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *PendingOrganizationsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.OrganizationCreated:
-		return h.OnCreated(ctx, &e)
-	case events.OrganizationApproved:
-		return h.OnApproved(ctx, &e)
-	case events.OrganizationRejected:
-		return h.OnRejected(ctx, &e)
-	}
-	return nil
 }
 
 // OnApproved и OnRejected делают одно и то же — удаляют запись из pending.

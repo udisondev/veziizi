@@ -2,17 +2,14 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/values"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
@@ -30,31 +27,6 @@ func NewSupportTicketsHandler(db dbtx.TxManager) *SupportTicketsHandler {
 		db:   db,
 		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
-}
-
-// Handle — legacy путь для e2e setup. Будет удалён, когда e2e перейдёт на
-// CQRS pipeline (см. этап 9f).
-func (h *SupportTicketsHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-	ctx := msg.Context()
-	switch e := evt.(type) {
-	case events.TicketCreated:
-		return h.OnTicketCreated(ctx, &e)
-	case events.MessageAdded:
-		return h.OnMessageAdded(ctx, &e)
-	case events.TicketClosed:
-		return h.OnTicketClosed(ctx, &e)
-	case events.TicketReopened:
-		return h.OnTicketReopened(ctx, &e)
-	}
-	return nil
 }
 
 func (h *SupportTicketsHandler) OnTicketCreated(ctx context.Context, e *events.TicketCreated) error {

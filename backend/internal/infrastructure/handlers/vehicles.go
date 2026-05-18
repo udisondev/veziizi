@@ -2,15 +2,11 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log/slog"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
@@ -31,36 +27,6 @@ func NewVehiclesHandler(
 		vehicles:        vehicles,
 		pendingVehicles: pendingVehicles,
 	}
-}
-
-func (h *VehiclesHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event envelope: %w", err)
-	}
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *VehiclesHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.VehicleAdded:
-		return h.OnAdded(ctx, &e)
-	case events.VehicleUpdated:
-		return h.OnUpdated(ctx, &e)
-	case events.VehicleVerified:
-		return h.OnVerified(ctx, &e)
-	case events.VehicleRejected:
-		return h.OnRejected(ctx, &e)
-	case events.VehicleArchived:
-		return h.OnArchived(ctx, &e)
-	}
-	return nil
 }
 
 func upsertFromSpecs(specs events.VehicleSpecsPayload, status string) projections.VehicleUpsertInput {

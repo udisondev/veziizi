@@ -21,9 +21,11 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
 	eventHandlers "github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	httpServer "github.com/udisondev/veziizi/backend/internal/interfaces/http"
@@ -222,118 +224,178 @@ func newSuite(t *testing.T) (*Suite, error) {
 	return suite, nil
 }
 
-// startEventHandlers sets up watermill subscribers to process events into lookup tables.
-// This is essential for E2E tests because login requires members_lookup to be populated.
-// Each handler needs its own subscriber with unique consumer group to receive all messages.
+// startEventHandlers поднимает CQRS-EventGroupProcessor для каждого воркера
+// в одном in-process router'е. Это эквивалент production worker.Run, но
+// все consumer group'ы со своими e2e_-префиксами — чтобы тесты не делили
+// offset с реальными воркерами и не теряли события между прогонами.
+//
+// PollInterval сокращён до 50ms (default 1s), иначе async-тесты review
+// pipeline / fraudster handler / freight reassign падают по timeout при
+// параллельном запуске нескольких suites.
 func (s *Suite) startEventHandlers() error {
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 	pool := s.Factory.MustPool()
 	db := s.Factory.DB()
 
-	// Helper to create subscriber with unique consumer group.
-	// PollInterval is shortened to 50ms (default 1s) so async event-driven tests
-	// (review pipeline, fraudster handler, freight reassign) don't time out
-	// when several suites run in parallel and share the same subscriber pool.
-	createSubscriber := func(consumerGroup, topic string) (message.Subscriber, error) {
-		sub, err := wmSql.NewSubscriber(
-			wmSql.BeginnerFromPgx(pool),
-			wmSql.SubscriberConfig{
-				SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
-				OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
-				ConsumerGroup:  consumerGroup,
-				PollInterval:   50 * time.Millisecond,
-			},
-			wmLogger,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create subscriber %s: %w", consumerGroup, err)
-		}
-		if err := sub.SubscribeInitialize(topic); err != nil {
-			return nil, fmt.Errorf("failed to initialize subscriber %s: %w", consumerGroup, err)
-		}
-		return sub, nil
-	}
-
-	// Create router
 	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
 	if err != nil {
 		return fmt.Errorf("failed to create router: %w", err)
 	}
 
-	// Organization event handlers - each needs its own subscriber
-	membersSub, err := createSubscriber("e2e_members", "organization.events")
-	if err != nil {
-		return err
+	// Helper для регистрации CQRS-handler'ов одного воркера. Создаёт
+	// EventGroupProcessor с e2e-специфичным SubscriberConstructor (50ms poll)
+	// и сразу регистрирует группу хендлеров.
+	register := func(topic, consumerGroup string, handlers ...cqrs.GroupEventHandler) error {
+		ep, err := cqrs.NewEventGroupProcessorWithConfig(router, cqrs.EventGroupProcessorConfig{
+			GenerateSubscribeTopic: func(cqrs.EventGroupProcessorGenerateSubscribeTopicParams) (string, error) {
+				return topic, nil
+			},
+			SubscriberConstructor: func(cqrs.EventGroupProcessorSubscriberConstructorParams) (message.Subscriber, error) {
+				sub, err := wmSql.NewSubscriber(
+					wmSql.BeginnerFromPgx(pool),
+					wmSql.SubscriberConfig{
+						SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
+						OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
+						ConsumerGroup:  consumerGroup,
+						PollInterval:   50 * time.Millisecond,
+					},
+					wmLogger,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("create subscriber %s: %w", consumerGroup, err)
+				}
+				if err := sub.SubscribeInitialize(topic); err != nil {
+					return nil, fmt.Errorf("init subscriber %s: %w", consumerGroup, err)
+				}
+				return sub, nil
+			},
+			Marshaler:         messaging.EventEnvelopeMarshaler{},
+			Logger:            wmLogger,
+			AckOnUnknownEvent: true,
+		})
+		if err != nil {
+			return fmt.Errorf("create event processor %s: %w", consumerGroup, err)
+		}
+		return ep.AddHandlersGroup(consumerGroup, handlers...)
 	}
-	membersHandler := eventHandlers.NewMembersHandler(db)
-	router.AddConsumerHandler("members", "organization.events", membersSub, membersHandler.Handle)
 
-	orgsSub, err := createSubscriber("e2e_organizations", "organization.events")
-	if err != nil {
+	membersH := eventHandlers.NewMembersHandler(db)
+	if err := register("organization.events", "e2e_members",
+		cqrs.NewGroupEventHandler(membersH.OnMemberAdded),
+		cqrs.NewGroupEventHandler(membersH.OnMemberRemoved),
+		cqrs.NewGroupEventHandler(membersH.OnMemberRoleChanged),
+		cqrs.NewGroupEventHandler(membersH.OnMemberBlocked),
+		cqrs.NewGroupEventHandler(membersH.OnMemberUnblocked),
+	); err != nil {
 		return err
 	}
-	organizationsHandler := eventHandlers.NewOrganizationsHandler(s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
-	router.AddConsumerHandler("organizations", "organization.events", orgsSub, organizationsHandler.Handle)
 
-	invSub, err := createSubscriber("e2e_invitations", "organization.events")
-	if err != nil {
+	orgsH := eventHandlers.NewOrganizationsHandler(s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
+	if err := register("organization.events", "e2e_organizations",
+		cqrs.NewGroupEventHandler(orgsH.OnCreated),
+		cqrs.NewGroupEventHandler(orgsH.OnApproved),
+		cqrs.NewGroupEventHandler(orgsH.OnRejected),
+		cqrs.NewGroupEventHandler(orgsH.OnSuspended),
+		cqrs.NewGroupEventHandler(orgsH.OnUpdated),
+	); err != nil {
 		return err
 	}
-	invitationsHandler := eventHandlers.NewInvitationsHandler(db)
-	router.AddConsumerHandler("invitations", "organization.events", invSub, invitationsHandler.Handle)
 
-	pendingSub, err := createSubscriber("e2e_pending_orgs", "organization.events")
-	if err != nil {
+	invH := eventHandlers.NewInvitationsHandler(db)
+	if err := register("organization.events", "e2e_invitations",
+		cqrs.NewGroupEventHandler(invH.OnInvitationCreated),
+		cqrs.NewGroupEventHandler(invH.OnInvitationAccepted),
+		cqrs.NewGroupEventHandler(invH.OnInvitationExpired),
+		cqrs.NewGroupEventHandler(invH.OnInvitationCancelled),
+	); err != nil {
 		return err
 	}
-	pendingOrgsHandler := eventHandlers.NewPendingOrganizationsHandler(db)
-	router.AddConsumerHandler("pending_orgs", "organization.events", pendingSub, pendingOrgsHandler.Handle)
 
-	// Freight request event handlers
-	frSub, err := createSubscriber("e2e_freight_requests", "freightrequest.events")
-	if err != nil {
+	pendingH := eventHandlers.NewPendingOrganizationsHandler(db)
+	if err := register("organization.events", "e2e_pending_orgs",
+		cqrs.NewGroupEventHandler(pendingH.OnCreated),
+		cqrs.NewGroupEventHandler(pendingH.OnApproved),
+		cqrs.NewGroupEventHandler(pendingH.OnRejected),
+	); err != nil {
 		return err
 	}
-	freightRequestsHandler := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore(), s.Factory.FreightInvitesProjection())
-	router.AddConsumerHandler("freight_requests", "freightrequest.events", frSub, freightRequestsHandler.Handle)
 
-	// Support event handlers
-	supportSub, err := createSubscriber("e2e_support_tickets", "support.events")
-	if err != nil {
+	frH := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore(), s.Factory.FreightInvitesProjection())
+	if err := register("freightrequest.events", "e2e_freight_requests",
+		cqrs.NewGroupEventHandler(frH.OnCreated),
+		cqrs.NewGroupEventHandler(frH.OnUpdated),
+		cqrs.NewGroupEventHandler(frH.OnReassigned),
+		cqrs.NewGroupEventHandler(frH.OnCancelled),
+		cqrs.NewGroupEventHandler(frH.OnExpired),
+		cqrs.NewGroupEventHandler(frH.OnOfferMade),
+		cqrs.NewGroupEventHandler(frH.OnOfferWithdrawn),
+		cqrs.NewGroupEventHandler(frH.OnOfferSelected),
+		cqrs.NewGroupEventHandler(frH.OnOfferRejected),
+		cqrs.NewGroupEventHandler(frH.OnOfferConfirmed),
+		cqrs.NewGroupEventHandler(frH.OnOfferDeclined),
+		cqrs.NewGroupEventHandler(frH.OnOfferUnselected),
+		cqrs.NewGroupEventHandler(frH.OnOfferCancelledWithRequest),
+		cqrs.NewGroupEventHandler(frH.OnCustomerCompleted),
+		cqrs.NewGroupEventHandler(frH.OnCarrierCompleted),
+		cqrs.NewGroupEventHandler(frH.OnFreightRequestCompleted),
+		cqrs.NewGroupEventHandler(frH.OnReviewLeft),
+		cqrs.NewGroupEventHandler(frH.OnCancelledAfterConfirmed),
+		cqrs.NewGroupEventHandler(frH.OnCarrierMemberReassigned),
+		cqrs.NewGroupEventHandler(frH.OnCarrierInvited),
+	); err != nil {
 		return err
 	}
-	supportTicketsHandler := eventHandlers.NewSupportTicketsHandler(db)
-	router.AddConsumerHandler("support_tickets", "support.events", supportSub, supportTicketsHandler.Handle)
 
-	// Fraudster handler (for marking organizations as fraudsters)
-	fraudsterSub, err := createSubscriber("e2e_fraudster", "organization.events")
-	if err != nil {
+	supportH := eventHandlers.NewSupportTicketsHandler(db)
+	if err := register("support.events", "e2e_support_tickets",
+		cqrs.NewGroupEventHandler(supportH.OnTicketCreated),
+		cqrs.NewGroupEventHandler(supportH.OnMessageAdded),
+		cqrs.NewGroupEventHandler(supportH.OnTicketClosed),
+		cqrs.NewGroupEventHandler(supportH.OnTicketReopened),
+	); err != nil {
 		return err
 	}
-	fraudsterHandler := eventHandlers.NewFraudsterHandler(s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
-	router.AddConsumerHandler("fraudster", "organization.events", fraudsterSub, fraudsterHandler.Handle)
 
-	// Review event handlers
-	reviewReceiverSub, err := createSubscriber("e2e_review_receiver", "freightrequest.events")
-	if err != nil {
+	fraudH := eventHandlers.NewFraudsterHandler(s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
+	if err := register("organization.events", "e2e_fraudster",
+		cqrs.NewGroupEventHandler(fraudH.OnFraudsterMarked),
+		cqrs.NewGroupEventHandler(fraudH.OnFraudsterUnmarked),
+	); err != nil {
 		return err
 	}
-	reviewReceiverHandler := eventHandlers.NewReviewReceiverHandler(s.Factory.ReviewService())
-	router.AddConsumerHandler("review_receiver", "freightrequest.events", reviewReceiverSub, reviewReceiverHandler.Handle)
 
-	reviewAnalyzerSub, err := createSubscriber("e2e_review_analyzer", "review.events")
-	if err != nil {
+	receiverH := eventHandlers.NewReviewReceiverHandler(s.Factory.ReviewService())
+	if err := register("freightrequest.events", "e2e_review_receiver",
+		cqrs.NewGroupEventHandler(receiverH.OnReviewLeft),
+		cqrs.NewGroupEventHandler(receiverH.OnReviewEdited),
+	); err != nil {
 		return err
 	}
-	reviewAnalyzerHandler := eventHandlers.NewReviewAnalyzerHandler(s.Factory.ReviewService(), s.Factory.ReviewAnalyzer())
-	router.AddConsumerHandler("review_analyzer", "review.events", reviewAnalyzerSub, reviewAnalyzerHandler.Handle)
 
-	reviewsProjectionSub, err := createSubscriber("e2e_reviews_projection", "review.events")
-	if err != nil {
+	analyzerH := eventHandlers.NewReviewAnalyzerHandler(s.Factory.ReviewService(), s.Factory.ReviewAnalyzer())
+	if err := register("review.events", "e2e_review_analyzer",
+		cqrs.NewGroupEventHandler(analyzerH.OnReviewReceived),
+	); err != nil {
 		return err
 	}
-	reviewsProjectionHandler := eventHandlers.NewReviewsProjectionHandler(s.Factory.DB(), s.Factory.FraudDataProjection(), s.Factory.OrganizationRatingsProjection(), s.Factory.ProjectionEventDedupProjection())
-	router.AddConsumerHandler("reviews_projection", "review.events", reviewsProjectionSub, reviewsProjectionHandler.Handle)
+
+	reviewsProjH := eventHandlers.NewReviewsProjectionHandler(
+		s.Factory.DB(),
+		s.Factory.FraudDataProjection(),
+		s.Factory.OrganizationRatingsProjection(),
+		s.Factory.ProjectionEventDedupProjection(),
+	)
+	if err := register("review.events", "e2e_reviews_projection",
+		cqrs.NewGroupEventHandler(reviewsProjH.OnReceived),
+		cqrs.NewGroupEventHandler(reviewsProjH.OnEdited),
+		cqrs.NewGroupEventHandler(reviewsProjH.OnAnalyzed),
+		cqrs.NewGroupEventHandler(reviewsProjH.OnApproved),
+		cqrs.NewGroupEventHandler(reviewsProjH.OnRejected),
+		cqrs.NewGroupEventHandler(reviewsProjH.OnActivated),
+		cqrs.NewGroupEventHandler(reviewsProjH.OnDeactivated),
+	); err != nil {
+		return err
+	}
 
 	s.eventRouter = router
 

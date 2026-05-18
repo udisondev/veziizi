@@ -2,14 +2,11 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
@@ -26,38 +23,6 @@ func NewOrganizationsHandler(
 		projection:                projection,
 		freightRequestsProjection: freightRequestsProjection,
 	}
-}
-
-func (h *OrganizationsHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *OrganizationsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.OrganizationCreated:
-		return h.OnCreated(ctx, &e)
-	case events.OrganizationApproved:
-		return h.OnApproved(ctx, &e)
-	case events.OrganizationRejected:
-		return h.OnRejected(ctx, &e)
-	case events.OrganizationSuspended:
-		return h.OnSuspended(ctx, &e)
-	case events.OrganizationUpdated:
-		return h.OnUpdated(ctx, &e)
-	}
-	return nil
 }
 
 func (h *OrganizationsHandler) OnCreated(ctx context.Context, e *events.OrganizationCreated) error {

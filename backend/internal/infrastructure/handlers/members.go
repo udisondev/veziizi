@@ -2,17 +2,14 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
@@ -26,42 +23,6 @@ func NewMembersHandler(db dbtx.TxManager) *MembersHandler {
 		db:   db,
 		psql: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
-}
-
-// Handle обрабатывает watermill message. Возвращает nil для ack, error для nack.
-func (h *MembersHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-// handleEvent сохранён как legacy-путь для e2e setup и любого кода, который
-// дёргает Handle напрямую. CQRS-воркер (cmd/workers/members) идёт мимо него и
-// вызывает OnMember* по типу события через cqrs.NewGroupEventHandler.
-func (h *MembersHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.MemberAdded:
-		return h.OnMemberAdded(ctx, &e)
-	case events.MemberRemoved:
-		return h.OnMemberRemoved(ctx, &e)
-	case events.MemberRoleChanged:
-		return h.OnMemberRoleChanged(ctx, &e)
-	case events.MemberBlocked:
-		return h.OnMemberBlocked(ctx, &e)
-	case events.MemberUnblocked:
-		return h.OnMemberUnblocked(ctx, &e)
-	}
-	return nil
 }
 
 func (h *MembersHandler) OnMemberAdded(ctx context.Context, e *events.MemberAdded) error {
