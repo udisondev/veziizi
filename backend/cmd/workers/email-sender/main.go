@@ -30,7 +30,12 @@ func main() {
 		LogFile:       "email-sender-worker.log",
 		Marshaler:     messaging.NotificationMarshaler(),
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
-			h := handlers.NewEmailSenderHandler(f.EmailProvider(), cfg, f.DeliveryLogProjection())
+			h := handlers.NewEmailSenderHandler(
+				f.EmailProvider(),
+				cfg,
+				f.DeliveryLogProjection(),
+				f.NotificationDedupProjection(),
+			)
 			return ep.AddHandlersGroup("email-sender",
 				cqrs.NewGroupEventHandler(h.OnEmailNotification),
 			)

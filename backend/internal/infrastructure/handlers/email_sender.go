@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+	"github.com/google/uuid"
+
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
@@ -16,25 +19,47 @@ import (
 
 // EmailSenderHandler отправляет уведомления по Email. Регистрируется как
 // cqrs.NewEventHandler[messaging.EmailNotification] в воркере email-sender.
+//
+// Идемпотентность: см. TelegramSenderHandler. Дедуп через notification_dedup
+// по message UUID, чтобы при повторной доставке не послать письмо дважды.
 type EmailSenderHandler struct {
 	provider    notifications.EmailProvider
 	appConfig   *config.Config
 	deliveryLog *projections.NotificationDeliveryLogProjection
+	dedup       *projections.NotificationDedupProjection
 }
 
 func NewEmailSenderHandler(
 	provider notifications.EmailProvider,
 	appConfig *config.Config,
 	deliveryLog *projections.NotificationDeliveryLogProjection,
+	dedup *projections.NotificationDedupProjection,
 ) *EmailSenderHandler {
 	return &EmailSenderHandler{
 		provider:    provider,
 		appConfig:   appConfig,
 		deliveryLog: deliveryLog,
+		dedup:       dedup,
 	}
 }
 
 func (h *EmailSenderHandler) OnEmailNotification(ctx context.Context, n *messaging.EmailNotification) error {
+	msg := cqrs.OriginalMessageFromCtx(ctx)
+	msgUUID, err := uuid.Parse(msg.UUID)
+	if err != nil {
+		return fmt.Errorf("parse message uuid: %w", err)
+	}
+	first, err := h.dedup.MarkSent(ctx, msgUUID, "email")
+	if err != nil {
+		return fmt.Errorf("dedup mark sent: %w", err)
+	}
+	if !first {
+		slog.Debug("email notification already sent, skipping",
+			slog.String("message_uuid", msg.UUID),
+			slog.String("member_id", n.MemberID.String()))
+		return nil
+	}
+
 	link := ""
 	if n.Link != "" {
 		baseURL := h.appConfig.App.BaseURL

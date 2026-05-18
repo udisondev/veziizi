@@ -127,6 +127,9 @@ type Factory struct {
 	deliveryLogProjection *projections.NotificationDeliveryLogProjection
 	deliveryLogOnce       sync.Once
 
+	notificationDedupProjection *projections.NotificationDedupProjection
+	notificationDedupOnce       sync.Once
+
 	telegramLinkProjection *projections.TelegramLinkProjection
 	telegramLinkOnce       sync.Once
 
@@ -405,7 +408,7 @@ func (f *Factory) NotificationService() *notifApp.Service {
 			f.InAppNotificationsProjection(),
 			f.TelegramLinkProjection(),
 			f.EmailVerificationProjection(),
-			f.MustPublisher().RawPublisher(),
+			f.MustNotificationBus(),
 			f.cfg,
 		)
 	})
@@ -553,6 +556,13 @@ func (f *Factory) DeliveryLogProjection() *projections.NotificationDeliveryLogPr
 		f.deliveryLogProjection = projections.NewNotificationDeliveryLogProjection(f.DB())
 	})
 	return f.deliveryLogProjection
+}
+
+func (f *Factory) NotificationDedupProjection() *projections.NotificationDedupProjection {
+	f.notificationDedupOnce.Do(func() {
+		f.notificationDedupProjection = projections.NewNotificationDedupProjection(f.DB())
+	})
+	return f.notificationDedupProjection
 }
 
 func (f *Factory) TelegramLinkProjection() *projections.TelegramLinkProjection {

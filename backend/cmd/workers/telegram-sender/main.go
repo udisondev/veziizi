@@ -31,7 +31,12 @@ func main() {
 		LogFile:       "telegram-sender-worker.log",
 		Marshaler:     messaging.NotificationMarshaler(),
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
-			h := handlers.NewTelegramSenderHandler(f.TelegramClient(), cfg, f.DeliveryLogProjection())
+			h := handlers.NewTelegramSenderHandler(
+				f.TelegramClient(),
+				cfg,
+				f.DeliveryLogProjection(),
+				f.NotificationDedupProjection(),
+			)
 			return ep.AddHandlersGroup("telegram-sender",
 				cqrs.NewGroupEventHandler(h.OnTelegramNotification),
 			)

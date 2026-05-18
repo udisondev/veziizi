@@ -2,15 +2,14 @@ package notification
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
@@ -31,7 +30,7 @@ type Service struct {
 	inapp             *projections.InAppNotificationsProjection
 	telegramLink      *projections.TelegramLinkProjection
 	emailVerification *projections.EmailVerificationProjection
-	publisher         message.Publisher
+	notifBus          *messaging.NotificationBus
 	cfg               *config.Config
 }
 
@@ -42,7 +41,7 @@ func NewService(
 	inapp *projections.InAppNotificationsProjection,
 	telegramLink *projections.TelegramLinkProjection,
 	emailVerification *projections.EmailVerificationProjection,
-	publisher message.Publisher,
+	notifBus *messaging.NotificationBus,
 	cfg *config.Config,
 ) *Service {
 	return &Service{
@@ -51,7 +50,7 @@ func NewService(
 		inapp:             inapp,
 		telegramLink:      telegramLink,
 		emailVerification: emailVerification,
-		publisher:         publisher,
+		notifBus:          notifBus,
 		cfg:               cfg,
 	}
 }
@@ -521,45 +520,23 @@ func (s *Service) VerifyEmailByToken(ctx context.Context, token string) error {
 	})
 }
 
-// verificationEmailMessage структура для отправки email верификации
-type verificationEmailMessage struct {
-	MemberID         uuid.UUID `json:"member_id"`
-	Email            string    `json:"email"`
-	NotificationType string    `json:"notification_type"`
-	Title            string    `json:"title"`
-	Body             string    `json:"body"`
-	Link             string    `json:"link,omitempty"`
-}
-
-// sendVerificationEmail отправляет email с ссылкой верификации
+// sendVerificationEmail публикует команду на отправку email с ссылкой верификации
+// через NotificationBus (email-sender worker подхватит и доставит).
 func (s *Service) sendVerificationEmail(ctx context.Context, memberID uuid.UUID, email, token string) error {
-	// Формируем ссылку верификации
 	baseURL := s.cfg.App.BaseURL
 	if baseURL == "" {
 		baseURL = "https://veziizi.ru"
 	}
 	verifyLink := fmt.Sprintf("%s/verify-email?token=%s", baseURL, token)
 
-	msg := verificationEmailMessage{
+	return s.notifBus.Publish(ctx, messaging.EmailNotification{
 		MemberID:         memberID,
 		Email:            email,
 		NotificationType: "email_verification",
 		Title:            "Подтвердите ваш email",
 		Body:             "Для подтверждения email адреса перейдите по ссылке ниже. Ссылка действительна 24 часа.",
 		Link:             verifyLink,
-	}
-
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshal email message: %w", err)
-	}
-
-	wmMsg := message.NewMessage(uuid.New().String(), payload)
-	if err := s.publisher.Publish("notification.email", wmMsg); err != nil {
-		return fmt.Errorf("publish email message: %w", err)
-	}
-
-	return nil
+	})
 }
 
 // GetMemberEmail возвращает email для member (если установлен и верифицирован)
