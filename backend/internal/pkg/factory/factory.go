@@ -52,6 +52,10 @@ type Factory struct {
 	publisherOnce sync.Once
 	publisherErr  error
 
+	notifBus     *messaging.NotificationBus
+	notifBusOnce sync.Once
+	notifBusErr  error
+
 	fileStorage     filestorage.FileStorage
 	fileStorageOnce sync.Once
 
@@ -293,6 +297,30 @@ func (f *Factory) MustPublisher() *messaging.EventPublisher {
 		panic(fmt.Sprintf("failed to get publisher: %v", err))
 	}
 	return pub
+}
+
+// NotificationBus возвращает CQRS-шину для команд на отправку уведомлений
+// (Telegram/Email). Publisher autocommit, не tx-aware — notifications уезжают
+// в очередь независимо от транзакции, в которой их сгенерировали.
+func (f *Factory) NotificationBus() (*messaging.NotificationBus, error) {
+	f.notifBusOnce.Do(func() {
+		wmLogger := watermill.NewSlogLogger(slog.Default())
+		bus, err := messaging.NewNotificationBus(f.MustPublisher().RawPublisher(), wmLogger)
+		if err != nil {
+			f.notifBusErr = fmt.Errorf("create notification bus: %w", err)
+			return
+		}
+		f.notifBus = bus
+	})
+	return f.notifBus, f.notifBusErr
+}
+
+func (f *Factory) MustNotificationBus() *messaging.NotificationBus {
+	bus, err := f.NotificationBus()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get notification bus: %v", err))
+	}
+	return bus
 }
 
 // FileStorage returns file storage (lazily created)

@@ -43,11 +43,16 @@ func NewSQLSubscriber(
 // один consumer group, обрабатывает все типы событий из этого топика. Разница в
 // том, что вместо ручного type switch'а в Handle хендлеры регистрируются
 // типизированно через cqrs.NewGroupEventHandler[T].
+//
+// marshaler — формат wire-сообщений; обычно EventEnvelopeMarshaler для доменных
+// событий, либо NotificationMarshaler() (JSONMarshaler) для команд на каналы
+// уведомлений.
 func NewEventGroupProcessor(
 	router *message.Router,
 	pool *pgxpool.Pool,
 	topic string,
 	consumerGroup string,
+	marshaler cqrs.CommandEventMarshaler,
 	logger watermill.LoggerAdapter,
 ) (*cqrs.EventGroupProcessor, error) {
 	return cqrs.NewEventGroupProcessorWithConfig(router, cqrs.EventGroupProcessorConfig{
@@ -57,7 +62,7 @@ func NewEventGroupProcessor(
 		SubscriberConstructor: func(cqrs.EventGroupProcessorSubscriberConstructorParams) (message.Subscriber, error) {
 			return NewSQLSubscriber(pool, topic, consumerGroup, logger)
 		},
-		Marshaler:         EventEnvelopeMarshaler{},
+		Marshaler:         marshaler,
 		Logger:            logger,
 		AckOnUnknownEvent: true,
 	})

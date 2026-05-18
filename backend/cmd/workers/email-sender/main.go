@@ -4,18 +4,15 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 
-	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
 
-// email-sender читает notification.email — payload это NotificationMessage из
-// rules, не EventEnvelope. CQRS marshaler здесь не подходит, поэтому используем
-// legacy Handler-путь — он всё равно получает DLQ + middleware из worker.Run.
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -31,12 +28,12 @@ func main() {
 		Topic:         "notification.email",
 		ConsumerGroup: "email_sender",
 		LogFile:       "email-sender-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewEmailSenderHandler(
-				f.EmailProvider(),
-				cfg,
-				f.DeliveryLogProjection(),
-			).Handle
+		Marshaler:     messaging.NotificationMarshaler(),
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewEmailSenderHandler(f.EmailProvider(), cfg, f.DeliveryLogProjection())
+			return ep.AddHandlersGroup("email-sender",
+				cqrs.NewGroupEventHandler(h.OnEmailNotification),
+			)
 		},
 	})
 }

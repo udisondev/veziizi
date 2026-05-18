@@ -12,9 +12,9 @@ import (
 )
 
 // notification-dispatcher делает rule-based dispatch через NotificationRulesRegistry,
-// а не type switch по событию. Поэтому остаётся на legacy Handler-пути:
-// CQRS-обёртка с типизированными хендлерами тут не выигрывает, всё равно
-// rules матчатся по EventType().
+// а не type switch по событию. Поэтому остаётся на legacy Handler-пути: rules
+// сами выбирают, какие событиям требуются нотификации, и публикуют команды
+// через NotificationBus.
 func main() {
 	worker.Run(worker.Config{
 		Name:          "notification-dispatcher",
@@ -25,7 +25,7 @@ func main() {
 			return handlers.NewNotificationDispatcherHandler(
 				f.NotificationRulesRegistry(),
 				f.NotificationService(),
-				f.MustPublisher().RawPublisher(),
+				f.MustNotificationBus(),
 			).Handle
 		},
 	})

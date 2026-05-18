@@ -35,6 +35,11 @@ type Config struct {
 	// offset (поведенчески эквивалентно одному ConsumerGroup, как и у Handler).
 	// Если задан Setup, поле Handler игнорируется.
 	Setup func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error
+
+	// Marshaler — формат сообщений. По умолчанию EventEnvelopeMarshaler (для
+	// доменных событий из event store). Для топиков с JSON-командами
+	// (notification.telegram/email) задай messaging.NotificationMarshaler().
+	Marshaler cqrs.CommandEventMarshaler
 }
 
 func Run(cfg Config) {
@@ -106,7 +111,11 @@ func Run(cfg Config) {
 
 	switch {
 	case cfg.Setup != nil:
-		ep, err := messaging.NewEventGroupProcessor(router, pool, cfg.Topic, cfg.ConsumerGroup, wmLogger)
+		marshaler := cfg.Marshaler
+		if marshaler == nil {
+			marshaler = messaging.EventEnvelopeMarshaler{}
+		}
+		ep, err := messaging.NewEventGroupProcessor(router, pool, cfg.Topic, cfg.ConsumerGroup, marshaler, wmLogger)
 		if err != nil {
 			slog.Error("failed to create event group processor", slog.String("error", err.Error()))
 			os.Exit(1)
