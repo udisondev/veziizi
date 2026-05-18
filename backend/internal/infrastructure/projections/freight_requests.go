@@ -81,6 +81,18 @@ func WithStatuses(statuses []string) FilterOption {
 	}
 }
 
+// WithOwnedOrPublished ограничивает выдачу: либо заявки своей организации
+// (в любом статусе), либо опубликованные чужие. Используется в маркетплейс-режиме,
+// чтобы не утечь данные приватных стадий чужих заявок (selected/confirmed/...).
+func WithOwnedOrPublished(ownerOrgID uuid.UUID) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Or{
+			squirrel.Eq{"customer_org_id": ownerOrgID},
+			squirrel.Eq{"status": "published"},
+		})
+	}
+}
+
 func WithLimit(limit int) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Limit(uint64(limit))

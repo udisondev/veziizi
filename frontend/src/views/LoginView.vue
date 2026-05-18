@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useAsyncAction } from '@/composables/useAsyncData'
+import { ACCOUNT_BLOCKED_MESSAGE, getErrorMessage, isApiError } from '@/api/errors'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -20,13 +20,27 @@ const auth = useAuthStore()
 
 const email = ref('')
 const password = ref('')
+const isLoading = ref(false)
+const error = ref<string | null>(null)
 const showRegistrationSuccess = computed(() => route.query.registered === 'true')
 
-const { execute: handleSubmit, isLoading, error } = useAsyncAction(async () => {
-  await auth.login({ email: email.value, password: password.value })
-  const redirect = (route.query.redirect as string) || '/'
-  router.push(redirect)
-})
+async function handleSubmit() {
+  isLoading.value = true
+  error.value = null
+  try {
+    await auth.login({ email: email.value, password: password.value })
+    const redirect = (route.query.redirect as string) || '/'
+    router.push(redirect)
+  } catch (e) {
+    if (isApiError(e) && e.isAccountBlocked()) {
+      error.value = ACCOUNT_BLOCKED_MESSAGE
+    } else {
+      error.value = getErrorMessage(e)
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
 </script>
 
 <template>
