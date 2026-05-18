@@ -753,8 +753,7 @@ type PendingOfferItem struct {
 }
 
 // GetPendingOffersOnMyRequests возвращает по одной строке на заявку (последний оффер), с общим числом офферов.
-// customerMemberID — опциональный фильтр: когда != uuid.Nil, ограничивает выдачу заявками,
-// созданными конкретным сотрудником (employee видит только свои заявки).
+// customerMemberID — опциональный фильтр по создателю заявки; нулевой UUID означает «без фильтра».
 func (p *FreightRequestsProjection) GetPendingOffersOnMyRequests(ctx context.Context, customerOrgID uuid.UUID, customerMemberID uuid.UUID, limit int) ([]PendingOfferItem, error) {
 	memberFilter := ""
 	args := []any{customerOrgID, limit}

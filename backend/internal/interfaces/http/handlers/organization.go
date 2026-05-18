@@ -904,7 +904,7 @@ func (h *OrganizationHandler) GetPendingOffers(w http.ResponseWriter, r *http.Re
 	var memberID uuid.UUID
 	if mStr := r.URL.Query().Get("member_id"); mStr != "" {
 		m, err := uuid.Parse(mStr)
-		if err != nil {
+		if err != nil || m == uuid.Nil {
 			writeError(w, http.StatusBadRequest, "invalid member_id")
 			return
 		}
