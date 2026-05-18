@@ -14,23 +14,24 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 )
 
-// EventPublisher — фасад поверх cqrs.EventBus. Доменные сервисы зовут
-// Publish(ctx, events...) и не знают ни про watermill, ни про tx-aware
-// механику outbox'а, ни про маршалер. Топик определяется автоматически
-// из event.AggregateType().
+// EventPublisher — фасад поверх txAwarePublisher с CQRS-маршалером.
+// Доменные сервисы зовут Publish(ctx, events...) и не знают ни про watermill,
+// ни про tx-aware outbox, ни про marshaler.
 //
-// Внутри:
-//   - cqrs.EventBus делает Marshal через EventEnvelopeMarshaler.
-//   - GeneratePublishTopic кладёт events одного aggregate type в один топик
-//     (organization → "organization.events" и т.д.).
-//   - OnPublish обогащает msg.Metadata audit-полями и correlation_id из ctx.
-//   - txAwarePublisher выбирает sql-publisher: tx или default — это и есть
-//     outbox-семантика, события в watermill_messages_<topic> попадают в ту же
-//     транзакцию, что и записи в event store.
+// Топик каждого события выбирается из aggregateTopics по AggregateType.
+// События одного топика отправляются ОДНИМ batch-вызовом publisher.Publish,
+// не N отдельных round-trip'ов к БД — это важно для saveAndPublish'ей, которые
+// одной транзакцией публикуют несколько событий аггрегата (MemberAdded +
+// MemberRoleChanged + …). cqrs.EventBus не используется потому, что его
+// Publish(ctx, event) — строго по одному событию.
+//
+// Marshaler, OnPublish и Generate-логика идентичны cqrs.EventBus — вынесены
+// в helper'ы ниже, чтобы поведение оставалось «как у CQRS», но с batch'ингом.
 type EventPublisher struct {
-	bus    *cqrs.EventBus
-	txPub  *txAwarePublisher
-	logger watermill.LoggerAdapter
+	bus       *cqrs.EventBus  // оставлен для Bus() — на случай, если потребуется raw cqrs API.
+	txPub     *txAwarePublisher
+	marshaler EventEnvelopeMarshaler
+	logger    watermill.LoggerAdapter
 }
 
 func NewEventPublisher(pool *pgxpool.Pool, logger watermill.LoggerAdapter) (*EventPublisher, error) {
@@ -49,17 +50,52 @@ func NewEventPublisher(pool *pgxpool.Pool, logger watermill.LoggerAdapter) (*Eve
 		return nil, fmt.Errorf("create event bus: %w", err)
 	}
 
-	return &EventPublisher{bus: bus, txPub: txPub, logger: logger}, nil
+	return &EventPublisher{bus: bus, txPub: txPub, marshaler: EventEnvelopeMarshaler{}, logger: logger}, nil
 }
 
-// Publish публикует одно или несколько событий через cqrs.EventBus. Топик
-// каждого события определяется его AggregateType. Если в ctx есть транзакция
-// (dbtx.WithTx) — все события публикуются в её рамках; иначе через autocommit
-// publisher на пуле.
+// Publish маршалит все события, группирует по топику, и публикует каждую
+// группу одним вызовом publisher.Publish — это даёт batch INSERT в
+// watermill_messages_<topic> вместо N отдельных. Все события одной tx
+// (если ctx содержит tx) попадут в БД атомарно: txAwarePublisher читает tx
+// из msg.Context() и использует sql.TxFromPgx; при ошибке любого Publish
+// возвращаем error, и dbtx.InTx делает Rollback всего набора.
 func (p *EventPublisher) Publish(ctx context.Context, events ...eventstore.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	byTopic := make(map[string][]*message.Message, len(events))
 	for _, ev := range events {
-		if err := p.bus.Publish(ctx, ev); err != nil {
-			return fmt.Errorf("publish %s: %w", ev.EventType(), err)
+		msg, err := p.marshaler.Marshal(ev)
+		if err != nil {
+			return fmt.Errorf("marshal %s: %w", ev.EventType(), err)
+		}
+		msg.SetContext(ctx)
+
+		// Тот же enrichFromContext, что и в cqrs.EventBus OnPublish: audit-меты
+		// из EventMeta + correlation_id в msg.Metadata. Держим в одном месте,
+		// чтобы wire-формат CQRS-пути и batch-пути был идентичен.
+		if err := enrichFromContext(cqrs.OnEventSendParams{
+			EventName: p.marshaler.Name(ev),
+			Event:     ev,
+			Message:   msg,
+		}); err != nil {
+			return fmt.Errorf("enrich %s: %w", ev.EventType(), err)
+		}
+
+		topic, err := generatePublishTopic(cqrs.GenerateEventPublishTopicParams{
+			EventName: p.marshaler.Name(ev),
+			Event:     ev,
+		})
+		if err != nil {
+			return err
+		}
+		byTopic[topic] = append(byTopic[topic], msg)
+	}
+
+	for topic, msgs := range byTopic {
+		if err := p.txPub.Publish(topic, msgs...); err != nil {
+			return fmt.Errorf("publish to %s: %w", topic, err)
 		}
 	}
 	return nil
