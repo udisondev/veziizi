@@ -5,8 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -61,6 +59,11 @@ type FreightRequestListResponse struct {
 	Items      []projections.FreightRequestListItem `json:"items"`
 	NextCursor *string                              `json:"next_cursor,omitempty"`
 	HasMore    bool                                 `json:"has_more"`
+}
+
+// FreightRequestCountResponse — ответ GET /api/v1/freight-requests/count.
+type FreightRequestCountResponse struct {
+	Count int `json:"count"`
 }
 
 type FreightRequestResponse struct {
@@ -210,6 +213,7 @@ func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer, orgName, 
 func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/api/v1/freight-requests", h.Create)
 	r.Get("/api/v1/freight-requests", h.List)
+	r.Get("/api/v1/freight-requests/count", h.Count)
 	r.Get("/api/v1/freight-requests/{id}", h.Get)
 	r.Patch("/api/v1/freight-requests/{id}", h.Update)
 	r.Delete("/api/v1/freight-requests/{id}", h.Cancel)
@@ -306,183 +310,13 @@ func (h *FreightRequestHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
-	// Преаллокация: ~22 возможных фильтров + pagination
-	opts := make([]projections.FilterOption, 0, 25)
-
-	// SEC-invariant: видимость заявок в списке. Применяется БЕЗУСЛОВНО до
-	// разбора пользовательских фильтров, чтобы любая будущая ветка
-	// маршрутизации фильтров не могла случайно открыть приватные стадии
-	// чужих заявок. Fail-safe: без org_id в сессии — только published.
-	currentOrgID, _ := h.session.GetOrganizationID(r)
-	if currentOrgID != uuid.Nil {
-		opts = append(opts, projections.WithVisibleToOrg(currentOrgID))
-	} else {
-		opts = append(opts, projections.WithStatuses([]string{"published"}))
-	}
-
-	// Опциональный фильтр по customer_org_id (сужает SEC-выдачу).
-	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
-		orgID, err := uuid.Parse(orgIDStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid customer_org_id")
-			return
-		}
-		opts = append(opts, projections.WithCustomerOrgID(orgID))
-	}
-
-	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
-		memberID, err := uuid.Parse(memberIDStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid member_id")
-			return
-		}
-		opts = append(opts, projections.WithCustomerMemberID(memberID))
-	}
-
-	if carrierOrgIDStr := r.URL.Query().Get("carrier_org_id"); carrierOrgIDStr != "" {
-		carrierOrgID, err := uuid.Parse(carrierOrgIDStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid carrier_org_id")
-			return
-		}
-		opts = append(opts, projections.WithFreightCarrierOrgID(carrierOrgID))
-	}
-
-	// Опциональный фильтр по статусам (CSV) — применяется поверх SEC-ограничения выше.
-	if statuses := r.URL.Query().Get("statuses"); statuses != "" {
-		raw := splitComma(statuses)
-		statusList := make([]string, 0, len(raw))
-		for _, s := range raw {
-			if _, err := values.ParseFreightRequestStatus(s); err != nil {
-				slog.Warn("invalid status in filter", slog.String("value", s))
-				writeError(w, http.StatusBadRequest, "invalid status")
-				return
-			}
-			statusList = append(statusList, s)
-		}
-		if len(statusList) > 0 {
-			opts = append(opts, projections.WithStatuses(statusList))
-		}
-	}
-
-	if orgName := strings.TrimSpace(r.URL.Query().Get("org_name")); orgName != "" {
-		// Limit org_name search to 100 chars to prevent SQL abuse
-		if len(orgName) > 100 {
-			orgName = orgName[:100]
-		}
-		opts = append(opts, projections.WithOrgNameLike(orgName))
-	}
-
-	if orgINN := r.URL.Query().Get("org_inn"); orgINN != "" {
-		opts = append(opts, projections.WithOrgINN(orgINN))
-	}
-
-	if orgCountry := r.URL.Query().Get("org_country"); orgCountry != "" {
-		opts = append(opts, projections.WithOrgCountry(orgCountry))
-	}
-
-	// Request number filter
-	if requestNumber := r.URL.Query().Get("request_number"); requestNumber != "" {
-		if num, err := parseInt64(requestNumber); err == nil && num > 0 {
-			opts = append(opts, projections.WithRequestNumber(num))
-		}
-	}
-
-	// Extended filters for subscription-like filtering
-	if minWeight := r.URL.Query().Get("min_weight"); minWeight != "" {
-		if w, err := parseFloat(minWeight); err == nil {
-			opts = append(opts, projections.WithMinWeight(w))
-		}
-	}
-
-	if maxWeight := r.URL.Query().Get("max_weight"); maxWeight != "" {
-		if w, err := parseFloat(maxWeight); err == nil {
-			opts = append(opts, projections.WithMaxWeight(w))
-		}
-	}
-
-	if minPrice := r.URL.Query().Get("min_price"); minPrice != "" {
-		if p, err := parseInt64(minPrice); err == nil {
-			opts = append(opts, projections.WithMinPrice(p))
-		}
-	}
-
-	if maxPrice := r.URL.Query().Get("max_price"); maxPrice != "" {
-		if p, err := parseInt64(maxPrice); err == nil {
-			opts = append(opts, projections.WithMaxPrice(p))
-		}
-	}
-
-	if vehicleTypes := r.URL.Query().Get("vehicle_types"); vehicleTypes != "" {
-		types := splitComma(vehicleTypes)
-		if len(types) > 0 {
-			opts = append(opts, projections.WithVehicleTypes(types))
-		}
-	}
-
-	if vehicleSubTypes := r.URL.Query().Get("vehicle_subtypes"); vehicleSubTypes != "" {
-		subtypes := splitComma(vehicleSubTypes)
-		if len(subtypes) > 0 {
-			opts = append(opts, projections.WithVehicleSubTypes(subtypes))
-		}
-	}
-
-	if routeCityIDs := r.URL.Query().Get("route_city_ids"); routeCityIDs != "" {
-		ids := splitCommaInt(routeCityIDs)
-		if len(ids) > 0 {
-			opts = append(opts, projections.WithRouteCities(ids))
-		}
-	}
-
-	if routeCountryIDs := r.URL.Query().Get("route_country_ids"); routeCountryIDs != "" {
-		ids := splitCommaInt(routeCountryIDs)
-		if len(ids) > 0 {
-			opts = append(opts, projections.WithRouteCountries(ids))
-		}
-	}
-
-	// Volume filters
-	if minVolume := r.URL.Query().Get("min_volume"); minVolume != "" {
-		if v, err := parseFloat(minVolume); err == nil {
-			opts = append(opts, projections.WithMinVolume(v))
-		}
-	}
-
-	if maxVolume := r.URL.Query().Get("max_volume"); maxVolume != "" {
-		if v, err := parseFloat(maxVolume); err == nil {
-			opts = append(opts, projections.WithMaxVolume(v))
-		}
-	}
-
-	// Payment filters
-	if paymentMethods := r.URL.Query().Get("payment_methods"); paymentMethods != "" {
-		methods := splitComma(paymentMethods)
-		if len(methods) > 0 {
-			opts = append(opts, projections.WithPaymentMethods(methods))
-		}
-	}
-
-	if paymentTerms := r.URL.Query().Get("payment_terms"); paymentTerms != "" {
-		terms := splitComma(paymentTerms)
-		if len(terms) > 0 {
-			opts = append(opts, projections.WithPaymentTerms(terms))
-		}
-	}
-
-	if vatTypes := r.URL.Query().Get("vat_types"); vatTypes != "" {
-		types := splitComma(vatTypes)
-		if len(types) > 0 {
-			opts = append(opts, projections.WithVatTypes(types))
-		}
-	}
-
-	if r.URL.Query().Get("has_pending_offers") == "true" {
-		opts = append(opts, projections.WithHasPendingOffers())
+	opts, ok := h.decodeFreightRequestFilters(w, r)
+	if !ok {
+		return
 	}
 
 	// Cursor-based pagination
-	cursorStr := r.URL.Query().Get("cursor")
-	if cursorStr != "" {
+	if cursorStr := r.URL.Query().Get("cursor"); cursorStr != "" {
 		cursor, err := httputil.DecodeCursor[projections.FreightRequestCursor](cursorStr)
 		if err != nil {
 			slog.Warn("invalid cursor",
@@ -494,9 +328,8 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, projections.WithCursor(*cursor))
 	}
 
-	// SEC-016: Валидированная пагинация
+	// SEC-016: Валидированная пагинация. Запрашиваем limit+1 для определения hasMore.
 	pagination := httputil.ParsePagination(r)
-	// Запрашиваем limit+1 для определения hasMore
 	opts = append(opts, projections.WithLimit(pagination.Limit+1))
 
 	items, err := h.projection.List(r.Context(), opts...)
@@ -534,6 +367,53 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+// Count возвращает количество заявок, удовлетворяющих фильтрам.
+// Принимает тот же набор query-параметров, что и List (кроме cursor / limit).
+// Видимость: SEC-invariant WithVisibleToOrg, как и в List.
+func (h *FreightRequestHandler) Count(w http.ResponseWriter, r *http.Request) {
+	opts, ok := h.decodeFreightRequestFilters(w, r)
+	if !ok {
+		return
+	}
+
+	count, err := h.projection.Count(r.Context(), opts...)
+	if err != nil {
+		slog.Error("failed to count freight requests", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to count freight requests")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, FreightRequestCountResponse{Count: count})
+}
+
+// decodeFreightRequestFilters парсит query-параметры запроса в FreightRequestFilters,
+// валидирует, ставит первым шагом SEC-invariant видимости и возвращает options.
+// На любую ошибку пишет 400 в w и возвращает ok=false — вызывающий должен сразу выйти.
+//
+// SEC: WithVisibleToOrg(orgID) применяется БЕЗУСЛОВНО первым, до пользовательских
+// фильтров — см. projections.WithVisibleToOrg. Fail-safe: без org_id в сессии
+// форсим status=published.
+func (h *FreightRequestHandler) decodeFreightRequestFilters(w http.ResponseWriter, r *http.Request) ([]projections.FilterOption, bool) {
+	var filters FreightRequestFilters
+	if err := httputil.DecodeQuery(r, &filters); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return nil, false
+	}
+	if err := filters.ValidateStatuses(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return nil, false
+	}
+
+	opts := make([]projections.FilterOption, 0, 24)
+	currentOrgID, _ := h.session.GetOrganizationID(r)
+	if currentOrgID != uuid.Nil {
+		opts = append(opts, projections.WithVisibleToOrg(currentOrgID))
+	} else {
+		opts = append(opts, projections.WithStatuses([]string{"published"}))
+	}
+	return filters.AppendOptions(opts), true
 }
 
 func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -1467,45 +1347,3 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 	}
 }
 
-// Helper functions for parsing query parameters
-
-func parseFloat(s string) (float64, error) {
-	return strconv.ParseFloat(s, 64)
-}
-
-func parseInt64(s string) (int64, error) {
-	return strconv.ParseInt(s, 10, 64)
-}
-
-func splitComma(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
-}
-
-func splitCommaInt(s string) []int {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	result := make([]int, 0, len(parts))
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed == "" {
-			continue
-		}
-		if n, err := strconv.Atoi(trimmed); err == nil {
-			result = append(result, n)
-		}
-	}
-	return result
-}
