@@ -309,14 +309,18 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Преаллокация: ~22 возможных фильтров + pagination
 	opts := make([]projections.FilterOption, 0, 25)
 
-	// Текущая организация пользователя (для авторизации фильтров)
+	// SEC-invariant: видимость заявок в списке. Применяется БЕЗУСЛОВНО до
+	// разбора пользовательских фильтров, чтобы любая будущая ветка
+	// маршрутизации фильтров не могла случайно открыть приватные стадии
+	// чужих заявок. Fail-safe: без org_id в сессии — только published.
 	currentOrgID, _ := h.session.GetOrganizationID(r)
+	if currentOrgID != uuid.Nil {
+		opts = append(opts, projections.WithVisibleToOrg(currentOrgID))
+	} else {
+		opts = append(opts, projections.WithStatuses([]string{"published"}))
+	}
 
-	// Определяем, запрашивает ли пользователь свои заявки
-	isOwnOrgFilter := false
-	currentMemberID, _ := h.session.GetMemberID(r)
-
-	// Опциональный фильтр по customer_org_id
+	// Опциональный фильтр по customer_org_id (сужает SEC-выдачу).
 	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
 		orgID, err := uuid.Parse(orgIDStr)
 		if err != nil {
@@ -324,7 +328,6 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithCustomerOrgID(orgID))
-		isOwnOrgFilter = orgID == currentOrgID
 	}
 
 	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
@@ -334,9 +337,6 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithCustomerMemberID(memberID))
-		if memberID == currentMemberID {
-			isOwnOrgFilter = true
-		}
 	}
 
 	if carrierOrgIDStr := r.URL.Query().Get("carrier_org_id"); carrierOrgIDStr != "" {
@@ -346,17 +346,10 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts = append(opts, projections.WithFreightCarrierOrgID(carrierOrgID))
-		if carrierOrgID == currentOrgID {
-			isOwnOrgFilter = true
-		}
 	}
 
-	// SEC: Если пользователь не фильтрует по своей организации,
-	// показываем только published заявки (маркетплейс-режим)
-	if !isOwnOrgFilter {
-		opts = append(opts, projections.WithStatuses([]string{"published"}))
-	} else if statuses := r.URL.Query().Get("statuses"); statuses != "" {
-		// Свои заявки — разрешаем фильтр по статусам, но валидируем
+	// Опциональный фильтр по статусам (CSV) — применяется поверх SEC-ограничения выше.
+	if statuses := r.URL.Query().Get("statuses"); statuses != "" {
 		raw := splitComma(statuses)
 		statusList := make([]string, 0, len(raw))
 		for _, s := range raw {
@@ -371,9 +364,6 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 			opts = append(opts, projections.WithStatuses(statusList))
 		}
 	}
-
-	// Опциональный фильтр по статусам (CSV) — только для своих заявок (обработан выше)
-	// Для чужих заявок статус принудительно "published"
 
 	if orgName := strings.TrimSpace(r.URL.Query().Get("org_name")); orgName != "" {
 		// Limit org_name search to 100 chars to prevent SQL abuse

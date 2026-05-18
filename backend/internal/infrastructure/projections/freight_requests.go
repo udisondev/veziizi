@@ -81,6 +81,27 @@ func WithStatuses(statuses []string) FilterOption {
 	}
 }
 
+// WithVisibleToOrg — видимостный invariant для списка заявок.
+// Заявка видна организации, если она:
+//   - её собственная (customer_org_id), в любом статусе;
+//   - её собственная как перевозчика (carrier_org_id), в любом статусе;
+//   - чужая, но опубликована (status='published').
+//
+// Применяется БЕЗУСЛОВНО для авторизованных запросов — чтобы приватные
+// стадии чужих заявок (selected/confirmed/...) не утекали ни в одной ветке
+// маршрутизации фильтров. Пользовательские фильтры customer_org_id/
+// carrier_org_id/member_id/statuses работают поверх и могут только
+// сужать выдачу.
+func WithVisibleToOrg(orgID uuid.UUID) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Or{
+			squirrel.Eq{"customer_org_id": orgID},
+			squirrel.Eq{"carrier_org_id": orgID},
+			squirrel.Eq{"status": "published"},
+		})
+	}
+}
+
 func WithLimit(limit int) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Limit(uint64(limit))

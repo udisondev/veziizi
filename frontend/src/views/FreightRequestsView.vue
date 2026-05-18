@@ -84,7 +84,6 @@ function buildParams(): FreightRequestListParams {
     limit: PAGE_SIZE,
   }
 
-  // Status filter
   if (statuses.value.length > 0) {
     params.statuses = statuses.value.join(',')
   }
