@@ -87,7 +87,22 @@ func Run(cfg Config) {
 		os.Exit(1)
 	}
 
-	applyStandardMiddleware(router, appCfg.Worker, wmLogger)
+	// Publisher для poison queue использует тот же default publisher, что и весь
+	// EventPublisher: AutoInitializeSchema создаст таблицу watermill_messages_*
+	// для DLQ-топика при первой публикации.
+	var poisonPub message.Publisher
+	if appCfg.Worker.DeadLetterTopic != "" {
+		pub, err := f.Publisher()
+		if err != nil {
+			slog.Error("failed to get publisher for poison queue", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		poisonPub = pub.RawPublisher()
+	}
+	if err := applyStandardMiddleware(router, appCfg.Worker, wmLogger, poisonPub); err != nil {
+		slog.Error("failed to apply middleware", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	switch {
 	case cfg.Setup != nil:
