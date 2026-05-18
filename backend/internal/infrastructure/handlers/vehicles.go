@@ -50,15 +50,15 @@ func (h *VehiclesHandler) Handle(msg *message.Message) error {
 func (h *VehiclesHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
 	switch e := evt.(type) {
 	case events.VehicleAdded:
-		return h.onAdded(ctx, e)
+		return h.OnAdded(ctx, &e)
 	case events.VehicleUpdated:
-		return h.onUpdated(ctx, e)
+		return h.OnUpdated(ctx, &e)
 	case events.VehicleVerified:
-		return h.onVerified(ctx, e)
+		return h.OnVerified(ctx, &e)
 	case events.VehicleRejected:
-		return h.onRejected(ctx, e)
+		return h.OnRejected(ctx, &e)
 	case events.VehicleArchived:
-		return h.onArchived(ctx, e)
+		return h.OnArchived(ctx, &e)
 	}
 	return nil
 }
@@ -93,7 +93,7 @@ func upsertFromSpecs(specs events.VehicleSpecsPayload, status string) projection
 	return in
 }
 
-func (h *VehiclesHandler) onAdded(ctx context.Context, e events.VehicleAdded) error {
+func (h *VehiclesHandler) OnAdded(ctx context.Context, e *events.VehicleAdded) error {
 	in := upsertFromSpecs(e.Specs, orgValues.VehicleStatusPending.String())
 	in.ID = e.VehicleID
 	in.OrgID = e.AggregateID()
@@ -117,7 +117,7 @@ func (h *VehiclesHandler) onAdded(ctx context.Context, e events.VehicleAdded) er
 	})
 }
 
-func (h *VehiclesHandler) onUpdated(ctx context.Context, e events.VehicleUpdated) error {
+func (h *VehiclesHandler) OnUpdated(ctx context.Context, e *events.VehicleUpdated) error {
 	existing, err := h.vehicles.GetByID(ctx, e.VehicleID)
 	if err != nil {
 		return fmt.Errorf("load vehicle for update: %w", err)
@@ -149,7 +149,7 @@ func (h *VehiclesHandler) onUpdated(ctx context.Context, e events.VehicleUpdated
 	})
 }
 
-func (h *VehiclesHandler) onVerified(ctx context.Context, e events.VehicleVerified) error {
+func (h *VehiclesHandler) OnVerified(ctx context.Context, e *events.VehicleVerified) error {
 	return h.db.InTx(ctx, func(ctx context.Context) error {
 		if err := h.vehicles.UpdateStatus(ctx, e.VehicleID, orgValues.VehicleStatusVerified.String(), "", e.OccurredAt()); err != nil {
 			return err
@@ -158,7 +158,7 @@ func (h *VehiclesHandler) onVerified(ctx context.Context, e events.VehicleVerifi
 	})
 }
 
-func (h *VehiclesHandler) onRejected(ctx context.Context, e events.VehicleRejected) error {
+func (h *VehiclesHandler) OnRejected(ctx context.Context, e *events.VehicleRejected) error {
 	return h.db.InTx(ctx, func(ctx context.Context) error {
 		if err := h.vehicles.UpdateStatus(ctx, e.VehicleID, orgValues.VehicleStatusRejected.String(), e.Reason, e.OccurredAt()); err != nil {
 			return err
@@ -167,7 +167,7 @@ func (h *VehiclesHandler) onRejected(ctx context.Context, e events.VehicleReject
 	})
 }
 
-func (h *VehiclesHandler) onArchived(ctx context.Context, e events.VehicleArchived) error {
+func (h *VehiclesHandler) OnArchived(ctx context.Context, e *events.VehicleArchived) error {
 	return h.db.InTx(ctx, func(ctx context.Context) error {
 		if err := h.vehicles.UpdateStatus(ctx, e.VehicleID, orgValues.VehicleStatusArchived.String(), "", e.OccurredAt()); err != nil {
 			return err

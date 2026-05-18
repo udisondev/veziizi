@@ -56,24 +56,24 @@ func (h *ReviewsProjectionHandler) Handle(msg *message.Message) error {
 func (h *ReviewsProjectionHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
 	switch e := evt.(type) {
 	case events.ReviewReceived:
-		return h.onReceived(ctx, e)
+		return h.OnReceived(ctx, &e)
 	case events.ReviewEdited:
-		return h.onEdited(ctx, e)
+		return h.OnEdited(ctx, &e)
 	case events.ReviewAnalyzed:
-		return h.onAnalyzed(ctx, e)
+		return h.OnAnalyzed(ctx, &e)
 	case events.ReviewApproved:
-		return h.onApproved(ctx, e)
+		return h.OnApproved(ctx, &e)
 	case events.ReviewRejected:
-		return h.onRejected(ctx, e)
+		return h.OnRejected(ctx, &e)
 	case events.ReviewActivated:
-		return h.onActivated(ctx, e)
+		return h.OnActivated(ctx, &e)
 	case events.ReviewDeactivated:
-		return h.onDeactivated(ctx, e)
+		return h.OnDeactivated(ctx, &e)
 	}
 	return nil
 }
 
-func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.ReviewReceived) error {
+func (h *ReviewsProjectionHandler) OnReceived(ctx context.Context, e *events.ReviewReceived) error {
 	slog.Info("review received",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.String("order_id", e.OrderID.String()),
@@ -122,7 +122,7 @@ func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.Revi
 	return nil
 }
 
-func (h *ReviewsProjectionHandler) onEdited(ctx context.Context, e events.ReviewEdited) error {
+func (h *ReviewsProjectionHandler) OnEdited(ctx context.Context, e *events.ReviewEdited) error {
 	slog.Info("review edited",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Int("old_rating", e.OldRating),
@@ -160,7 +160,7 @@ func (h *ReviewsProjectionHandler) onEdited(ctx context.Context, e events.Review
 	})
 }
 
-func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.ReviewAnalyzed) error {
+func (h *ReviewsProjectionHandler) OnAnalyzed(ctx context.Context, e *events.ReviewAnalyzed) error {
 	slog.Info("review analyzed",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Float64("raw_weight", e.RawWeight),
@@ -218,7 +218,7 @@ func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.Revi
 	})
 }
 
-func (h *ReviewsProjectionHandler) onApproved(ctx context.Context, e events.ReviewApproved) error {
+func (h *ReviewsProjectionHandler) OnApproved(ctx context.Context, e *events.ReviewApproved) error {
 	slog.Info("review approved",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Float64("final_weight", e.FinalWeight),
@@ -256,7 +256,7 @@ func (h *ReviewsProjectionHandler) onApproved(ctx context.Context, e events.Revi
 	})
 }
 
-func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.ReviewRejected) error {
+func (h *ReviewsProjectionHandler) OnRejected(ctx context.Context, e *events.ReviewRejected) error {
 	slog.Info("review rejected",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.String("reason", e.Reason),
@@ -304,7 +304,7 @@ func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.Revi
 	})
 }
 
-func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.ReviewActivated) error {
+func (h *ReviewsProjectionHandler) OnActivated(ctx context.Context, e *events.ReviewActivated) error {
 	slog.Info("review activated",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Float64("final_weight", e.FinalWeight),
@@ -347,7 +347,7 @@ func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.Rev
 	})
 }
 
-func (h *ReviewsProjectionHandler) onDeactivated(ctx context.Context, e events.ReviewDeactivated) error {
+func (h *ReviewsProjectionHandler) OnDeactivated(ctx context.Context, e *events.ReviewDeactivated) error {
 	slog.Info("review deactivated",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.String("reason", e.Reason),

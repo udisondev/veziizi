@@ -40,16 +40,16 @@ func (h *ReviewReceiverHandler) Handle(msg *message.Message) error {
 
 	switch e := evt.(type) {
 	case freightEvents.ReviewLeft:
-		return h.onReviewLeft(msg.Context(), e)
+		return h.OnReviewLeft(msg.Context(), &e)
 	case freightEvents.ReviewEdited:
-		return h.onReviewEdited(msg.Context(), e)
+		return h.OnReviewEdited(msg.Context(), &e)
 	default:
 		// Ignore other freight request events
 		return nil
 	}
 }
 
-func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvents.ReviewLeft) error {
+func (h *ReviewReceiverHandler) OnReviewLeft(ctx context.Context, e *freightEvents.ReviewLeft) error {
 	slog.Info("processing review left event",
 		slog.String("freight_request_id", e.AggregateID().String()),
 		slog.String("review_id", e.ReviewID.String()),
@@ -86,7 +86,7 @@ func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvent
 	return nil
 }
 
-func (h *ReviewReceiverHandler) onReviewEdited(ctx context.Context, e freightEvents.ReviewEdited) error {
+func (h *ReviewReceiverHandler) OnReviewEdited(ctx context.Context, e *freightEvents.ReviewEdited) error {
 	slog.Info("processing review edited event",
 		slog.String("freight_request_id", e.AggregateID().String()),
 		slog.String("review_id", e.ReviewID.String()),

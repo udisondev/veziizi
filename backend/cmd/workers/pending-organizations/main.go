@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -14,8 +15,13 @@ func main() {
 		Topic:         "organization.events",
 		ConsumerGroup: "pending_organizations_projection",
 		LogFile:       "pending-organizations-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewPendingOrganizationsHandler(f.DB()).Handle
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewPendingOrganizationsHandler(f.DB())
+			return ep.AddHandlersGroup("pending-organizations",
+				cqrs.NewGroupEventHandler(h.OnCreated),
+				cqrs.NewGroupEventHandler(h.OnApproved),
+				cqrs.NewGroupEventHandler(h.OnRejected),
+			)
 		},
 	})
 }

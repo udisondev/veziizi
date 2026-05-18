@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -14,12 +15,21 @@ func main() {
 		Topic:         "review.events",
 		ConsumerGroup: "reviews_projection",
 		LogFile:       "reviews-projection-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewReviewsProjectionHandler(
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewReviewsProjectionHandler(
 				f.DB(),
 				f.FraudDataProjection(),
 				f.OrganizationRatingsProjection(),
-			).Handle
+			)
+			return ep.AddHandlersGroup("reviews-projection",
+				cqrs.NewGroupEventHandler(h.OnReceived),
+				cqrs.NewGroupEventHandler(h.OnEdited),
+				cqrs.NewGroupEventHandler(h.OnAnalyzed),
+				cqrs.NewGroupEventHandler(h.OnApproved),
+				cqrs.NewGroupEventHandler(h.OnRejected),
+				cqrs.NewGroupEventHandler(h.OnActivated),
+				cqrs.NewGroupEventHandler(h.OnDeactivated),
+			)
 		},
 	})
 }

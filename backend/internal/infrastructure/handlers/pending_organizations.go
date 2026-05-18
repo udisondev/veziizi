@@ -46,16 +46,26 @@ func (h *PendingOrganizationsHandler) Handle(msg *message.Message) error {
 func (h *PendingOrganizationsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
 	switch e := evt.(type) {
 	case events.OrganizationCreated:
-		return h.onCreated(ctx, e)
+		return h.OnCreated(ctx, &e)
 	case events.OrganizationApproved:
-		return h.onRemoved(ctx, e.AggregateID())
+		return h.OnApproved(ctx, &e)
 	case events.OrganizationRejected:
-		return h.onRemoved(ctx, e.AggregateID())
+		return h.OnRejected(ctx, &e)
 	}
 	return nil
 }
 
-func (h *PendingOrganizationsHandler) onCreated(ctx context.Context, e events.OrganizationCreated) error {
+// OnApproved и OnRejected делают одно и то же — удаляют запись из pending.
+// Разные точки входа нужны CQRS-фабрике: GroupEventHandler по типу события.
+func (h *PendingOrganizationsHandler) OnApproved(ctx context.Context, e *events.OrganizationApproved) error {
+	return h.remove(ctx, e.AggregateID())
+}
+
+func (h *PendingOrganizationsHandler) OnRejected(ctx context.Context, e *events.OrganizationRejected) error {
+	return h.remove(ctx, e.AggregateID())
+}
+
+func (h *PendingOrganizationsHandler) OnCreated(ctx context.Context, e *events.OrganizationCreated) error {
 	query, args, err := h.psql.
 		Insert("pending_organizations").
 		Columns("id", "name", "inn", "legal_name", "country", "email", "created_at").
@@ -74,7 +84,7 @@ func (h *PendingOrganizationsHandler) onCreated(ctx context.Context, e events.Or
 	return nil
 }
 
-func (h *PendingOrganizationsHandler) onRemoved(ctx context.Context, orgID uuid.UUID) error {
+func (h *PendingOrganizationsHandler) remove(ctx context.Context, orgID uuid.UUID) error {
 	query, args, err := h.psql.
 		Delete("pending_organizations").
 		Where(squirrel.Eq{"id": orgID}).

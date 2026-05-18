@@ -1,10 +1,9 @@
 package main
 
 import (
-	// Event registration - CRITICAL for deserialization
-	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 
-	"github.com/ThreeDotsLabs/watermill/message"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
@@ -16,8 +15,12 @@ func main() {
 		Topic:         "freightrequest.events",
 		ConsumerGroup: "review_receiver",
 		LogFile:       "review-receiver-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewReviewReceiverHandler(f.ReviewService()).Handle
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewReviewReceiverHandler(f.ReviewService())
+			return ep.AddHandlersGroup("review-receiver",
+				cqrs.NewGroupEventHandler(h.OnReviewLeft),
+				cqrs.NewGroupEventHandler(h.OnReviewEdited),
+			)
 		},
 	})
 }

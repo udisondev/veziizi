@@ -47,20 +47,20 @@ func (h *OrganizationsHandler) Handle(msg *message.Message) error {
 func (h *OrganizationsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
 	switch e := evt.(type) {
 	case events.OrganizationCreated:
-		return h.onCreated(ctx, e)
+		return h.OnCreated(ctx, &e)
 	case events.OrganizationApproved:
-		return h.onApproved(ctx, e)
+		return h.OnApproved(ctx, &e)
 	case events.OrganizationRejected:
-		return h.onRejected(ctx, e)
+		return h.OnRejected(ctx, &e)
 	case events.OrganizationSuspended:
-		return h.onSuspended(ctx, e)
+		return h.OnSuspended(ctx, &e)
 	case events.OrganizationUpdated:
-		return h.onUpdated(ctx, e)
+		return h.OnUpdated(ctx, &e)
 	}
 	return nil
 }
 
-func (h *OrganizationsHandler) onCreated(ctx context.Context, e events.OrganizationCreated) error {
+func (h *OrganizationsHandler) OnCreated(ctx context.Context, e *events.OrganizationCreated) error {
 	org := projections.OrganizationLookup{
 		ID:        e.AggregateID(),
 		Name:      e.Name,
@@ -80,7 +80,7 @@ func (h *OrganizationsHandler) onCreated(ctx context.Context, e events.Organizat
 	return nil
 }
 
-func (h *OrganizationsHandler) onApproved(ctx context.Context, e events.OrganizationApproved) error {
+func (h *OrganizationsHandler) OnApproved(ctx context.Context, e *events.OrganizationApproved) error {
 	if err := h.projection.UpdateStatus(ctx, e.AggregateID(), values.OrganizationStatusActive.String()); err != nil {
 		return fmt.Errorf("update organization status to active: %w", err)
 	}
@@ -89,7 +89,7 @@ func (h *OrganizationsHandler) onApproved(ctx context.Context, e events.Organiza
 	return nil
 }
 
-func (h *OrganizationsHandler) onRejected(ctx context.Context, e events.OrganizationRejected) error {
+func (h *OrganizationsHandler) OnRejected(ctx context.Context, e *events.OrganizationRejected) error {
 	if err := h.projection.UpdateStatus(ctx, e.AggregateID(), values.OrganizationStatusRejected.String()); err != nil {
 		return fmt.Errorf("update organization status to rejected: %w", err)
 	}
@@ -98,7 +98,7 @@ func (h *OrganizationsHandler) onRejected(ctx context.Context, e events.Organiza
 	return nil
 }
 
-func (h *OrganizationsHandler) onSuspended(ctx context.Context, e events.OrganizationSuspended) error {
+func (h *OrganizationsHandler) OnSuspended(ctx context.Context, e *events.OrganizationSuspended) error {
 	if err := h.projection.UpdateStatus(ctx, e.AggregateID(), values.OrganizationStatusSuspended.String()); err != nil {
 		return fmt.Errorf("update organization status to suspended: %w", err)
 	}
@@ -107,7 +107,7 @@ func (h *OrganizationsHandler) onSuspended(ctx context.Context, e events.Organiz
 	return nil
 }
 
-func (h *OrganizationsHandler) onUpdated(ctx context.Context, e events.OrganizationUpdated) error {
+func (h *OrganizationsHandler) OnUpdated(ctx context.Context, e *events.OrganizationUpdated) error {
 	if e.Name != nil {
 		// Обновляем в organizations_lookup
 		if err := h.projection.UpdateName(ctx, e.AggregateID(), *e.Name); err != nil {

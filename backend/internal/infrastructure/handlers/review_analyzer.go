@@ -51,10 +51,10 @@ func (h *ReviewAnalyzerHandler) Handle(msg *message.Message) error {
 		return nil
 	}
 
-	return h.onReviewReceived(msg.Context(), reviewReceived)
+	return h.OnReviewReceived(msg.Context(), &reviewReceived)
 }
 
-func (h *ReviewAnalyzerHandler) onReviewReceived(ctx context.Context, e reviewEvents.ReviewReceived) error {
+func (h *ReviewAnalyzerHandler) OnReviewReceived(ctx context.Context, e *reviewEvents.ReviewReceived) error {
 	slog.Info("analyzing review",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.String("order_id", e.OrderID.String()),

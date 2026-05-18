@@ -52,15 +52,15 @@ func (h *FraudsterHandler) Handle(msg *message.Message) error {
 func (h *FraudsterHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
 	switch e := evt.(type) {
 	case orgEvents.FraudsterMarked:
-		return h.onFraudsterMarked(ctx, e)
+		return h.OnFraudsterMarked(ctx, &e)
 	case orgEvents.FraudsterUnmarked:
-		return h.onFraudsterUnmarked(ctx, e)
+		return h.OnFraudsterUnmarked(ctx, &e)
 	}
 	// Ignore other organization events
 	return nil
 }
 
-func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.FraudsterMarked) error {
+func (h *FraudsterHandler) OnFraudsterMarked(ctx context.Context, e *orgEvents.FraudsterMarked) error {
 	orgID := e.AggregateID()
 	slog.Info("processing FraudsterMarked",
 		slog.String("org_id", orgID.String()),
@@ -116,7 +116,7 @@ func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.Fr
 	return nil
 }
 
-func (h *FraudsterHandler) onFraudsterUnmarked(ctx context.Context, e orgEvents.FraudsterUnmarked) error {
+func (h *FraudsterHandler) OnFraudsterUnmarked(ctx context.Context, e *orgEvents.FraudsterUnmarked) error {
 	orgID := e.AggregateID()
 	slog.Info("processing FraudsterUnmarked",
 		slog.String("org_id", orgID.String()),

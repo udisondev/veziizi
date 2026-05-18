@@ -46,18 +46,18 @@ func (h *InvitationsHandler) Handle(msg *message.Message) error {
 func (h *InvitationsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
 	switch e := evt.(type) {
 	case events.InvitationCreated:
-		return h.onInvitationCreated(ctx, e)
+		return h.OnInvitationCreated(ctx, &e)
 	case events.InvitationAccepted:
-		return h.onInvitationAccepted(ctx, e)
+		return h.OnInvitationAccepted(ctx, &e)
 	case events.InvitationExpired:
-		return h.onInvitationExpired(ctx, e)
+		return h.OnInvitationExpired(ctx, &e)
 	case events.InvitationCancelled:
-		return h.onInvitationCancelled(ctx, e)
+		return h.OnInvitationCancelled(ctx, &e)
 	}
 	return nil
 }
 
-func (h *InvitationsHandler) onInvitationCreated(ctx context.Context, e events.InvitationCreated) error {
+func (h *InvitationsHandler) OnInvitationCreated(ctx context.Context, e *events.InvitationCreated) error {
 	expiresAt := time.Unix(e.ExpiresAt, 0)
 
 	query, args, err := h.psql.
@@ -78,7 +78,7 @@ func (h *InvitationsHandler) onInvitationCreated(ctx context.Context, e events.I
 	return nil
 }
 
-func (h *InvitationsHandler) onInvitationAccepted(ctx context.Context, e events.InvitationAccepted) error {
+func (h *InvitationsHandler) OnInvitationAccepted(ctx context.Context, e *events.InvitationAccepted) error {
 	query, args, err := h.psql.
 		Update("invitations_lookup").
 		Set("status", "accepted").
@@ -96,7 +96,7 @@ func (h *InvitationsHandler) onInvitationAccepted(ctx context.Context, e events.
 	return nil
 }
 
-func (h *InvitationsHandler) onInvitationExpired(ctx context.Context, e events.InvitationExpired) error {
+func (h *InvitationsHandler) OnInvitationExpired(ctx context.Context, e *events.InvitationExpired) error {
 	query, args, err := h.psql.
 		Update("invitations_lookup").
 		Set("status", "expired").
@@ -114,7 +114,7 @@ func (h *InvitationsHandler) onInvitationExpired(ctx context.Context, e events.I
 	return nil
 }
 
-func (h *InvitationsHandler) onInvitationCancelled(ctx context.Context, e events.InvitationCancelled) error {
+func (h *InvitationsHandler) OnInvitationCancelled(ctx context.Context, e *events.InvitationCancelled) error {
 	query, args, err := h.psql.
 		Update("invitations_lookup").
 		Set("status", "cancelled").
