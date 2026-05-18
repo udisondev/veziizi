@@ -752,8 +752,17 @@ type PendingOfferItem struct {
 	OffersCount        int        `json:"offers_count"`
 }
 
-// GetPendingOffersOnMyRequests возвращает по одной строке на заявку (последний оффер), с общим числом офферов
-func (p *FreightRequestsProjection) GetPendingOffersOnMyRequests(ctx context.Context, customerOrgID uuid.UUID, limit int) ([]PendingOfferItem, error) {
+// GetPendingOffersOnMyRequests возвращает по одной строке на заявку (последний оффер), с общим числом офферов.
+// customerMemberID — опциональный фильтр: когда != uuid.Nil, ограничивает выдачу заявками,
+// созданными конкретным сотрудником (employee видит только свои заявки).
+func (p *FreightRequestsProjection) GetPendingOffersOnMyRequests(ctx context.Context, customerOrgID uuid.UUID, customerMemberID uuid.UUID, limit int) ([]PendingOfferItem, error) {
+	memberFilter := ""
+	args := []any{customerOrgID, limit}
+	if customerMemberID != uuid.Nil {
+		memberFilter = " AND fr.customer_member_id = $3"
+		args = []any{customerOrgID, limit, customerMemberID}
+	}
+
 	query := `
 		SELECT
 			sub.id, sub.freight_request_id, sub.request_number,
@@ -773,14 +782,14 @@ func (p *FreightRequestsProjection) GetPendingOffersOnMyRequests(ctx context.Con
 			FROM offers_lookup o
 			JOIN freight_requests_lookup fr ON fr.id = o.freight_request_id
 			LEFT JOIN organizations_lookup org ON org.id = o.carrier_org_id
-			WHERE fr.customer_org_id = $1 AND o.status = 'pending'
+			WHERE fr.customer_org_id = $1 AND o.status = 'pending'` + memberFilter + `
 			ORDER BY o.freight_request_id, o.created_at DESC
 		) sub
 		ORDER BY sub.created_at DESC
 		LIMIT $2
 	`
 
-	rows, err := p.db.Query(ctx, query, customerOrgID, limit)
+	rows, err := p.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query pending offers on my requests: %w", err)
 	}
