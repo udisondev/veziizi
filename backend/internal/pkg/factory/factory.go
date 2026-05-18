@@ -130,6 +130,9 @@ type Factory struct {
 	notificationDedupProjection *projections.NotificationDedupProjection
 	notificationDedupOnce       sync.Once
 
+	projectionEventDedup     *projections.ProjectionEventDedupProjection
+	projectionEventDedupOnce sync.Once
+
 	telegramLinkProjection *projections.TelegramLinkProjection
 	telegramLinkOnce       sync.Once
 
@@ -563,6 +566,13 @@ func (f *Factory) NotificationDedupProjection() *projections.NotificationDedupPr
 		f.notificationDedupProjection = projections.NewNotificationDedupProjection(f.DB())
 	})
 	return f.notificationDedupProjection
+}
+
+func (f *Factory) ProjectionEventDedupProjection() *projections.ProjectionEventDedupProjection {
+	f.projectionEventDedupOnce.Do(func() {
+		f.projectionEventDedup = projections.NewProjectionEventDedupProjection(f.DB())
+	})
+	return f.projectionEventDedup
 }
 
 func (f *Factory) TelegramLinkProjection() *projections.TelegramLinkProjection {

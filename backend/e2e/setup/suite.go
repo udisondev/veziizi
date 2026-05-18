@@ -332,7 +332,7 @@ func (s *Suite) startEventHandlers() error {
 	if err != nil {
 		return err
 	}
-	reviewsProjectionHandler := eventHandlers.NewReviewsProjectionHandler(s.Factory.DB(), s.Factory.FraudDataProjection(), s.Factory.OrganizationRatingsProjection())
+	reviewsProjectionHandler := eventHandlers.NewReviewsProjectionHandler(s.Factory.DB(), s.Factory.FraudDataProjection(), s.Factory.OrganizationRatingsProjection(), s.Factory.ProjectionEventDedupProjection())
 	router.AddConsumerHandler("reviews_projection", "review.events", reviewsProjectionSub, reviewsProjectionHandler.Handle)
 
 	s.eventRouter = router

@@ -20,6 +20,7 @@ func main() {
 				f.DB(),
 				f.FraudDataProjection(),
 				f.OrganizationRatingsProjection(),
+				f.ProjectionEventDedupProjection(),
 			)
 			return ep.AddHandlersGroup("reviews-projection",
 				cqrs.NewGroupEventHandler(h.OnReceived),

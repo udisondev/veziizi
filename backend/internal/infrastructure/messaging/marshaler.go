@@ -36,6 +36,7 @@ func (m EventEnvelopeMarshaler) Marshal(v any) (*message.Message, error) {
 	}
 
 	msg := message.NewMessage(uuid.New().String(), payload)
+	msg.Metadata.Set("event_id", envelope.ID.String())
 	msg.Metadata.Set("aggregate_id", event.AggregateID().String())
 	msg.Metadata.Set("aggregate_type", event.AggregateType())
 	msg.Metadata.Set("event_type", event.EventType())
