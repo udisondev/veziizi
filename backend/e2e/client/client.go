@@ -255,6 +255,19 @@ func (c *Client) GetFreightRequests(filters map[string]string) (*Response[Freigh
 	return doRequest[FreightRequestListResponse](c, http.MethodGet, path, nil, nil)
 }
 
+// GetFreightRequestsCount returns the count of freight requests matching the filters.
+func (c *Client) GetFreightRequestsCount(filters map[string]string) (*Response[FreightRequestCountResponse], error) {
+	path := "/api/v1/freight-requests/count"
+	if len(filters) > 0 {
+		params := make([]string, 0, len(filters))
+		for k, v := range filters {
+			params = append(params, k+"="+v)
+		}
+		path += "?" + strings.Join(params, "&")
+	}
+	return doRequest[FreightRequestCountResponse](c, http.MethodGet, path, nil, nil)
+}
+
 // GetFreightRequest returns a freight request by ID.
 func (c *Client) GetFreightRequest(id uuid.UUID) (*Response[FreightRequestResponse], error) {
 	return doRequest[FreightRequestResponse](c, http.MethodGet, "/api/v1/freight-requests/"+id.String(), nil, nil)

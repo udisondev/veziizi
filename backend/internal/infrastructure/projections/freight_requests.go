@@ -379,6 +379,28 @@ func (p *FreightRequestsProjection) List(ctx context.Context, opts ...FilterOpti
 	return result, nil
 }
 
+// Count возвращает количество заявок, удовлетворяющих фильтрам.
+// Опции WithLimit / WithCursor / WithOffset не имеют смысла для COUNT —
+// вызывающий код их не передаёт.
+func (p *FreightRequestsProjection) Count(ctx context.Context, opts ...FilterOption) (int, error) {
+	builder := p.psql.Select("COUNT(*)").From("freight_requests_lookup")
+
+	for _, opt := range opts {
+		builder = opt(builder)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return 0, fmt.Errorf("build count query: %w", err)
+	}
+
+	var count int
+	if err := p.db.QueryRow(ctx, query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("query freight requests count: %w", err)
+	}
+	return count, nil
+}
+
 // Offer filter options
 
 // OfferListItem represents minimal data for listing

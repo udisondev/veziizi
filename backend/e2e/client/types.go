@@ -25,6 +25,9 @@ type (
 	// Admin fraud types
 	FraudsterResponse  = handlers.FraudsterResponse
 	FraudstersResponse = handlers.FraudstersResponse
+
+	// Freight request response types
+	FreightRequestCountResponse = handlers.FreightRequestCountResponse
 )
 
 // Response wraps HTTP response data with status code.

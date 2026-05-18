@@ -2,6 +2,7 @@ package tests
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -177,6 +178,164 @@ func (s *FreightRequestsSuite) TestFR031_InvalidCustomerOrgID() {
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+// ==================== GET /api/v1/freight-requests/count ====================
+
+// waitFreightRequestNumber ждёт появления заявки в проекции через List
+// (с фильтром по customer_org_id текущего customer) и возвращает её
+// request_number — нужен для строгих count-фильтров. В Get-эндпоинте
+// поле RequestNumber отдаётся в client'е как string и не годится для
+// целочисленного фильтра.
+func (s *FreightRequestsSuite) waitFreightRequestNumber(id uuid.UUID) int64 {
+	s.T().Helper()
+	return helpers.WaitFor(s.T(), func() (int64, bool) {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"customer_org_id": s.ctx.Customer.OrganizationID.String(),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return 0, false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == id {
+				return it.RequestNumber, true
+			}
+		}
+		return 0, false
+	}, "freight request projection sync")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_Unauthorized() {
+	resp, err := s.ctx.AnonClient.GetFreightRequestsCount(nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_MarketplaceMode_NoFilters() {
+	resp, err := s.ctx.Carrier.Client.GetFreightRequestsCount(nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().GreaterOrEqual(resp.Body.Count, 0, "count must be non-negative")
+}
+
+// TestFR_Count_StrictByRequestNumber — строгий contract: уникальный фильтр
+// (request_number конкретной только что созданной заявки) даёт count==1.
+// Это и проверка корректности COUNT(*), и того, что фильтры реально доходят
+// до SQL — в отличие от слабого "count >= len(items)".
+func (s *FreightRequestsSuite) TestFR_Count_StrictByRequestNumber() {
+	created := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	// RequestNumber берём из проекции (List), а не Get — в client'е поле
+	// FreightRequestResponse.RequestNumber типизировано как string и не годится
+	// для целочисленного фильтра.
+	reqNum := s.waitFreightRequestNumber(created.ID)
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+			"request_number": strconv.FormatInt(reqNum, 10),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		return resp.Body.Count == 1
+	}, "count must be exactly 1 for unique request_number")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_FilterByMinWeight() {
+	fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithWeight(7777).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+			"min_weight": "7000",
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		return resp.Body.Count >= 1
+	}, "count should include FR with weight=7777 when min_weight=7000")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_OwnOrg_AllowsStatusFilter() {
+	filters := map[string]string{
+		"customer_org_id": s.ctx.Customer.OrganizationID.String(),
+		"statuses":        "published,confirmed",
+	}
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(filters)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().GreaterOrEqual(resp.Body.Count, 0)
+}
+
+// TestFR_Count_MarketplaceMode_HidesPrivateOfOthers — SEC invariant:
+// у carrier'а в marketplace-режиме не должны учитываться чужие непубличные
+// заявки. Создаём у customer заявку, отменяем её (status → cancelled),
+// и проверяем, что carrier'у она не видна в count, а customer'у (own org) — видна.
+func (s *FreightRequestsSuite) TestFR_Count_MarketplaceMode_HidesPrivateOfOthers() {
+	created := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	reqNum := s.waitFreightRequestNumber(created.ID)
+	reqNumStr := strconv.FormatInt(reqNum, 10)
+
+	reason := "test cleanup"
+	cancelResp, err := s.ctx.Customer.Client.CancelFreightRequest(created.ID, &reason)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, cancelResp.StatusCode, string(cancelResp.RawBody))
+
+	// Дожидаемся, пока проекция получит событие FreightRequestCancelled и
+	// обновит status='cancelled' — иначе carrier в marketplace-режиме всё
+	// ещё видит её как published. Owner-фильтр List у customer корректно
+	// возвращает запись в любом статусе, status поля и проверяем.
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"request_number": reqNumStr,
+		})
+		if err != nil || resp.StatusCode != http.StatusOK || len(resp.Body.Items) != 1 {
+			return false
+		}
+		return resp.Body.Items[0].Status == "cancelled"
+	}, "projection must reflect cancelled status")
+
+	// Customer (own org) — видит свою отменённую заявку в count.
+	customerResp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"request_number": reqNumStr,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, customerResp.StatusCode, string(customerResp.RawBody))
+	s.Assert().Equal(1, customerResp.Body.Count, "customer must see own cancelled in count")
+
+	// Carrier (чужая org, marketplace-режим) — НЕ видит cancelled.
+	carrierResp, err := s.ctx.Carrier.Client.GetFreightRequestsCount(map[string]string{
+		"request_number": reqNumStr,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, carrierResp.StatusCode, string(carrierResp.RawBody))
+	s.Assert().Equal(0, carrierResp.Body.Count,
+		"marketplace mode must hide other org's non-published requests")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_InvalidCustomerOrgID() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"customer_org_id": "not-a-uuid",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_InvalidStatus() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"customer_org_id": s.ctx.Customer.OrganizationID.String(),
+		"statuses":        "garbage",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_NegativeMinWeight_Rejected() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"min_weight": "-1",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
 }
 
 // ==================== GET /api/v1/freight-requests/{id} ====================
