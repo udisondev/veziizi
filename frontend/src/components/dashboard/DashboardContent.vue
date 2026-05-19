@@ -34,16 +34,10 @@ function goToListFiltered(statuses: FreightRequestStatus[], ownership: Ownership
   emit('go-to-list', true)
 }
 
-function goToPendingOffers() {
-  filtersStore.resetFilters()
-  filtersStore.setFilters({ ownership: 'my_org', hasPendingOffers: true })
-  emit('go-to-list', true)
-}
 
 const orgStats = ref<OrganizationStats | null>(null)
 const dashboardStats = ref<DashboardStats | null>(null)
 const orgRating = ref<OrganizationRating | null>(null)
-const recentItems = ref<FreightRequestListItem[]>([])
 const selectedOffers = ref<MyOfferListItem[]>([])
 const myActiveRequests = ref<FreightRequestListItem[]>([])
 const pendingOffersOnMyRequests = ref<PendingOfferItem[]>([])
@@ -51,13 +45,30 @@ const openTickets = ref<TicketListItem[]>([])
 const subscriptionMatches = ref<{ sub: FreightSubscription; items: FreightRequestListItem[] }[]>([])
 
 const isLoadingStats = ref(false)
-const isLoadingRecent = ref(false)
 const isLoadingAttention = ref(false)
 const isLoadingSubscriptions = ref(false)
 
 const partiallyCompletedRequests = computed(() =>
   myActiveRequests.value.filter(i => i.status === 'partially_completed')
 )
+
+const publishedRequests = computed(() =>
+  myActiveRequests.value.filter(i => i.status === 'published')
+)
+
+const offersByRequestId = computed(() => {
+  const map = new Map<string, typeof pendingOffersOnMyRequests.value[0]>()
+  for (const offer of pendingOffersOnMyRequests.value) {
+    map.set(offer.freight_request_id, offer)
+  }
+  return map
+})
+
+function offersCountLabel(n: number): string {
+  if (n === 1) return '1 предложение'
+  if (n >= 2 && n <= 4) return `${n} предложения`
+  return `${n} предложений`
+}
 
 const expiringSoonRequests = computed(() =>
   myActiveRequests.value.filter(i => {
@@ -142,34 +153,30 @@ async function loadData() {
   if (!auth.organizationId) return
   const orgID = auth.organizationId
   isLoadingStats.value = true
-  isLoadingRecent.value = true
   isLoadingAttention.value = true
   try {
-    const [statsRes, dashboardRes, ratingRes, recentRes, selectedOffersRes, myActiveRes, pendingOffersRes, ticketsRes] = await Promise.allSettled([
+    const [statsRes, dashboardRes, ratingRes, selectedOffersRes, myActiveRes, pendingOffersRes, ticketsRes] = await Promise.allSettled([
       organizationsApi.getStats(orgID),
       organizationsApi.getDashboardStats(orgID),
       organizationsApi.getRating(orgID),
-      freightRequestsApi.list({ statuses: 'published', limit: 10 }),
       offersApi.listMy({ status: 'selected', limit: 10 }),
       freightRequestsApi.list({
         customer_org_id: orgID,
         statuses: 'published,partially_completed',
         limit: 50,
       }),
-      organizationsApi.getPendingOffers(orgID, 15),
+      organizationsApi.getPendingOffers(orgID, 50),
       getMyTickets({ status: 'open' }),
     ])
     orgStats.value = fulfilled('stats', statsRes)
     dashboardStats.value = fulfilled('dashboard-stats', dashboardRes)
     orgRating.value = fulfilled('rating', ratingRes)
-    recentItems.value = fulfilled('recent', recentRes)?.items ?? []
     selectedOffers.value = fulfilled('selected-offers', selectedOffersRes) ?? []
     myActiveRequests.value = fulfilled('my-active', myActiveRes)?.items ?? []
     pendingOffersOnMyRequests.value = fulfilled('pending-offers', pendingOffersRes) ?? []
     openTickets.value = fulfilled('tickets', ticketsRes) ?? []
   } finally {
     isLoadingStats.value = false
-    isLoadingRecent.value = false
     isLoadingAttention.value = false
   }
 }
@@ -189,6 +196,23 @@ function daysLabel(expiresAt: string): string {
   if (d === 1) return `${d} день`
   if (d >= 2 && d <= 4) return `${d} дня`
   return `${d} дней`
+}
+
+function subPriceRange(items: typeof subscriptionMatches.value[0]['items']): string | null {
+  const prices = items.map(i => i.price_amount).filter((p): p is number => !!p)
+  if (!prices.length) return null
+  const currency = items.find(i => i.price_amount)?.price_currency
+  const fmt = (n: number) => (n / 100).toLocaleString('ru-RU')
+  const symbol = currency ? (currencyLabels[currency as keyof typeof currencyLabels] ?? currency) : ''
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  return min === max ? `${fmt(min)} ${symbol}` : `${fmt(min)} – ${fmt(max)} ${symbol}`
+}
+
+function subLastUpdated(items: typeof subscriptionMatches.value[0]['items']): string | null {
+  if (!items.length) return null
+  const latest = items.reduce((a, b) => a.created_at > b.created_at ? a : b)
+  return formatRelativeTime(latest.created_at)
 }
 
 function subscriptionToParams(sub: FreightSubscription) {
@@ -381,68 +405,42 @@ onMounted(() => {
       <div class="space-y-4">
 
         <!-- Заявки по рассылкам -->
-        <template v-if="isLoadingSubscriptions">
-          <div class="rounded-lg border bg-card overflow-hidden">
-            <div class="flex items-center justify-between px-5 py-4 border-b">
-              <div class="h-3 bg-muted animate-pulse rounded w-36" />
-              <div class="h-3 bg-muted animate-pulse rounded w-8" />
-            </div>
-            <div class="px-5 py-8 flex justify-center">
-              <LoadingSpinner text="Загрузка..." />
+        <div v-if="isLoadingSubscriptions" class="rounded-lg border bg-card p-4">
+          <div class="h-3 bg-muted animate-pulse rounded w-24 mb-3" />
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div v-for="i in 3" :key="i" class="rounded-md border bg-muted/30 p-3 space-y-2">
+              <div class="h-3 bg-muted animate-pulse rounded w-3/4" />
+              <div class="h-4 bg-muted animate-pulse rounded w-1/2" />
             </div>
           </div>
-        </template>
+        </div>
 
-        <template v-else-if="subscriptionMatches.length > 0">
-          <div
-            v-for="match in subscriptionMatches"
-            :key="match.sub.id"
-            class="rounded-lg border bg-card overflow-hidden"
-          >
-            <div class="flex items-center justify-between px-5 py-4 border-b">
-              <div class="flex items-center gap-2.5">
-                <Bell class="h-4 w-4 text-muted-foreground shrink-0" />
-                <h2 class="text-sm font-semibold text-foreground">{{ match.sub.name }}</h2>
-                <span class="text-xs text-muted-foreground">рассылка</span>
-              </div>
-              <button
-                class="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
-                @click="goToSubscriptionResults(match.sub)"
-              >
-                Все <ChevronRight class="h-4 w-4" />
-              </button>
-            </div>
-
-            <div>
-              <div
-                v-for="(item, index) in match.items"
-                :key="item.id"
-                class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
-                :class="index < match.items.length - 1 ? 'border-b' : ''"
-                @click="router.push(`/freight-requests/${item.id}`)"
-              >
-                <div class="w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0" />
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1.5 text-sm">
-                    <span class="text-xs text-muted-foreground shrink-0">#{{ item.request_number }}</span>
-                    <span class="font-medium text-foreground truncate">
-                      {{ item.origin_address || '—' }} → {{ item.destination_address || '—' }}
-                    </span>
-                  </div>
-                  <div v-if="item.customer_org_name" class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                    <span>{{ item.customer_org_name }}</span>
-                    <span>·</span>
-                    <span>{{ formatRelativeTime(item.created_at) }}</span>
-                  </div>
-                </div>
-                <div class="text-sm font-semibold text-foreground shrink-0">
-                  {{ formatPrice(item.price_amount, item.price_currency) || '—' }}
-                </div>
-                <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
-              </div>
-            </div>
+        <div v-else-if="subscriptionMatches.length > 0">
+          <div class="flex items-center gap-2 mb-2">
+            <Bell class="h-3.5 w-3.5 text-muted-foreground" />
+            <span class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Рассылки</span>
           </div>
-        </template>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <button
+              v-for="match in subscriptionMatches"
+              :key="match.sub.id"
+              class="flex flex-col items-start gap-1.5 rounded-md border bg-card px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
+              @click="goToSubscriptionResults(match.sub)"
+            >
+              <span class="text-xs font-medium text-foreground leading-tight line-clamp-2">{{ match.sub.name }}</span>
+              <span class="text-xs font-semibold text-primary">
+                {{ match.items.length >= 5 ? '5+' : match.items.length }}
+                {{ match.items.length === 1 ? 'заявка' : 'заявок' }}
+              </span>
+              <span v-if="subPriceRange(match.items)" class="text-xs text-muted-foreground">
+                {{ subPriceRange(match.items) }}
+              </span>
+              <span v-if="subLastUpdated(match.items)" class="text-[11px] text-muted-foreground/60">
+                Обновлено {{ subLastUpdated(match.items) }}
+              </span>
+            </button>
+          </div>
+        </div>
 
         <!-- Заявки истекают скоро -->
         <div v-if="expiringSoonRequests.length > 0" class="rounded-lg border bg-card overflow-hidden">
@@ -476,26 +474,26 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Офферы на мои заявки -->
+        <!-- Мои заявки и офферы на них -->
         <div class="rounded-lg border bg-card overflow-hidden">
           <div class="flex items-center justify-between px-5 py-4 border-b">
             <div class="flex items-center gap-2.5">
-              <h2 class="text-sm font-semibold text-foreground">Офферы на мои заявки</h2>
+              <h2 class="text-sm font-semibold text-foreground">Мои заявки</h2>
               <span
-                v-if="(dashboardStats?.pending_offers_count ?? 0) > 0"
-                class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
-              >{{ dashboardStats!.pending_offers_count }}</span>
+                v-if="publishedRequests.length > 0"
+                class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
+              >{{ publishedRequests.length }}</span>
               <span
                 v-if="(dashboardStats?.pending_offers_today ?? 0) > 0"
                 class="flex items-center gap-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
               >
                 <TrendingUp class="h-3 w-3" />
-                +{{ dashboardStats!.pending_offers_today }} за сутки
+                +{{ dashboardStats!.pending_offers_today }} офферов за сутки
               </span>
             </div>
             <button
               class="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
-              @click="goToPendingOffers()"
+              @click="goToListFiltered(['published'], 'my_org')"
             >
               Все <ChevronRight class="h-4 w-4" />
             </button>
@@ -505,86 +503,22 @@ onMounted(() => {
             <LoadingSpinner text="Загрузка..." />
           </div>
 
-          <div v-else-if="pendingOffersOnMyRequests.length === 0" class="px-5 py-10 text-center text-sm text-muted-foreground">
-            Нет входящих предложений
+          <div v-else-if="publishedRequests.length === 0" class="px-5 py-10 text-center text-sm text-muted-foreground">
+            Нет активных заявок на рынке
           </div>
 
           <div v-else>
             <div
-              v-for="(offer, index) in pendingOffersOnMyRequests"
-              :key="offer.id"
-              class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
-              :class="index < pendingOffersOnMyRequests.length - 1 ? 'border-b' : ''"
-              @click="router.push(`/freight-requests/${offer.freight_request_id}?tab=offers`)"
-            >
-              <div class="w-2 h-2 rounded-full bg-primary shrink-0" />
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-1.5 text-sm">
-                  <span class="text-xs text-muted-foreground shrink-0">#{{ offer.request_number }}</span>
-                  <span class="font-medium text-foreground truncate">
-                    {{ offer.origin_address || '—' }} → {{ offer.destination_address || '—' }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                  <span class="font-medium text-foreground/70">{{ offer.carrier_org_name || 'Перевозчик' }}</span>
-                  <span>·</span>
-                  <span>{{ formatRelativeTime(offer.created_at) }}</span>
-                  <template v-if="offer.offers_count > 1">
-                    <span>·</span>
-                    <span class="text-primary font-medium">{{ offer.offers_count }} предложения</span>
-                  </template>
-                </div>
-              </div>
-              <div class="text-sm font-semibold text-foreground shrink-0">
-                {{ formatPrice(offer.price_amount, offer.price_currency) || '—' }}
-              </div>
-              <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Новые заявки на рынке -->
-        <div class="rounded-lg border bg-card overflow-hidden">
-          <div class="flex items-center justify-between px-5 py-4 border-b">
-            <div class="flex items-center gap-2.5">
-              <h2 class="text-sm font-semibold text-foreground">Новые заявки на рынке</h2>
-              <span
-                v-if="(dashboardStats?.market_published_today ?? 0) > 0"
-                class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary"
-              >{{ dashboardStats!.market_published_today }}</span>
-              <span
-                v-if="(dashboardStats?.market_published_today ?? 0) > 0"
-                class="flex items-center gap-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-              >
-                <TrendingUp class="h-3 w-3" />
-                за сутки
-              </span>
-            </div>
-            <button
-              class="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
-              @click="emit('go-to-list')"
-            >
-              Все <ChevronRight class="h-4 w-4" />
-            </button>
-          </div>
-
-          <div v-if="isLoadingRecent" class="px-5 py-10 flex justify-center">
-            <LoadingSpinner text="Загрузка..." />
-          </div>
-
-          <div v-else-if="recentItems.length === 0" class="px-5 py-10 text-center text-sm text-muted-foreground">
-            Нет опубликованных заявок
-          </div>
-
-          <div v-else>
-            <div
-              v-for="(item, index) in recentItems"
+              v-for="(item, index) in publishedRequests"
               :key="item.id"
               class="flex items-center gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
-              :class="index < recentItems.length - 1 ? 'border-b' : ''"
-              @click="router.push(`/freight-requests/${item.id}`)"
+              :class="index < publishedRequests.length - 1 ? 'border-b' : ''"
+              @click="router.push(offersByRequestId.has(item.id) ? `/freight-requests/${item.id}?tab=offers` : `/freight-requests/${item.id}`)"
             >
-              <div class="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+              <div
+                class="w-2 h-2 rounded-full shrink-0"
+                :class="offersByRequestId.has(item.id) ? 'bg-primary' : 'bg-muted-foreground/30'"
+              />
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5 text-sm">
                   <span class="text-xs text-muted-foreground shrink-0">#{{ item.request_number }}</span>
@@ -592,19 +526,30 @@ onMounted(() => {
                     {{ item.origin_address || '—' }} → {{ item.destination_address || '—' }}
                   </span>
                 </div>
-                <div v-if="item.customer_org_name" class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                  <span>{{ item.customer_org_name }}</span>
-                  <span>·</span>
-                  <span>{{ formatRelativeTime(item.created_at) }}</span>
+                <template v-if="offersByRequestId.has(item.id)">
+                  <div class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                    <span class="font-medium text-primary">{{ offersCountLabel(offersByRequestId.get(item.id)!.offers_count) }}</span>
+                    <span>·</span>
+                    <span>{{ offersByRequestId.get(item.id)!.carrier_org_name }}</span>
+                    <span>·</span>
+                    <span>{{ formatRelativeTime(offersByRequestId.get(item.id)!.created_at) }}</span>
+                  </div>
+                </template>
+                <div v-else class="text-xs text-muted-foreground/60 mt-0.5">
+                  Нет предложений
                 </div>
               </div>
-              <div class="text-sm font-semibold text-foreground shrink-0">
-                {{ formatPrice(item.price_amount, item.price_currency) || '—' }}
+              <div
+                v-if="offersByRequestId.has(item.id)"
+                class="text-sm font-semibold text-foreground shrink-0"
+              >
+                {{ formatPrice(offersByRequestId.get(item.id)!.price_amount, offersByRequestId.get(item.id)!.price_currency) || '—' }}
               </div>
               <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
             </div>
           </div>
         </div>
+
 
       </div>
 
