@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSubscriptionsStore } from '@/stores/subscriptions'
 import { storeToRefs } from 'pinia'
@@ -28,8 +28,14 @@ const { goToSubscriptionResults } = useSubscriptionNavigation()
 
 const matchCounts = ref<Record<string, number>>({})
 
+// Отслеживаем только ID и is_active — перезагружаем счётчики при изменении состава или активности
+const subscriptionKeys = computed(() =>
+  subscriptions.value.map(s => `${s.id}:${s.is_active}`).join(',')
+)
+
 async function loadMatchCounts() {
   const active = subscriptions.value.filter(s => s.is_active)
+  matchCounts.value = {}
   if (!active.length) return
   const results = await Promise.allSettled(active.map(sub => freightRequestsApi.list(subscriptionToParams(sub))))
   active.forEach((sub, i) => {
@@ -54,8 +60,8 @@ function handleToggleActive(id: string, value: boolean) {
   store.toggleActive(id, value)
 }
 
-watch(subscriptions, (subs) => {
-  if (subs.length && !Object.keys(matchCounts.value).length) loadMatchCounts()
+watch(subscriptionKeys, () => {
+  loadMatchCounts()
 }, { immediate: true })
 
 onMounted(() => {
