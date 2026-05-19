@@ -1,47 +1,56 @@
--- +goose Up
--- +goose StatementBegin
-
--- Denormalize first/last route points into separate arrays for role-aware
--- filtering: "origin = <city/country>" и "destination = <city/country>".
--- Существующий route_city_ids/route_country_ids остаётся как «любая точка
--- маршрута» — новые колонки не заменяют его.
+-- +goose NO TRANSACTION
+--
+-- NO TRANSACTION нужен по двум независимым причинам:
+--   1. CREATE INDEX CONCURRENTLY запрещён внутри транзакции — мы строим
+--      GIN-индексы CONCURRENTLY, чтобы не брать ACCESS EXCLUSIVE на
+--      freight_requests_lookup (горячий read-эндпоинт);
+--   2. Батч-backfill использует COMMIT внутри DO-блока, чтобы реально
+--      освобождать row-locks между батчами и давать autovacuum / другим
+--      транзакциям окно. Без NO TRANSACTION goose оборачивает всё в одну
+--      tx — COMMIT в DO упадёт, и батчи будут только косметикой.
+--
+-- Порядок «ALTER → backfill → CREATE INDEX» намеренный: индекс по пустой
+-- колонке быстрее построить за один проход, чем поддерживать его при
+-- per-row UPDATE в backfill (двойная запись WAL).
 --
 -- Семантика «пусто» — NULL (а не пустой массив). Совпадает с тем, как
 -- extractRouteCityIDs/CountryIDs в Go-handler возвращает nil → pgx пишет
 -- NULL. Это инвариант: `<column> IS NULL` означает «у точки нет id такого
 -- типа», и не путается с пустым массивом из ARRAY[]::INTEGER[].
+
+-- +goose Up
+
+-- +goose StatementBegin
 ALTER TABLE freight_requests_lookup
     ADD COLUMN IF NOT EXISTS origin_city_ids         INTEGER[],
     ADD COLUMN IF NOT EXISTS origin_country_ids      INTEGER[],
     ADD COLUMN IF NOT EXISTS destination_city_ids    INTEGER[],
     ADD COLUMN IF NOT EXISTS destination_country_ids INTEGER[];
-
-CREATE INDEX IF NOT EXISTS idx_freight_requests_origin_city_ids
-    ON freight_requests_lookup USING GIN (origin_city_ids);
-CREATE INDEX IF NOT EXISTS idx_freight_requests_origin_country_ids
-    ON freight_requests_lookup USING GIN (origin_country_ids);
-CREATE INDEX IF NOT EXISTS idx_freight_requests_destination_city_ids
-    ON freight_requests_lookup USING GIN (destination_city_ids);
-CREATE INDEX IF NOT EXISTS idx_freight_requests_destination_country_ids
-    ON freight_requests_lookup USING GIN (destination_country_ids);
-
 -- +goose StatementEnd
 
 -- Backfill из существующего route JSONB по батчам.
--- Зачем батчи: один большой UPDATE по freight_requests_lookup держит
--- EXCLUSIVE-лок таблицы и переписывает все строки — на горячем эндпоинте
--- (GET /freight-requests) это видимая просадка. Батчи по 1000 строк дают
--- автовакууму прорваться между ними, а другим транзакциям — попасть в
--- окно между батчами.
+--
+-- Каждый батч обновляет до 1000 строк и завершается COMMIT — это даёт:
+--   - row-locks (UPDATE держит lock на каждую строку до конца своей tx)
+--     отпускаются сразу после COMMIT, не дожидаясь конца миграции;
+--   - autovacuum'у двинуть xmin horizon — иначе всё время backfill таблица
+--     накапливает dead tuples без шанса их вычистить;
+--   - другим UPDATE'ам на эти же строки попадать в окна между батчами.
 --
 -- Guard'ы:
 --   1. route IS NOT NULL — иначе backfill не нужен;
 --   2. route ? 'points'  — на случай битых данных без ключа;
 --   3. jsonb_typeof(route->'points') = 'array' — защита от подмены типа;
---   4. id > last_id      — keyset-пагинация по PK; продвигаем через MAX(id)
+--   4. id > last_id      — keyset-пагинация по PK; продвигаем через max(id)
 --      батча независимо от того, обновились ли колонки в NULL (битый
 --      маршрут без city/country: backfill оставит NULL, но мы не должны
 --      зациклиться на этой же строке).
+--
+-- На повторный запуск миграция устойчива: уже backfill'нутые строки
+-- по-прежнему попадают в батч (мы НЕ фильтруем по IS NULL — это могло бы
+-- зациклиться на строках с битыми routes), но переписываются тем же
+-- значением — идемпотентно.
+--
 -- +goose StatementBegin
 DO $$
 DECLARE
@@ -49,6 +58,8 @@ DECLARE
     max_id  UUID;
 BEGIN
     LOOP
+        max_id := NULL;
+
         WITH batch AS (
             SELECT id
             FROM freight_requests_lookup
@@ -87,22 +98,35 @@ BEGIN
 
         EXIT WHEN max_id IS NULL;
         last_id := max_id;
+        COMMIT;
     END LOOP;
 END $$;
 -- +goose StatementEnd
 
+-- Индексы создаём CONCURRENTLY и ПОСЛЕ backfill: на горячей таблице
+-- ACCESS EXCLUSIVE из обычного CREATE INDEX заморозил бы записи в
+-- проекцию на всё время построения. Строим уже по заполненным колонкам —
+-- один проход вместо инкрементальной поддержки во время UPDATE.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_freight_requests_origin_city_ids
+    ON freight_requests_lookup USING GIN (origin_city_ids);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_freight_requests_origin_country_ids
+    ON freight_requests_lookup USING GIN (origin_country_ids);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_freight_requests_destination_city_ids
+    ON freight_requests_lookup USING GIN (destination_city_ids);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_freight_requests_destination_country_ids
+    ON freight_requests_lookup USING GIN (destination_country_ids);
+
 -- +goose Down
+
+DROP INDEX CONCURRENTLY IF EXISTS idx_freight_requests_destination_country_ids;
+DROP INDEX CONCURRENTLY IF EXISTS idx_freight_requests_destination_city_ids;
+DROP INDEX CONCURRENTLY IF EXISTS idx_freight_requests_origin_country_ids;
+DROP INDEX CONCURRENTLY IF EXISTS idx_freight_requests_origin_city_ids;
+
 -- +goose StatementBegin
-
-DROP INDEX IF EXISTS idx_freight_requests_destination_country_ids;
-DROP INDEX IF EXISTS idx_freight_requests_destination_city_ids;
-DROP INDEX IF EXISTS idx_freight_requests_origin_country_ids;
-DROP INDEX IF EXISTS idx_freight_requests_origin_city_ids;
-
 ALTER TABLE freight_requests_lookup
     DROP COLUMN IF EXISTS destination_country_ids,
     DROP COLUMN IF EXISTS destination_city_ids,
     DROP COLUMN IF EXISTS origin_country_ids,
     DROP COLUMN IF EXISTS origin_city_ids;
-
 -- +goose StatementEnd
