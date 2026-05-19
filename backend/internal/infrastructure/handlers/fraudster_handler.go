@@ -2,14 +2,11 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	orgEvents "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
@@ -33,34 +30,7 @@ func NewFraudsterHandler(
 	}
 }
 
-func (h *FraudsterHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *FraudsterHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case orgEvents.FraudsterMarked:
-		return h.onFraudsterMarked(ctx, e)
-	case orgEvents.FraudsterUnmarked:
-		return h.onFraudsterUnmarked(ctx, e)
-	}
-	// Ignore other organization events
-	return nil
-}
-
-func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.FraudsterMarked) error {
+func (h *FraudsterHandler) OnFraudsterMarked(ctx context.Context, e *orgEvents.FraudsterMarked) error {
 	orgID := e.AggregateID()
 	slog.Info("processing FraudsterMarked",
 		slog.String("org_id", orgID.String()),
@@ -116,7 +86,7 @@ func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.Fr
 	return nil
 }
 
-func (h *FraudsterHandler) onFraudsterUnmarked(ctx context.Context, e orgEvents.FraudsterUnmarked) error {
+func (h *FraudsterHandler) OnFraudsterUnmarked(ctx context.Context, e *orgEvents.FraudsterUnmarked) error {
 	orgID := e.AggregateID()
 	slog.Info("processing FraudsterUnmarked",
 		slog.String("org_id", orgID.String()),

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -14,8 +15,15 @@ func main() {
 		Topic:         "organization.events",
 		ConsumerGroup: "vehicles_projection",
 		LogFile:       "vehicles-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewVehiclesHandler(f.DB(), f.VehiclesProjection(), f.PendingVehiclesProjection()).Handle
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewVehiclesHandler(f.DB(), f.VehiclesProjection(), f.PendingVehiclesProjection())
+			return ep.AddHandlersGroup("vehicles",
+				cqrs.NewGroupEventHandler(h.OnAdded),
+				cqrs.NewGroupEventHandler(h.OnUpdated),
+				cqrs.NewGroupEventHandler(h.OnVerified),
+				cqrs.NewGroupEventHandler(h.OnRejected),
+				cqrs.NewGroupEventHandler(h.OnArchived),
+			)
 		},
 	})
 }

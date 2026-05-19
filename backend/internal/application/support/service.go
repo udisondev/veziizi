@@ -175,7 +175,7 @@ func (s *Service) saveAndPublish(ctx context.Context, t *support.Ticket) error {
 			return fmt.Errorf("save events: %w", err)
 		}
 
-		if err := s.publisher.Publish(ctx, "support.events", changes...); err != nil {
+		if err := s.publisher.Publish(ctx, changes...); err != nil {
 			return fmt.Errorf("publish events: %w", err)
 		}
 

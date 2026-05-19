@@ -269,7 +269,7 @@ func (s *Service) saveAndPublish(ctx context.Context, r *review.Review) error {
 			return fmt.Errorf("save review: %w", err)
 		}
 
-		if err := s.publisher.Publish(ctx, "review.events", changes...); err != nil {
+		if err := s.publisher.Publish(ctx, changes...); err != nil {
 			return fmt.Errorf("publish review events: %w", err)
 		}
 

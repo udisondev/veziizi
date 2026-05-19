@@ -211,7 +211,7 @@ func main() {
 		if err := evtStore.Save(ctx, changes...); err != nil {
 			return fmt.Errorf("profile 3: save suspension: %w", err)
 		}
-		if err := publisher.Publish(ctx, "organization.events", changes...); err != nil {
+		if err := publisher.Publish(ctx, changes...); err != nil {
 			return fmt.Errorf("profile 3: publish suspension: %w", err)
 		}
 		org3.ClearChanges()

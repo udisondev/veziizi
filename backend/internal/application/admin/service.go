@@ -101,7 +101,7 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 			return fmt.Errorf("failed to save events: %w", err)
 		}
 
-		if err := s.publisher.Publish(ctx, "organization.events", changes...); err != nil {
+		if err := s.publisher.Publish(ctx, changes...); err != nil {
 			return fmt.Errorf("failed to publish events: %w", err)
 		}
 

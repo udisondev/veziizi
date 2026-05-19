@@ -52,6 +52,10 @@ type Factory struct {
 	publisherOnce sync.Once
 	publisherErr  error
 
+	notifBus     *messaging.NotificationBus
+	notifBusOnce sync.Once
+	notifBusErr  error
+
 	fileStorage     filestorage.FileStorage
 	fileStorageOnce sync.Once
 
@@ -122,6 +126,12 @@ type Factory struct {
 
 	deliveryLogProjection *projections.NotificationDeliveryLogProjection
 	deliveryLogOnce       sync.Once
+
+	notificationDedupProjection *projections.NotificationDedupProjection
+	notificationDedupOnce       sync.Once
+
+	projectionEventDedup     *projections.ProjectionEventDedupProjection
+	projectionEventDedupOnce sync.Once
 
 	telegramLinkProjection *projections.TelegramLinkProjection
 	telegramLinkOnce       sync.Once
@@ -295,6 +305,30 @@ func (f *Factory) MustPublisher() *messaging.EventPublisher {
 	return pub
 }
 
+// NotificationBus возвращает CQRS-шину для команд на отправку уведомлений
+// (Telegram/Email). Publisher autocommit, не tx-aware — notifications уезжают
+// в очередь независимо от транзакции, в которой их сгенерировали.
+func (f *Factory) NotificationBus() (*messaging.NotificationBus, error) {
+	f.notifBusOnce.Do(func() {
+		wmLogger := watermill.NewSlogLogger(slog.Default())
+		bus, err := messaging.NewNotificationBus(f.MustPublisher().RawPublisher(), wmLogger)
+		if err != nil {
+			f.notifBusErr = fmt.Errorf("create notification bus: %w", err)
+			return
+		}
+		f.notifBus = bus
+	})
+	return f.notifBus, f.notifBusErr
+}
+
+func (f *Factory) MustNotificationBus() *messaging.NotificationBus {
+	bus, err := f.NotificationBus()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get notification bus: %v", err))
+	}
+	return bus
+}
+
 // FileStorage returns file storage (lazily created)
 func (f *Factory) FileStorage() filestorage.FileStorage {
 	f.fileStorageOnce.Do(func() {
@@ -377,7 +411,7 @@ func (f *Factory) NotificationService() *notifApp.Service {
 			f.InAppNotificationsProjection(),
 			f.TelegramLinkProjection(),
 			f.EmailVerificationProjection(),
-			f.MustPublisher().RawPublisher(),
+			f.MustNotificationBus(),
 			f.cfg,
 		)
 	})
@@ -525,6 +559,20 @@ func (f *Factory) DeliveryLogProjection() *projections.NotificationDeliveryLogPr
 		f.deliveryLogProjection = projections.NewNotificationDeliveryLogProjection(f.DB())
 	})
 	return f.deliveryLogProjection
+}
+
+func (f *Factory) NotificationDedupProjection() *projections.NotificationDedupProjection {
+	f.notificationDedupOnce.Do(func() {
+		f.notificationDedupProjection = projections.NewNotificationDedupProjection(f.DB())
+	})
+	return f.notificationDedupProjection
+}
+
+func (f *Factory) ProjectionEventDedupProjection() *projections.ProjectionEventDedupProjection {
+	f.projectionEventDedupOnce.Do(func() {
+		f.projectionEventDedup = projections.NewProjectionEventDedupProjection(f.DB())
+	})
+	return f.projectionEventDedup
 }
 
 func (f *Factory) TelegramLinkProjection() *projections.TelegramLinkProjection {

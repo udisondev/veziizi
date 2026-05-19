@@ -129,6 +129,17 @@ type WorkerConfig struct {
 	ReviewActivatorBatchSize int `env:"REVIEW_ACTIVATOR_BATCH_SIZE" envDefault:"100"`
 	// Rate limiter cleanup interval
 	RateLimiterCleanupInterval time.Duration `env:"RATE_LIMITER_CLEANUP_INTERVAL" envDefault:"10m"`
+
+	// Retry middleware parameters applied to every event-driven worker.
+	RetryMaxRetries      int           `env:"WORKER_RETRY_MAX" envDefault:"5"`
+	RetryInitialInterval time.Duration `env:"WORKER_RETRY_INITIAL_INTERVAL" envDefault:"1s"`
+	RetryMaxInterval     time.Duration `env:"WORKER_RETRY_MAX_INTERVAL" envDefault:"1m"`
+	RetryMultiplier      float64       `env:"WORKER_RETRY_MULTIPLIER" envDefault:"2"`
+
+	// DeadLetterTopic — куда уезжают сообщения, которые Retry исчерпал. Пустая
+	// строка отключает PoisonQueue (тогда после исчерпания попыток сообщение
+	// останется в горячем nack-цикле, как было до этапа 3).
+	DeadLetterTopic string `env:"WORKER_DEADLETTER_TOPIC" envDefault:"deadletter"`
 }
 
 type FraudConfig struct {

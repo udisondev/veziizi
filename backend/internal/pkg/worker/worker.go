@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/heartbeat"
@@ -24,8 +25,21 @@ type Config struct {
 	ConsumerGroup string
 	LogFile       string
 
-	// Handler receives Factory and returns message handler
+	// Handler — legacy-стиль: один raw NoPublishHandlerFunc на топик, внутри
+	// которого хендлер сам распаковывает EventEnvelope и делает type switch.
+	// Используется воркерами, которые ещё не мигрировали на CQRS.
 	Handler func(f *factory.Factory) message.NoPublishHandlerFunc
+
+	// Setup — CQRS-стиль: фабрика регистрирует типизированные хендлеры на
+	// EventGroupProcessor. Все хендлеры группы шарят один subscriber и общий
+	// offset (поведенчески эквивалентно одному ConsumerGroup, как и у Handler).
+	// Если задан Setup, поле Handler игнорируется.
+	Setup func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error
+
+	// Marshaler — формат сообщений. По умолчанию EventEnvelopeMarshaler (для
+	// доменных событий из event store). Для топиков с JSON-командами
+	// (notification.telegram/email) задай messaging.NotificationMarshaler().
+	Marshaler cqrs.CommandEventMarshaler
 }
 
 func Run(cfg Config) {
@@ -72,32 +86,55 @@ func Run(cfg Config) {
 
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 
-	subscriber, err := sql.NewSubscriber(
-		sql.BeginnerFromPgx(pool),
-		sql.SubscriberConfig{
-			SchemaAdapter:  sql.DefaultPostgreSQLSchema{},
-			OffsetsAdapter: sql.DefaultPostgreSQLOffsetsAdapter{},
-			ConsumerGroup:  cfg.ConsumerGroup,
-		},
-		wmLogger,
-	)
-	if err != nil {
-		slog.Error("failed to create subscriber", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-
-	if err := subscriber.SubscribeInitialize(cfg.Topic); err != nil {
-		slog.Error("failed to initialize subscriber", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-
 	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
 	if err != nil {
 		slog.Error("failed to create router", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	router.AddConsumerHandler(cfg.Name+"_handler", cfg.Topic, subscriber, cfg.Handler(f))
+	// Publisher для poison queue использует тот же default publisher, что и весь
+	// EventPublisher: AutoInitializeSchema создаст таблицу watermill_messages_*
+	// для DLQ-топика при первой публикации.
+	var poisonPub message.Publisher
+	if appCfg.Worker.DeadLetterTopic != "" {
+		pub, err := f.Publisher()
+		if err != nil {
+			slog.Error("failed to get publisher for poison queue", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		poisonPub = pub.RawPublisher()
+	}
+	if err := applyStandardMiddleware(router, appCfg.Worker, wmLogger, poisonPub); err != nil {
+		slog.Error("failed to apply middleware", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	switch {
+	case cfg.Setup != nil:
+		marshaler := cfg.Marshaler
+		if marshaler == nil {
+			marshaler = messaging.EventEnvelopeMarshaler{}
+		}
+		ep, err := messaging.NewEventGroupProcessor(router, pool, cfg.Topic, cfg.ConsumerGroup, marshaler, wmLogger)
+		if err != nil {
+			slog.Error("failed to create event group processor", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		if err := cfg.Setup(f, ep); err != nil {
+			slog.Error("worker setup failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	case cfg.Handler != nil:
+		subscriber, err := messaging.NewSQLSubscriber(pool, cfg.Topic, cfg.ConsumerGroup, wmLogger)
+		if err != nil {
+			slog.Error("failed to create subscriber", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		router.AddConsumerHandler(cfg.Name+"_handler", cfg.Topic, subscriber, cfg.Handler(f))
+	default:
+		slog.Error("worker config has neither Setup nor Handler")
+		os.Exit(1)
+	}
 
 	go func() {
 		if err := router.Run(ctx); err != nil {

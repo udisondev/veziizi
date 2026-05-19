@@ -2,19 +2,21 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
+
 	"github.com/udisondev/veziizi/backend/internal/domain/support/entities"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/support/values"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
+// SupportTicketsHandler — projection: лента support_tickets_lookup.
+// Используется воркером support-tickets-projection с собственной consumer group;
+// admin-нотификации живут в отдельном воркере с другой group, чтобы их сбой
+// не блокировал обновление проекции.
 type SupportTicketsHandler struct {
 	db   dbtx.TxManager
 	psql squirrel.StatementBuilderType
@@ -27,37 +29,7 @@ func NewSupportTicketsHandler(db dbtx.TxManager) *SupportTicketsHandler {
 	}
 }
 
-func (h *SupportTicketsHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *SupportTicketsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.TicketCreated:
-		return h.onCreated(ctx, e)
-	case events.MessageAdded:
-		return h.onMessageAdded(ctx, e)
-	case events.TicketClosed:
-		return h.onClosed(ctx, e)
-	case events.TicketReopened:
-		return h.onReopened(ctx, e)
-	}
-	return nil
-}
-
-func (h *SupportTicketsHandler) onCreated(ctx context.Context, e events.TicketCreated) error {
+func (h *SupportTicketsHandler) OnTicketCreated(ctx context.Context, e *events.TicketCreated) error {
 	query, args, err := h.psql.
 		Insert("support_tickets_lookup").
 		Columns("id", "ticket_number", "member_id", "org_id", "subject", "status", "created_at", "updated_at").
@@ -79,8 +51,7 @@ func (h *SupportTicketsHandler) onCreated(ctx context.Context, e events.TicketCr
 	return nil
 }
 
-func (h *SupportTicketsHandler) onMessageAdded(ctx context.Context, e events.MessageAdded) error {
-	// Determine new status based on sender type
+func (h *SupportTicketsHandler) OnMessageAdded(ctx context.Context, e *events.MessageAdded) error {
 	var newStatus string
 	if e.SenderType == entities.SenderTypeAdmin {
 		newStatus = values.TicketStatusAnswered.String()
@@ -108,7 +79,7 @@ func (h *SupportTicketsHandler) onMessageAdded(ctx context.Context, e events.Mes
 	return nil
 }
 
-func (h *SupportTicketsHandler) onClosed(ctx context.Context, e events.TicketClosed) error {
+func (h *SupportTicketsHandler) OnTicketClosed(ctx context.Context, e *events.TicketClosed) error {
 	query, args, err := h.psql.
 		Update("support_tickets_lookup").
 		Set("status", values.TicketStatusClosed.String()).
@@ -130,7 +101,7 @@ func (h *SupportTicketsHandler) onClosed(ctx context.Context, e events.TicketClo
 	return nil
 }
 
-func (h *SupportTicketsHandler) onReopened(ctx context.Context, e events.TicketReopened) error {
+func (h *SupportTicketsHandler) OnTicketReopened(ctx context.Context, e *events.TicketReopened) error {
 	query, args, err := h.psql.
 		Update("support_tickets_lookup").
 		Set("status", values.TicketStatusAwaitingReply.String()).
@@ -151,4 +122,3 @@ func (h *SupportTicketsHandler) onReopened(ctx context.Context, e events.TicketR
 		slog.String("member_id", e.ReopenedByMemberID.String()))
 	return nil
 }
-

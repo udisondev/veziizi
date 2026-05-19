@@ -2,15 +2,11 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log/slog"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	orgValues "github.com/udisondev/veziizi/backend/internal/domain/organization/values"
 
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
@@ -31,36 +27,6 @@ func NewVehiclesHandler(
 		vehicles:        vehicles,
 		pendingVehicles: pendingVehicles,
 	}
-}
-
-func (h *VehiclesHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event envelope: %w", err)
-	}
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *VehiclesHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.VehicleAdded:
-		return h.onAdded(ctx, e)
-	case events.VehicleUpdated:
-		return h.onUpdated(ctx, e)
-	case events.VehicleVerified:
-		return h.onVerified(ctx, e)
-	case events.VehicleRejected:
-		return h.onRejected(ctx, e)
-	case events.VehicleArchived:
-		return h.onArchived(ctx, e)
-	}
-	return nil
 }
 
 func upsertFromSpecs(specs events.VehicleSpecsPayload, status string) projections.VehicleUpsertInput {
@@ -93,7 +59,7 @@ func upsertFromSpecs(specs events.VehicleSpecsPayload, status string) projection
 	return in
 }
 
-func (h *VehiclesHandler) onAdded(ctx context.Context, e events.VehicleAdded) error {
+func (h *VehiclesHandler) OnAdded(ctx context.Context, e *events.VehicleAdded) error {
 	in := upsertFromSpecs(e.Specs, orgValues.VehicleStatusPending.String())
 	in.ID = e.VehicleID
 	in.OrgID = e.AggregateID()
@@ -117,7 +83,7 @@ func (h *VehiclesHandler) onAdded(ctx context.Context, e events.VehicleAdded) er
 	})
 }
 
-func (h *VehiclesHandler) onUpdated(ctx context.Context, e events.VehicleUpdated) error {
+func (h *VehiclesHandler) OnUpdated(ctx context.Context, e *events.VehicleUpdated) error {
 	existing, err := h.vehicles.GetByID(ctx, e.VehicleID)
 	if err != nil {
 		return fmt.Errorf("load vehicle for update: %w", err)
@@ -149,7 +115,7 @@ func (h *VehiclesHandler) onUpdated(ctx context.Context, e events.VehicleUpdated
 	})
 }
 
-func (h *VehiclesHandler) onVerified(ctx context.Context, e events.VehicleVerified) error {
+func (h *VehiclesHandler) OnVerified(ctx context.Context, e *events.VehicleVerified) error {
 	return h.db.InTx(ctx, func(ctx context.Context) error {
 		if err := h.vehicles.UpdateStatus(ctx, e.VehicleID, orgValues.VehicleStatusVerified.String(), "", e.OccurredAt()); err != nil {
 			return err
@@ -158,7 +124,7 @@ func (h *VehiclesHandler) onVerified(ctx context.Context, e events.VehicleVerifi
 	})
 }
 
-func (h *VehiclesHandler) onRejected(ctx context.Context, e events.VehicleRejected) error {
+func (h *VehiclesHandler) OnRejected(ctx context.Context, e *events.VehicleRejected) error {
 	return h.db.InTx(ctx, func(ctx context.Context) error {
 		if err := h.vehicles.UpdateStatus(ctx, e.VehicleID, orgValues.VehicleStatusRejected.String(), e.Reason, e.OccurredAt()); err != nil {
 			return err
@@ -167,7 +133,7 @@ func (h *VehiclesHandler) onRejected(ctx context.Context, e events.VehicleReject
 	})
 }
 
-func (h *VehiclesHandler) onArchived(ctx context.Context, e events.VehicleArchived) error {
+func (h *VehiclesHandler) OnArchived(ctx context.Context, e *events.VehicleArchived) error {
 	return h.db.InTx(ctx, func(ctx context.Context) error {
 		if err := h.vehicles.UpdateStatus(ctx, e.VehicleID, orgValues.VehicleStatusArchived.String(), "", e.OccurredAt()); err != nil {
 			return err

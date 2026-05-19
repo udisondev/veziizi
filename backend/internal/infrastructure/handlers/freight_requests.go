@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
@@ -35,72 +34,31 @@ func NewFreightRequestsHandler(db dbtx.TxManager, eventStore eventstore.Store, i
 	}
 }
 
-func (h *FreightRequestsHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
+// OnOfferWithdrawn / OnOfferRejected / OnOfferCancelledWithRequest — обёртки
+// для CQRS-регистрации. Бизнес-логика — простой UPDATE статуса оффера.
+func (h *FreightRequestsHandler) OnOfferWithdrawn(ctx context.Context, e *events.OfferWithdrawn) error {
+	return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusWithdrawn.String())
 }
 
-func (h *FreightRequestsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.FreightRequestCreated:
-		return h.onCreated(ctx, e)
-	case events.FreightRequestUpdated:
-		return h.onUpdated(ctx, e)
-	case events.FreightRequestReassigned:
-		return h.onReassigned(ctx, e)
-	case events.FreightRequestCancelled:
-		return h.onCancelled(ctx, e)
-	case events.FreightRequestExpired:
-		return h.onExpired(ctx, e)
-	case events.OfferMade:
-		return h.onOfferMade(ctx, e)
-	case events.OfferWithdrawn:
-		return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusWithdrawn.String())
-	case events.OfferSelected:
-		return h.onOfferSelected(ctx, e)
-	case events.OfferRejected:
-		return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
-	case events.OfferConfirmed:
-		return h.onOfferConfirmed(ctx, e)
-	case events.OfferDeclined:
-		return h.onOfferDeclined(ctx, e)
-	case events.OfferUnselected:
-		return h.onOfferUnselected(ctx, e)
-	case events.OfferCancelledWithRequest:
-		return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
-	// New completion events
-	case events.CustomerCompleted:
-		return h.onCustomerCompleted(ctx, e)
-	case events.CarrierCompleted:
-		return h.onCarrierCompleted(ctx, e)
-	case events.FreightRequestCompleted:
-		return h.onFreightRequestCompleted(ctx, e)
-	case events.ReviewLeft:
-		// ReviewLeft is handled by review-receiver worker to create Review aggregate
-		slog.Debug("review left", slog.String("id", e.AggregateID().String()), slog.String("review_id", e.ReviewID.String()))
-		return nil
-	case events.CancelledAfterConfirmed:
-		return h.onCancelledAfterConfirmed(ctx, e)
-	case events.CarrierMemberReassigned:
-		return h.onCarrierMemberReassigned(ctx, e)
-	case events.CarrierInvited:
-		return h.onCarrierInvited(ctx, e)
-	}
+func (h *FreightRequestsHandler) OnOfferRejected(ctx context.Context, e *events.OfferRejected) error {
+	return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
+}
+
+func (h *FreightRequestsHandler) OnOfferCancelledWithRequest(ctx context.Context, e *events.OfferCancelledWithRequest) error {
+	return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
+}
+
+// OnReviewLeft — no-op: создание Review aggregate делает review-receiver на том
+// же топике с собственным consumer group. Тут только debug-лог для трейса.
+func (h *FreightRequestsHandler) OnReviewLeft(_ context.Context, e *events.ReviewLeft) error {
+	slog.Debug("review left",
+		slog.String("id", e.AggregateID().String()),
+		slog.String("review_id", e.ReviewID.String()),
+	)
 	return nil
 }
 
-func (h *FreightRequestsHandler) onCarrierInvited(ctx context.Context, e events.CarrierInvited) error {
+func (h *FreightRequestsHandler) OnCarrierInvited(ctx context.Context, e *events.CarrierInvited) error {
 	// Use the InviteID baked into the event so projection replays keep a
 	// stable row identity (the service has already inserted with this ID inside
 	// the event-store transaction; this insert is a no-op via ON CONFLICT, kept
@@ -115,7 +73,7 @@ func (h *FreightRequestsHandler) onCarrierInvited(ctx context.Context, e events.
 	})
 }
 
-func (h *FreightRequestsHandler) onCreated(ctx context.Context, e events.FreightRequestCreated) error {
+func (h *FreightRequestsHandler) OnCreated(ctx context.Context, e *events.FreightRequestCreated) error {
 	expiresAt := time.Unix(e.ExpiresAt, 0)
 
 	// Extract display data
@@ -231,7 +189,7 @@ func extractRouteCountryIDs(route values.Route) []int {
 	return ids
 }
 
-func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.FreightRequestUpdated) error {
+func (h *FreightRequestsHandler) OnUpdated(ctx context.Context, e *events.FreightRequestUpdated) error {
 	// Update display columns if relevant data changed
 	builder := h.psql.Update("freight_requests_lookup").Where(squirrel.Eq{"id": e.AggregateID()})
 	hasUpdates := false
@@ -302,7 +260,7 @@ func (h *FreightRequestsHandler) onUpdated(ctx context.Context, e events.Freight
 	return nil
 }
 
-func (h *FreightRequestsHandler) onReassigned(ctx context.Context, e events.FreightRequestReassigned) error {
+func (h *FreightRequestsHandler) OnReassigned(ctx context.Context, e *events.FreightRequestReassigned) error {
 	query, args, err := h.psql.
 		Update("freight_requests_lookup").
 		Set("customer_member_id", e.NewMemberID).
@@ -322,15 +280,15 @@ func (h *FreightRequestsHandler) onReassigned(ctx context.Context, e events.Frei
 	return nil
 }
 
-func (h *FreightRequestsHandler) onCancelled(ctx context.Context, e events.FreightRequestCancelled) error {
+func (h *FreightRequestsHandler) OnCancelled(ctx context.Context, e *events.FreightRequestCancelled) error {
 	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusCancelled.String())
 }
 
-func (h *FreightRequestsHandler) onExpired(ctx context.Context, e events.FreightRequestExpired) error {
+func (h *FreightRequestsHandler) OnExpired(ctx context.Context, e *events.FreightRequestExpired) error {
 	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusExpired.String())
 }
 
-func (h *FreightRequestsHandler) onOfferMade(ctx context.Context, e events.OfferMade) error {
+func (h *FreightRequestsHandler) OnOfferMade(ctx context.Context, e *events.OfferMade) error {
 	query, args, err := h.psql.
 		Insert("offers_lookup").
 		Columns("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").
@@ -349,7 +307,7 @@ func (h *FreightRequestsHandler) onOfferMade(ctx context.Context, e events.Offer
 	return nil
 }
 
-func (h *FreightRequestsHandler) onOfferSelected(ctx context.Context, e events.OfferSelected) error {
+func (h *FreightRequestsHandler) OnOfferSelected(ctx context.Context, e *events.OfferSelected) error {
 	// Update offer status
 	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusSelected.String()); err != nil {
 		return err
@@ -359,7 +317,7 @@ func (h *FreightRequestsHandler) onOfferSelected(ctx context.Context, e events.O
 	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusSelected.String())
 }
 
-func (h *FreightRequestsHandler) onOfferConfirmed(ctx context.Context, e events.OfferConfirmed) error {
+func (h *FreightRequestsHandler) OnOfferConfirmed(ctx context.Context, e *events.OfferConfirmed) error {
 	// Update offer status
 	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusConfirmed.String()); err != nil {
 		return err
@@ -406,7 +364,7 @@ func (h *FreightRequestsHandler) onOfferConfirmed(ctx context.Context, e events.
 	return nil
 }
 
-func (h *FreightRequestsHandler) onOfferDeclined(ctx context.Context, e events.OfferDeclined) error {
+func (h *FreightRequestsHandler) OnOfferDeclined(ctx context.Context, e *events.OfferDeclined) error {
 	// Update offer status
 	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusDeclined.String()); err != nil {
 		return err
@@ -416,7 +374,7 @@ func (h *FreightRequestsHandler) onOfferDeclined(ctx context.Context, e events.O
 	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusPublished.String())
 }
 
-func (h *FreightRequestsHandler) onOfferUnselected(ctx context.Context, e events.OfferUnselected) error {
+func (h *FreightRequestsHandler) OnOfferUnselected(ctx context.Context, e *events.OfferUnselected) error {
 	// Update offer status - back to pending
 	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusPending.String()); err != nil {
 		return err
@@ -460,7 +418,7 @@ func (h *FreightRequestsHandler) updateOfferStatus(ctx context.Context, id uuid.
 	return nil
 }
 
-func (h *FreightRequestsHandler) onCustomerCompleted(ctx context.Context, e events.CustomerCompleted) error {
+func (h *FreightRequestsHandler) OnCustomerCompleted(ctx context.Context, e *events.CustomerCompleted) error {
 	query, args, err := h.psql.
 		Update("freight_requests_lookup").
 		Set("customer_completed", true).
@@ -481,7 +439,7 @@ func (h *FreightRequestsHandler) onCustomerCompleted(ctx context.Context, e even
 	return nil
 }
 
-func (h *FreightRequestsHandler) onCarrierCompleted(ctx context.Context, e events.CarrierCompleted) error {
+func (h *FreightRequestsHandler) OnCarrierCompleted(ctx context.Context, e *events.CarrierCompleted) error {
 	query, args, err := h.psql.
 		Update("freight_requests_lookup").
 		Set("carrier_completed", true).
@@ -502,7 +460,7 @@ func (h *FreightRequestsHandler) onCarrierCompleted(ctx context.Context, e event
 	return nil
 }
 
-func (h *FreightRequestsHandler) onFreightRequestCompleted(ctx context.Context, e events.FreightRequestCompleted) error {
+func (h *FreightRequestsHandler) OnFreightRequestCompleted(ctx context.Context, e *events.FreightRequestCompleted) error {
 	completedAt := e.OccurredAt()
 
 	query, args, err := h.psql.
@@ -525,7 +483,7 @@ func (h *FreightRequestsHandler) onFreightRequestCompleted(ctx context.Context, 
 	return nil
 }
 
-func (h *FreightRequestsHandler) onCancelledAfterConfirmed(ctx context.Context, e events.CancelledAfterConfirmed) error {
+func (h *FreightRequestsHandler) OnCancelledAfterConfirmed(ctx context.Context, e *events.CancelledAfterConfirmed) error {
 	cancelledAt := e.OccurredAt()
 
 	query, args, err := h.psql.
@@ -548,7 +506,7 @@ func (h *FreightRequestsHandler) onCancelledAfterConfirmed(ctx context.Context, 
 	return nil
 }
 
-func (h *FreightRequestsHandler) onCarrierMemberReassigned(ctx context.Context, e events.CarrierMemberReassigned) error {
+func (h *FreightRequestsHandler) OnCarrierMemberReassigned(ctx context.Context, e *events.CarrierMemberReassigned) error {
 	query, args, err := h.psql.
 		Update("freight_requests_lookup").
 		Set("carrier_member_id", e.NewMemberID).

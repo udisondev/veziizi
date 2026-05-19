@@ -681,7 +681,7 @@ func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.Freight
 			return fmt.Errorf("save events: %w", err)
 		}
 
-		if err := s.publisher.Publish(ctx, "freightrequest.events", changes...); err != nil {
+		if err := s.publisher.Publish(ctx, changes...); err != nil {
 			slog.Error("failed to publish freight request events",
 				slog.String("freight_request_id", fr.ID().String()),
 				slog.Int("event_count", len(changes)),
