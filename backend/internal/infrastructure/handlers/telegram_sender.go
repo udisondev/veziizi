@@ -18,8 +18,10 @@ import (
 // cqrs.NewEventHandler[messaging.TelegramNotification] в воркере telegram-sender.
 //
 // Идемпотентность: при at-least-once доставке тот же message UUID может
-// прийти повторно (рестарт воркера между внешним вызовом и Ack). Перед
-// SendMessage берём резерв в notification_dedup; при дубле — return nil.
+// прийти повторно (рестарт воркера между внешним вызовом и Ack). До
+// SendMessage проверяем notification_dedup.IsSent; после успешной отправки
+// фиксируем MarkSent. Транзиентная ошибка → возвращаем err, Retry middleware
+// перезапустит handler без потери уведомления.
 type TelegramSenderHandler struct {
 	client      *notifications.TelegramClient
 	appConfig   *config.Config
@@ -44,18 +46,18 @@ func NewTelegramSenderHandler(
 // OnTelegramNotification — CQRS-handler. Возвращает error для retry/DLQ при
 // сбое отправки. Доставка логируется в notification_delivery_log в обоих исходах.
 func (h *TelegramSenderHandler) OnTelegramNotification(ctx context.Context, n *messaging.TelegramNotification) error {
-	// Резервируем message UUID за каналом ДО внешнего вызова.
-	// Если уже был — повторная доставка, не шлём в Telegram ещё раз.
+	// До внешнего вызова: если message UUID уже отмечен как отправленный,
+	// это повторная доставка watermill после успешного предыдущего Send.
 	msg := cqrs.OriginalMessageFromCtx(ctx)
 	msgUUID, err := uuid.Parse(msg.UUID)
 	if err != nil {
 		return fmt.Errorf("parse message uuid: %w", err)
 	}
-	first, err := h.dedup.MarkSent(ctx, msgUUID, "telegram")
+	sent, err := h.dedup.IsSent(ctx, msgUUID, "telegram")
 	if err != nil {
-		return fmt.Errorf("dedup mark sent: %w", err)
+		return fmt.Errorf("dedup is sent: %w", err)
 	}
-	if !first {
+	if sent {
 		slog.Debug("telegram notification already sent, skipping",
 			slog.String("message_uuid", msg.UUID),
 			slog.String("member_id", n.MemberID.String()))
@@ -92,6 +94,16 @@ func (h *TelegramSenderHandler) OnTelegramNotification(ctx context.Context, n *m
 			}
 		}
 		return fmt.Errorf("send message: %w", err)
+	}
+
+	// Фиксируем sent ПОСЛЕ успешного API-вызова. Ошибка БД здесь не должна
+	// триггерить retry — Telegram сообщение уже доставлено, повторная
+	// отправка хуже потери строки в notification_dedup.
+	if err := h.dedup.MarkSent(ctx, msgUUID, "telegram"); err != nil {
+		slog.Error("failed to mark notification as sent",
+			slog.String("message_uuid", msg.UUID),
+			slog.String("member_id", n.MemberID.String()),
+			slog.String("error", err.Error()))
 	}
 
 	slog.Info("telegram message sent",

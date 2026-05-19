@@ -20,8 +20,9 @@ import (
 // EmailSenderHandler отправляет уведомления по Email. Регистрируется как
 // cqrs.NewEventHandler[messaging.EmailNotification] в воркере email-sender.
 //
-// Идемпотентность: см. TelegramSenderHandler. Дедуп через notification_dedup
-// по message UUID, чтобы при повторной доставке не послать письмо дважды.
+// Идемпотентность: см. TelegramSenderHandler. До provider.Send проверяем
+// notification_dedup.IsSent, после успеха — MarkSent. Транзиентная ошибка
+// от provider возвращается наверх для Retry middleware, без записи в dedup.
 type EmailSenderHandler struct {
 	provider    notifications.EmailProvider
 	appConfig   *config.Config
@@ -49,11 +50,11 @@ func (h *EmailSenderHandler) OnEmailNotification(ctx context.Context, n *messagi
 	if err != nil {
 		return fmt.Errorf("parse message uuid: %w", err)
 	}
-	first, err := h.dedup.MarkSent(ctx, msgUUID, "email")
+	sent, err := h.dedup.IsSent(ctx, msgUUID, "email")
 	if err != nil {
-		return fmt.Errorf("dedup mark sent: %w", err)
+		return fmt.Errorf("dedup is sent: %w", err)
 	}
-	if !first {
+	if sent {
 		slog.Debug("email notification already sent, skipping",
 			slog.String("message_uuid", msg.UUID),
 			slog.String("member_id", n.MemberID.String()))
@@ -101,6 +102,16 @@ func (h *EmailSenderHandler) OnEmailNotification(ctx context.Context, n *messagi
 			}
 		}
 		return fmt.Errorf("send email: %w", err)
+	}
+
+	// Фиксируем sent ПОСЛЕ успешного provider.Send. Ошибка БД не возвращается
+	// наверх — письмо уже ушло, повторная отправка хуже потери строки в
+	// notification_dedup.
+	if err := h.dedup.MarkSent(ctx, msgUUID, "email"); err != nil {
+		slog.Error("failed to mark notification as sent",
+			slog.String("message_uuid", msg.UUID),
+			slog.String("member_id", n.MemberID.String()),
+			slog.String("error", err.Error()))
 	}
 
 	slog.Info("email sent",
