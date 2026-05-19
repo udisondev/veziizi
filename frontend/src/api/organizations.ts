@@ -37,8 +37,10 @@ export const organizationsApi = {
     return result ?? { items: [], has_more: false }
   },
 
-  async getPendingOffers(id: string, limit = 20): Promise<PendingOfferItem[]> {
-    const result = await api.get<{ items: PendingOfferItem[] }>(`/organizations/${id}/pending-offers?limit=${limit}`)
+  async getPendingOffers(id: string, limit = 20, memberId?: string): Promise<PendingOfferItem[]> {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (memberId) params.set('member_id', memberId)
+    const result = await api.get<{ items: PendingOfferItem[] }>(`/organizations/${id}/pending-offers?${params}`)
     return result?.items ?? []
   },
 }

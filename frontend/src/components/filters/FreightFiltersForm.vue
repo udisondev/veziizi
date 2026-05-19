@@ -36,19 +36,11 @@ import { RangeInput } from '@/components/filters'
 import SubscriptionRouteStep from '@/components/subscriptions/SubscriptionRouteStep.vue'
 import { MultiSelectField } from '@/components/ui/multi-select'
 
-// Route point interface
-export interface RoutePointFilter {
-  id: string
-  countryId?: number
-  countryName?: string
-  cityId?: number
-  cityName?: string
-  order: number
-}
+import type { RoutePointData } from '@/types/routePoint'
 
 interface Props {
   // Route
-  routePoints: RoutePointFilter[]
+  routePoints: RoutePointData[]
 
   // Numeric ranges
   minWeight?: number
@@ -84,8 +76,8 @@ interface Emits {
   // Route
   (e: 'addRoutePoint'): void
   (e: 'removeRoutePoint', id: string): void
-  (e: 'updateRoutePoint', id: string, updates: Partial<RoutePointFilter>): void
-  (e: 'reorderRoutePoints', points: RoutePointFilter[]): void
+  (e: 'updateRoutePoint', id: string, updates: Partial<RoutePointData>): void
+  (e: 'reorderRoutePoints', points: RoutePointData[]): void
 
   // Numeric ranges
   (e: 'update:minWeight', value: number | undefined): void
