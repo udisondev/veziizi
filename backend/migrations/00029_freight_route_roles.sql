@@ -17,6 +17,19 @@
 -- extractRouteCityIDs/CountryIDs в Go-handler возвращает nil → pgx пишет
 -- NULL. Это инвариант: `<column> IS NULL` означает «у точки нет id такого
 -- типа», и не путается с пустым массивом из ARRAY[]::INTEGER[].
+--
+-- RUNBOOK при падении на проде:
+--   Если CREATE INDEX CONCURRENTLY упадёт (deadlock, OOM, killed) — PG
+--   оставит INVALID-индекс. `IF NOT EXISTS` при повторном `goose up`
+--   увидит его и пропустит — миграция «успешно» завершится, но индекс
+--   останется битым (не используется планировщиком, занимает место).
+--   Перед повторным запуском почисти руками:
+--     SELECT indexrelid::regclass FROM pg_index
+--      WHERE NOT indisvalid
+--        AND indrelid = 'freight_requests_lookup'::regclass;
+--     DROP INDEX CONCURRENTLY IF EXISTS idx_freight_requests_origin_city_ids;
+--     -- (и аналогично для других, что вернул SELECT)
+--   Только потом — `goose up`.
 
 -- +goose Up
 
