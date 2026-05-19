@@ -26,7 +26,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { DetailPageHeader, LoadingSpinner } from '@/components/shared'
 
 // Filter Components
-import { FreightFiltersForm, type RoutePointFilter } from '@/components/filters'
+import { FreightFiltersForm } from '@/components/filters'
+import type { RoutePointData } from '@/types/routePoint'
 
 const route = useRoute()
 const router = useRouter()
@@ -53,7 +54,7 @@ const paymentMethods = ref<PaymentMethod[]>([])
 const paymentTerms = ref<PaymentTerms[]>([])
 const vatTypes = ref<VatType[]>([])
 const isActive = ref(true)
-const routePoints = ref<RoutePointFilter[]>([])
+const routePoints = ref<RoutePointData[]>([])
 
 function loadSubscription(sub: FreightSubscription) {
   subscription.value = sub
@@ -94,12 +95,12 @@ function removeRoutePoint(id: string) {
   routePoints.value.forEach((rp, idx) => { rp.order = idx })
 }
 
-function updateRoutePoint(id: string, updates: Partial<RoutePointFilter>) {
+function updateRoutePoint(id: string, updates: Partial<RoutePointData>) {
   const point = routePoints.value.find(rp => rp.id === id)
   if (point) Object.assign(point, updates)
 }
 
-function reorderRoutePoints(points: RoutePointFilter[]) {
+function reorderRoutePoints(points: RoutePointData[]) {
   routePoints.value = points
 }
 

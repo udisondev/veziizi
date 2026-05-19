@@ -39,8 +39,12 @@ export interface FreightRequestListParams {
   payment_methods?: string // comma-separated
   payment_terms?: string // comma-separated
   vat_types?: string // comma-separated
-  route_city_ids?: string // comma-separated city IDs
-  route_country_ids?: string // comma-separated country IDs (for filtering by country without city)
+  route_city_ids?: string // comma-separated city IDs (любая точка маршрута)
+  route_country_ids?: string // comma-separated country IDs (любая точка, без города)
+  origin_city_ids?: string // города начала маршрута
+  origin_country_ids?: string // страны начала маршрута (без города)
+  destination_city_ids?: string // города конца маршрута
+  destination_country_ids?: string // страны конца маршрута (без города)
   has_pending_offers?: boolean
   limit?: number
   cursor?: string // cursor для keyset pagination
@@ -75,6 +79,10 @@ export const freightRequestsApi = {
     if (params?.vat_types) searchParams.set('vat_types', params.vat_types)
     if (params?.route_city_ids) searchParams.set('route_city_ids', params.route_city_ids)
     if (params?.route_country_ids) searchParams.set('route_country_ids', params.route_country_ids)
+    if (params?.origin_city_ids) searchParams.set('origin_city_ids', params.origin_city_ids)
+    if (params?.origin_country_ids) searchParams.set('origin_country_ids', params.origin_country_ids)
+    if (params?.destination_city_ids) searchParams.set('destination_city_ids', params.destination_city_ids)
+    if (params?.destination_country_ids) searchParams.set('destination_country_ids', params.destination_country_ids)
     if (params?.has_pending_offers) searchParams.set('has_pending_offers', 'true')
     // Pagination
     if (params?.limit) searchParams.set('limit', params.limit.toString())

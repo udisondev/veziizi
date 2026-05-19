@@ -8,18 +8,43 @@ import type {
   VatType,
   FreightRequestStatus,
 } from '@/types/freightRequest'
+import type { RoutePointRole, RoutePointData } from '@/types/routePoint'
 
 // Дефолтные статусы для фильтра (пустой = все статусы)
 const DEFAULT_STATUSES: FreightRequestStatus[] = []
 
-export interface RoutePointFilter {
-  id: string
-  countryId?: number
-  countryName?: string
-  cityId?: number
-  cityName?: string
-  order: number
+type RouteParams = {
+  route_city_ids?: string
+  route_country_ids?: string
+  origin_city_ids?: string
+  origin_country_ids?: string
+  destination_city_ids?: string
+  destination_country_ids?: string
 }
+
+export function buildRouteParams(points: RoutePointData[]): RouteParams {
+  const result: RouteParams = {}
+  if (!points.length) return result
+
+  const byRole = (role: RoutePointRole) => points.filter(p => (p.role ?? 'any') === role)
+  const cityIds  = (pts: RoutePointData[]) => pts.filter(p => p.cityId).map(p => p.cityId!.toString())
+  const countryIds = (pts: RoutePointData[]) => pts.filter(p => p.countryId && !p.cityId).map(p => p.countryId!.toString())
+
+  const any = byRole('any')
+  const ac = cityIds(any);    if (ac.length) result.route_city_ids = ac.join(',')
+  const ak = countryIds(any); if (ak.length) result.route_country_ids = ak.join(',')
+
+  const origin = byRole('origin')
+  const oc = cityIds(origin);    if (oc.length) result.origin_city_ids = oc.join(',')
+  const ok = countryIds(origin); if (ok.length) result.origin_country_ids = ok.join(',')
+
+  const dest = byRole('destination')
+  const dc = cityIds(dest);    if (dc.length) result.destination_city_ids = dc.join(',')
+  const dk = countryIds(dest); if (dk.length) result.destination_country_ids = dk.join(',')
+
+  return result
+}
+
 
 export const useFreightFiltersStore = defineStore('freightFilters', () => {
   // Filter state
@@ -31,7 +56,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
   const orgINNFilter = ref('')
   const requestNumber = ref<number | null>(null)
   const statuses = ref<FreightRequestStatus[]>([...DEFAULT_STATUSES])
-  const routePoints = ref<RoutePointFilter[]>([])
+  const routePoints = ref<RoutePointData[]>([])
   const minWeight = ref<number | undefined>()
   const maxWeight = ref<number | undefined>()
   const minPrice = ref<number | undefined>()
@@ -99,7 +124,7 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     orgINN?: string
     requestNumber?: number | null
     statuses?: FreightRequestStatus[]
-    routePoints?: RoutePointFilter[]
+    routePoints?: RoutePointData[]
     minWeight?: number
     maxWeight?: number
     minPrice?: number
@@ -184,14 +209,14 @@ export const useFreightFiltersStore = defineStore('freightFilters', () => {
     })
   }
 
-  function updateRoutePoint(id: string, updates: Partial<RoutePointFilter>) {
+  function updateRoutePoint(id: string, updates: Partial<RoutePointData>) {
     const point = routePoints.value.find(rp => rp.id === id)
     if (point) {
       Object.assign(point, updates)
     }
   }
 
-  function reorderRoutePoints(points: RoutePointFilter[]) {
+  function reorderRoutePoints(points: RoutePointData[]) {
     routePoints.value = points
   }
 

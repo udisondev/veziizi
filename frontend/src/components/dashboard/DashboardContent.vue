@@ -3,15 +3,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFreightFiltersStore } from '@/stores/freightFilters'
-import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
+import { freightRequestsApi } from '@/api/freightRequests'
+import { subscriptionToParams, useSubscriptionNavigation } from '@/composables/useSubscriptionNavigation'
 import { offersApi, type MyOfferListItem } from '@/api/offers'
 import { organizationsApi } from '@/api/organizations'
 import { subscriptionsApi } from '@/api/subscriptions'
 import type { FreightRequestListItem, FreightRequestStatus, OwnershipFilter } from '@/types/freightRequest'
 import type { OrganizationStats, DashboardStats, OrganizationRating, PendingOfferItem } from '@/types/admin'
 import type { FreightSubscription } from '@/types/subscription'
-import { currencyLabels, vehicleTypeSubTypes } from '@/types/freightRequest'
-import { formatRelativeTime } from '@/utils/formatters'
+import { currencyLabels } from '@/types/freightRequest'
+import { formatRelativeTime, pluralizeRu } from '@/utils/formatters'
 import { logger } from '@/utils/logger'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/shared'
@@ -64,11 +65,6 @@ const offersByRequestId = computed(() => {
   return map
 })
 
-function offersCountLabel(n: number): string {
-  if (n === 1) return '1 предложение'
-  if (n >= 2 && n <= 4) return `${n} предложения`
-  return `${n} предложений`
-}
 
 const expiringSoonRequests = computed(() =>
   myActiveRequests.value.filter(i => {
@@ -152,6 +148,8 @@ function fulfilled<T>(label: string, r: PromiseSettledResult<T>): T | null {
 async function loadData() {
   if (!auth.organizationId) return
   const orgID = auth.organizationId
+  const isEmployee = auth.role === 'employee'
+  const memberId = auth.memberId ?? undefined
   isLoadingStats.value = true
   isLoadingAttention.value = true
   try {
@@ -160,12 +158,12 @@ async function loadData() {
       organizationsApi.getDashboardStats(orgID),
       organizationsApi.getRating(orgID),
       offersApi.listMy({ status: 'selected', limit: 10 }),
-      freightRequestsApi.list({
-        customer_org_id: orgID,
-        statuses: 'published,partially_completed',
-        limit: 50,
-      }),
-      organizationsApi.getPendingOffers(orgID, 50),
+      freightRequestsApi.list(
+        isEmployee
+          ? { member_id: memberId, statuses: 'published,partially_completed', limit: 50 }
+          : { customer_org_id: orgID, statuses: 'published,partially_completed', limit: 50 }
+      ),
+      organizationsApi.getPendingOffers(orgID, 50, isEmployee ? memberId : undefined),
       getMyTickets({ status: 'open' }),
     ])
     orgStats.value = fulfilled('stats', statsRes)
@@ -179,6 +177,10 @@ async function loadData() {
     isLoadingStats.value = false
     isLoadingAttention.value = false
   }
+}
+
+function formatOffersCount(n: number): string {
+  return `${n} ${pluralizeRu(n, 'предложение', 'предложения', 'предложений')}`
 }
 
 function formatPrice(amount?: number | null, currency?: string | null): string {
@@ -215,57 +217,10 @@ function subLastUpdated(items: typeof subscriptionMatches.value[0]['items']): st
   return formatRelativeTime(latest.created_at)
 }
 
-function subscriptionToParams(sub: FreightSubscription) {
-  const params: FreightRequestListParams = {
-    statuses: 'published',
-    limit: 5,
-  }
-  if (sub.vehicle_types?.length) params.vehicle_types = sub.vehicle_types.join(',')
-  if (sub.vehicle_subtypes?.length) params.vehicle_subtypes = sub.vehicle_subtypes.join(',')
-  if (sub.payment_methods?.length) params.payment_methods = sub.payment_methods.join(',')
-  if (sub.payment_terms?.length) params.payment_terms = sub.payment_terms.join(',')
-  if (sub.vat_types?.length) params.vat_types = sub.vat_types.join(',')
-  if (sub.min_weight !== undefined) params.min_weight = sub.min_weight
-  if (sub.max_weight !== undefined) params.max_weight = sub.max_weight
-  if (sub.min_price !== undefined) params.min_price = sub.min_price
-  if (sub.max_price !== undefined) params.max_price = sub.max_price
-  if (sub.min_volume !== undefined) params.min_volume = sub.min_volume
-  if (sub.max_volume !== undefined) params.max_volume = sub.max_volume
-  if (sub.route_points?.length) {
-    const cityIds = sub.route_points.filter(p => p.city_id).map(p => p.city_id!)
-    const countryIds = sub.route_points.filter(p => !p.city_id).map(p => p.country_id)
-    if (cityIds.length) params.route_city_ids = cityIds.join(',')
-    if (countryIds.length) params.route_country_ids = [...new Set(countryIds)].join(',')
-  }
-  return params
-}
+const { applyFilters } = useSubscriptionNavigation()
 
 function goToSubscriptionResults(sub: FreightSubscription) {
-  filtersStore.resetFilters()
-  // Если подтипы не указаны явно — разворачиваем типы ТС в соответствующие подтипы
-  const resolvedSubTypes = sub.vehicle_subtypes?.length
-    ? sub.vehicle_subtypes
-    : (sub.vehicle_types ?? []).flatMap(t => vehicleTypeSubTypes[t] ?? [])
-  filtersStore.setFilters({
-    vehicleSubTypes: resolvedSubTypes,
-    paymentMethods: sub.payment_methods ?? [],
-    paymentTerms: sub.payment_terms ?? [],
-    vatTypes: sub.vat_types ?? [],
-    minWeight: sub.min_weight,
-    maxWeight: sub.max_weight,
-    minPrice: sub.min_price,
-    maxPrice: sub.max_price,
-    minVolume: sub.min_volume,
-    maxVolume: sub.max_volume,
-    routePoints: (sub.route_points ?? []).map(rp => ({
-      id: `rp-${rp.order}`,
-      countryId: rp.country_id,
-      countryName: rp.country_name,
-      cityId: rp.city_id,
-      cityName: rp.city_name,
-      order: rp.order,
-    })),
-  })
+  applyFilters(sub)
   emit('go-to-list', true)
 }
 
@@ -430,7 +385,7 @@ onMounted(() => {
               <span class="text-xs font-medium text-foreground leading-tight line-clamp-2">{{ match.sub.name }}</span>
               <span class="text-xs font-semibold text-primary">
                 {{ match.items.length >= 5 ? '5+' : match.items.length }}
-                {{ match.items.length === 1 ? 'заявка' : 'заявок' }}
+                {{ pluralizeRu(match.items.length, 'заявка', 'заявки', 'заявок') }}
               </span>
               <span v-if="subPriceRange(match.items)" class="text-xs text-muted-foreground">
                 {{ subPriceRange(match.items) }}
@@ -528,7 +483,7 @@ onMounted(() => {
                 </div>
                 <template v-if="offersByRequestId.has(item.id)">
                   <div class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                    <span class="font-medium text-primary">{{ offersCountLabel(offersByRequestId.get(item.id)!.offers_count) }}</span>
+                    <span class="font-medium text-primary">{{ formatOffersCount(offersByRequestId.get(item.id)!.offers_count) }}</span>
                     <span>·</span>
                     <span>{{ offersByRequestId.get(item.id)!.carrier_org_name }}</span>
                     <span>·</span>

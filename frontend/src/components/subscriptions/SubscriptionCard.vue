@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { pluralizeRu } from '@/utils/formatters'
 import type { FreightSubscription } from '@/types/subscription'
 import type { VehicleType, VehicleSubType, PaymentMethod, PaymentTerms, VatType } from '@/types/freightRequest'
 import { Button } from '@/components/ui/button'
@@ -13,16 +14,18 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 import { FiltersSummary, type FiltersData, type RoutePointDisplay } from '@/components/filters'
-import { Pencil, Trash2 } from 'lucide-vue-next'
+import { Pencil, Trash2, ExternalLink } from 'lucide-vue-next'
 
 interface Props {
   subscription: FreightSubscription
+  matchCount?: number
 }
 
 interface Emits {
   (e: 'edit', subscription: FreightSubscription): void
   (e: 'delete', id: string): void
   (e: 'toggle-active', id: string, value: boolean): void
+  (e: 'view-matches'): void
 }
 
 const props = defineProps<Props>()
@@ -127,6 +130,15 @@ function handleDelete() {
 
       <!-- Actions -->
       <div class="flex items-center gap-2 pt-4 border-t mt-4">
+        <button
+          v-if="matchCount !== undefined && matchCount > 0"
+          class="flex items-center gap-1 text-xs font-medium text-primary hover:underline mr-auto"
+          @click="emit('view-matches')"
+        >
+          <ExternalLink class="h-3.5 w-3.5" />
+          {{ matchCount >= 5 ? '5+' : matchCount }} {{ pluralizeRu(matchCount, 'заявка', 'заявки', 'заявок') }}
+        </button>
+        <span v-else-if="matchCount === 0" class="text-xs text-muted-foreground mr-auto">Нет совпадений</span>
         <Button variant="outline" size="sm" @click="handleEdit">
           <Pencil class="h-4 w-4 mr-1" />
           Изменить

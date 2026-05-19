@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSubscriptionsStore } from '@/stores/subscriptions'
 import { storeToRefs } from 'pinia'
 import { MAX_SUBSCRIPTIONS_PER_MEMBER } from '@/types/subscription'
 import type { FreightSubscription } from '@/types/subscription'
+import { freightRequestsApi } from '@/api/freightRequests'
+import { subscriptionToParams, useSubscriptionNavigation } from '@/composables/useSubscriptionNavigation'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -22,6 +24,19 @@ import { Plus, Bell, Info } from 'lucide-vue-next'
 const router = useRouter()
 const store = useSubscriptionsStore()
 const { subscriptions, isLoading, canCreateMore, subscriptionsCount, activeCount } = storeToRefs(store)
+const { goToSubscriptionResults } = useSubscriptionNavigation()
+
+const matchCounts = ref<Record<string, number>>({})
+
+async function loadMatchCounts() {
+  const active = subscriptions.value.filter(s => s.is_active)
+  if (!active.length) return
+  const results = await Promise.allSettled(active.map(sub => freightRequestsApi.list(subscriptionToParams(sub))))
+  active.forEach((sub, i) => {
+    const r = results[i]
+    if (r?.status === 'fulfilled') matchCounts.value[sub.id] = r.value.items?.length ?? 0
+  })
+}
 
 function goToCreate() {
   router.push({ name: 'subscription-create' })
@@ -38,6 +53,10 @@ async function handleDelete(id: string) {
 function handleToggleActive(id: string, value: boolean) {
   store.toggleActive(id, value)
 }
+
+watch(subscriptions, (subs) => {
+  if (subs.length && !Object.keys(matchCounts.value).length) loadMatchCounts()
+}, { immediate: true })
 
 onMounted(() => {
   store.fetchSubscriptions()
@@ -88,9 +107,11 @@ onMounted(() => {
           v-for="subscription in subscriptions"
           :key="subscription.id"
           :subscription="subscription"
+          :match-count="matchCounts[subscription.id]"
           @edit="goToEdit"
           @delete="handleDelete"
           @toggle-active="handleToggleActive"
+          @view-matches="goToSubscriptionResults(subscription)"
         />
       </div>
 

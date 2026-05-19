@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
-import { useFreightFiltersStore } from '@/stores/freightFilters'
+import { useFreightFiltersStore, buildRouteParams } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
@@ -120,24 +120,7 @@ function buildParams(): FreightRequestListParams {
   if (paymentTerms.value.length > 0) params.payment_terms = paymentTerms.value.join(',')
   if (vatTypes.value.length > 0) params.vat_types = vatTypes.value.join(',')
 
-  // Route filter - extract city IDs and country IDs from route points
-  if (routePoints.value.length > 0) {
-    // Points with city selected -> filter by city
-    const cityIds = routePoints.value
-      .filter(rp => rp.cityId !== undefined)
-      .map(rp => rp.cityId)
-    if (cityIds.length > 0) {
-      params.route_city_ids = cityIds.join(',')
-    }
-
-    // Points with only country (no city) -> filter by country
-    const countryIds = routePoints.value
-      .filter(rp => rp.countryId !== undefined && rp.cityId === undefined)
-      .map(rp => rp.countryId)
-    if (countryIds.length > 0) {
-      params.route_country_ids = countryIds.join(',')
-    }
-  }
+  Object.assign(params, buildRouteParams(routePoints.value))
 
   return params
 }

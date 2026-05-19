@@ -14,21 +14,15 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import InputVue from '@/components/ui/input/Input.vue'
 import BottomSheet from '@/components/shared/BottomSheet.vue'
-import { Trash2, GripVertical } from 'lucide-vue-next'
+import { Trash2, GripVertical, Navigation, MapPin } from 'lucide-vue-next'
+import { Tooltip } from '@/components/ui/tooltip'
 import type { AcceptableValue } from 'reka-ui'
-
-interface RoutePointData {
-  id: string
-  countryId?: number
-  countryName?: string
-  cityId?: number
-  cityName?: string
-  order: number
-}
+import type { RoutePointData } from '@/types/routePoint'
 
 interface Props {
   point: RoutePointData
   index: number
+  total?: number
   canRemove?: boolean
   canMove?: boolean
   plain?: boolean
@@ -40,6 +34,7 @@ interface Emits {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  total: 1,
   canRemove: true,
   canMove: true,
   plain: false,
@@ -47,13 +42,26 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
+const isFirst  = computed(() => props.index === 0)
+const isLast   = computed(() => props.index === props.total - 1)
+const isMiddle = computed(() => props.total > 2 && !isFirst.value && !isLast.value)
+const showOriginBtn      = computed(() => props.total === 1 || isFirst.value)
+const showDestinationBtn = computed(() => props.total === 1 || isLast.value)
+
+// Сбрасываем роль у средних точек автоматически
+watch(isMiddle, (middle) => {
+  if (middle && props.point.role && props.point.role !== 'any') {
+    emit('update', { role: 'any' })
+  }
+}, { immediate: true })
+
 const {
   countries,
   isLoadingCountries,
   fetchCountries,
 } = useGeo()
 
-const { isMobile } = useBreakpoint()
+const { isMobile, isBelowLg } = useBreakpoint()
 
 // Mobile country sheet
 const countrySheetOpen = ref(false)
@@ -235,11 +243,59 @@ onMounted(async () => {
         <div v-if="canMove" class="drag-handle cursor-move text-muted-foreground hover:text-foreground">
           <GripVertical class="h-5 w-5" />
         </div>
-        <div class="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm font-medium shrink-0">
+        <div
+          class="flex items-center justify-center w-6 h-6 rounded-full text-white text-sm font-medium shrink-0"
+          :class="point.role === 'destination' ? 'bg-emerald-500' : 'bg-primary'"
+        >
           {{ index + 1 }}
         </div>
-        <div class="flex-1" />
-        <button v-if="canRemove" type="button" class="text-muted-foreground hover:text-destructive transition-colors p-1" title="Удалить точку" @click="$emit('remove')">
+        <div v-if="!isMiddle" class="flex gap-1 ml-1">
+          <!-- Desktop: иконки + тултипы -->
+          <template v-if="!isBelowLg">
+            <Tooltip v-if="showOriginBtn" text="Начало маршрута" side="top">
+              <button
+                type="button"
+                class="flex justify-center rounded-md border p-1.5 transition-colors"
+                :class="point.role === 'origin' ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
+                @click="emit('update', { role: point.role === 'origin' ? 'any' : 'origin' })"
+              >
+                <Navigation class="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip v-if="showDestinationBtn" text="Конец маршрута" side="top">
+              <button
+                type="button"
+                class="flex justify-center rounded-md border p-1.5 transition-colors"
+                :class="point.role === 'destination' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-border text-muted-foreground hover:bg-muted/50'"
+                @click="emit('update', { role: point.role === 'destination' ? 'any' : 'destination' })"
+              >
+                <MapPin class="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          </template>
+          <!-- Mobile/Tablet: текстовые кнопки -->
+          <template v-else>
+            <button
+              v-if="showOriginBtn"
+              type="button"
+              class="rounded-md border px-2 py-1 text-xs font-medium transition-colors"
+              :class="point.role === 'origin' ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
+              @click="emit('update', { role: point.role === 'origin' ? 'any' : 'origin' })"
+            >
+              Начало маршрута
+            </button>
+            <button
+              v-if="showDestinationBtn"
+              type="button"
+              class="rounded-md border px-2 py-1 text-xs font-medium transition-colors"
+              :class="point.role === 'destination' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-border text-muted-foreground hover:bg-muted/50'"
+              @click="emit('update', { role: point.role === 'destination' ? 'any' : 'destination' })"
+            >
+              Конец маршрута
+            </button>
+          </template>
+        </div>
+        <button v-if="canRemove" type="button" class="ml-auto text-muted-foreground hover:text-destructive transition-colors p-1" title="Удалить точку" @click="emit('remove')">
           <Trash2 class="h-5 w-5" />
         </button>
       </div>
@@ -412,7 +468,7 @@ onMounted(async () => {
     </div>
 
     <!-- full: remove button on the right (flex child) -->
-    <button v-if="!plain && canRemove" type="button" class="text-muted-foreground hover:text-destructive transition-colors p-1" title="Удалить точку" @click="$emit('remove')">
+    <button v-if="!plain && canRemove" type="button" class="text-muted-foreground hover:text-destructive transition-colors p-1" title="Удалить точку" @click="emit('remove')">
       <Trash2 class="h-5 w-5" />
     </button>
 

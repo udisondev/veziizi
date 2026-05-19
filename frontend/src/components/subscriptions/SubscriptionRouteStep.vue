@@ -3,15 +3,7 @@ import { computed } from 'vue'
 import draggable from 'vuedraggable'
 import SubscriptionRoutePointCard from './SubscriptionRoutePointCard.vue'
 import { Plus } from 'lucide-vue-next'
-
-interface RoutePointData {
-  id: string
-  countryId?: number
-  countryName?: string
-  cityId?: number
-  cityName?: string
-  order: number
-}
+import type { RoutePointData } from '@/types/routePoint'
 
 interface Props {
   routePoints: RoutePointData[]
@@ -62,6 +54,7 @@ function handleRemove(id: string) {
         <SubscriptionRoutePointCard
           :point="element"
           :index="index"
+          :total="routePoints.length"
           :can-remove="true"
           :can-move="routePoints.length > 1"
           :plain="plainCards"
