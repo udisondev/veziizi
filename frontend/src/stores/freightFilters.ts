@@ -8,7 +8,7 @@ import type {
   VatType,
   FreightRequestStatus,
 } from '@/types/freightRequest'
-import type { RoutePointRole, RoutePointData } from '@/types/routePoint'
+import { normalizeRoleByPosition, type RoutePointRole, type RoutePointData } from '@/types/routePoint'
 
 // Дефолтные статусы для фильтра (пустой = все статусы)
 const DEFAULT_STATUSES: FreightRequestStatus[] = []
@@ -20,22 +20,6 @@ type RouteParams = {
   origin_country_ids?: string
   destination_city_ids?: string
   destination_country_ids?: string
-}
-
-// normalizeRoleByPosition приводит роль точки к допустимой по её позиции
-// в списке. Та же логика, что в UI карточки (SubscriptionRoutePointCard):
-//   - одна точка        → любая роль допустима;
-//   - первая (≥2 точки) → only 'origin' | 'any';
-//   - последняя         → only 'destination' | 'any';
-//   - средняя           → 'any'.
-// Это defensive-нормализация для случаев drag-and-drop и старых сохранённых
-// фильтров, где состояние могло разойтись с позицией.
-function normalizeRoleByPosition(role: RoutePointRole | undefined, index: number, total: number): RoutePointRole {
-  const r = role ?? 'any'
-  if (total <= 1) return r
-  if (index === 0) return r === 'destination' ? 'any' : r
-  if (index === total - 1) return r === 'origin' ? 'any' : r
-  return 'any'
 }
 
 export function buildRouteParams(points: RoutePointData[]): RouteParams {

@@ -17,7 +17,7 @@ import BottomSheet from '@/components/shared/BottomSheet.vue'
 import { Trash2, GripVertical, Navigation, MapPin } from 'lucide-vue-next'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { AcceptableValue } from 'reka-ui'
-import type { RoutePointData } from '@/types/routePoint'
+import { normalizeRoleByPosition, type RoutePointData } from '@/types/routePoint'
 
 interface Props {
   point: RoutePointData
@@ -48,22 +48,14 @@ const isMiddle = computed(() => props.total > 2 && !isFirst.value && !isLast.val
 const showOriginBtn      = computed(() => props.total === 1 || isFirst.value)
 const showDestinationBtn = computed(() => props.total === 1 || isLast.value)
 
-// Нормализуем роль по позиции: при drag-and-drop точка может переехать в
-// середину (роль обязана быть 'any'), или роль может стать невалидной для
-// новой позиции (origin на последней / destination на первой). Source of
-// truth такой же, как в buildRouteParams(stores/freightFilters.ts).
-watch([isMiddle, isFirst, isLast], () => {
-  const role = props.point.role ?? 'any'
-  if (role === 'any') return
-  if (isMiddle.value) {
-    emit('update', { role: 'any' })
-    return
-  }
-  if (props.total <= 1) return
-  if (isFirst.value && role === 'destination') {
-    emit('update', { role: 'any' })
-  } else if (isLast.value && role === 'origin') {
-    emit('update', { role: 'any' })
+// Нормализуем роль по позиции через общий хелпер из @/types/routePoint.
+// Один source of truth — тот же, что в buildRouteParams. Эмитим update
+// только если роль реально сменилась, иначе словим бесконечный цикл при
+// immediate: true (watch → emit → parent re-renders → watch).
+watch([() => props.index, () => props.total, () => props.point.role], () => {
+  const next = normalizeRoleByPosition(props.point.role, props.index, props.total)
+  if (next !== (props.point.role ?? 'any')) {
+    emit('update', { role: next })
   }
 }, { immediate: true })
 
