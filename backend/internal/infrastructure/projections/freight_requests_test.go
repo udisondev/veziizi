@@ -177,6 +177,64 @@ func TestWithRouteCountries_NonEmpty(t *testing.T) {
 	}
 }
 
+func TestWithOriginCities_Empty(t *testing.T) {
+	sql, _ := buildFreightSQL(t, WithOriginCities(nil))
+	if strings.Contains(sql, "WHERE") {
+		t.Errorf("empty origin cities must not add WHERE, got: %s", sql)
+	}
+}
+
+func TestWithOriginCities_NonEmpty(t *testing.T) {
+	sql, args := buildFreightSQL(t, WithOriginCities([]int{42}))
+	if !strings.Contains(sql, "origin_city_ids @> $1") {
+		t.Errorf("expected 'origin_city_ids @> $1', got: %s", sql)
+	}
+	got, ok := args[0].([]int)
+	if !ok || len(got) != 1 || got[0] != 42 {
+		t.Errorf("expected args [[]int{42}], got %v (type %T)", args[0], args[0])
+	}
+}
+
+func TestWithOriginCountries_NonEmpty(t *testing.T) {
+	sql, args := buildFreightSQL(t, WithOriginCountries([]int{7}))
+	if !strings.Contains(sql, "origin_country_ids @> $1") {
+		t.Errorf("expected 'origin_country_ids @> $1', got: %s", sql)
+	}
+	got, ok := args[0].([]int)
+	if !ok || len(got) != 1 || got[0] != 7 {
+		t.Errorf("expected args [[]int{7}], got %v (type %T)", args[0], args[0])
+	}
+}
+
+func TestWithDestinationCities_Empty(t *testing.T) {
+	sql, _ := buildFreightSQL(t, WithDestinationCities(nil))
+	if strings.Contains(sql, "WHERE") {
+		t.Errorf("empty destination cities must not add WHERE, got: %s", sql)
+	}
+}
+
+func TestWithDestinationCities_NonEmpty(t *testing.T) {
+	sql, args := buildFreightSQL(t, WithDestinationCities([]int{99}))
+	if !strings.Contains(sql, "destination_city_ids @> $1") {
+		t.Errorf("expected 'destination_city_ids @> $1', got: %s", sql)
+	}
+	got, ok := args[0].([]int)
+	if !ok || len(got) != 1 || got[0] != 99 {
+		t.Errorf("expected args [[]int{99}], got %v (type %T)", args[0], args[0])
+	}
+}
+
+func TestWithDestinationCountries_NonEmpty(t *testing.T) {
+	sql, args := buildFreightSQL(t, WithDestinationCountries([]int{8}))
+	if !strings.Contains(sql, "destination_country_ids @> $1") {
+		t.Errorf("expected 'destination_country_ids @> $1', got: %s", sql)
+	}
+	got, ok := args[0].([]int)
+	if !ok || len(got) != 1 || got[0] != 8 {
+		t.Errorf("expected args [[]int{8}], got %v (type %T)", args[0], args[0])
+	}
+}
+
 func TestWithHasPendingOffers(t *testing.T) {
 	sql, _ := buildFreightSQL(t, WithHasPendingOffers())
 	if !strings.Contains(sql, "EXISTS") {

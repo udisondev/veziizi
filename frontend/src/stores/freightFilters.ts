@@ -22,11 +22,30 @@ type RouteParams = {
   destination_country_ids?: string
 }
 
+// normalizeRoleByPosition приводит роль точки к допустимой по её позиции
+// в списке. Та же логика, что в UI карточки (SubscriptionRoutePointCard):
+//   - одна точка        → любая роль допустима;
+//   - первая (≥2 точки) → only 'origin' | 'any';
+//   - последняя         → only 'destination' | 'any';
+//   - средняя           → 'any'.
+// Это defensive-нормализация для случаев drag-and-drop и старых сохранённых
+// фильтров, где состояние могло разойтись с позицией.
+function normalizeRoleByPosition(role: RoutePointRole | undefined, index: number, total: number): RoutePointRole {
+  const r = role ?? 'any'
+  if (total <= 1) return r
+  if (index === 0) return r === 'destination' ? 'any' : r
+  if (index === total - 1) return r === 'origin' ? 'any' : r
+  return 'any'
+}
+
 export function buildRouteParams(points: RoutePointData[]): RouteParams {
   const result: RouteParams = {}
   if (!points.length) return result
 
-  const byRole = (role: RoutePointRole) => points.filter(p => (p.role ?? 'any') === role)
+  const total = points.length
+  const normalized = points.map((p, i) => ({ ...p, role: normalizeRoleByPosition(p.role, i, total) }))
+
+  const byRole = (role: RoutePointRole) => normalized.filter(p => p.role === role)
   const cityIds  = (pts: RoutePointData[]) => pts.filter(p => p.cityId).map(p => p.cityId!.toString())
   const countryIds = (pts: RoutePointData[]) => pts.filter(p => p.countryId && !p.cityId).map(p => p.countryId!.toString())
 

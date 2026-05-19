@@ -112,6 +112,10 @@ func (h *FreightRequestsHandler) OnCreated(ctx context.Context, e *events.Freigh
 	// Extract city and country IDs from route for filtering
 	routeCityIDs := extractRouteCityIDs(e.Route)
 	routeCountryIDs := extractRouteCountryIDs(e.Route)
+	originCityIDs := extractEndpointCityIDs(e.Route, endpointOrigin)
+	originCountryIDs := extractEndpointCountryIDs(e.Route, endpointOrigin)
+	destinationCityIDs := extractEndpointCityIDs(e.Route, endpointDestination)
+	destinationCountryIDs := extractEndpointCountryIDs(e.Route, endpointDestination)
 
 	// Extract payment info
 	var paymentMethod, paymentTerms, vatType *string
@@ -137,6 +141,8 @@ func (h *FreightRequestsHandler) OnCreated(ctx context.Context, e *events.Freigh
 			"payment_method", "payment_terms", "vat_type",
 			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
 			"route_city_ids", "route_country_ids",
+			"origin_city_ids", "origin_country_ids",
+			"destination_city_ids", "destination_country_ids",
 		).
 		Values(
 			e.AggregateID(), e.RequestNumber, e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
@@ -145,6 +151,8 @@ func (h *FreightRequestsHandler) OnCreated(ctx context.Context, e *events.Freigh
 			paymentMethod, paymentTerms, vatType,
 			orgName, orgINN, orgCountry, e.CustomerMemberID,
 			routeCityIDs, routeCountryIDs,
+			originCityIDs, originCountryIDs,
+			destinationCityIDs, destinationCountryIDs,
 		).
 		Suffix("ON CONFLICT (id) DO NOTHING").
 		ToSql()
@@ -189,6 +197,50 @@ func extractRouteCountryIDs(route values.Route) []int {
 	return ids
 }
 
+// endpointKind — какую точку маршрута денормализовать в origin_*/destination_*.
+type endpointKind int
+
+const (
+	endpointOrigin endpointKind = iota
+	endpointDestination
+)
+
+// endpointPoint возвращает первую (origin) или последнюю (destination) точку
+// маршрута. nil — если маршрут пуст. Та же позиционная семантика, что и в
+// extractRouteAddresses.
+func endpointPoint(route values.Route, kind endpointKind) *values.RoutePoint {
+	if len(route.Points) == 0 {
+		return nil
+	}
+	switch kind {
+	case endpointOrigin:
+		return &route.Points[0]
+	case endpointDestination:
+		return &route.Points[len(route.Points)-1]
+	}
+	return nil
+}
+
+// extractEndpointCityIDs / extractEndpointCountryIDs возвращают одноэлементный
+// слайс с city_id/country_id выбранной точки маршрута, либо пустой, если у
+// точки нет id. Та же форма данных, что у route_city_ids/route_country_ids —
+// фильтр `origin_city_ids @> ?` использует GIN-индекс по массиву.
+func extractEndpointCityIDs(route values.Route, kind endpointKind) []int {
+	p := endpointPoint(route, kind)
+	if p == nil || p.CityID == nil {
+		return nil
+	}
+	return []int{*p.CityID}
+}
+
+func extractEndpointCountryIDs(route values.Route, kind endpointKind) []int {
+	p := endpointPoint(route, kind)
+	if p == nil || p.CountryID == nil {
+		return nil
+	}
+	return []int{*p.CountryID}
+}
+
 func (h *FreightRequestsHandler) OnUpdated(ctx context.Context, e *events.FreightRequestUpdated) error {
 	// Update display columns if relevant data changed
 	builder := h.psql.Update("freight_requests_lookup").Where(squirrel.Eq{"id": e.AggregateID()})
@@ -202,12 +254,20 @@ func (h *FreightRequestsHandler) OnUpdated(ctx context.Context, e *events.Freigh
 		}
 		routeCityIDs := extractRouteCityIDs(*e.Route)
 		routeCountryIDs := extractRouteCountryIDs(*e.Route)
+		originCityIDs := extractEndpointCityIDs(*e.Route, endpointOrigin)
+		originCountryIDs := extractEndpointCountryIDs(*e.Route, endpointOrigin)
+		destinationCityIDs := extractEndpointCityIDs(*e.Route, endpointDestination)
+		destinationCountryIDs := extractEndpointCountryIDs(*e.Route, endpointDestination)
 		builder = builder.
 			Set("origin_address", originAddr).
 			Set("destination_address", destAddr).
 			Set("route", routeJSON).
 			Set("route_city_ids", routeCityIDs).
-			Set("route_country_ids", routeCountryIDs)
+			Set("route_country_ids", routeCountryIDs).
+			Set("origin_city_ids", originCityIDs).
+			Set("origin_country_ids", originCountryIDs).
+			Set("destination_city_ids", destinationCityIDs).
+			Set("destination_country_ids", destinationCountryIDs)
 		hasUpdates = true
 	}
 

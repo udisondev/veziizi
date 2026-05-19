@@ -48,9 +48,21 @@ const isMiddle = computed(() => props.total > 2 && !isFirst.value && !isLast.val
 const showOriginBtn      = computed(() => props.total === 1 || isFirst.value)
 const showDestinationBtn = computed(() => props.total === 1 || isLast.value)
 
-// Сбрасываем роль у средних точек автоматически
-watch(isMiddle, (middle) => {
-  if (middle && props.point.role && props.point.role !== 'any') {
+// Нормализуем роль по позиции: при drag-and-drop точка может переехать в
+// середину (роль обязана быть 'any'), или роль может стать невалидной для
+// новой позиции (origin на последней / destination на первой). Source of
+// truth такой же, как в buildRouteParams(stores/freightFilters.ts).
+watch([isMiddle, isFirst, isLast], () => {
+  const role = props.point.role ?? 'any'
+  if (role === 'any') return
+  if (isMiddle.value) {
+    emit('update', { role: 'any' })
+    return
+  }
+  if (props.total <= 1) return
+  if (isFirst.value && role === 'destination') {
+    emit('update', { role: 'any' })
+  } else if (isLast.value && role === 'origin') {
     emit('update', { role: 'any' })
   }
 }, { immediate: true })

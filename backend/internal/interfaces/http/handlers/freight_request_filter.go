@@ -43,6 +43,14 @@ type FreightRequestFilters struct {
 	RouteCityIDs    []int `schema:"route_city_ids"`
 	RouteCountryIDs []int `schema:"route_country_ids"`
 
+	// Role-aware фильтры: точка маршрута явно помечена как начало или конец.
+	// Семантика та же, что у RouteCity/RouteCountryIDs — `@> ?` по массиву,
+	// но проверяется только первая (origin) / последняя (destination) точка.
+	OriginCityIDs         []int `schema:"origin_city_ids"`
+	OriginCountryIDs      []int `schema:"origin_country_ids"`
+	DestinationCityIDs    []int `schema:"destination_city_ids"`
+	DestinationCountryIDs []int `schema:"destination_country_ids"`
+
 	PaymentMethods []string `schema:"payment_methods"`
 	PaymentTerms   []string `schema:"payment_terms"`
 	VatTypes       []string `schema:"vat_types"`
@@ -126,6 +134,18 @@ func (f *FreightRequestFilters) AppendOptions(opts []projections.FilterOption) [
 	}
 	if len(f.RouteCountryIDs) > 0 {
 		opts = append(opts, projections.WithRouteCountries(f.RouteCountryIDs))
+	}
+	if len(f.OriginCityIDs) > 0 {
+		opts = append(opts, projections.WithOriginCities(f.OriginCityIDs))
+	}
+	if len(f.OriginCountryIDs) > 0 {
+		opts = append(opts, projections.WithOriginCountries(f.OriginCountryIDs))
+	}
+	if len(f.DestinationCityIDs) > 0 {
+		opts = append(opts, projections.WithDestinationCities(f.DestinationCityIDs))
+	}
+	if len(f.DestinationCountryIDs) > 0 {
+		opts = append(opts, projections.WithDestinationCountries(f.DestinationCountryIDs))
 	}
 	if len(f.PaymentMethods) > 0 {
 		opts = append(opts, projections.WithPaymentMethods(f.PaymentMethods))
