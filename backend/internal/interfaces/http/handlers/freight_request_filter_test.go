@@ -168,14 +168,18 @@ func TestAppendOptions_AllScalarFilters(t *testing.T) {
 
 func TestAppendOptions_AllListFilters(t *testing.T) {
 	f := FreightRequestFilters{
-		VehicleTypes:     []string{"truck"},
-		VehicleSubTypes:  []string{"tilt"},
-		RouteCityIDs:     []int{1, 2},
-		RouteCountryIDs:  []int{10},
-		PaymentMethods:   []string{"cash"},
-		PaymentTerms:     []string{"prepaid"},
-		VatTypes:         []string{"included"},
-		HasPendingOffers: true,
+		VehicleTypes:          []string{"truck"},
+		VehicleSubTypes:       []string{"tilt"},
+		RouteCityIDs:          []int{1, 2},
+		RouteCountryIDs:       []int{10},
+		OriginCityIDs:         []int{1},
+		OriginCountryIDs:      []int{10},
+		DestinationCityIDs:    []int{2},
+		DestinationCountryIDs: []int{11},
+		PaymentMethods:        []string{"cash"},
+		PaymentTerms:          []string{"prepaid"},
+		VatTypes:              []string{"included"},
+		HasPendingOffers:      true,
 	}
 	sql, _ := buildSQL(t, f.AppendOptions(nil))
 	wants := []string{
@@ -183,6 +187,10 @@ func TestAppendOptions_AllListFilters(t *testing.T) {
 		"vehicle_subtype IN",
 		"route_city_ids @>",
 		"route_country_ids @>",
+		"origin_city_ids @>",
+		"origin_country_ids @>",
+		"destination_city_ids @>",
+		"destination_country_ids @>",
 		"payment_method IN",
 		"payment_terms IN",
 		"vat_type IN",
@@ -191,6 +199,22 @@ func TestAppendOptions_AllListFilters(t *testing.T) {
 	for _, w := range wants {
 		if !strings.Contains(sql, w) {
 			t.Errorf("expected %q in SQL, got: %s", w, sql)
+		}
+	}
+}
+
+func TestAppendOptions_RoleAwareRouteFilters_OmittedByDefault(t *testing.T) {
+	f := FreightRequestFilters{}
+	sql, _ := buildSQL(t, f.AppendOptions(nil))
+	unwanted := []string{
+		"origin_city_ids",
+		"origin_country_ids",
+		"destination_city_ids",
+		"destination_country_ids",
+	}
+	for _, w := range unwanted {
+		if strings.Contains(sql, w) {
+			t.Errorf("empty filter must not add %q, got: %s", w, sql)
 		}
 	}
 }
@@ -314,5 +338,36 @@ func TestDecodeQuery_InvalidIntInList_Rejected(t *testing.T) {
 	_, err := decodeFilters(t, "route_city_ids=1,abc,3")
 	if err == nil {
 		t.Fatalf("non-integer in route_city_ids must fail")
+	}
+}
+
+func TestDecodeQuery_RoleAwareRouteIDs(t *testing.T) {
+	f, err := decodeFilters(t,
+		"origin_city_ids=10,20"+
+			"&origin_country_ids=1"+
+			"&destination_city_ids=30"+
+			"&destination_country_ids=2,3",
+	)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(f.OriginCityIDs) != 2 || f.OriginCityIDs[0] != 10 || f.OriginCityIDs[1] != 20 {
+		t.Errorf("OriginCityIDs = %v", f.OriginCityIDs)
+	}
+	if len(f.OriginCountryIDs) != 1 || f.OriginCountryIDs[0] != 1 {
+		t.Errorf("OriginCountryIDs = %v", f.OriginCountryIDs)
+	}
+	if len(f.DestinationCityIDs) != 1 || f.DestinationCityIDs[0] != 30 {
+		t.Errorf("DestinationCityIDs = %v", f.DestinationCityIDs)
+	}
+	if len(f.DestinationCountryIDs) != 2 || f.DestinationCountryIDs[0] != 2 || f.DestinationCountryIDs[1] != 3 {
+		t.Errorf("DestinationCountryIDs = %v", f.DestinationCountryIDs)
+	}
+}
+
+func TestDecodeQuery_InvalidIntInOriginCityIDs_Rejected(t *testing.T) {
+	_, err := decodeFilters(t, "origin_city_ids=1,xxx")
+	if err == nil {
+		t.Fatalf("non-integer in origin_city_ids must fail")
 	}
 }

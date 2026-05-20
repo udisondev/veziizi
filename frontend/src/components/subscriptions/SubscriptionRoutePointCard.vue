@@ -17,7 +17,7 @@ import BottomSheet from '@/components/shared/BottomSheet.vue'
 import { Trash2, GripVertical, Navigation, MapPin } from 'lucide-vue-next'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { AcceptableValue } from 'reka-ui'
-import type { RoutePointData } from '@/types/routePoint'
+import { normalizeRoleByPosition, type RoutePointData } from '@/types/routePoint'
 
 interface Props {
   point: RoutePointData
@@ -48,10 +48,14 @@ const isMiddle = computed(() => props.total > 2 && !isFirst.value && !isLast.val
 const showOriginBtn      = computed(() => props.total === 1 || isFirst.value)
 const showDestinationBtn = computed(() => props.total === 1 || isLast.value)
 
-// Сбрасываем роль у средних точек автоматически
-watch(isMiddle, (middle) => {
-  if (middle && props.point.role && props.point.role !== 'any') {
-    emit('update', { role: 'any' })
+// Нормализуем роль по позиции через общий хелпер из @/types/routePoint.
+// Один source of truth — тот же, что в buildRouteParams. Эмитим update
+// только если роль реально сменилась, иначе словим бесконечный цикл при
+// immediate: true (watch → emit → parent re-renders → watch).
+watch([() => props.index, () => props.total, () => props.point.role], () => {
+  const next = normalizeRoleByPosition(props.point.role, props.index, props.total)
+  if (next !== (props.point.role ?? 'any')) {
+    emit('update', { role: next })
   }
 }, { immediate: true })
 

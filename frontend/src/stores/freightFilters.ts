@@ -8,7 +8,7 @@ import type {
   VatType,
   FreightRequestStatus,
 } from '@/types/freightRequest'
-import type { RoutePointRole, RoutePointData } from '@/types/routePoint'
+import { normalizeRoleByPosition, type RoutePointRole, type RoutePointData } from '@/types/routePoint'
 
 // Дефолтные статусы для фильтра (пустой = все статусы)
 const DEFAULT_STATUSES: FreightRequestStatus[] = []
@@ -26,7 +26,10 @@ export function buildRouteParams(points: RoutePointData[]): RouteParams {
   const result: RouteParams = {}
   if (!points.length) return result
 
-  const byRole = (role: RoutePointRole) => points.filter(p => (p.role ?? 'any') === role)
+  const total = points.length
+  const normalized = points.map((p, i) => ({ ...p, role: normalizeRoleByPosition(p.role, i, total) }))
+
+  const byRole = (role: RoutePointRole) => normalized.filter(p => p.role === role)
   const cityIds  = (pts: RoutePointData[]) => pts.filter(p => p.cityId).map(p => p.cityId!.toString())
   const countryIds = (pts: RoutePointData[]) => pts.filter(p => p.countryId && !p.cityId).map(p => p.countryId!.toString())
 

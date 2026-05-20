@@ -269,6 +269,42 @@ func WithRouteCountries(countryIDs []int) FilterOption {
 	}
 }
 
+func WithOriginCities(cityIDs []int) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(cityIDs) == 0 {
+			return b
+		}
+		return b.Where("origin_city_ids @> ?", cityIDs)
+	}
+}
+
+func WithOriginCountries(countryIDs []int) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(countryIDs) == 0 {
+			return b
+		}
+		return b.Where("origin_country_ids @> ?", countryIDs)
+	}
+}
+
+func WithDestinationCities(cityIDs []int) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(cityIDs) == 0 {
+			return b
+		}
+		return b.Where("destination_city_ids @> ?", cityIDs)
+	}
+}
+
+func WithDestinationCountries(countryIDs []int) FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(countryIDs) == 0 {
+			return b
+		}
+		return b.Where("destination_country_ids @> ?", countryIDs)
+	}
+}
+
 func (p *FreightRequestsProjection) GetByID(ctx context.Context, id uuid.UUID) (*FreightRequestListItem, error) {
 	query, args, err := p.psql.
 		Select(
