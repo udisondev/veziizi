@@ -771,7 +771,14 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, offers)
 }
 
-// ListMyOffers returns all offers made by current organization with freight request data
+// OutgoingOffersResponse — ответ списка исходящих офферов с cursor-based пагинацией.
+type OutgoingOffersResponse struct {
+	Items      []projections.OfferWithFreightData `json:"items"`
+	NextCursor *string                            `json:"next_cursor,omitempty"`
+	HasMore    bool                               `json:"has_more"`
+}
+
+// ListMyOffers returns offers made by current organization with cursor pagination.
 func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
@@ -779,17 +786,18 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	q := r.URL.Query()
 	var opts []projections.OfferFilterOption
 	opts = append(opts, projections.WithCarrierOrgIDAlias(orgID))
 
 	// Поддерживаем оба формата: legacy "status" и новый "statuses" (comma-separated)
-	if statuses := r.URL.Query().Get("statuses"); statuses != "" {
+	if statuses := q.Get("statuses"); statuses != "" {
 		opts = append(opts, projections.WithOfferStatusesAlias(splitCSV(statuses)))
-	} else if status := r.URL.Query().Get("status"); status != "" {
+	} else if status := q.Get("status"); status != "" {
 		opts = append(opts, projections.WithOfferStatusAlias(status))
 	}
 
-	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
+	if memberIDStr := q.Get("member_id"); memberIDStr != "" {
 		memberID, err := uuid.Parse(memberIDStr)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid member_id")
@@ -798,10 +806,23 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		opts = append(opts, projections.WithCarrierMemberIDAlias(memberID))
 	}
 
-	// SEC-016: Валидированная пагинация
-	pagination := httputil.ParsePagination(r)
-	opts = append(opts, projections.WithOfferLimit(pagination.Limit))
-	opts = append(opts, projections.WithOfferOffset(pagination.Offset))
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.OutgoingOfferCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid outgoing offers cursor", slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		opts = append(opts, projections.WithOutgoingOfferCursor(*cursor))
+	}
+
+	limit := 20
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	opts = append(opts, projections.WithOfferLimit(limit+1))
 
 	items, err := h.projection.ListOffersWithFreightData(r.Context(), opts...)
 	if err != nil {
@@ -810,7 +831,29 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	writeJSON(w, http.StatusOK, items)
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.OutgoingOfferCursor{
+			CreatedAt: last.CreatedAt,
+		})
+		if err != nil {
+			slog.Error("failed to encode outgoing offers cursor", slog.String("error", err.Error()))
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	writeJSON(w, http.StatusOK, OutgoingOffersResponse{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	})
 }
 
 // IncomingOffersResponse — ответ списка входящих офферов с cursor-based пагинацией.

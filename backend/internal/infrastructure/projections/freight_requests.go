@@ -582,26 +582,45 @@ func (p *FreightRequestsProjection) ListOffers(ctx context.Context, opts ...Offe
 	return result, nil
 }
 
-// OfferWithFreightData represents offer with joined freight request data for "My Offers" page
+// OfferWithFreightData represents offer with joined freight request data for "My Offers" page.
 type OfferWithFreightData struct {
-	ID                 uuid.UUID `json:"id"`
-	FreightRequestID   uuid.UUID `json:"freight_request_id"`
-	CarrierOrgID       uuid.UUID `json:"carrier_org_id"`
-	Status             string    `json:"status"`
-	CreatedAt          time.Time `json:"created_at"`
-	OriginAddress      *string   `json:"origin_address,omitempty"`
-	DestinationAddress *string   `json:"destination_address,omitempty"`
-	CargoWeight        *float64  `json:"cargo_weight,omitempty"`
-	PriceAmount        *int64    `json:"price_amount,omitempty"`
-	PriceCurrency      *string   `json:"price_currency,omitempty"`
+	ID                   uuid.UUID `json:"id"`
+	FreightRequestID     uuid.UUID `json:"freight_request_id"`
+	FreightRequestNumber *int64    `json:"freight_request_number,omitempty"`
+	CarrierOrgID         uuid.UUID `json:"carrier_org_id"`
+	CustomerOrgName      *string   `json:"customer_org_name,omitempty"`
+	Status               string    `json:"status"`
+	CreatedAt            time.Time `json:"created_at"`
+	OriginAddress        *string   `json:"origin_address,omitempty"`
+	DestinationAddress   *string   `json:"destination_address,omitempty"`
+	CargoWeight          *float64  `json:"cargo_weight,omitempty"`
+	PriceAmount          *int64    `json:"price_amount,omitempty"`
+	PriceCurrency        *string   `json:"price_currency,omitempty"`
+	PaymentMethod        *string   `json:"payment_method,omitempty"`
+	VatType              *string   `json:"vat_type,omitempty"`
+}
+
+// OutgoingOfferCursor используется для keyset pagination исходящих офферов по created_at DESC.
+type OutgoingOfferCursor struct {
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// WithOutgoingOfferCursor добавляет keyset-условие (только по created_at).
+func WithOutgoingOfferCursor(cursor OutgoingOfferCursor) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Lt{"o.created_at": cursor.CreatedAt})
+	}
 }
 
 func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Context, opts ...OfferFilterOption) ([]OfferWithFreightData, error) {
 	builder := p.psql.
 		Select(
-			"o.id", "o.freight_request_id", "o.carrier_org_id", "o.status", "o.created_at",
+			"o.id", "o.freight_request_id", "fr.request_number",
+			"o.carrier_org_id", "fr.customer_org_name",
+			"o.status", "o.created_at",
 			"fr.origin_address", "fr.destination_address", "fr.cargo_weight",
 			"fr.price_amount", "fr.price_currency",
+			"fr.payment_method", "fr.vat_type",
 		).
 		From("offers_lookup o").
 		LeftJoin("freight_requests_lookup fr ON fr.id = o.freight_request_id").
@@ -626,16 +645,12 @@ func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Contex
 	for rows.Next() {
 		var item OfferWithFreightData
 		if err := rows.Scan(
-			&item.ID,
-			&item.FreightRequestID,
-			&item.CarrierOrgID,
-			&item.Status,
-			&item.CreatedAt,
-			&item.OriginAddress,
-			&item.DestinationAddress,
-			&item.CargoWeight,
-			&item.PriceAmount,
-			&item.PriceCurrency,
+			&item.ID, &item.FreightRequestID, &item.FreightRequestNumber,
+			&item.CarrierOrgID, &item.CustomerOrgName,
+			&item.Status, &item.CreatedAt,
+			&item.OriginAddress, &item.DestinationAddress, &item.CargoWeight,
+			&item.PriceAmount, &item.PriceCurrency,
+			&item.PaymentMethod, &item.VatType,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
