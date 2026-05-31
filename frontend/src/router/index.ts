@@ -146,6 +146,12 @@ const router = createRouter({
       meta: { title: 'Автопарк' },
     },
     {
+      path: '/transport',
+      name: 'transport',
+      component: () => import('@/views/TransportView.vue'),
+      meta: { title: 'Транспорт' },
+    },
+    {
       path: '/fleet/new',
       name: 'vehicle-add',
       component: () => import('@/views/VehicleAddView.vue'),

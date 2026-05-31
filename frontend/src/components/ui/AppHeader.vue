@@ -38,6 +38,7 @@ import {
   Package,
   LayoutDashboard,
   Truck,
+  Bus,
 } from 'lucide-vue-next'
 import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 
@@ -64,9 +65,8 @@ const menuItems = computed(() => {
     { to: '/', label: 'Дашборд', icon: LayoutDashboard },
     { to: '/requests', label: 'Заявки', icon: Package },
     { to: '/my-offers', label: 'Предложения', icon: HandCoins },
-    { to: '/fleet', label: 'Автопарк', icon: Truck },
     { to: '/subscriptions', label: 'Рассылка', icon: Bell },
-    { to: '/members', label: 'Штат', icon: Users },
+    { to: '/transport', label: 'Транспорт', icon: Bus },
   ]
 
   if (canManageMembers.value) {
@@ -154,7 +154,7 @@ const userInitial = computed(() => {
           <!-- Desktop navigation -->
           <nav class="hidden lg:flex items-center gap-1 ml-3">
             <router-link
-              v-for="item in menuItems.slice(0, 6)"
+              v-for="item in menuItems.slice(0, 5)"
               :key="item.to"
               :to="item.to"
               :data-tutorial="
@@ -227,6 +227,22 @@ const userInitial = computed(() => {
               <button
                 v-if="canManageMembers"
                 class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-foreground hover:bg-muted transition-colors"
+                @click="isProfileOpen = false; router.push('/members')"
+              >
+                <Users class="h-5 w-5" />
+                Штат
+              </button>
+              <button
+                v-if="canManageMembers"
+                class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-foreground hover:bg-muted transition-colors"
+                @click="isProfileOpen = false; router.push('/fleet')"
+              >
+                <Truck class="h-5 w-5" />
+                Автопарк
+              </button>
+              <button
+                v-if="canManageMembers"
+                class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-foreground hover:bg-muted transition-colors"
                 @click="isProfileOpen = false; router.push('/organization/settings')"
               >
                 <Settings class="h-5 w-5" />
@@ -266,6 +282,22 @@ const userInitial = computed(() => {
               <DropdownMenuItem class="text-slate-200 focus:bg-slate-700 focus:text-white" @click="router.push('/profile')">
                 <User class="mr-2 h-4 w-4" />
                 Профиль
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                v-if="canManageMembers"
+                class="text-slate-200 focus:bg-slate-700 focus:text-white"
+                @click="router.push('/members')"
+              >
+                <Users class="mr-2 h-4 w-4" />
+                Штат
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                v-if="canManageMembers"
+                class="text-slate-200 focus:bg-slate-700 focus:text-white"
+                @click="router.push('/fleet')"
+              >
+                <Truck class="mr-2 h-4 w-4" />
+                Автопарк
               </DropdownMenuItem>
               <DropdownMenuItem
                 v-if="canManageMembers"

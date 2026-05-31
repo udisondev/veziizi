@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -233,6 +235,7 @@ func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/api/v1/freight-requests/{id}/cancel-confirmed", h.CancelAfterConfirmed)
 	r.Post("/api/v1/freight-requests/{id}/reassign-carrier", h.ReassignCarrierMember)
 	// My offers (for current organization)
+	r.Get("/api/v1/offers/incoming", h.ListIncomingOffers) // входящие — сначала, чтобы chi не поглощал как /offers/{id}
 	r.Get("/api/v1/offers", h.ListMyOffers)
 	// Carrier invitations (customer pings a carrier about an active freight request)
 	r.Post("/api/v1/freight-requests/{id}/invite-carrier", h.InviteCarrier)
@@ -779,7 +782,10 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 	var opts []projections.OfferFilterOption
 	opts = append(opts, projections.WithCarrierOrgIDAlias(orgID))
 
-	if status := r.URL.Query().Get("status"); status != "" {
+	// Поддерживаем оба формата: legacy "status" и новый "statuses" (comma-separated)
+	if statuses := r.URL.Query().Get("statuses"); statuses != "" {
+		opts = append(opts, projections.WithOfferStatusesAlias(splitCSV(statuses)))
+	} else if status := r.URL.Query().Get("status"); status != "" {
 		opts = append(opts, projections.WithOfferStatusAlias(status))
 	}
 
@@ -805,6 +811,108 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 	}
 
 	writeJSON(w, http.StatusOK, items)
+}
+
+// IncomingOffersResponse — ответ списка входящих офферов с cursor-based пагинацией.
+type IncomingOffersResponse struct {
+	Items      []projections.IncomingOfferListItem `json:"items"`
+	NextCursor *string                             `json:"next_cursor,omitempty"`
+	HasMore    bool                                `json:"has_more"`
+}
+
+// ListIncomingOffers возвращает офферы, поданные на заявки текущей организации как заказчика.
+func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	q := r.URL.Query()
+	var opts []projections.IncomingOfferFilterOption
+
+	if v := q.Get("statuses"); v != "" {
+		parts := splitCSV(v)
+		opts = append(opts, projections.WithIncomingStatuses(parts))
+	}
+	if v := q.Get("carrier_org_name"); v != "" {
+		opts = append(opts, projections.WithIncomingCarrierOrgName(v))
+	}
+	if v := q.Get("member_id"); v != "" {
+		if id, err := uuid.Parse(v); err == nil {
+			opts = append(opts, projections.WithIncomingCarrierMemberID(id))
+		}
+	}
+	if v := q.Get("freight_request_number"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingFreightRequestNumber(n))
+		}
+	}
+
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.IncomingOfferCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid incoming offers cursor", slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		opts = append(opts, projections.WithIncomingCursor(*cursor))
+	}
+
+	limit := 20
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	opts = append(opts, projections.WithIncomingLimit(limit+1))
+
+	items, err := h.projection.ListIncomingOffers(r.Context(), orgID, opts...)
+	if err != nil {
+		slog.Error("failed to list incoming offers", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list incoming offers")
+		return
+	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.IncomingOfferCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		})
+		if err != nil {
+			slog.Error("failed to encode incoming offers cursor", slog.String("error", err.Error()))
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	writeJSON(w, http.StatusOK, IncomingOffersResponse{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	})
+}
+
+// splitCSV разбивает строку по запятой.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 type WithdrawOfferRequest struct {

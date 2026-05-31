@@ -24,10 +24,12 @@ interface Props {
   freightRequestId?: string
   initialData?: FreightRequest
   title?: string
+  hideStepper?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   editMode: false,
+  hideStepper: false,
 })
 
 const router = useRouter()
@@ -59,6 +61,12 @@ const hasFormData = computed(() => {
 })
 
 const steps = ['Маршрут', 'Груз', 'Транспорт', 'Оплата', 'Готово']
+
+defineExpose({
+  currentStep: computed(() => form.currentStep.value),
+  goToStep: form.goToStep,
+  steps,
+})
 
 onMounted(() => {
   if (props.editMode && props.initialData) {
@@ -138,11 +146,13 @@ function handleNext() {
     <!-- Card header: title + stepper -->
     <div class="pb-4 border-b border-border md:px-6 md:pt-6">
       <h2 v-if="title" class="text-xl font-bold text-foreground mb-6">{{ title }}</h2>
-      <WizardStepIndicator
-        :steps="steps"
-        :current-step="form.currentStep.value"
-        @go-to="form.goToStep"
-      />
+      <div :class="hideStepper ? 'lg:hidden' : ''">
+        <WizardStepIndicator
+          :steps="steps"
+          :current-step="form.currentStep.value"
+          @go-to="form.goToStep"
+        />
+      </div>
     </div>
 
     <!-- API Error -->

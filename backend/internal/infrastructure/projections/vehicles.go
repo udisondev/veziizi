@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -11,6 +12,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
+
+// VehicleCursor используется для keyset pagination по (created_at DESC, registration_number ASC).
+// registration_number как tie-breaker детерминирован в отличие от UUID v4.
+type VehicleCursor struct {
+	CreatedAt          time.Time `json:"created_at"`
+	RegistrationNumber string    `json:"registration_number"`
+}
 
 type VehiclesProjection struct {
 	db   dbtx.TxManager
@@ -28,6 +36,7 @@ func NewVehiclesProjection(db dbtx.TxManager) *VehiclesProjection {
 type VehicleListItem struct {
 	ID                 uuid.UUID `json:"id"`
 	OrgID              uuid.UUID `json:"org_id"`
+	OrgName            *string   `json:"org_name,omitempty"`
 	RegistrationNumber string    `json:"registration_number"`
 	Brand              *string   `json:"brand,omitempty"`
 	Model              *string   `json:"model,omitempty"`
@@ -60,7 +69,7 @@ func WithVehicleOrgID(id uuid.UUID) VehicleFilterOption {
 
 func WithVehicleStatus(status string) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		return b.Where(squirrel.Eq{"status": status})
+		return b.Where(squirrel.Eq{"v.status": status})
 	}
 }
 
@@ -69,7 +78,7 @@ func WithVehicleStatuses(statuses []string) VehicleFilterOption {
 		if len(statuses) == 0 {
 			return b
 		}
-		return b.Where(squirrel.Eq{"status": statuses})
+		return b.Where(squirrel.Eq{"v.status": statuses})
 	}
 }
 
@@ -79,15 +88,30 @@ func WithFleetVehicleType(vt string) VehicleFilterOption {
 	}
 }
 
-func WithFleetVehicleSubType(sub string) VehicleFilterOption {
+// WithFleetVehicleSubTypes принимает срез подтипов и добавляет IN-условие.
+func WithFleetVehicleSubTypes(subs []string) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		return b.Where(squirrel.Eq{"vehicle_subtype": sub})
+		if len(subs) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"vehicle_subtype": subs})
 	}
+}
+
+// WithFleetVehicleSubType — единственное значение (обратная совместимость).
+func WithFleetVehicleSubType(sub string) VehicleFilterOption {
+	return WithFleetVehicleSubTypes([]string{sub})
 }
 
 func WithMinCapacity(value float64) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where(squirrel.GtOrEq{"capacity": value})
+	}
+}
+
+func WithMaxCapacity(value float64) VehicleFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"capacity": value})
 	}
 }
 
@@ -97,18 +121,58 @@ func WithMinFleetVolume(value float64) VehicleFilterOption {
 	}
 }
 
+func WithMaxFleetVolume(value float64) VehicleFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"volume": value})
+	}
+}
+
 func WithRequiresADR(required bool) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where(squirrel.Eq{"requires_adr": required})
 	}
 }
 
-func WithLoadingType(loadingType string) VehicleFilterOption {
+func WithThermograph(required bool) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		// Pass the slice through as a parameter — pgx marshals []string to text[]
-		// natively, so we never build a Postgres array literal from user input
-		// (previous "{"+v+"}" form silently matched everything for v == "").
-		return b.Where("loading_types @> ?", []string{loadingType})
+		return b.Where(squirrel.Eq{"thermograph": required})
+	}
+}
+
+// WithLoadingTypes принимает срез типов погрузки — транспорт должен поддерживать ВСЕ указанные.
+func WithLoadingTypes(loadingTypes []string) VehicleFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(loadingTypes) == 0 {
+			return b
+		}
+		return b.Where("loading_types @> ?", loadingTypes)
+	}
+}
+
+// WithLoadingType — единственное значение (обратная совместимость).
+func WithLoadingType(loadingType string) VehicleFilterOption {
+	return WithLoadingTypes([]string{loadingType})
+}
+
+// WithOrgName фильтрует по названию организации (ILIKE, только в JOIN-запросах).
+func WithOrgName(name string) VehicleFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where("o.name ILIKE ?", "%"+strings.TrimSpace(name)+"%")
+	}
+}
+
+// WithVehicleCursor добавляет keyset-условие для пагинации по (created_at DESC, registration_number ASC).
+func WithVehicleCursor(cursor VehicleCursor) VehicleFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(
+			squirrel.Or{
+				squirrel.Lt{"v.created_at": cursor.CreatedAt},
+				squirrel.And{
+					squirrel.Eq{"v.created_at": cursor.CreatedAt},
+					squirrel.Gt{"v.registration_number": cursor.RegistrationNumber},
+				},
+			},
+		)
 	}
 }
 
@@ -118,12 +182,23 @@ func WithVehicleLimit(limit int) VehicleFilterOption {
 	}
 }
 
+// vehicleColumns — используются для Upsert и GetByID (без JOIN).
 var vehicleColumns = []string{
 	"id", "org_id", "registration_number", "brand", "model",
 	"vehicle_type", "vehicle_subtype", "loading_types",
 	"capacity", "volume", "length", "width", "height",
 	"requires_adr", "has_temperature", "temp_min", "temp_max", "thermograph",
 	"status", "rejection_reason", "created_at", "updated_at",
+}
+
+// vehicleListColumns — используются в List (с JOIN organizations_lookup).
+var vehicleListColumns = []string{
+	"v.id", "v.org_id", "v.registration_number", "v.brand", "v.model",
+	"v.vehicle_type", "v.vehicle_subtype", "v.loading_types",
+	"v.capacity", "v.volume", "v.length", "v.width", "v.height",
+	"v.requires_adr", "v.has_temperature", "v.temp_min", "v.temp_max", "v.thermograph",
+	"v.status", "v.rejection_reason", "v.created_at", "v.updated_at",
+	"o.name AS org_name",
 }
 
 func scanVehicle(row pgx.Row) (*VehicleListItem, error) {
@@ -134,6 +209,21 @@ func scanVehicle(row pgx.Row) (*VehicleListItem, error) {
 		&item.Capacity, &item.Volume, &item.Length, &item.Width, &item.Height,
 		&item.RequiresADR, &item.HasTemperature, &item.TempMin, &item.TempMax, &item.Thermograph,
 		&item.Status, &item.RejectionReason, &item.CreatedAt, &item.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func scanVehicleWithOrg(row pgx.Row) (*VehicleListItem, error) {
+	var item VehicleListItem
+	if err := row.Scan(
+		&item.ID, &item.OrgID, &item.RegistrationNumber, &item.Brand, &item.Model,
+		&item.VehicleType, &item.VehicleSubType, &item.LoadingTypes,
+		&item.Capacity, &item.Volume, &item.Length, &item.Width, &item.Height,
+		&item.RequiresADR, &item.HasTemperature, &item.TempMin, &item.TempMax, &item.Thermograph,
+		&item.Status, &item.RejectionReason, &item.CreatedAt, &item.UpdatedAt,
+		&item.OrgName,
 	); err != nil {
 		return nil, err
 	}
@@ -254,9 +344,10 @@ func (p *VehiclesProjection) GetByID(ctx context.Context, id uuid.UUID) (*Vehicl
 
 func (p *VehiclesProjection) List(ctx context.Context, opts ...VehicleFilterOption) ([]VehicleListItem, error) {
 	builder := p.psql.
-		Select(vehicleColumns...).
-		From("vehicles_lookup").
-		OrderBy("created_at DESC", "id DESC")
+		Select(vehicleListColumns...).
+		From("vehicles_lookup v").
+		LeftJoin("organizations_lookup o ON o.id = v.org_id").
+		OrderBy("v.created_at DESC", "v.registration_number ASC")
 	for _, opt := range opts {
 		builder = opt(builder)
 	}
@@ -272,7 +363,7 @@ func (p *VehiclesProjection) List(ctx context.Context, opts ...VehicleFilterOpti
 
 	var result []VehicleListItem
 	for rows.Next() {
-		item, err := scanVehicle(rows)
+		item, err := scanVehicleWithOrg(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan vehicle: %w", err)
 		}

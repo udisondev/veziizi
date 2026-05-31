@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useFreightFiltersStore, buildRouteParams } from '@/stores/freightFilters'
 import { usePermissions } from '@/composables/usePermissions'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
 import type { FreightRequestListItem } from '@/types/freightRequest'
@@ -28,7 +29,22 @@ import {
   ErrorBanner,
 } from '@/components/shared'
 import { FreightFiltersForm } from '@/components/filters'
-import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer, X } from 'lucide-vue-next'
+import { Tooltip } from '@/components/ui/tooltip'
+import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer, X, ArrowDownWideNarrow, CalendarClock, Users } from 'lucide-vue-next'
+import type { Component } from 'vue'
+
+type SortBy = 'created_at_desc' | 'expires_at_asc' | 'price_desc' | 'weight_desc' | 'loading_date_asc' | 'offers_count_asc'
+
+interface SortOption { value: SortBy; label: string; icon: Component }
+
+const SORT_OPTIONS: SortOption[] = [
+  { value: 'created_at_desc', label: 'Новые', icon: CalendarDays },
+  { value: 'expires_at_asc', label: 'Истекают', icon: Timer },
+  { value: 'price_desc', label: 'Цена', icon: ArrowDownWideNarrow },
+  { value: 'weight_desc', label: 'Вес', icon: Weight },
+  { value: 'loading_date_asc', label: 'Дата загрузки', icon: CalendarClock },
+  { value: 'offers_count_asc', label: 'Меньше офферов', icon: Users },
+]
 
 const PAGE_SIZE = 20
 
@@ -37,10 +53,13 @@ const auth = useAuthStore()
 const onboarding = useOnboardingStore()
 const filtersStore = useFreightFiltersStore()
 const { canCreateFreightRequest, canCreateOffer } = usePermissions()
+const { isBelowLg } = useBreakpoint()
 
 const emit = defineEmits<{
   'go-to-new': []
 }>()
+
+const sortBy = ref<SortBy>('created_at_desc')
 
 const items = ref<FreightRequestListItem[]>([])
 const isLoading = ref(false)
@@ -104,6 +123,8 @@ function buildParams(): FreightRequestListParams {
   if (hasPendingOffers.value) params.has_pending_offers = true
 
   Object.assign(params, buildRouteParams(routePoints.value))
+
+  params.sort_by = sortBy.value
 
   return params
 }
@@ -226,6 +247,7 @@ watch(
     ownershipFilter, orgINNFilter, requestNumber, statuses, routePoints,
     minWeight, maxWeight, minPrice, maxPrice, minVolume, maxVolume,
     vehicleSubTypes, paymentMethods, paymentTerms, vatTypes, hasPendingOffers,
+    sortBy,
   ],
   () => {
     if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
@@ -272,25 +294,27 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Mobile filter toggle -->
-    <div class="lg:hidden mb-2">
-      <Button variant="outline" class="w-full" @click="mobileFiltersOpen = !mobileFiltersOpen">
-        <SlidersHorizontal class="h-4 w-4 mr-2" />
-        Фильтры
-        <span
-          v-if="hasActiveFilters"
-          class="ml-2 inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium"
-        >
-          ●
-        </span>
-      </Button>
-    </div>
-
     <!-- 2-column layout: filters | list -->
     <div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
 
       <!-- Filters -->
-      <div class="lg:sticky lg:top-6">
+      <div class="lg:sticky lg:top-16">
+        <slot name="sidebar-header" />
+
+        <!-- Mobile filter toggle (под табами) -->
+        <div class="lg:hidden mb-2">
+          <Button variant="outline" class="w-full" @click="mobileFiltersOpen = !mobileFiltersOpen">
+            <SlidersHorizontal class="h-4 w-4 mr-2" />
+            Фильтры
+            <span
+              v-if="hasActiveFilters"
+              class="ml-2 inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium"
+            >
+              ●
+            </span>
+          </Button>
+        </div>
+
         <div :class="['accordion-grid filters-accordion', mobileFiltersOpen ? 'is-open' : '']">
           <div class="overflow-hidden lg:overflow-visible">
             <div class="space-y-2 pb-2">
@@ -347,6 +371,36 @@ onMounted(() => {
 
       <!-- List -->
       <div>
+        <!-- Sort bar: скрываем во время загрузки и при ошибке -->
+        <div v-if="!isLoading && !error" class="flex gap-1 mb-4 pb-4 border-b">
+          <!-- Desktop: иконки + тултипы -->
+          <template v-if="!isBelowLg">
+            <Tooltip v-for="opt in SORT_OPTIONS" :key="opt.value" :text="opt.label" side="top">
+              <button
+                type="button"
+                class="flex justify-center rounded-md border p-1.5 transition-colors"
+                :class="sortBy === opt.value ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
+                @click="sortBy = opt.value as SortBy"
+              >
+                <component :is="opt.icon" class="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          </template>
+          <!-- Mobile: текстовые кнопки -->
+          <template v-else>
+            <button
+              v-for="opt in SORT_OPTIONS"
+              :key="opt.value"
+              type="button"
+              class="rounded-md border px-2 py-1 text-xs font-medium transition-colors"
+              :class="sortBy === opt.value ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
+              @click="sortBy = opt.value as SortBy"
+            >
+              {{ opt.label }}
+            </button>
+          </template>
+        </div>
+
         <LoadingSpinner v-if="isLoading" text="Загрузка заявок..." />
 
         <ErrorBanner

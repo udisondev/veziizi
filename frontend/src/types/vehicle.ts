@@ -50,3 +50,34 @@ export interface CreateVehicleRequest {
 }
 
 export interface UpdateVehicleRequest extends Partial<CreateVehicleRequest> {}
+
+export interface VehicleListItem {
+  id: string
+  org_id: string
+  org_name?: string
+  vehicle_type: VehicleType
+  vehicle_subtype: VehicleSubType
+  registration_number: string
+  brand?: string
+  model?: string
+  capacity?: number
+  volume?: number
+  loading_types?: LoadingType[]
+  requires_adr: boolean
+  temperature?: VehicleTemperature
+  thermograph: boolean
+}
+
+export interface VehicleListParams {
+  vehicle_subtypes?: string  // comma-separated
+  min_capacity?: number
+  max_capacity?: number
+  min_volume?: number
+  max_volume?: number
+  loading_types?: string  // comma-separated
+  requires_adr?: boolean
+  thermograph?: boolean
+  org_name?: string
+  limit?: number
+  cursor?: string
+}
