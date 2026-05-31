@@ -862,6 +862,7 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 			SortBy:      q.Get("sort_by"),
 			CreatedAt:   last.CreatedAt,
 			PriceAmount: last.PriceAmount,
+			ID:          last.ID,
 		})
 		if err != nil {
 			slog.Error("failed to encode outgoing offers cursor", slog.String("error", err.Error()))
@@ -968,6 +969,7 @@ func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *htt
 			SortBy:      q.Get("sort_by"),
 			CreatedAt:   last.CreatedAt,
 			PriceAmount: last.PriceAmount,
+			ID:          last.ID,
 		})
 		if err != nil {
 			slog.Error("failed to encode incoming offers cursor", slog.String("error", err.Error()))

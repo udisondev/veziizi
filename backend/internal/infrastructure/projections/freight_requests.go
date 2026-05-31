@@ -538,11 +538,11 @@ func WithOutgoingOfferSort(sortBy string) OfferFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		switch sortBy {
 		case "price_desc":
-			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC")
+			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC", "o.id DESC")
 		case "price_asc":
-			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC")
+			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC", "o.id DESC")
 		default:
-			return b.OrderBy("o.created_at DESC")
+			return b.OrderBy("o.created_at DESC", "o.id DESC")
 		}
 	}
 }
@@ -648,54 +648,51 @@ type OfferWithFreightData struct {
 
 // OutgoingOfferCursor используется для keyset pagination исходящих офферов.
 // SortBy должен совпадать с sort_by текущего запроса — курсор кодирует первичный ключ сортировки.
+// ID — PK строки, стабилен между запросами, используется как финальный tie-breaker.
 type OutgoingOfferCursor struct {
 	SortBy      string    `json:"sort_by"`
 	CreatedAt   time.Time `json:"created_at"`
 	PriceAmount *int64    `json:"price_amount,omitempty"`
+	ID          uuid.UUID `json:"id"`
 }
 
 // WithOutgoingOfferCursor строит keyset-условие в соответствии с первичным ключом сортировки.
+// ID используется как финальный tie-breaker во всех ветках.
 func WithOutgoingOfferCursor(cursor OutgoingOfferCursor) OfferFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		id := squirrel.Lt{"o.id": cursor.ID}
+		atTie := squirrel.And{squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
 		switch cursor.SortBy {
 		case "price_desc":
 			if cursor.PriceAmount != nil {
-				// После элемента с price=P: берём меньшие цены, или ту же цену и более старые
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
 				return b.Where(squirrel.Or{
 					squirrel.Lt{"fr.price_amount": *cursor.PriceAmount},
-					squirrel.And{
-						squirrel.Eq{"fr.price_amount": *cursor.PriceAmount},
-						squirrel.Lt{"o.created_at": cursor.CreatedAt},
-					},
-					squirrel.Expr("fr.price_amount IS NULL"), // NULLS LAST — идут в конце
+					priceTie,
+					priceFull,
+					squirrel.Expr("fr.price_amount IS NULL"),
 				})
 			}
-			// После NULL-элемента (NULLS LAST): только другие NULL с более старым created_at
-			return b.Where(squirrel.And{
-				squirrel.Expr("fr.price_amount IS NULL"),
-				squirrel.Lt{"o.created_at": cursor.CreatedAt},
-			})
+			return b.Where(squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+				squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}})
 		case "price_asc":
 			if cursor.PriceAmount != nil {
-				// После элемента с price=P: берём бо́льшие цены, или ту же цену и более старые
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
 				return b.Where(squirrel.Or{
 					squirrel.Gt{"fr.price_amount": *cursor.PriceAmount},
-					squirrel.And{
-						squirrel.Eq{"fr.price_amount": *cursor.PriceAmount},
-						squirrel.Lt{"o.created_at": cursor.CreatedAt},
-					},
+					priceTie,
+					priceFull,
 				})
 			}
-			// После NULL-элемента (NULLS FIRST): все ненулевые + нули с более старым created_at
 			return b.Where(squirrel.Or{
 				squirrel.Expr("fr.price_amount IS NOT NULL"),
-				squirrel.And{
-					squirrel.Expr("fr.price_amount IS NULL"),
-					squirrel.Lt{"o.created_at": cursor.CreatedAt},
-				},
+				squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+					squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}},
 			})
 		default: // created_at_desc
-			return b.Where(squirrel.Lt{"o.created_at": cursor.CreatedAt})
+			return b.Where(squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie})
 		}
 	}
 }
@@ -990,10 +987,12 @@ type IncomingOfferListItem struct {
 
 // IncomingOfferCursor используется для keyset pagination входящих офферов.
 // SortBy должен совпадать с sort_by текущего запроса.
+// ID — PK строки, стабилен между запросами, используется как финальный tie-breaker.
 type IncomingOfferCursor struct {
 	SortBy      string    `json:"sort_by"`
 	CreatedAt   time.Time `json:"created_at"`
 	PriceAmount *int64    `json:"price_amount,omitempty"`
+	ID          uuid.UUID `json:"id"`
 }
 
 // IncomingOfferFilterOption — опция фильтрации входящих офферов.
@@ -1033,43 +1032,42 @@ func WithIncomingFreightRequestNumber(n int64) IncomingOfferFilterOption {
 }
 
 // WithIncomingCursor строит keyset-условие с учётом первичного ключа сортировки.
+// ID используется как финальный tie-breaker во всех ветках.
 func WithIncomingCursor(cursor IncomingOfferCursor) IncomingOfferFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		id := squirrel.Lt{"o.id": cursor.ID}
+		atTie := squirrel.And{squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
 		switch cursor.SortBy {
 		case "price_desc":
 			if cursor.PriceAmount != nil {
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
 				return b.Where(squirrel.Or{
 					squirrel.Lt{"fr.price_amount": *cursor.PriceAmount},
-					squirrel.And{
-						squirrel.Eq{"fr.price_amount": *cursor.PriceAmount},
-						squirrel.Lt{"o.created_at": cursor.CreatedAt},
-					},
+					priceTie,
+					priceFull,
 					squirrel.Expr("fr.price_amount IS NULL"),
 				})
 			}
-			return b.Where(squirrel.And{
-				squirrel.Expr("fr.price_amount IS NULL"),
-				squirrel.Lt{"o.created_at": cursor.CreatedAt},
-			})
+			return b.Where(squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+				squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}})
 		case "price_asc":
 			if cursor.PriceAmount != nil {
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
 				return b.Where(squirrel.Or{
 					squirrel.Gt{"fr.price_amount": *cursor.PriceAmount},
-					squirrel.And{
-						squirrel.Eq{"fr.price_amount": *cursor.PriceAmount},
-						squirrel.Lt{"o.created_at": cursor.CreatedAt},
-					},
+					priceTie,
+					priceFull,
 				})
 			}
 			return b.Where(squirrel.Or{
 				squirrel.Expr("fr.price_amount IS NOT NULL"),
-				squirrel.And{
-					squirrel.Expr("fr.price_amount IS NULL"),
-					squirrel.Lt{"o.created_at": cursor.CreatedAt},
-				},
+				squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+					squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}},
 			})
 		default: // created_at_desc
-			return b.Where(squirrel.Lt{"o.created_at": cursor.CreatedAt})
+			return b.Where(squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie})
 		}
 	}
 }
@@ -1109,11 +1107,11 @@ func WithIncomingSort(sortBy string) IncomingOfferFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		switch sortBy {
 		case "price_desc":
-			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC")
+			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC", "o.id DESC")
 		case "price_asc":
-			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC")
+			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC", "o.id DESC")
 		default:
-			return b.OrderBy("o.created_at DESC")
+			return b.OrderBy("o.created_at DESC", "o.id DESC")
 		}
 	}
 }
