@@ -806,6 +806,24 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		opts = append(opts, projections.WithCarrierMemberIDAlias(memberID))
 	}
 
+	if v := q.Get("min_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithOfferMinPriceAlias(n))
+		}
+	}
+	if v := q.Get("max_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithOfferMaxPriceAlias(n))
+		}
+	}
+	if v := q.Get("payment_methods"); v != "" {
+		opts = append(opts, projections.WithOfferPaymentMethodsAlias(splitCSV(v)))
+	}
+	if v := q.Get("vat_types"); v != "" {
+		opts = append(opts, projections.WithOfferVatTypesAlias(splitCSV(v)))
+	}
+	opts = append(opts, projections.WithOutgoingOfferSort(q.Get("sort_by")))
+
 	if cursorStr := q.Get("cursor"); cursorStr != "" {
 		cursor, err := httputil.DecodeCursor[projections.OutgoingOfferCursor](cursorStr)
 		if err != nil {
@@ -891,6 +909,23 @@ func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *htt
 			opts = append(opts, projections.WithIncomingFreightRequestNumber(n))
 		}
 	}
+	if v := q.Get("min_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingMinPrice(n))
+		}
+	}
+	if v := q.Get("max_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingMaxPrice(n))
+		}
+	}
+	if v := q.Get("payment_methods"); v != "" {
+		opts = append(opts, projections.WithIncomingPaymentMethods(splitCSV(v)))
+	}
+	if v := q.Get("vat_types"); v != "" {
+		opts = append(opts, projections.WithIncomingVatTypes(splitCSV(v)))
+	}
+	opts = append(opts, projections.WithIncomingSort(q.Get("sort_by")))
 
 	if cursorStr := q.Get("cursor"); cursorStr != "" {
 		cursor, err := httputil.DecodeCursor[projections.IncomingOfferCursor](cursorStr)

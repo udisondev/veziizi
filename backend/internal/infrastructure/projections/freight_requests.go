@@ -501,6 +501,52 @@ func WithCarrierMemberIDAlias(id uuid.UUID) OfferFilterOption {
 	}
 }
 
+// Фильтры по данным заявки (используют псевдоним fr.*)
+
+func WithOfferMinPriceAlias(price int64) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.GtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithOfferMaxPriceAlias(price int64) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithOfferPaymentMethodsAlias(methods []string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(methods) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.payment_method": methods})
+	}
+}
+
+func WithOfferVatTypesAlias(vatTypes []string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(vatTypes) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.vat_type": vatTypes})
+	}
+}
+
+// WithOutgoingOfferSort задаёт сортировку для ListOffersWithFreightData.
+func WithOutgoingOfferSort(sortBy string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		switch sortBy {
+		case "price_desc":
+			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC")
+		case "price_asc":
+			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC")
+		default:
+			return b.OrderBy("o.created_at DESC")
+		}
+	}
+}
+
 // WithOfferStatusesAlias поддерживает plural-формат statuses (comma-separated → IN).
 func WithOfferStatusesAlias(statuses []string) OfferFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
@@ -623,8 +669,8 @@ func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Contex
 			"fr.payment_method", "fr.vat_type",
 		).
 		From("offers_lookup o").
-		LeftJoin("freight_requests_lookup fr ON fr.id = o.freight_request_id").
-		OrderBy("o.created_at DESC")
+		LeftJoin("freight_requests_lookup fr ON fr.id = o.freight_request_id")
+	// Сортировка задаётся через WithOutgoingOfferSort (по умолчанию created_at DESC).
 
 	for _, opt := range opts {
 		builder = opt(builder)
@@ -953,6 +999,50 @@ func WithIncomingCursor(cursor IncomingOfferCursor) IncomingOfferFilterOption {
 	}
 }
 
+func WithIncomingMinPrice(price int64) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.GtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithIncomingMaxPrice(price int64) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithIncomingPaymentMethods(methods []string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(methods) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.payment_method": methods})
+	}
+}
+
+func WithIncomingVatTypes(vatTypes []string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(vatTypes) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.vat_type": vatTypes})
+	}
+}
+
+// WithIncomingSort задаёт сортировку для ListIncomingOffers.
+func WithIncomingSort(sortBy string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		switch sortBy {
+		case "price_desc":
+			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC")
+		case "price_asc":
+			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC")
+		default:
+			return b.OrderBy("o.created_at DESC")
+		}
+	}
+}
+
 func WithIncomingLimit(limit int) IncomingOfferFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Limit(uint64(limit))
@@ -977,8 +1067,8 @@ func (p *FreightRequestsProjection) ListIncomingOffers(
 		Join("freight_requests_lookup fr ON fr.id = o.freight_request_id").
 		LeftJoin("organizations_lookup org ON org.id = o.carrier_org_id").
 		LeftJoin("members_lookup m ON m.id = o.carrier_member_id").
-		Where(squirrel.Eq{"fr.customer_org_id": customerOrgID}).
-		OrderBy("o.created_at DESC", "o.id DESC")
+		Where(squirrel.Eq{"fr.customer_org_id": customerOrgID})
+	// Сортировка задаётся через WithIncomingSort (по умолчанию created_at DESC).
 
 	for _, opt := range opts {
 		builder = opt(builder)
