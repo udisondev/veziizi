@@ -157,7 +157,7 @@ func WithLoadingType(loadingType string) VehicleFilterOption {
 // WithOrgName фильтрует по названию организации (ILIKE, только в JOIN-запросах).
 func WithOrgName(name string) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
-		return b.Where("o.name ILIKE ?", "%"+strings.TrimSpace(name)+"%")
+		return b.Where(squirrel.ILike{"o.name": WrapLikePattern(strings.TrimSpace(name))})
 	}
 }
 

@@ -859,7 +859,9 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 	if hasMore && len(items) > 0 {
 		last := items[len(items)-1]
 		encoded, err := httputil.EncodeCursor(projections.OutgoingOfferCursor{
-			CreatedAt: last.CreatedAt,
+			SortBy:      q.Get("sort_by"),
+			CreatedAt:   last.CreatedAt,
+			PriceAmount: last.PriceAmount,
 		})
 		if err != nil {
 			slog.Error("failed to encode outgoing offers cursor", slog.String("error", err.Error()))
@@ -963,8 +965,9 @@ func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *htt
 	if hasMore && len(items) > 0 {
 		last := items[len(items)-1]
 		encoded, err := httputil.EncodeCursor(projections.IncomingOfferCursor{
-			CreatedAt: last.CreatedAt,
-			ID:        last.ID,
+			SortBy:      q.Get("sort_by"),
+			CreatedAt:   last.CreatedAt,
+			PriceAmount: last.PriceAmount,
 		})
 		if err != nil {
 			slog.Error("failed to encode incoming offers cursor", slog.String("error", err.Error()))
