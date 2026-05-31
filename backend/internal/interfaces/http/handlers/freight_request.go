@@ -358,6 +358,7 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		encoded, err := httputil.EncodeCursor(cursorData)
 		if err != nil {
 			slog.Error("failed to encode cursor", slog.String("error", err.Error()))
+			hasMore = false
 		} else {
 			nextCursor = &encoded
 		}
@@ -862,6 +863,7 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		})
 		if err != nil {
 			slog.Error("failed to encode outgoing offers cursor", slog.String("error", err.Error()))
+			hasMore = false
 		} else {
 			nextCursor = &encoded
 		}
@@ -966,6 +968,7 @@ func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *htt
 		})
 		if err != nil {
 			slog.Error("failed to encode incoming offers cursor", slog.String("error", err.Error()))
+			hasMore = false
 		} else {
 			nextCursor = &encoded
 		}

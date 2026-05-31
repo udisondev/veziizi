@@ -394,6 +394,7 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			slog.Error("failed to encode vehicle cursor", slog.String("error", err.Error()))
+			hasMore = false
 		} else {
 			nextCursor = &encoded
 		}
