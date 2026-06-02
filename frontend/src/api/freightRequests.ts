@@ -46,6 +46,7 @@ export interface FreightRequestListParams {
   destination_city_ids?: string // города конца маршрута
   destination_country_ids?: string // страны конца маршрута (без города)
   has_pending_offers?: boolean
+  sort_by?: 'created_at_desc' | 'expires_at_asc' | 'price_desc' | 'weight_desc' | 'loading_date_asc' | 'offers_count_asc'
   limit?: number
   cursor?: string // cursor для keyset pagination
 }
@@ -84,6 +85,7 @@ export const freightRequestsApi = {
     if (params?.destination_city_ids) searchParams.set('destination_city_ids', params.destination_city_ids)
     if (params?.destination_country_ids) searchParams.set('destination_country_ids', params.destination_country_ids)
     if (params?.has_pending_offers) searchParams.set('has_pending_offers', 'true')
+    if (params?.sort_by) searchParams.set('sort_by', params.sort_by)
     // Pagination
     if (params?.limit) searchParams.set('limit', params.limit.toString())
     if (params?.cursor) searchParams.set('cursor', params.cursor)

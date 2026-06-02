@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,7 +18,15 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/transport"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/session"
+	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 )
+
+// VehicleListResponse — ответ списка транспорта с cursor-based пагинацией.
+type VehicleListResponse struct {
+	Items      []VehicleResponse `json:"items"`
+	NextCursor *string           `json:"next_cursor,omitempty"`
+	HasMore    bool              `json:"has_more"`
+}
 
 type VehicleHandler struct {
 	service         *organization.Service
@@ -92,6 +101,7 @@ func (req VehicleRequest) toSpecs() organization.VehicleSpecsInput {
 type VehicleResponse struct {
 	ID                 uuid.UUID              `json:"id"`
 	OrgID              uuid.UUID              `json:"org_id"`
+	OrgName            *string                `json:"org_name,omitempty"`
 	RegistrationNumber string                 `json:"registration_number"`
 	Brand              *string                `json:"brand,omitempty"`
 	Model              *string                `json:"model,omitempty"`
@@ -116,6 +126,7 @@ func mapVehicleToResponse(v projections.VehicleListItem) VehicleResponse {
 	resp := VehicleResponse{
 		ID:                 v.ID,
 		OrgID:              v.OrgID,
+		OrgName:            v.OrgName,
 		RegistrationNumber: v.RegistrationNumber,
 		Brand:              v.Brand,
 		Model:              v.Model,
@@ -295,15 +306,23 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 	opts := []projections.VehicleFilterOption{
 		projections.WithVehicleStatus(orgValues.VehicleStatusVerified.String()),
 	}
+
 	if v := q.Get("vehicle_type"); v != "" {
 		opts = append(opts, projections.WithFleetVehicleType(v))
 	}
-	if v := q.Get("vehicle_subtype"); v != "" {
-		opts = append(opts, projections.WithFleetVehicleSubType(v))
+	// vehicle_subtypes — запятая-разделённый список подтипов кузова.
+	if v := q.Get("vehicle_subtypes"); v != "" {
+		subs := strings.Split(v, ",")
+		opts = append(opts, projections.WithFleetVehicleSubTypes(subs))
 	}
 	if v := q.Get("min_capacity"); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			opts = append(opts, projections.WithMinCapacity(f))
+		}
+	}
+	if v := q.Get("max_capacity"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			opts = append(opts, projections.WithMaxCapacity(f))
 		}
 	}
 	if v := q.Get("min_volume"); v != "" {
@@ -311,35 +330,81 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 			opts = append(opts, projections.WithMinFleetVolume(f))
 		}
 	}
-	if v := q.Get("requires_adr"); v == "true" {
+	if v := q.Get("max_volume"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			opts = append(opts, projections.WithMaxFleetVolume(f))
+		}
+	}
+	if q.Get("requires_adr") == "true" {
 		opts = append(opts, projections.WithRequiresADR(true))
 	}
-	if v := q.Get("loading_type"); v != "" {
-		opts = append(opts, projections.WithLoadingType(v))
+	if q.Get("thermograph") == "true" {
+		opts = append(opts, projections.WithThermograph(true))
+	}
+	// loading_types — запятая-разделённый список типов погрузки.
+	if v := q.Get("loading_types"); v != "" {
+		types := strings.Split(v, ",")
+		opts = append(opts, projections.WithLoadingTypes(types))
+	}
+	if v := q.Get("org_name"); v != "" {
+		opts = append(opts, projections.WithOrgName(v))
 	}
 	if v := q.Get("org_id"); v != "" {
 		if id, err := uuid.Parse(v); err == nil {
 			opts = append(opts, projections.WithVehicleOrgID(id))
 		}
 	}
-	limit := 50
+
+	// Cursor-based pagination
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.VehicleCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid vehicle cursor", slog.String("cursor", cursorStr), slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		opts = append(opts, projections.WithVehicleCursor(*cursor))
+	}
+
+	limit := 20
 	if v := q.Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
 			limit = n
 		}
 	}
-	opts = append(opts, projections.WithVehicleLimit(limit))
+	opts = append(opts, projections.WithVehicleLimit(limit+1))
 
 	items, err := h.projection.List(r.Context(), opts...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list vehicles")
 		return
 	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.VehicleCursor{
+			CreatedAt:          last.CreatedAt,
+			RegistrationNumber: last.RegistrationNumber,
+		})
+		if err != nil {
+			slog.Error("failed to encode vehicle cursor", slog.String("error", err.Error()))
+			hasMore = false
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
 	resp := make([]VehicleResponse, 0, len(items))
 	for _, v := range items {
 		resp = append(resp, mapVehicleToResponse(v))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": resp})
+	writeJSON(w, http.StatusOK, VehicleListResponse{Items: resp, NextCursor: nextCursor, HasMore: hasMore})
 }
 
 func (h *VehicleHandler) Get(w http.ResponseWriter, r *http.Request) {

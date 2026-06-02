@@ -501,6 +501,62 @@ func WithCarrierMemberIDAlias(id uuid.UUID) OfferFilterOption {
 	}
 }
 
+// Фильтры по данным заявки (используют псевдоним fr.*)
+
+func WithOfferMinPriceAlias(price int64) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.GtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithOfferMaxPriceAlias(price int64) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithOfferPaymentMethodsAlias(methods []string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(methods) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.payment_method": methods})
+	}
+}
+
+func WithOfferVatTypesAlias(vatTypes []string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(vatTypes) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.vat_type": vatTypes})
+	}
+}
+
+// WithOutgoingOfferSort задаёт сортировку для ListOffersWithFreightData.
+func WithOutgoingOfferSort(sortBy string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		switch sortBy {
+		case "price_desc":
+			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC", "o.id DESC")
+		case "price_asc":
+			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC", "o.id DESC")
+		default:
+			return b.OrderBy("o.created_at DESC", "o.id DESC")
+		}
+	}
+}
+
+// WithOfferStatusesAlias поддерживает plural-формат statuses (comma-separated → IN).
+func WithOfferStatusesAlias(statuses []string) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(statuses) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"o.status": statuses})
+	}
+}
+
 func (p *FreightRequestsProjection) GetOfferByID(ctx context.Context, id uuid.UUID) (*OfferListItem, error) {
 	query, args, err := p.psql.
 		Select("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").
@@ -572,30 +628,88 @@ func (p *FreightRequestsProjection) ListOffers(ctx context.Context, opts ...Offe
 	return result, nil
 }
 
-// OfferWithFreightData represents offer with joined freight request data for "My Offers" page
+// OfferWithFreightData represents offer with joined freight request data for "My Offers" page.
 type OfferWithFreightData struct {
-	ID                 uuid.UUID `json:"id"`
-	FreightRequestID   uuid.UUID `json:"freight_request_id"`
-	CarrierOrgID       uuid.UUID `json:"carrier_org_id"`
-	Status             string    `json:"status"`
-	CreatedAt          time.Time `json:"created_at"`
-	OriginAddress      *string   `json:"origin_address,omitempty"`
-	DestinationAddress *string   `json:"destination_address,omitempty"`
-	CargoWeight        *float64  `json:"cargo_weight,omitempty"`
-	PriceAmount        *int64    `json:"price_amount,omitempty"`
-	PriceCurrency      *string   `json:"price_currency,omitempty"`
+	ID                   uuid.UUID `json:"id"`
+	FreightRequestID     uuid.UUID `json:"freight_request_id"`
+	FreightRequestNumber *int64    `json:"freight_request_number,omitempty"`
+	CarrierOrgID         uuid.UUID `json:"carrier_org_id"`
+	CustomerOrgName      *string   `json:"customer_org_name,omitempty"`
+	Status               string    `json:"status"`
+	CreatedAt            time.Time `json:"created_at"`
+	OriginAddress        *string   `json:"origin_address,omitempty"`
+	DestinationAddress   *string   `json:"destination_address,omitempty"`
+	CargoWeight          *float64  `json:"cargo_weight,omitempty"`
+	PriceAmount          *int64    `json:"price_amount,omitempty"`
+	PriceCurrency        *string   `json:"price_currency,omitempty"`
+	PaymentMethod        *string   `json:"payment_method,omitempty"`
+	VatType              *string   `json:"vat_type,omitempty"`
+}
+
+// OutgoingOfferCursor используется для keyset pagination исходящих офферов.
+// SortBy должен совпадать с sort_by текущего запроса — курсор кодирует первичный ключ сортировки.
+// ID — PK строки, стабилен между запросами, используется как финальный tie-breaker.
+type OutgoingOfferCursor struct {
+	SortBy      string    `json:"sort_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	PriceAmount *int64    `json:"price_amount,omitempty"`
+	ID          uuid.UUID `json:"id"`
+}
+
+// WithOutgoingOfferCursor строит keyset-условие в соответствии с первичным ключом сортировки.
+// ID используется как финальный tie-breaker во всех ветках.
+func WithOutgoingOfferCursor(cursor OutgoingOfferCursor) OfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		id := squirrel.Lt{"o.id": cursor.ID}
+		atTie := squirrel.And{squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
+		switch cursor.SortBy {
+		case "price_desc":
+			if cursor.PriceAmount != nil {
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
+				return b.Where(squirrel.Or{
+					squirrel.Lt{"fr.price_amount": *cursor.PriceAmount},
+					priceTie,
+					priceFull,
+					squirrel.Expr("fr.price_amount IS NULL"),
+				})
+			}
+			return b.Where(squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+				squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}})
+		case "price_asc":
+			if cursor.PriceAmount != nil {
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
+				return b.Where(squirrel.Or{
+					squirrel.Gt{"fr.price_amount": *cursor.PriceAmount},
+					priceTie,
+					priceFull,
+				})
+			}
+			return b.Where(squirrel.Or{
+				squirrel.Expr("fr.price_amount IS NOT NULL"),
+				squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+					squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}},
+			})
+		default: // created_at_desc
+			return b.Where(squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie})
+		}
+	}
 }
 
 func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Context, opts ...OfferFilterOption) ([]OfferWithFreightData, error) {
 	builder := p.psql.
 		Select(
-			"o.id", "o.freight_request_id", "o.carrier_org_id", "o.status", "o.created_at",
+			"o.id", "o.freight_request_id", "fr.request_number",
+			"o.carrier_org_id", "fr.customer_org_name",
+			"o.status", "o.created_at",
 			"fr.origin_address", "fr.destination_address", "fr.cargo_weight",
 			"fr.price_amount", "fr.price_currency",
+			"fr.payment_method", "fr.vat_type",
 		).
 		From("offers_lookup o").
-		LeftJoin("freight_requests_lookup fr ON fr.id = o.freight_request_id").
-		OrderBy("o.created_at DESC")
+		LeftJoin("freight_requests_lookup fr ON fr.id = o.freight_request_id")
+	// Сортировка задаётся через WithOutgoingOfferSort (по умолчанию created_at DESC).
 
 	for _, opt := range opts {
 		builder = opt(builder)
@@ -616,16 +730,12 @@ func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Contex
 	for rows.Next() {
 		var item OfferWithFreightData
 		if err := rows.Scan(
-			&item.ID,
-			&item.FreightRequestID,
-			&item.CarrierOrgID,
-			&item.Status,
-			&item.CreatedAt,
-			&item.OriginAddress,
-			&item.DestinationAddress,
-			&item.CargoWeight,
-			&item.PriceAmount,
-			&item.PriceCurrency,
+			&item.ID, &item.FreightRequestID, &item.FreightRequestNumber,
+			&item.CarrierOrgID, &item.CustomerOrgName,
+			&item.Status, &item.CreatedAt,
+			&item.OriginAddress, &item.DestinationAddress, &item.CargoWeight,
+			&item.PriceAmount, &item.PriceCurrency,
+			&item.PaymentMethod, &item.VatType,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
@@ -847,6 +957,220 @@ func (p *FreightRequestsProjection) GetPendingOffersOnMyRequests(ctx context.Con
 			&item.OffersCount,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending offer: %w", err)
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
+
+	return result, nil
+}
+
+// ─── Incoming offers (офферы на заявки текущей организации) ──────────────────
+
+// IncomingOfferListItem — оффер, полученный текущей организацией как заказчиком.
+type IncomingOfferListItem struct {
+	ID                   uuid.UUID  `json:"id"`
+	FreightRequestID     uuid.UUID  `json:"freight_request_id"`
+	FreightRequestNumber *int64     `json:"freight_request_number,omitempty"`
+	CarrierOrgID         uuid.UUID  `json:"carrier_org_id"`
+	CarrierOrgName       *string    `json:"carrier_org_name,omitempty"`
+	CarrierMemberID      *uuid.UUID `json:"carrier_member_id,omitempty"`
+	CarrierMemberName    *string    `json:"carrier_member_name,omitempty"`
+	Status               string     `json:"status"`
+	CreatedAt            time.Time  `json:"created_at"`
+	OriginAddress        *string    `json:"origin_address,omitempty"`
+	DestinationAddress   *string    `json:"destination_address,omitempty"`
+	PriceAmount          *int64     `json:"price_amount,omitempty"`
+}
+
+// IncomingOfferCursor используется для keyset pagination входящих офферов.
+// SortBy должен совпадать с sort_by текущего запроса.
+// ID — PK строки, стабилен между запросами, используется как финальный tie-breaker.
+type IncomingOfferCursor struct {
+	SortBy      string    `json:"sort_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	PriceAmount *int64    `json:"price_amount,omitempty"`
+	ID          uuid.UUID `json:"id"`
+}
+
+// IncomingOfferFilterOption — опция фильтрации входящих офферов.
+type IncomingOfferFilterOption func(squirrel.SelectBuilder) squirrel.SelectBuilder
+
+func WithIncomingStatus(status string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"o.status": status})
+	}
+}
+
+func WithIncomingStatuses(statuses []string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(statuses) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"o.status": statuses})
+	}
+}
+
+func WithIncomingCarrierMemberID(id uuid.UUID) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"o.carrier_member_id": id})
+	}
+}
+
+func WithIncomingCarrierOrgName(name string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.ILike{"org.name": WrapLikePattern(name)})
+	}
+}
+
+func WithIncomingFreightRequestNumber(n int64) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"fr.request_number": n})
+	}
+}
+
+// WithIncomingCursor строит keyset-условие с учётом первичного ключа сортировки.
+// ID используется как финальный tie-breaker во всех ветках.
+func WithIncomingCursor(cursor IncomingOfferCursor) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		id := squirrel.Lt{"o.id": cursor.ID}
+		atTie := squirrel.And{squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
+		switch cursor.SortBy {
+		case "price_desc":
+			if cursor.PriceAmount != nil {
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
+				return b.Where(squirrel.Or{
+					squirrel.Lt{"fr.price_amount": *cursor.PriceAmount},
+					priceTie,
+					priceFull,
+					squirrel.Expr("fr.price_amount IS NULL"),
+				})
+			}
+			return b.Where(squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+				squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}})
+		case "price_asc":
+			if cursor.PriceAmount != nil {
+				priceTie := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Lt{"o.created_at": cursor.CreatedAt}}
+				priceFull := squirrel.And{squirrel.Eq{"fr.price_amount": *cursor.PriceAmount}, squirrel.Eq{"o.created_at": cursor.CreatedAt}, id}
+				return b.Where(squirrel.Or{
+					squirrel.Gt{"fr.price_amount": *cursor.PriceAmount},
+					priceTie,
+					priceFull,
+				})
+			}
+			return b.Where(squirrel.Or{
+				squirrel.Expr("fr.price_amount IS NOT NULL"),
+				squirrel.And{squirrel.Expr("fr.price_amount IS NULL"),
+					squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie}},
+			})
+		default: // created_at_desc
+			return b.Where(squirrel.Or{squirrel.Lt{"o.created_at": cursor.CreatedAt}, atTie})
+		}
+	}
+}
+
+func WithIncomingMinPrice(price int64) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.GtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithIncomingMaxPrice(price int64) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.LtOrEq{"fr.price_amount": price})
+	}
+}
+
+func WithIncomingPaymentMethods(methods []string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(methods) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.payment_method": methods})
+	}
+}
+
+func WithIncomingVatTypes(vatTypes []string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		if len(vatTypes) == 0 {
+			return b
+		}
+		return b.Where(squirrel.Eq{"fr.vat_type": vatTypes})
+	}
+}
+
+// WithIncomingSort задаёт сортировку для ListIncomingOffers.
+func WithIncomingSort(sortBy string) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		switch sortBy {
+		case "price_desc":
+			return b.OrderBy("fr.price_amount DESC NULLS LAST", "o.created_at DESC", "o.id DESC")
+		case "price_asc":
+			return b.OrderBy("fr.price_amount ASC NULLS FIRST", "o.created_at DESC", "o.id DESC")
+		default:
+			return b.OrderBy("o.created_at DESC", "o.id DESC")
+		}
+	}
+}
+
+func WithIncomingLimit(limit int) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Limit(uint64(limit))
+	}
+}
+
+// ListIncomingOffers возвращает офферы, поданные на заявки организации-заказчика.
+func (p *FreightRequestsProjection) ListIncomingOffers(
+	ctx context.Context,
+	customerOrgID uuid.UUID,
+	opts ...IncomingOfferFilterOption,
+) ([]IncomingOfferListItem, error) {
+	builder := p.psql.
+		Select(
+			"o.id", "o.freight_request_id", "fr.request_number",
+			"o.carrier_org_id", "org.name AS carrier_org_name",
+			"o.carrier_member_id", "m.name AS carrier_member_name",
+			"o.status", "o.created_at",
+			"fr.origin_address", "fr.destination_address",
+			"fr.price_amount",
+		).
+		From("offers_lookup o").
+		Join("freight_requests_lookup fr ON fr.id = o.freight_request_id").
+		LeftJoin("organizations_lookup org ON org.id = o.carrier_org_id").
+		LeftJoin("members_lookup m ON m.id = o.carrier_member_id").
+		Where(squirrel.Eq{"fr.customer_org_id": customerOrgID})
+	// Сортировка задаётся через WithIncomingSort (по умолчанию created_at DESC).
+
+	for _, opt := range opts {
+		builder = opt(builder)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build incoming offers query: %w", err)
+	}
+
+	rows, err := p.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query incoming offers: %w", err)
+	}
+	defer rows.Close()
+
+	var result []IncomingOfferListItem
+	for rows.Next() {
+		var item IncomingOfferListItem
+		if err := rows.Scan(
+			&item.ID, &item.FreightRequestID, &item.FreightRequestNumber,
+			&item.CarrierOrgID, &item.CarrierOrgName,
+			&item.CarrierMemberID, &item.CarrierMemberName,
+			&item.Status, &item.CreatedAt,
+			&item.OriginAddress, &item.DestinationAddress,
+			&item.PriceAmount,
+		); err != nil {
+			return nil, fmt.Errorf("scan incoming offer: %w", err)
 		}
 		result = append(result, item)
 	}

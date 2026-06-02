@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -233,6 +235,7 @@ func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/api/v1/freight-requests/{id}/cancel-confirmed", h.CancelAfterConfirmed)
 	r.Post("/api/v1/freight-requests/{id}/reassign-carrier", h.ReassignCarrierMember)
 	// My offers (for current organization)
+	r.Get("/api/v1/offers/incoming", h.ListIncomingOffers) // входящие — сначала, чтобы chi не поглощал как /offers/{id}
 	r.Get("/api/v1/offers", h.ListMyOffers)
 	// Carrier invitations (customer pings a carrier about an active freight request)
 	r.Post("/api/v1/freight-requests/{id}/invite-carrier", h.InviteCarrier)
@@ -355,6 +358,7 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 		encoded, err := httputil.EncodeCursor(cursorData)
 		if err != nil {
 			slog.Error("failed to encode cursor", slog.String("error", err.Error()))
+			hasMore = false
 		} else {
 			nextCursor = &encoded
 		}
@@ -768,7 +772,14 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, offers)
 }
 
-// ListMyOffers returns all offers made by current organization with freight request data
+// OutgoingOffersResponse — ответ списка исходящих офферов с cursor-based пагинацией.
+type OutgoingOffersResponse struct {
+	Items      []projections.OfferWithFreightData `json:"items"`
+	NextCursor *string                            `json:"next_cursor,omitempty"`
+	HasMore    bool                               `json:"has_more"`
+}
+
+// ListMyOffers returns offers made by current organization with cursor pagination.
 func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
@@ -776,14 +787,18 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	q := r.URL.Query()
 	var opts []projections.OfferFilterOption
 	opts = append(opts, projections.WithCarrierOrgIDAlias(orgID))
 
-	if status := r.URL.Query().Get("status"); status != "" {
+	// Поддерживаем оба формата: legacy "status" и новый "statuses" (comma-separated)
+	if statuses := q.Get("statuses"); statuses != "" {
+		opts = append(opts, projections.WithOfferStatusesAlias(splitCSV(statuses)))
+	} else if status := q.Get("status"); status != "" {
 		opts = append(opts, projections.WithOfferStatusAlias(status))
 	}
 
-	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
+	if memberIDStr := q.Get("member_id"); memberIDStr != "" {
 		memberID, err := uuid.Parse(memberIDStr)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid member_id")
@@ -792,10 +807,41 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		opts = append(opts, projections.WithCarrierMemberIDAlias(memberID))
 	}
 
-	// SEC-016: Валидированная пагинация
-	pagination := httputil.ParsePagination(r)
-	opts = append(opts, projections.WithOfferLimit(pagination.Limit))
-	opts = append(opts, projections.WithOfferOffset(pagination.Offset))
+	if v := q.Get("min_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithOfferMinPriceAlias(n))
+		}
+	}
+	if v := q.Get("max_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithOfferMaxPriceAlias(n))
+		}
+	}
+	if v := q.Get("payment_methods"); v != "" {
+		opts = append(opts, projections.WithOfferPaymentMethodsAlias(splitCSV(v)))
+	}
+	if v := q.Get("vat_types"); v != "" {
+		opts = append(opts, projections.WithOfferVatTypesAlias(splitCSV(v)))
+	}
+	opts = append(opts, projections.WithOutgoingOfferSort(q.Get("sort_by")))
+
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.OutgoingOfferCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid outgoing offers cursor", slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		opts = append(opts, projections.WithOutgoingOfferCursor(*cursor))
+	}
+
+	limit := 20
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	opts = append(opts, projections.WithOfferLimit(limit+1))
 
 	items, err := h.projection.ListOffersWithFreightData(r.Context(), opts...)
 	if err != nil {
@@ -804,7 +850,155 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	writeJSON(w, http.StatusOK, items)
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.OutgoingOfferCursor{
+			SortBy:      q.Get("sort_by"),
+			CreatedAt:   last.CreatedAt,
+			PriceAmount: last.PriceAmount,
+			ID:          last.ID,
+		})
+		if err != nil {
+			slog.Error("failed to encode outgoing offers cursor", slog.String("error", err.Error()))
+			hasMore = false
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	writeJSON(w, http.StatusOK, OutgoingOffersResponse{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	})
+}
+
+// IncomingOffersResponse — ответ списка входящих офферов с cursor-based пагинацией.
+type IncomingOffersResponse struct {
+	Items      []projections.IncomingOfferListItem `json:"items"`
+	NextCursor *string                             `json:"next_cursor,omitempty"`
+	HasMore    bool                                `json:"has_more"`
+}
+
+// ListIncomingOffers возвращает офферы, поданные на заявки текущей организации как заказчика.
+func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	q := r.URL.Query()
+	var opts []projections.IncomingOfferFilterOption
+
+	if v := q.Get("statuses"); v != "" {
+		parts := splitCSV(v)
+		opts = append(opts, projections.WithIncomingStatuses(parts))
+	}
+	if v := q.Get("carrier_org_name"); v != "" {
+		opts = append(opts, projections.WithIncomingCarrierOrgName(v))
+	}
+	if v := q.Get("member_id"); v != "" {
+		if id, err := uuid.Parse(v); err == nil {
+			opts = append(opts, projections.WithIncomingCarrierMemberID(id))
+		}
+	}
+	if v := q.Get("freight_request_number"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingFreightRequestNumber(n))
+		}
+	}
+	if v := q.Get("min_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingMinPrice(n))
+		}
+	}
+	if v := q.Get("max_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingMaxPrice(n))
+		}
+	}
+	if v := q.Get("payment_methods"); v != "" {
+		opts = append(opts, projections.WithIncomingPaymentMethods(splitCSV(v)))
+	}
+	if v := q.Get("vat_types"); v != "" {
+		opts = append(opts, projections.WithIncomingVatTypes(splitCSV(v)))
+	}
+	opts = append(opts, projections.WithIncomingSort(q.Get("sort_by")))
+
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.IncomingOfferCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid incoming offers cursor", slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		opts = append(opts, projections.WithIncomingCursor(*cursor))
+	}
+
+	limit := 20
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	opts = append(opts, projections.WithIncomingLimit(limit+1))
+
+	items, err := h.projection.ListIncomingOffers(r.Context(), orgID, opts...)
+	if err != nil {
+		slog.Error("failed to list incoming offers", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list incoming offers")
+		return
+	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.IncomingOfferCursor{
+			SortBy:      q.Get("sort_by"),
+			CreatedAt:   last.CreatedAt,
+			PriceAmount: last.PriceAmount,
+			ID:          last.ID,
+		})
+		if err != nil {
+			slog.Error("failed to encode incoming offers cursor", slog.String("error", err.Error()))
+			hasMore = false
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	writeJSON(w, http.StatusOK, IncomingOffersResponse{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	})
+}
+
+// splitCSV разбивает строку по запятой.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 type WithdrawOfferRequest struct {

@@ -16,6 +16,7 @@ const props = defineProps<{
   items: TabSliderItem[]
   modelValue: string
   stretch?: boolean
+  noOverflow?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -58,7 +59,7 @@ watch(
 )
 
 function recalculate() {
-  if (!wrapperRef.value) return
+  if (props.noOverflow || !wrapperRef.value) return
 
   // Временно показываем все табы для замера (через opacity, не display)
   // tabRefs всегда содержат все элементы — скрытые через opacity/pointer-events
@@ -99,19 +100,19 @@ function rAF(): Promise<void> {
 let ro: ResizeObserver | null = null
 
 onMounted(async () => {
-  // Двойной rAF — гарантирует завершение layout и paint
   await rAF()
-  recalculate()
+  if (!props.noOverflow) {
+    recalculate()
+    if (wrapperRef.value) {
+      ro = new ResizeObserver(() => {
+        recalculate()
+        nextTick(() => updateSlider())
+      })
+      ro.observe(wrapperRef.value)
+    }
+  }
   await nextTick()
   updateSlider()
-
-  if (wrapperRef.value) {
-    ro = new ResizeObserver(() => {
-      recalculate()
-      nextTick(() => updateSlider())
-    })
-    ro.observe(wrapperRef.value)
-  }
 })
 
 onUnmounted(() => {
