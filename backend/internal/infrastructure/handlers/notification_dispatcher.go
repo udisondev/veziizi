@@ -12,11 +12,24 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
+
+const notificationDispatcherName = "notification-dispatcher"
 
 // NotificationDispatcherHandler модульный dispatcher с правилами. Публикует
 // команды через NotificationBus (CQRS), а не через raw message.Publisher.
+//
+// Обработка каждого события обёрнута в dedupGuard: повторная at-least-once
+// доставка НЕ публикует команды заново. Это критично — каждая публикация в
+// NotificationBus генерирует новый message UUID, поэтому notification_dedup в
+// senders повторную команду не распознал бы и уведомление ушло бы дважды.
+// Заодно dedupGuard даёт атомарность: in-app уведомления и команды в outbox
+// коммитятся одной tx с dedup-резервом.
 type NotificationDispatcherHandler struct {
+	db           dbtx.TxManager
+	dedup        *projections.ProjectionEventDedupProjection
 	registry     *rules.Registry
 	notifService *notifApp.Service
 	notifBus     *messaging.NotificationBus
@@ -24,11 +37,15 @@ type NotificationDispatcherHandler struct {
 
 // NewNotificationDispatcherHandler создает новый handler
 func NewNotificationDispatcherHandler(
+	db dbtx.TxManager,
+	dedup *projections.ProjectionEventDedupProjection,
 	registry *rules.Registry,
 	notifService *notifApp.Service,
 	notifBus *messaging.NotificationBus,
 ) *NotificationDispatcherHandler {
 	return &NotificationDispatcherHandler{
+		db:           db,
+		dedup:        dedup,
 		registry:     registry,
 		notifService: notifService,
 		notifBus:     notifBus,
@@ -49,7 +66,9 @@ func (h *NotificationDispatcherHandler) Handle(msg *message.Message) error {
 		return fmt.Errorf("unmarshal event: %w", err)
 	}
 
-	return h.processEvent(msg.Context(), evt)
+	return dedupGuard(msg.Context(), h.db, h.dedup, notificationDispatcherName, envelope.ID, func(ctx context.Context) error {
+		return h.processEvent(ctx, evt)
+	})
 }
 
 func (h *NotificationDispatcherHandler) processEvent(ctx context.Context, evt eventstore.Event) error {

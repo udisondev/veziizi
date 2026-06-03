@@ -23,6 +23,8 @@ func main() {
 		LogFile:       "notification-dispatcher-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
 			return handlers.NewNotificationDispatcherHandler(
+				f.DB(),
+				f.ProjectionEventDedupProjection(),
 				f.NotificationRulesRegistry(),
 				f.NotificationService(),
 				f.MustNotificationBus(),

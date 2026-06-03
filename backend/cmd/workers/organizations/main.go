@@ -17,6 +17,7 @@ func main() {
 		LogFile:       "organizations-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewOrganizationsHandler(
+				f.EventStore(),
 				f.OrganizationsProjection(),
 				f.FreightRequestsProjection(),
 			)

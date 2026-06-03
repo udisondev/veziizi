@@ -47,30 +47,13 @@ func NewReviewsProjectionHandler(
 }
 
 // withDedup оборачивает накопительные операции проекции в общую tx с
-// dedup-резервом event_id. Если событие уже обрабатывалось этим воркером
-// (повторная доставка) — fn не вызывается, возвращаем nil (молчаливый Ack).
-//
-// dedup.Begin делает INSERT ... ON CONFLICT DO NOTHING внутри той же tx, что и
-// fn — это даёт atomic «либо весь набор операций применился и dedup-строка
-// есть, либо ничего не применилось и dedup-строки нет».
+// dedup-резервом event_id — тонкая обёртка над общим dedupGuard (см. dedup.go).
 func (h *ReviewsProjectionHandler) withDedup(ctx context.Context, fn func(ctx context.Context) error) error {
 	eventID, err := eventIDFromCtx(ctx)
 	if err != nil {
 		return err
 	}
-	return h.db.InTx(ctx, func(ctx context.Context) error {
-		first, err := h.dedup.Begin(ctx, reviewsProjectionName, eventID)
-		if err != nil {
-			return fmt.Errorf("dedup begin: %w", err)
-		}
-		if !first {
-			slog.Debug("event already processed by projection, skipping",
-				slog.String("projection", reviewsProjectionName),
-				slog.String("event_id", eventID.String()))
-			return nil
-		}
-		return fn(ctx)
-	})
+	return dedupGuard(ctx, h.db, h.dedup, reviewsProjectionName, eventID, fn)
 }
 
 func (h *ReviewsProjectionHandler) OnReceived(ctx context.Context, e *events.ReviewReceived) error {

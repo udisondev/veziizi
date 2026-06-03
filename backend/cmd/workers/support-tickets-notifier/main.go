@@ -39,6 +39,8 @@ func main() {
 		LogFile:       "support-tickets-notifier-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewSupportAdminNotifierHandler(
+				f.DB(),
+				f.ProjectionEventDedupProjection(),
 				adminRepo.NewRepository(f.DB()),
 				f.MustNotificationBus(),
 			)

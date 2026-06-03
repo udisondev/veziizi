@@ -51,6 +51,10 @@ func (h *SupportTicketsHandler) OnTicketCreated(ctx context.Context, e *events.T
 	return nil
 }
 
+// Статусные апдейты идут через versionGuardedUpdate: устаревшее событие
+// (out-of-order при N инстансах) не перетирает свежий статус, событие раньше
+// Created уходит в retry до появления строки.
+
 func (h *SupportTicketsHandler) OnMessageAdded(ctx context.Context, e *events.MessageAdded) error {
 	var newStatus string
 	if e.SenderType == entities.SenderTypeAdmin {
@@ -59,17 +63,10 @@ func (h *SupportTicketsHandler) OnMessageAdded(ctx context.Context, e *events.Me
 		newStatus = values.TicketStatusAwaitingReply.String()
 	}
 
-	query, args, err := h.psql.
-		Update("support_tickets_lookup").
-		Set("status", newStatus).
-		Set("updated_at", e.OccurredAt()).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", e.AggregateID(), e.Version(), map[string]any{
+		"status":     newStatus,
+		"updated_at": e.OccurredAt(),
+	}); err != nil {
 		return fmt.Errorf("update ticket status: %w", err)
 	}
 
@@ -80,18 +77,11 @@ func (h *SupportTicketsHandler) OnMessageAdded(ctx context.Context, e *events.Me
 }
 
 func (h *SupportTicketsHandler) OnTicketClosed(ctx context.Context, e *events.TicketClosed) error {
-	query, args, err := h.psql.
-		Update("support_tickets_lookup").
-		Set("status", values.TicketStatusClosed.String()).
-		Set("updated_at", e.OccurredAt()).
-		Set("closed_at", e.OccurredAt()).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", e.AggregateID(), e.Version(), map[string]any{
+		"status":     values.TicketStatusClosed.String(),
+		"updated_at": e.OccurredAt(),
+		"closed_at":  e.OccurredAt(),
+	}); err != nil {
 		return fmt.Errorf("update ticket status: %w", err)
 	}
 
@@ -102,18 +92,11 @@ func (h *SupportTicketsHandler) OnTicketClosed(ctx context.Context, e *events.Ti
 }
 
 func (h *SupportTicketsHandler) OnTicketReopened(ctx context.Context, e *events.TicketReopened) error {
-	query, args, err := h.psql.
-		Update("support_tickets_lookup").
-		Set("status", values.TicketStatusAwaitingReply.String()).
-		Set("updated_at", e.OccurredAt()).
-		Set("closed_at", nil).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", e.AggregateID(), e.Version(), map[string]any{
+		"status":     values.TicketStatusAwaitingReply.String(),
+		"updated_at": e.OccurredAt(),
+		"closed_at":  nil,
+	}); err != nil {
 		return fmt.Errorf("update ticket status: %w", err)
 	}
 

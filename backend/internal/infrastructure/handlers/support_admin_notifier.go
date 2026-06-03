@@ -9,6 +9,8 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/domain/support/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
 // AdminTelegramGetter интерфейс для получения админов с Telegram
@@ -16,28 +18,55 @@ type AdminTelegramGetter interface {
 	GetAdminsWithTelegram(ctx context.Context) ([]admin.AdminWithTelegram, error)
 }
 
+const supportAdminNotifierName = "support-admin-notifier"
+
 // SupportAdminNotifierHandler — CQRS-handlers: подписан на support.events,
 // уведомляет админов в Telegram о новых тикетах и пользовательских сообщениях.
 // Запускается в отдельном воркере support-tickets-notifier с собственной
 // consumer group — сбой отправки не должен блокировать обновление проекции
 // support-tickets-projection.
+//
+// Обработка обёрнута в dedupGuard: каждая публикация в NotificationBus
+// генерирует новый message UUID, поэтому notification_dedup в telegram-sender
+// не распознал бы повторную at-least-once доставку — админы получили бы дубль.
 type SupportAdminNotifierHandler struct {
+	db        dbtx.TxManager
+	dedup     *projections.ProjectionEventDedupProjection
 	adminRepo AdminTelegramGetter
 	notifBus  *messaging.NotificationBus
 }
 
 func NewSupportAdminNotifierHandler(
+	db dbtx.TxManager,
+	dedup *projections.ProjectionEventDedupProjection,
 	adminRepo AdminTelegramGetter,
 	notifBus *messaging.NotificationBus,
 ) *SupportAdminNotifierHandler {
 	return &SupportAdminNotifierHandler{
+		db:        db,
+		dedup:     dedup,
 		adminRepo: adminRepo,
 		notifBus:  notifBus,
 	}
 }
 
+// withDedup — тонкая обёртка над dedupGuard с event_id из CQRS-контекста.
+func (h *SupportAdminNotifierHandler) withDedup(ctx context.Context, fn func(ctx context.Context) error) error {
+	eventID, err := eventIDFromCtx(ctx)
+	if err != nil {
+		return err
+	}
+	return dedupGuard(ctx, h.db, h.dedup, supportAdminNotifierName, eventID, fn)
+}
+
 // OnTicketCreated — рассылка админам о новом тикете.
 func (h *SupportAdminNotifierHandler) OnTicketCreated(ctx context.Context, e *events.TicketCreated) error {
+	return h.withDedup(ctx, func(ctx context.Context) error {
+		return h.notifyTicketCreated(ctx, e)
+	})
+}
+
+func (h *SupportAdminNotifierHandler) notifyTicketCreated(ctx context.Context, e *events.TicketCreated) error {
 	admins, err := h.adminRepo.GetAdminsWithTelegram(ctx)
 	if err != nil {
 		slog.Error("failed to get admins with telegram", slog.String("error", err.Error()))
@@ -71,6 +100,12 @@ func (h *SupportAdminNotifierHandler) OnMessageAdded(ctx context.Context, e *eve
 	if e.SenderType != entities.SenderTypeUser {
 		return nil
 	}
+	return h.withDedup(ctx, func(ctx context.Context) error {
+		return h.notifyMessageAdded(ctx, e)
+	})
+}
+
+func (h *SupportAdminNotifierHandler) notifyMessageAdded(ctx context.Context, e *events.MessageAdded) error {
 	admins, err := h.adminRepo.GetAdminsWithTelegram(ctx)
 	if err != nil {
 		return fmt.Errorf("get admins with telegram: %w", err)

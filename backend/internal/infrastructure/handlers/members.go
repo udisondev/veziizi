@@ -79,6 +79,10 @@ func (h *MembersHandler) OnMemberAdded(ctx context.Context, e *events.MemberAdde
 	return nil
 }
 
+// OnMemberRemoved удаляет строку. DELETE идемпотентен (повтор — no-op).
+// Out-of-order «Removed раньше Added» теоретически воскресил бы строку, но
+// Added и Removed одного member'а разнесены во времени на порядки дальше, чем
+// окно конкурентной обработки соседних сообщений стрима — риск принят.
 func (h *MembersHandler) OnMemberRemoved(ctx context.Context, e *events.MemberRemoved) error {
 	query, args, err := h.psql.
 		Delete("members_lookup").
@@ -96,17 +100,14 @@ func (h *MembersHandler) OnMemberRemoved(ctx context.Context, e *events.MemberRe
 	return nil
 }
 
-func (h *MembersHandler) OnMemberRoleChanged(ctx context.Context, e *events.MemberRoleChanged) error {
-	query, args, err := h.psql.
-		Update("members_lookup").
-		Set("role", e.NewRole.String()).
-		Where(squirrel.Eq{"id": e.MemberID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
-	}
+// Статусные апдейты идут через versionGuardedUpdate: устаревшее событие
+// (out-of-order при N инстансах) не перетирает свежий статус, событие раньше
+// Created уходит в retry до появления строки.
 
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+func (h *MembersHandler) OnMemberRoleChanged(ctx context.Context, e *events.MemberRoleChanged) error {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "members_lookup", e.MemberID, e.Version(), map[string]any{
+		"role": e.NewRole.String(),
+	}); err != nil {
 		return fmt.Errorf("failed to update member role: %w", err)
 	}
 
@@ -115,16 +116,9 @@ func (h *MembersHandler) OnMemberRoleChanged(ctx context.Context, e *events.Memb
 }
 
 func (h *MembersHandler) OnMemberBlocked(ctx context.Context, e *events.MemberBlocked) error {
-	query, args, err := h.psql.
-		Update("members_lookup").
-		Set("status", "blocked").
-		Where(squirrel.Eq{"id": e.MemberID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "members_lookup", e.MemberID, e.Version(), map[string]any{
+		"status": "blocked",
+	}); err != nil {
 		return fmt.Errorf("failed to block member: %w", err)
 	}
 
@@ -133,16 +127,9 @@ func (h *MembersHandler) OnMemberBlocked(ctx context.Context, e *events.MemberBl
 }
 
 func (h *MembersHandler) OnMemberUnblocked(ctx context.Context, e *events.MemberUnblocked) error {
-	query, args, err := h.psql.
-		Update("members_lookup").
-		Set("status", "active").
-		Where(squirrel.Eq{"id": e.MemberID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "members_lookup", e.MemberID, e.Version(), map[string]any{
+		"status": "active",
+	}); err != nil {
 		return fmt.Errorf("failed to unblock member: %w", err)
 	}
 

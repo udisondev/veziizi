@@ -290,7 +290,7 @@ func (s *Suite) startEventHandlers() error {
 		return err
 	}
 
-	orgsH := eventHandlers.NewOrganizationsHandler(s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
+	orgsH := eventHandlers.NewOrganizationsHandler(s.Factory.EventStore(), s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
 	if err := register("organization.events", "e2e_organizations",
 		cqrs.NewGroupEventHandler(orgsH.OnCreated),
 		cqrs.NewGroupEventHandler(orgsH.OnApproved),
