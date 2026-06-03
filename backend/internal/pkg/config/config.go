@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	Database  DatabaseConfig
+	Redis     RedisConfig
 	HTTP      HTTPConfig
 	Session   SessionConfig
 	Telegram  TelegramConfig
@@ -32,6 +33,30 @@ type MetricsConfig struct {
 
 type DatabaseConfig struct {
 	URL string `env:"DATABASE_URL" envDefault:"postgres://veziizi:veziizi@localhost:5432/veziizi?sslmode=disable" validate:"required,url"`
+}
+
+// RedisConfig — настройки Redis Streams (транспорт событий между forwarder'ом
+// и воркерами). Postgres outbox остаётся источником истины: события публикуются
+// в watermill_messages_<OutboxTopic> транзакционно, forwarder перекладывает их
+// в Redis-стримы, воркеры читают стримы через consumer groups.
+type RedisConfig struct {
+	URL string `env:"REDIS_URL" envDefault:"redis://localhost:6379/0" validate:"required"`
+	// ConsumerName — имя консьюмера внутри consumer group. ДОЛЖНО быть уникальным
+	// на инстанс воркера (иначе реплики делят один pending-список и дерутся за
+	// XCLAIM). Пустое значение → worker.Run подставит "<worker>-<hostname>".
+	ConsumerName string `env:"REDIS_CONSUMER_NAME" envDefault:""`
+	// MaxIdleTime — сколько pending-сообщение упавшего консьюмера висит до того,
+	// как его заберёт (XAUTOCLAIM) живой консьюмер той же группы.
+	MaxIdleTime time.Duration `env:"REDIS_MAX_IDLE_TIME" envDefault:"60s"`
+	// ClaimInterval — как часто консьюмер проверяет чужие зависшие pending.
+	ClaimInterval time.Duration `env:"REDIS_CLAIM_INTERVAL" envDefault:"5s"`
+	// NackResendSleep — пауза перед повторной доставкой nack'нутого сообщения.
+	NackResendSleep time.Duration `env:"REDIS_NACK_RESEND_SLEEP" envDefault:"100ms"`
+	// BlockTime — таймаут блокирующего XREADGROUP.
+	BlockTime time.Duration `env:"REDIS_BLOCK_TIME" envDefault:"100ms"`
+	// MaxLen — приблизительный потолок длины стрима (XADD MAXLEN ~). Защита от
+	// безграничного роста; источник истины — event store, стрим можно терять.
+	MaxLen int64 `env:"REDIS_STREAM_MAXLEN" envDefault:"100000"`
 }
 
 type HTTPConfig struct {

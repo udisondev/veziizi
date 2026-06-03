@@ -31,9 +31,9 @@ type Config struct {
 	Handler func(f *factory.Factory) message.NoPublishHandlerFunc
 
 	// Setup — CQRS-стиль: фабрика регистрирует типизированные хендлеры на
-	// EventGroupProcessor. Все хендлеры группы шарят один subscriber и общий
-	// offset (поведенчески эквивалентно одному ConsumerGroup, как и у Handler).
-	// Если задан Setup, поле Handler игнорируется.
+	// EventGroupProcessor. Все хендлеры группы шарят один Redis-подписчик
+	// (один ConsumerGroup на воркер, как и у Handler). Если задан Setup,
+	// поле Handler игнорируется.
 	Setup func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error
 
 	// Marshaler — формат сообщений. По умолчанию EventEnvelopeMarshaler (для
@@ -77,6 +77,23 @@ func Run(cfg Config) {
 	pool := f.MustPool()
 	slog.Info(fmt.Sprintf("%s worker connected to database", cfg.Name))
 
+	// Redis — транспорт событий: воркер подписывается на стрим cfg.Topic через
+	// consumer group. consumerName обязан быть уникальным на инстанс, иначе
+	// реплики делят один pending-список и крадут сообщения друг у друга.
+	redisClient := f.MustRedisClient()
+	consumerName := appCfg.Redis.ConsumerName
+	if consumerName == "" {
+		host, err := os.Hostname()
+		if err != nil {
+			slog.Error("failed to get hostname for consumer name", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		consumerName = cfg.Name + "-" + host
+	}
+	slog.Info(fmt.Sprintf("%s worker connected to redis", cfg.Name),
+		slog.String("consumer_group", cfg.ConsumerGroup),
+		slog.String("consumer_name", consumerName))
+
 	// Heartbeat
 	hb := heartbeat.New(pool, cfg.Name, "event", appCfg.Worker.HeartbeatInterval)
 	if err := hb.Start(ctx); err != nil {
@@ -92,17 +109,16 @@ func Run(cfg Config) {
 		os.Exit(1)
 	}
 
-	// Publisher для poison queue использует тот же default publisher, что и весь
-	// EventPublisher: AutoInitializeSchema создаст таблицу watermill_messages_*
-	// для DLQ-топика при первой публикации.
+	// Publisher для poison queue пишет напрямую в Redis-стрим DLQ-топика:
+	// исчерпавшее ретраи сообщение должно уехать из очереди даже когда Postgres
+	// outbox-путь деградировал, и оно не нуждается в tx-гарантиях.
 	var poisonPub message.Publisher
 	if appCfg.Worker.DeadLetterTopic != "" {
-		pub, err := f.Publisher()
+		poisonPub, err = messaging.NewRedisPublisher(redisClient, appCfg.Redis, wmLogger)
 		if err != nil {
-			slog.Error("failed to get publisher for poison queue", slog.String("error", err.Error()))
+			slog.Error("failed to create poison queue publisher", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
-		poisonPub = pub.RawPublisher()
 	}
 	if err := applyStandardMiddleware(router, appCfg.Worker, wmLogger, poisonPub); err != nil {
 		slog.Error("failed to apply middleware", slog.String("error", err.Error()))
@@ -115,7 +131,7 @@ func Run(cfg Config) {
 		if marshaler == nil {
 			marshaler = messaging.EventEnvelopeMarshaler{}
 		}
-		ep, err := messaging.NewEventGroupProcessor(router, pool, cfg.Topic, cfg.ConsumerGroup, marshaler, wmLogger)
+		ep, err := messaging.NewEventGroupProcessor(router, redisClient, appCfg.Redis, cfg.Topic, cfg.ConsumerGroup, consumerName, marshaler, wmLogger)
 		if err != nil {
 			slog.Error("failed to create event group processor", slog.String("error", err.Error()))
 			os.Exit(1)
@@ -125,7 +141,7 @@ func Run(cfg Config) {
 			os.Exit(1)
 		}
 	case cfg.Handler != nil:
-		subscriber, err := messaging.NewSQLSubscriber(pool, cfg.Topic, cfg.ConsumerGroup, wmLogger)
+		subscriber, err := messaging.NewRedisSubscriber(redisClient, cfg.ConsumerGroup, consumerName, appCfg.Redis, wmLogger)
 		if err != nil {
 			slog.Error("failed to create subscriber", slog.String("error", err.Error()))
 			os.Exit(1)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+	"github.com/ThreeDotsLabs/watermill/components/forwarder"
 	"github.com/ThreeDotsLabs/watermill/message"
 	wmMiddleware "github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,6 +14,14 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 )
+
+// OutboxTopic — единственный Postgres-топик, в который пишутся ВСЕ исходящие
+// сообщения (доменные события и команды уведомлений), завёрнутые в
+// forwarder-envelope с целевым топиком внутри. Forwarder-воркер — единственный
+// его потребитель: разворачивает envelope и публикует в Redis-стрим
+// DestinationTopic. Один топик = один последовательный читатель = порядок
+// публикации сохраняется при перекладке в Redis.
+const OutboxTopic = "events_to_forward"
 
 // EventPublisher — фасад поверх txAwarePublisher с CQRS-маршалером.
 // Доменные сервисы зовут Publish(ctx, events...) и не знают ни про watermill,
@@ -28,8 +37,9 @@ import (
 // Marshaler, OnPublish и Generate-логика идентичны cqrs.EventBus — вынесены
 // в helper'ы ниже, чтобы поведение оставалось «как у CQRS», но с batch'ингом.
 type EventPublisher struct {
-	bus       *cqrs.EventBus  // оставлен для Bus() — на случай, если потребуется raw cqrs API.
+	bus       *cqrs.EventBus // оставлен для Bus() — на случай, если потребуется raw cqrs API.
 	txPub     *txAwarePublisher
+	pub       message.Publisher // forwarder.Publisher поверх txPub: envelope + публикация в OutboxTopic
 	marshaler EventEnvelopeMarshaler
 	logger    watermill.LoggerAdapter
 }
@@ -40,7 +50,17 @@ func NewEventPublisher(pool *pgxpool.Pool, logger watermill.LoggerAdapter) (*Eve
 		return nil, err
 	}
 
-	bus, err := cqrs.NewEventBusWithConfig(txPub, cqrs.EventBusConfig{
+	// forwarder.Publisher заворачивает каждое сообщение в envelope с
+	// DestinationTopic=topic и публикует все в OutboxTopic одним вызовом
+	// нижележащего txPub. Ключевая деталь (проверено в watermill v1.5.1):
+	// wrapMessageInEnvelope переносит msg.Context() в обёрнутое сообщение,
+	// поэтому tx-aware семантика txAwarePublisher сохраняется — события
+	// попадают в outbox атомарно с транзакцией event store.
+	fwdPub := forwarder.NewPublisher(txPub, forwarder.PublisherConfig{
+		ForwarderTopic: OutboxTopic,
+	})
+
+	bus, err := cqrs.NewEventBusWithConfig(fwdPub, cqrs.EventBusConfig{
 		Marshaler:            EventEnvelopeMarshaler{},
 		GeneratePublishTopic: generatePublishTopic,
 		OnPublish:            enrichFromContext,
@@ -50,7 +70,7 @@ func NewEventPublisher(pool *pgxpool.Pool, logger watermill.LoggerAdapter) (*Eve
 		return nil, fmt.Errorf("create event bus: %w", err)
 	}
 
-	return &EventPublisher{bus: bus, txPub: txPub, marshaler: EventEnvelopeMarshaler{}, logger: logger}, nil
+	return &EventPublisher{bus: bus, txPub: txPub, pub: fwdPub, marshaler: EventEnvelopeMarshaler{}, logger: logger}, nil
 }
 
 // Publish маршалит все события, группирует по топику, и публикует каждую
@@ -94,7 +114,7 @@ func (p *EventPublisher) Publish(ctx context.Context, events ...eventstore.Event
 	}
 
 	for topic, msgs := range byTopic {
-		if err := p.txPub.Publish(topic, msgs...); err != nil {
+		if err := p.pub.Publish(topic, msgs...); err != nil {
 			return fmt.Errorf("publish to %s: %w", topic, err)
 		}
 	}
@@ -108,11 +128,14 @@ func (p *EventPublisher) Bus() *cqrs.EventBus {
 	return p.bus
 }
 
-// RawPublisher возвращает sql-publisher на пуле в autocommit. Используется
-// PoisonQueue middleware (DLQ всегда вне tx) и для non-event-store топиков
-// типа notification.email — там нужен прямой message.Publisher с raw msg.
-func (p *EventPublisher) RawPublisher() message.Publisher {
-	return p.txPub.DefaultPublisher()
+// ForwarderPublisher возвращает forwarder-обёрнутый tx-aware publisher.
+// Любая публикация через него уезжает в Postgres outbox (envelope с целевым
+// топиком) и доставляется forwarder-воркером в Redis. Используется
+// NotificationBus: команды уведомлений идут тем же outbox-путём, что и
+// доменные события, — это даёт атомарность «обработал событие + поставил
+// команду» при публикации внутри tx (dedupGuard в dispatcher'е).
+func (p *EventPublisher) ForwarderPublisher() message.Publisher {
+	return p.pub
 }
 
 func (p *EventPublisher) Close() error {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	adminApp "github.com/udisondev/veziizi/backend/internal/application/admin"
 	frApp "github.com/udisondev/veziizi/backend/internal/application/freightrequest"
 	historyApp "github.com/udisondev/veziizi/backend/internal/application/history"
@@ -41,6 +42,10 @@ type Factory struct {
 	pool     *pgxpool.Pool
 	poolOnce sync.Once
 	poolErr  error
+
+	redisClient redis.UniversalClient
+	redisOnce   sync.Once
+	redisErr    error
 
 	txManager dbtx.TxManager
 	txOnce    sync.Once
@@ -217,6 +222,14 @@ func (f *Factory) Close() error {
 		}
 	}
 
+	// Close redis client if created
+	if f.redisClient != nil {
+		if err := f.redisClient.Close(); err != nil {
+			slog.Error("failed to close redis client", slog.String("error", err.Error()))
+			errs = append(errs, err)
+		}
+	}
+
 	// Close pool if created
 	if f.pool != nil {
 		f.pool.Close()
@@ -266,6 +279,41 @@ func (f *Factory) MustPool() *pgxpool.Pool {
 	return pool
 }
 
+// RedisClient возвращает go-redis клиент (lazily created). Используется
+// воркерами для подписки на Redis-стримы и forwarder'ом для публикации.
+func (f *Factory) RedisClient() (redis.UniversalClient, error) {
+	f.redisOnce.Do(func() {
+		client, err := messaging.NewRedisClient(f.cfg.Redis)
+		if err != nil {
+			f.redisErr = fmt.Errorf("create redis client: %w", err)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := client.Ping(ctx).Err(); err != nil {
+			if cerr := client.Close(); cerr != nil {
+				slog.Error("failed to close redis client", slog.String("error", cerr.Error()))
+			}
+			f.redisErr = fmt.Errorf("ping redis: %w", err)
+			return
+		}
+
+		f.redisClient = client
+		slog.Info("connected to redis")
+	})
+	return f.redisClient, f.redisErr
+}
+
+// MustRedisClient returns RedisClient or panics on error
+func (f *Factory) MustRedisClient() redis.UniversalClient {
+	client, err := f.RedisClient()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get redis client: %v", err))
+	}
+	return client
+}
+
 // DB returns the transaction manager (lazily created)
 func (f *Factory) DB() dbtx.TxManager {
 	f.txOnce.Do(func() {
@@ -306,12 +354,14 @@ func (f *Factory) MustPublisher() *messaging.EventPublisher {
 }
 
 // NotificationBus возвращает CQRS-шину для команд на отправку уведомлений
-// (Telegram/Email). Publisher autocommit, не tx-aware — notifications уезжают
-// в очередь независимо от транзакции, в которой их сгенерировали.
+// (Telegram/Email). Команды идут через Postgres outbox (forwarder-publisher):
+// при публикации внутри tx (dedupGuard в dispatcher'е) команда коммитится
+// атомарно с обработкой события, дальше forwarder доставляет её в Redis-стрим
+// notification.telegram / notification.email.
 func (f *Factory) NotificationBus() (*messaging.NotificationBus, error) {
 	f.notifBusOnce.Do(func() {
 		wmLogger := watermill.NewSlogLogger(slog.Default())
-		bus, err := messaging.NewNotificationBus(f.MustPublisher().RawPublisher(), wmLogger)
+		bus, err := messaging.NewNotificationBus(f.MustPublisher().ForwarderPublisher(), wmLogger)
 		if err != nil {
 			f.notifBusErr = fmt.Errorf("create notification bus: %w", err)
 			return
