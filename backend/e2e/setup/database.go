@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/migrations"
 	"golang.org/x/crypto/bcrypt"
@@ -35,8 +36,9 @@ func runMigrations(cfg *config.Config) error {
 	return nil
 }
 
-// initWatermillSchema creates Watermill tables for all topics.
-// Uses SchemaInitializingQueries() to get DDL and execute directly.
+// initWatermillSchema creates Watermill tables for the Postgres outbox topic.
+// Доменные топики живут в Redis Streams (создаются на лету forwarder'ом),
+// в Postgres остаётся единственный outbox-топик events_to_forward.
 func initWatermillSchema(cfg *config.Config) error {
 	db, err := sql.Open("postgres", cfg.Database.URL)
 	if err != nil {
@@ -46,28 +48,16 @@ func initWatermillSchema(cfg *config.Config) error {
 
 	schema := wmSql.DefaultPostgreSQLSchema{}
 
-	topics := []string{
-		"organization.events",
-		"freightrequest.events",
-		"order.events",
-		"review.events",
-		"notification.events",
-		"notification.send",
-		"support.events",
+	queries, err := schema.SchemaInitializingQueries(wmSql.SchemaInitializingQueriesParams{
+		Topic: messaging.OutboxTopic,
+	})
+	if err != nil {
+		return fmt.Errorf("get schema queries for %s: %w", messaging.OutboxTopic, err)
 	}
 
-	for _, topic := range topics {
-		queries, err := schema.SchemaInitializingQueries(wmSql.SchemaInitializingQueriesParams{
-			Topic: topic,
-		})
-		if err != nil {
-			return fmt.Errorf("get schema queries for %s: %w", topic, err)
-		}
-
-		for _, q := range queries {
-			if _, err := db.Exec(q.Query, q.Args...); err != nil {
-				return fmt.Errorf("execute schema query for %s: %w", topic, err)
-			}
+	for _, q := range queries {
+		if _, err := db.Exec(q.Query, q.Args...); err != nil {
+			return fmt.Errorf("execute schema query for %s: %w", messaging.OutboxTopic, err)
 		}
 	}
 

@@ -40,6 +40,10 @@ func TestMain(m *testing.M) {
 		// Test exit code is what matters; just log.
 		_, _ = os.Stderr.WriteString("StopSharedPostgres: " + err.Error() + "\n")
 	}
+	// Stop the package-wide Redis container (per-suite DB indexes lived inside it).
+	if err := setup.StopSharedRedis(context.Background()); err != nil {
+		_, _ = os.Stderr.WriteString("StopSharedRedis: " + err.Error() + "\n")
+	}
 	os.Exit(code)
 }
 

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -12,17 +13,71 @@ import (
 	"github.com/ThreeDotsLabs/watermill/components/forwarder"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/heartbeat"
 	"github.com/udisondev/veziizi/backend/internal/pkg/logging"
+	"github.com/udisondev/veziizi/backend/internal/pkg/metrics"
 )
 
 // forwarderName — имя forwarder-воркера для heartbeat и consumer group
 // SQL-подписчика outbox-топика.
 const forwarderName = "forwarder"
+
+// outboxLag — главный health-индикатор forwarder'а: сколько сообщений лежит
+// в Postgres outbox и ещё не переложено в Redis. Растущий лаг = forwarder
+// не справляется или Redis недоступен; события при этом НЕ теряются.
+var outboxLag = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "veziizi_forwarder_outbox_lag",
+	Help: "Messages in Postgres outbox not yet forwarded to Redis Streams",
+})
+
+// watchOutboxLag периодически замеряет лаг: MAX(offset) сообщений минус
+// offset_acked consumer group'ы forwarder'а.
+func watchOutboxLag(ctx context.Context, pool *pgxpool.Pool, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			lag, err := measureOutboxLag(ctx, pool)
+			if err != nil {
+				if ctx.Err() == nil {
+					slog.Error("failed to measure outbox lag", slog.String("error", err.Error()))
+				}
+				continue
+			}
+			outboxLag.Set(float64(lag))
+		}
+	}
+}
+
+func measureOutboxLag(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	var maxOffset, acked int64
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX("offset"), 0) FROM "watermill_`+messaging.OutboxTopic+`"`,
+	).Scan(&maxOffset); err != nil {
+		return 0, fmt.Errorf("query max outbox offset: %w", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX(offset_acked), 0) FROM "watermill_offsets_`+messaging.OutboxTopic+`" WHERE consumer_group = $1`,
+		forwarderName,
+	).Scan(&acked); err != nil {
+		return 0, fmt.Errorf("query forwarder acked offset: %w", err)
+	}
+	if acked > maxOffset {
+		return 0, nil
+	}
+	return maxOffset - acked, nil
+}
 
 // RunForwarder запускает единственный forwarder-воркер: подписывается на
 // Postgres outbox-топик (messaging.OutboxTopic), разворачивает forwarder-envelope
@@ -77,6 +132,25 @@ func RunForwarder() {
 		slog.Error("failed to start heartbeat", "error", err)
 	}
 	defer hb.Stop()
+
+	// Метрика лага outbox + /metrics endpoint. Лаг — единственный критичный
+	// индикатор forwarder'а: копится → Redis/forwarder деградировал.
+	go watchOutboxLag(ctx, pool, 15*time.Second)
+	if appCfg.Metrics.Enabled {
+		metricsSrv := metrics.NewServer(appCfg.Metrics.Addr)
+		go func() {
+			if err := metricsSrv.Start(); err != nil {
+				slog.Error("metrics server error", slog.String("error", err.Error()))
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+				slog.Error("failed to shutdown metrics server", slog.String("error", err.Error()))
+			}
+		}()
+	}
 
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 

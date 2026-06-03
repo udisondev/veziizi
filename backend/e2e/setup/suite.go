@@ -4,11 +4,13 @@ package setup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,8 +24,11 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+	"github.com/ThreeDotsLabs/watermill/components/forwarder"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	eventHandlers "github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
@@ -36,6 +41,9 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
 )
+
+// e2eForwarderGroup — consumer group SQL-подписчика outbox-топика в suite.
+const e2eForwarderGroup = "e2e_forwarder"
 
 // Suite represents a test suite with shared infrastructure.
 // Use NewSuite() to create a new suite for each test group.
@@ -52,6 +60,9 @@ type Suite struct {
 	wg                sync.WaitGroup
 	postgresContainer *PostgresContainer
 	eventRouter       *message.Router
+	// consumerGroups: topic → e2e consumer group'ы, зарегистрированные на нём.
+	// Используется Sync() для ожидания опустошения стримов.
+	consumerGroups map[string][]string
 }
 
 // SharedSuite is a singleton suite for tests that can share infrastructure.
@@ -90,6 +101,7 @@ func GetSharedSuite(t *testing.T) *Suite {
 		cancel:            sharedSuite.cancel,
 		postgresContainer: sharedSuite.postgresContainer,
 		eventRouter:       sharedSuite.eventRouter,
+		consumerGroups:    sharedSuite.consumerGroups,
 	}
 }
 
@@ -153,7 +165,19 @@ func newSuite(t *testing.T) (*Suite, error) {
 		return nil, fmt.Errorf("failed to create per-suite database: %w", err)
 	}
 
-	cfg := testConfigWithDSN(dsn)
+	// Shared Redis container; each suite gets its own DB index — нативная
+	// изоляция стримов и consumer group'ов между сьютами.
+	if _, err := GetSharedRedis(ctx); err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to start shared redis: %w", err)
+	}
+	redisURL, err := NextRedisURL()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to allocate redis db: %w", err)
+	}
+
+	cfg := testConfigWithDSN(dsn, redisURL)
 
 	f := factory.New(cfg)
 
@@ -195,13 +219,14 @@ func newSuite(t *testing.T) (*Suite, error) {
 	cfg.HTTP.Addr = fmt.Sprintf("127.0.0.1:%d", port)
 
 	suite := &Suite{
-		T:        t,
-		BaseURL:  baseURL,
-		Factory:  f,
-		Config:   cfg,
-		listener: listener,
-		ctx:      ctx,
-		cancel:   cancel,
+		T:              t,
+		BaseURL:        baseURL,
+		Factory:        f,
+		Config:         cfg,
+		listener:       listener,
+		ctx:            ctx,
+		cancel:         cancel,
+		consumerGroups: make(map[string][]string),
 		// postgresContainer left nil: lifecycle owned by GetSharedPostgres /
 		// StopSharedPostgres (called from TestMain).
 	}
@@ -224,50 +249,63 @@ func newSuite(t *testing.T) (*Suite, error) {
 	return suite, nil
 }
 
-// startEventHandlers поднимает CQRS-EventGroupProcessor для каждого воркера
-// в одном in-process router'е. Это эквивалент production worker.Run, но
-// все consumer group'ы со своими e2e_-префиксами — чтобы тесты не делили
-// offset с реальными воркерами и не теряли события между прогонами.
+// startEventHandlers поднимает in-process эквивалент production-пайплайна:
+//   - forwarder: SQL-подписчик outbox-топика (50ms poll) → Redis-стримы
+//     этого suite (свой DB index);
+//   - CQRS-EventGroupProcessor для каждого воркера на Redis consumer group'ах
+//     с e2e_-префиксами.
 //
-// PollInterval сокращён до 50ms (default 1s), иначе async-тесты review
-// pipeline / fraudster handler / freight reassign падают по timeout при
-// параллельном запуске нескольких suites.
+// Это полный продовый путь доставки: publish → Postgres outbox → forwarder →
+// Redis Streams → consumer groups → хендлеры.
 func (s *Suite) startEventHandlers() error {
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 	pool := s.Factory.MustPool()
 	db := s.Factory.DB()
+	redisClient := s.Factory.MustRedisClient()
 
 	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
 	if err != nil {
 		return fmt.Errorf("failed to create router: %w", err)
 	}
 
-	// Helper для регистрации CQRS-handler'ов одного воркера. Создаёт
-	// EventGroupProcessor с e2e-специфичным SubscriberConstructor (50ms poll)
-	// и сразу регистрирует группу хендлеров.
+	// In-process forwarder: переиспользует общий router (forwarder.Config.Router),
+	// поэтому отдельный Run не нужен — стартует вместе с router.Run ниже.
+	outboxSub, err := wmSql.NewSubscriber(
+		wmSql.BeginnerFromPgx(pool),
+		wmSql.SubscriberConfig{
+			SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
+			OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
+			ConsumerGroup:  e2eForwarderGroup,
+			PollInterval:   50 * time.Millisecond,
+		},
+		wmLogger,
+	)
+	if err != nil {
+		return fmt.Errorf("create outbox subscriber: %w", err)
+	}
+	if err := outboxSub.SubscribeInitialize(messaging.OutboxTopic); err != nil {
+		return fmt.Errorf("init outbox subscriber: %w", err)
+	}
+	redisPub, err := messaging.NewRedisPublisher(redisClient, s.Config.Redis, wmLogger)
+	if err != nil {
+		return fmt.Errorf("create redis publisher: %w", err)
+	}
+	if _, err := forwarder.NewForwarder(outboxSub, redisPub, wmLogger, forwarder.Config{
+		ForwarderTopic: messaging.OutboxTopic,
+		Router:         router,
+	}); err != nil {
+		return fmt.Errorf("create forwarder: %w", err)
+	}
+
+	// Helper для регистрации CQRS-handler'ов одного воркера: Redis consumer
+	// group + suite-уникальное имя консьюмера.
 	register := func(topic, consumerGroup string, handlers ...cqrs.GroupEventHandler) error {
 		ep, err := cqrs.NewEventGroupProcessorWithConfig(router, cqrs.EventGroupProcessorConfig{
 			GenerateSubscribeTopic: func(cqrs.EventGroupProcessorGenerateSubscribeTopicParams) (string, error) {
 				return topic, nil
 			},
 			SubscriberConstructor: func(cqrs.EventGroupProcessorSubscriberConstructorParams) (message.Subscriber, error) {
-				sub, err := wmSql.NewSubscriber(
-					wmSql.BeginnerFromPgx(pool),
-					wmSql.SubscriberConfig{
-						SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
-						OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
-						ConsumerGroup:  consumerGroup,
-						PollInterval:   50 * time.Millisecond,
-					},
-					wmLogger,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("create subscriber %s: %w", consumerGroup, err)
-				}
-				if err := sub.SubscribeInitialize(topic); err != nil {
-					return nil, fmt.Errorf("init subscriber %s: %w", consumerGroup, err)
-				}
-				return sub, nil
+				return messaging.NewRedisSubscriber(redisClient, consumerGroup, "e2e-"+consumerGroup, s.Config.Redis, wmLogger)
 			},
 			Marshaler:         messaging.EventEnvelopeMarshaler{},
 			Logger:            wmLogger,
@@ -276,6 +314,7 @@ func (s *Suite) startEventHandlers() error {
 		if err != nil {
 			return fmt.Errorf("create event processor %s: %w", consumerGroup, err)
 		}
+		s.consumerGroups[topic] = append(s.consumerGroups[topic], consumerGroup)
 		return ep.AddHandlersGroup(consumerGroup, handlers...)
 	}
 
@@ -559,8 +598,91 @@ func ShutdownShared() {
 	}
 }
 
-// Sync waits for event handlers to process pending events.
-// Uses a simple delay since watermill doesn't expose queue depth.
+// Sync ждёт, пока пайплайн доставки прогонит все опубликованные события:
+//  1. forwarder вычитал Postgres outbox до конца (offset_acked == MAX(offset));
+//  2. каждая e2e consumer group на каждом стриме догнала last stream id и не
+//     имеет pending (недоack'нутых) сообщений.
+//
+// Фиксированный sleep здесь больше не работает: к доставке добавился хоп
+// outbox → forwarder → Redis. Поллим состояние с дедлайном; по истечении
+// возвращаемся молча — тест упадёт сам с внятным diff'ом состояния проекции.
 func (s *Suite) Sync() {
-	time.Sleep(50 * time.Millisecond)
+	const (
+		deadline = 5 * time.Second
+		step     = 15 * time.Millisecond
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
+
+	pool := s.Factory.MustPool()
+	redisClient := s.Factory.MustRedisClient()
+
+	// Два стабильных прохода подряд: одиночный снапшот может поймать паузу
+	// между «forwarder вычитал outbox» и «сообщение появилось в стриме»
+	// (forwarder ack'ает outbox после publish, но XADD и offset-commit — две
+	// системы), а также окно между ack хендлера и публикацией им нового
+	// события (review-receiver порождает review.events).
+	stable := 0
+	for stable < 2 {
+		if ctx.Err() != nil {
+			slog.Warn("suite sync deadline exceeded, continuing anyway")
+			return
+		}
+		if s.pipelineDrained(ctx, pool, redisClient) {
+			stable++
+		} else {
+			stable = 0
+		}
+		time.Sleep(step)
+	}
+}
+
+func (s *Suite) pipelineDrained(ctx context.Context, pool *pgxpool.Pool, redisClient redis.UniversalClient) bool {
+	// 1. Forwarder догнал outbox.
+	var maxOffset, acked int64
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX("offset"), 0) FROM "watermill_`+messaging.OutboxTopic+`"`,
+	).Scan(&maxOffset); err != nil {
+		return false
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX(offset_acked), 0) FROM "watermill_offsets_`+messaging.OutboxTopic+`" WHERE consumer_group = $1`,
+		e2eForwarderGroup,
+	).Scan(&acked); err != nil {
+		return false
+	}
+	if acked < maxOffset {
+		return false
+	}
+
+	// 2. Все consumer group'ы догнали свои стримы.
+	for topic, groups := range s.consumerGroups {
+		lastID, err := redisClient.XInfoStream(ctx, topic).Result()
+		if err != nil {
+			if errors.Is(err, redis.Nil) || strings.Contains(err.Error(), "no such key") {
+				continue // стрим ещё не создан — нечего обрабатывать
+			}
+			return false
+		}
+		groupInfos, err := redisClient.XInfoGroups(ctx, topic).Result()
+		if err != nil {
+			return false
+		}
+		byName := make(map[string]redis.XInfoGroup, len(groupInfos))
+		for _, g := range groupInfos {
+			byName[g.Name] = g
+		}
+		for _, group := range groups {
+			g, ok := byName[group]
+			if !ok {
+				return false // группа ещё не создана подписчиком
+			}
+			if g.Pending > 0 || g.LastDeliveredID != lastID.LastGeneratedID {
+				return false
+			}
+		}
+	}
+
+	return true
 }
