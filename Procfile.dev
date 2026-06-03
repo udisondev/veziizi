@@ -1,5 +1,6 @@
 backend: air -c .air-backend.toml
 frontend: cd frontend && npm run dev
+forwarder: ./bin/worker-forwarder
 members: ./bin/worker-members
 invitations: ./bin/worker-invitations
 pending-orgs: ./bin/worker-pending-organizations

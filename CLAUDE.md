@@ -86,6 +86,7 @@ task stage:ps         # Show staging status
 Скопировать `.env.example` в `.env` перед запуском:
 ```
 DATABASE_URL=postgres://veziizi:veziizi@localhost:5432/veziizi?sslmode=disable
+REDIS_URL=redis://localhost:6379/0 # Transport: outbox -> forwarder -> Redis Streams
 SESSION_SECRET=32-byte-key-for-sessions
 SESSION_ADMIN_SECRET=32-byte-key-for-admin-sessions
 TELEGRAM_BOT_TOKEN=your-bot-token  # Required for telegram-bot and telegram-sender
@@ -125,34 +126,50 @@ APP_ENV=development                # development | production
 - `dbtx.FromCtx(ctx)` — get tx from context
 - All repositories use `TxManager` interface, auto-detect tx in context
 
-**Watermill Publisher** (`backend/internal/infrastructure/messaging/`):
-- Uses `sql.BeginnerFromPgx(pool)` for default publisher
-- Uses `sql.TxFromPgx(tx)` when tx in context (atomic with event store)
+**Event Transport: Outbox + Forwarder → Redis Streams** (`backend/internal/infrastructure/messaging/`):
+- Publish: `EventPublisher` → `forwarder.Publisher` (envelope с DestinationTopic) → Postgres outbox-топик `events_to_forward` (`messaging.OutboxTopic`, таблица `watermill_events_to_forward`)
+- Транзакционность сохранена: `txAwarePublisher` использует `sql.TxFromPgx(tx)` когда tx в context (atomic с event store), иначе `sql.BeginnerFromPgx(pool)`
+- `worker-forwarder` (СТРОГО 1 инстанс) — единственный потребитель outbox: разворачивает envelope и публикует в Redis-стрим DestinationTopic
+- Воркеры подписаны на Redis Streams через consumer groups (`watermill-redisstream`) — N инстансов одного воркера делят поток (горизонтальное масштабирование)
+- Доставка at-least-once, порядок per aggregate при N инстансах не гарантирован → хендлеры обязаны быть идемпотентными и порядконезависимыми (см. ниже)
+- `NotificationBus` тоже публикует через outbox (атомарность команд с tx обработки)
+- DLQ: PoisonQueue middleware публикует в Redis-стрим `deadletter`
+
+**Handler Resilience Patterns** (`backend/internal/infrastructure/handlers/`):
+- `dedupGuard` (dedup.go) — tx + резерв `(projection_name, event_id)` в `projection_event_dedup`; повторная доставка не применяется дважды. Используют: reviews-projection, notification-dispatcher, support-admin-notifier
+- rebuild-from-aggregate (freight-requests, organizations) — проекция = f(aggregate state): перечитать агрегат из event store, полный UPSERT с version-guard (`versionGuardUpsertSuffix`)
+- `versionGuardedUpdate` (version_guard.go) — статусные UPDATE с guard по `Event.Version()`: устаревшее событие ack'ается, событие раньше Created уходит в retry. Используют: members, invitations, support-tickets
+- senders (telegram/email) — `notification_dedup` по message UUID
 
 **Worker Package** (`backend/internal/pkg/worker/`):
 - Boilerplate for async watermill subscribers
 - Each worker runs as separate process (`backend/cmd/workers/*`)
 - Handler receives `*factory.Factory` for dependency access
-- Each worker has its own ConsumerGroup for independent offset tracking
-- `worker.Run(Config)` — event-driven workers (watermill subscribers)
+- Each worker has its own Redis consumer group; consumer name уникален на инстанс (`REDIS_CONSUMER_NAME` или `<name>-<hostname>`)
+- `worker.Run(Config)` — event-driven workers (Redis Streams subscribers)
 - `worker.RunScheduled(ScheduledConfig)` — scheduled workers (ticker-based, e.g. review-activator)
+- `worker.RunForwarder()` — forwarder (Postgres outbox → Redis)
 
 **Worker Topics & Consumers:**
 | Worker | Topic | ConsumerGroup | Purpose |
 |--------|-------|---------------|---------|
-| members | organization.events | members | Update members_lookup |
-| invitations | organization.events | invitations | Update invitations_lookup |
-| pending-organizations | organization.events | pending_organizations | Update pending_organizations |
+| forwarder | events_to_forward (Postgres outbox) | forwarder | Перекладывает outbox в Redis Streams (СТРОГО 1 инстанс) |
+| members | organization.events | members_projection | Update members_lookup |
+| invitations | organization.events | invitations_projection | Update invitations_lookup |
+| pending-organizations | organization.events | pending_organizations_projection | Update pending_organizations |
 | organizations | organization.events | organizations_projection | Update organizations_lookup |
-| freight-requests | freightrequest.events | freight_requests | Update freight_requests_lookup, offers_lookup |
+| vehicles | organization.events | vehicles_projection | Update vehicles_lookup |
+| freight-requests | freightrequest.events | freight_requests_projection | Update freight_requests_lookup, offers_lookup |
 | review-receiver | freightrequest.events | review_receiver | Create Review on ReviewLeft |
 | review-analyzer | review.events | review_analyzer | Fraud detection, weight calculation |
 | reviews-projection | review.events | reviews_projection | Update reviews_lookup, fraud_signals, interaction_stats, ratings |
 | review-activator | scheduled (1 min) | - | Activate approved reviews after activation_date |
 | fraudster-handler | organization.events | fraudster_handler | Deactivate reviews when org marked as fraudster |
 | notification-dispatcher | freightrequest.events | notification_dispatcher | Route domain events to notification channels via rules |
-| telegram-sender | notification.send | telegram_sender | Send notifications via Telegram |
-| support-tickets | support.events | support_tickets | Update support_tickets_lookup |
+| telegram-sender | notification.telegram | telegram_sender | Send notifications via Telegram |
+| email-sender | notification.email | email_sender | Send notifications via email |
+| support-tickets | support.events | support_tickets_projection | Update support_tickets_lookup |
+| support-tickets-notifier | support.events | support_tickets_admin_notifier | Notify admins in Telegram |
 | rate-limiter-cleanup | scheduled (5 min) | - | Clean up expired rate limiter entries |
 | telegram-bot | - | - | Telegram bot for link codes (separate cmd, not a worker) |
 

@@ -4,6 +4,7 @@
 x-staging-env: &staging-env
   APP_ENV: staging
   LOG_LEVEL: info
+  REDIS_URL: redis://redis:6379/0
   HTTP_ADDR: ":8080"
   SESSION_NAME: veziizi_session
   SESSION_ADMIN_NAME: veziizi_admin_session
@@ -47,6 +48,9 @@ services:
       - "80:80"
 
   telegram-bot:
+    <<: *staging-service
+
+  worker-forwarder:
     <<: *staging-service
 
   worker-members:
