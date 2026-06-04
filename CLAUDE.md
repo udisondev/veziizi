@@ -113,6 +113,7 @@ APP_ENV=development                # development | production
 - `EventEnvelope` wraps events for storage with metadata
 - Optimistic locking via UNIQUE constraint on `(aggregate_id, version)`
 - Errors: `ErrAggregateNotFound`, `ErrConcurrentModification`, `ErrEventVersionConflict`
+- **Snapshots:** сервисы сохраняют через `SaveWithState(ctx, agg.State(), changes...)` (снапшот каждые 100 версий); загрузка ТОЛЬКО через `LoadWithSnapshot` + `<domain>.NewFromStore(id, res.SnapshotState, res.Events)` — `Load` возвращает события после снапшота, `NewFromEvents` на таком хвосте соберёт битое состояние. enum-поля в снапшотных/событийных структурах должны иметь `json:"...,omitempty"` — go-enum'овский UnmarshalText отвергает `""`
 
 **Factory** (`backend/internal/pkg/factory/`):
 - Lazy-initialized, thread-safe dependency container (sync.Once)
@@ -127,19 +128,23 @@ APP_ENV=development                # development | production
 - All repositories use `TxManager` interface, auto-detect tx in context
 
 **Event Transport: Outbox + Forwarder → Redis Streams** (`backend/internal/infrastructure/messaging/`):
-- Publish: `EventPublisher` → `forwarder.Publisher` (envelope с DestinationTopic) → Postgres outbox-топик `events_to_forward` (`messaging.OutboxTopic`, таблица `watermill_events_to_forward`)
+- Publish: `EventPublisher` → `cqrs.EventBus` (канонический publish-путь: marshal/topic/audit-меты — конфигурация bus'а, продюсеры не трогают `message.Publisher` напрямую) → `forwarder.Publisher` (envelope с DestinationTopic) → Postgres outbox-топик `events_to_forward` (`messaging.OutboxTopic`, таблица `watermill_events_to_forward`)
 - Транзакционность сохранена: `txAwarePublisher` использует `sql.TxFromPgx(tx)` когда tx в context (atomic с event store), иначе `sql.BeginnerFromPgx(pool)`
-- `worker-forwarder` (СТРОГО 1 инстанс) — единственный потребитель outbox: разворачивает envelope и публикует в Redis-стрим DestinationTopic
+- `worker-forwarder` (СТРОГО 1 инстанс, enforced через Postgres advisory lock — второй инстанс падает на старте) — единственный потребитель outbox: разворачивает envelope и публикует в Redis-стрим DestinationTopic. Поллит outbox с `FORWARDER_POLL_INTERVAL` (100ms)
 - Воркеры подписаны на Redis Streams через consumer groups (`watermill-redisstream`) — N инстансов одного воркера делят поток (горизонтальное масштабирование)
 - Доставка at-least-once, порядок per aggregate при N инстансах не гарантирован → хендлеры обязаны быть идемпотентными и порядконезависимыми (см. ниже)
 - `NotificationBus` тоже публикует через outbox (атомарность команд с tx обработки)
-- DLQ: PoisonQueue middleware публикует в Redis-стрим `deadletter`
+- DLQ: PoisonQueue middleware публикует в Redis-стрим `deadletter` (без trim'а, свой `WORKER_DEADLETTER_MAXLEN`); разбор — `cmd/tools/dlq-redrive` после фикса причины
+- Метрики forwarder'а: `veziizi_forwarder_outbox_lag`, `veziizi_deadletter_depth`, `veziizi_redis_stream_group_lag/pending{stream,group}` — лаг группы ~ MAXLEN означает, что trim начнёт терять непрочитанные события
 
 **Handler Resilience Patterns** (`backend/internal/infrastructure/handlers/`):
-- `dedupGuard` (dedup.go) — tx + резерв `(projection_name, event_id)` в `projection_event_dedup`; повторная доставка не применяется дважды. Используют: reviews-projection, notification-dispatcher, support-admin-notifier
-- rebuild-from-aggregate (freight-requests, organizations) — проекция = f(aggregate state): перечитать агрегат из event store, полный UPSERT с version-guard (`versionGuardUpsertSuffix`)
-- `versionGuardedUpdate` (version_guard.go) — статусные UPDATE с guard по `Event.Version()`: устаревшее событие ack'ается, событие раньше Created уходит в retry. Используют: members, invitations, support-tickets
+- `dedupGuard` (dedup.go) — tx + резерв `(projection_name, event_id)` в `projection_event_dedup`; повторная доставка не применяется дважды. Используют: reviews-projection, notification-dispatcher, support-admin-notifier. ВАЖНО: внутри dedupGuard ошибки обязаны пропагироваться (rollback снимает резерв → retry); проглоченная ошибка = закоммиченный резерв = потерянный эффект навсегда
+- rebuild-from-aggregate (freight-requests, organizations) — проекция = f(aggregate state): перечитать агрегат из event store (`LoadWithSnapshot` + `NewFromStore`), полный UPSERT с version-guard (`projections.VersionGuardUpsertSuffix`)
+- `versionGuardedUpdate` (version_guard.go) — статусные UPDATE с guard по `Event.Version()` и явной version-колонкой: устаревшее событие ack'ается, событие раньше Created возвращает `errProjectionRowMissing` → retry. Ортогональные поля одной строки обязаны иметь РАЗДЕЛЬНЫЕ version-колонки (members: `role_version` + `status_version`). Используют: members, invitations, support-tickets
+- members дополнительно: tombstone `members_removed` (redelivered Added не воскрешает удалённого; статусное событие после удаления ack'ается) + advisory xact-lock по member id для сериализации Added/Removed
 - senders (telegram/email) — `notification_dedup` по message UUID
+- Wiring хендлеров воркеров — ТОЛЬКО через `handlers.XGroupHandlers(h)` (wiring.go): единый список для cmd/workers/*/main.go и e2e suite
+- dedup-таблицы чистит scheduled-воркер dedup-cleanup (`WORKER_DEDUP_RETENTION`, 7 дней)
 
 **Worker Package** (`backend/internal/pkg/worker/`):
 - Boilerplate for async watermill subscribers
@@ -171,6 +176,7 @@ APP_ENV=development                # development | production
 | support-tickets | support.events | support_tickets_projection | Update support_tickets_lookup |
 | support-tickets-notifier | support.events | support_tickets_admin_notifier | Notify admins in Telegram |
 | rate-limiter-cleanup | scheduled (5 min) | - | Clean up expired rate limiter entries |
+| dedup-cleanup | scheduled (1 h) | - | Prune old projection_event_dedup / notification_dedup rows |
 | telegram-bot | - | - | Telegram bot for link codes (separate cmd, not a worker) |
 
 **Notification Rules** (`backend/internal/domain/notification/rules/`):

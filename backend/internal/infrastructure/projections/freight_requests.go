@@ -750,11 +750,15 @@ func (p *FreightRequestsProjection) ListOffersWithFreightData(ctx context.Contex
 
 // UpdateCustomerOrgName обновляет имя организации-заказчика во всех заявках этой организации.
 // Используется для поддержания денормализованных данных в актуальном состоянии.
+// IS DISTINCT FROM не трогает строки, где имя уже актуально: OrganizationUpdated
+// прилетает на любое изменение профиля, а не только имени — без guard'а каждый
+// апдейт организации переписывал бы все её заявки впустую.
 func (p *FreightRequestsProjection) UpdateCustomerOrgName(ctx context.Context, orgID uuid.UUID, name string) error {
 	query, args, err := p.psql.
 		Update("freight_requests_lookup").
 		Set("customer_org_name", name).
 		Where(squirrel.Eq{"customer_org_id": orgID}).
+		Where(squirrel.Expr("customer_org_name IS DISTINCT FROM ?", name)).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build update query: %w", err)

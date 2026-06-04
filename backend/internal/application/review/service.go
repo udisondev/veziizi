@@ -35,7 +35,7 @@ func NewService(
 
 // Get loads a Review aggregate by ID
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*review.Review, error) {
-	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
+	res, err := s.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, review.ErrReviewNotFound
@@ -45,7 +45,11 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*review.Review, error)
 			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("load review: %w", err)
 	}
-	return review.NewFromEvents(id, evts), nil
+	r, err := review.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return nil, fmt.Errorf("restore review: %w", err)
+	}
+	return r, nil
 }
 
 // CreateFromFreightReviewInput contains data for creating a Review from FreightRequest.ReviewLeft
@@ -265,7 +269,8 @@ func (s *Service) saveAndPublish(ctx context.Context, r *review.Review) error {
 	}
 
 	if err := s.db.InTx(ctx, func(ctx context.Context) error {
-		if err := s.eventStore.Save(ctx, changes...); err != nil {
+		// SaveWithState пишет снапшот каждые snapshotThreshold версий.
+		if err := s.eventStore.SaveWithState(ctx, r.State(), changes...); err != nil {
 			return fmt.Errorf("save review: %w", err)
 		}
 

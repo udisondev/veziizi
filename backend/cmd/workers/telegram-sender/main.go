@@ -37,9 +37,7 @@ func main() {
 				f.DeliveryLogProjection(),
 				f.NotificationDedupProjection(),
 			)
-			return ep.AddHandlersGroup("telegram-sender",
-				cqrs.NewGroupEventHandler(h.OnTelegramNotification),
-			)
+			return ep.AddHandlersGroup("telegram-sender", handlers.TelegramSenderGroupHandlers(h)...)
 		},
 	})
 }

@@ -115,9 +115,21 @@ services:
     <<: *backend
     command: ["worker-support-tickets"]
 
+  worker-support-tickets-notifier:
+    <<: *backend
+    command: ["worker-support-tickets-notifier"]
+
+  worker-vehicles:
+    <<: *backend
+    command: ["worker-vehicles"]
+
   worker-rate-limiter-cleanup:
     <<: *backend
     command: ["worker-rate-limiter-cleanup"]
+
+  worker-dedup-cleanup:
+    <<: *backend
+    command: ["worker-dedup-cleanup"]
 
 volumes:
   postgres_data:

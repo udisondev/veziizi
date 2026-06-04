@@ -22,10 +22,7 @@ func main() {
 				f.ReviewsProjection(),
 				f.FraudDataProjection(),
 			)
-			return ep.AddHandlersGroup("fraudster-handler",
-				cqrs.NewGroupEventHandler(h.OnFraudsterMarked),
-				cqrs.NewGroupEventHandler(h.OnFraudsterUnmarked),
-			)
+			return ep.AddHandlersGroup("fraudster-handler", handlers.FraudsterGroupHandlers(h)...)
 		},
 	})
 }

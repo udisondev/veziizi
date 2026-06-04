@@ -44,10 +44,7 @@ func main() {
 				adminRepo.NewRepository(f.DB()),
 				f.MustNotificationBus(),
 			)
-			return ep.AddHandlersGroup("support-tickets-notifier",
-				cqrs.NewGroupEventHandler(h.OnTicketCreated),
-				cqrs.NewGroupEventHandler(h.OnMessageAdded),
-			)
+			return ep.AddHandlersGroup("support-tickets-notifier", handlers.SupportAdminNotifierGroupHandlers(h)...)
 		},
 	})
 }

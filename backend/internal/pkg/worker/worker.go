@@ -12,6 +12,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/redis/go-redis/v9"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -94,6 +95,12 @@ func Run(cfg Config) {
 		slog.String("consumer_group", cfg.ConsumerGroup),
 		slog.String("consumer_name", consumerName))
 
+	// Best-effort детекция коллизии consumer name: два живых консьюмера под
+	// одним именем невидимо крадут сообщения друг у друга. Не фатально (air
+	// перезапускает воркер быстрее, чем idle успевает вырасти), но в логах
+	// должно быть громко.
+	warnOnConsumerNameCollision(ctx, redisClient, cfg.Topic, cfg.ConsumerGroup, consumerName)
+
 	// Heartbeat
 	hb := heartbeat.New(pool, cfg.Name, "event", appCfg.Worker.HeartbeatInterval)
 	if err := hb.Start(ctx); err != nil {
@@ -112,9 +119,13 @@ func Run(cfg Config) {
 	// Publisher для poison queue пишет напрямую в Redis-стрим DLQ-топика:
 	// исчерпавшее ретраи сообщение должно уехать из очереди даже когда Postgres
 	// outbox-путь деградировал, и оно не нуждается в tx-гарантиях.
+	// MaxLen у DLQ свой (по умолчанию 0 = без trim'а): отравленные события
+	// нельзя терять молча общим REDIS_STREAM_MAXLEN.
 	var poisonPub message.Publisher
 	if appCfg.Worker.DeadLetterTopic != "" {
-		poisonPub, err = messaging.NewRedisPublisher(redisClient, appCfg.Redis, wmLogger)
+		dlqRedisCfg := appCfg.Redis
+		dlqRedisCfg.MaxLen = appCfg.Worker.DeadLetterMaxLen
+		poisonPub, err = messaging.NewRedisPublisher(redisClient, dlqRedisCfg, wmLogger)
 		if err != nil {
 			slog.Error("failed to create poison queue publisher", slog.String("error", err.Error()))
 			os.Exit(1)
@@ -180,6 +191,31 @@ func Run(cfg Config) {
 	case <-time.After(appCfg.Worker.ShutdownTimeout):
 		slog.Error(fmt.Sprintf("%s worker shutdown timed out, forcing exit", cfg.Name))
 		os.Exit(1)
+	}
+}
+
+// warnOnConsumerNameCollision проверяет, нет ли в consumer group'е живого
+// консьюмера с тем же именем (idle меньше порога). Молча пропускает любые
+// ошибки: стрим/группа могли ещё не существовать.
+func warnOnConsumerNameCollision(ctx context.Context, client redis.UniversalClient, topic, group, consumerName string) {
+	const aliveThreshold = 15 * time.Second
+
+	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	consumers, err := client.XInfoConsumers(checkCtx, topic, group).Result()
+	if err != nil {
+		return
+	}
+	for _, c := range consumers {
+		if c.Name == consumerName && c.Idle >= 0 && c.Idle < aliveThreshold {
+			slog.Warn("ACTIVE consumer with the same name already exists in the group — "+
+				"two replicas under one name will invisibly steal each other's messages; "+
+				"set a unique REDIS_CONSUMER_NAME per instance",
+				slog.String("topic", topic),
+				slog.String("consumer_group", group),
+				slog.String("consumer_name", consumerName))
+		}
 	}
 }
 

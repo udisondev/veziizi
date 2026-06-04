@@ -4,6 +4,7 @@
 x-prod-env: &prod-env
   APP_ENV: production
   LOG_LEVEL: warn
+  REDIS_URL: redis://redis:6379/0
   HTTP_ADDR: ":8080"
   SESSION_NAME: veziizi_session
   SESSION_ADMIN_NAME: veziizi_admin_session
@@ -45,6 +46,11 @@ services:
       - "127.0.0.1:80:80"
 
   telegram-bot:
+    <<: *prod-service
+
+  # forwarder — СТРОГО ОДИН инстанс (advisory lock не даст второму стартовать,
+  # но и не пытайтесь масштабировать).
+  worker-forwarder:
     <<: *prod-service
 
   worker-members:
@@ -89,5 +95,14 @@ services:
   worker-support-tickets:
     <<: *prod-service
 
+  worker-support-tickets-notifier:
+    <<: *prod-service
+
+  worker-vehicles:
+    <<: *prod-service
+
   worker-rate-limiter-cleanup:
+    <<: *prod-service
+
+  worker-dedup-cleanup:
     <<: *prod-service

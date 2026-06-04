@@ -17,9 +17,7 @@ func main() {
 		LogFile:       "review-analyzer-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewReviewAnalyzerHandler(f.ReviewService(), f.ReviewAnalyzer())
-			return ep.AddHandlersGroup("review-analyzer",
-				cqrs.NewGroupEventHandler(h.OnReviewReceived),
-			)
+			return ep.AddHandlersGroup("review-analyzer", handlers.ReviewAnalyzerGroupHandlers(h)...)
 		},
 	})
 }

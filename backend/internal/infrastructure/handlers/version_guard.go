@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -13,29 +12,13 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
-// versionGuardUpsertSuffix строит ON CONFLICT-суффикс для полного UPSERT'а
-// строки проекции с version-guard'ом:
-//
-//	ON CONFLICT (id) DO UPDATE SET col = EXCLUDED.col, ...
-//	WHERE <table>.version <= EXCLUDED.version
-//
-// Используется проекциями, перешедшими на rebuild-from-aggregate: хендлер
-// перечитывает агрегат из event store и пишет полное состояние. Guard
-// гарантирует, что устаревший rebuild (конкурентный инстанс, обработавший
-// более раннее событие) не перетрёт свежие данные, а повторная доставка
-// того же события (равная версия, те же данные) останется идемпотентной.
-//
-// cols — все обновляемые колонки, ДОЛЖНЫ включать "version".
-func versionGuardUpsertSuffix(table string, cols ...string) string {
-	sets := make([]string, 0, len(cols))
-	for _, c := range cols {
-		sets = append(sets, fmt.Sprintf("%s = EXCLUDED.%s", c, c))
-	}
-	return fmt.Sprintf(
-		"ON CONFLICT (id) DO UPDATE SET %s WHERE %s.version <= EXCLUDED.version",
-		strings.Join(sets, ", "), table,
-	)
-}
+// errProjectionRowMissing — строка проекции ещё не существует: событие
+// опередило Created (out-of-order при N инстансах). По умолчанию хендлер
+// возвращает ошибку как есть → Retry middleware повторит доставку, когда
+// Created догонит. Хендлеры с tombstone-семантикой (members) проверяют по
+// errors.Is, не относится ли «отсутствие строки» к удалённой сущности —
+// тогда событие ack'ается вместо вечного retry.
+var errProjectionRowMissing = errors.New("projection row missing")
 
 // versionGuardedUpdate выполняет статусный UPDATE строки проекции с
 // version-guard'ом. Используется sub-entity проекциями (members, invitations,
@@ -43,12 +26,16 @@ func versionGuardUpsertSuffix(table string, cols ...string) string {
 // (например, members_lookup хранит password_hash, которого нет в домене —
 // SEC-007).
 //
+// versionCol — колонка-guard. Должна сравнивать версии ТОЛЬКО событий, которые
+// меняют один и тот же набор полей: ортогональные поля одной строки (role и
+// status участника) обязаны иметь раздельные version-колонки, иначе свежее
+// событие одного поля заставит guard молча выбросить более раннее (но
+// единственное актуальное) событие другого поля.
+//
 // Протокол при 0 затронутых строк:
-//   - строки нет вообще → событие опередило Created (конкурентный инстанс ещё
-//     не вставил строку) → возвращаем ошибку, Retry middleware повторит, к
-//     тому моменту Created догонит;
-//   - строка есть, но её version новее → устаревшее событие (out-of-order при
-//     N инстансах) → молчаливый Ack: состояние уже актуальнее.
+//   - строки нет вообще → возвращаем errProjectionRowMissing (см. выше);
+//   - строка есть, но её versionCol новее → устаревшее событие (out-of-order
+//     при N инстансах) → молчаливый Ack: состояние уже актуальнее.
 //
 // version — версия агрегата на момент события (Event.Version()), монотонно
 // растёт по всем событиям агрегата, поэтому годится как guard для строк его
@@ -58,16 +45,17 @@ func versionGuardedUpdate(
 	db dbtx.TxManager,
 	psql squirrel.StatementBuilderType,
 	table string,
+	versionCol string,
 	id uuid.UUID,
 	version int64,
 	sets map[string]any,
 ) error {
-	sets["version"] = version
+	sets[versionCol] = version
 	query, args, err := psql.
 		Update(table).
 		SetMap(sets).
 		Where(squirrel.Eq{"id": id}).
-		Where(squirrel.LtOrEq{"version": version}).
+		Where(squirrel.LtOrEq{versionCol: version}).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build guarded update for %s: %w", table, err)
@@ -83,7 +71,7 @@ func versionGuardedUpdate(
 
 	var existing int64
 	checkQuery, checkArgs, err := psql.
-		Select("version").
+		Select(versionCol).
 		From(table).
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -92,7 +80,7 @@ func versionGuardedUpdate(
 	}
 	if err := db.QueryRow(ctx, checkQuery, checkArgs...).Scan(&existing); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("%s row %s not found yet, event v%d before created — retry", table, id, version)
+			return fmt.Errorf("%s row %s not found yet, event v%d before created: %w", table, id, version, errProjectionRowMissing)
 		}
 		return fmt.Errorf("check %s row version: %w", table, err)
 	}

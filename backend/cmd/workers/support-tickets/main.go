@@ -20,12 +20,7 @@ func main() {
 		LogFile:       "support-tickets-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewSupportTicketsHandler(f.DB())
-			return ep.AddHandlersGroup("support-tickets",
-				cqrs.NewGroupEventHandler(h.OnTicketCreated),
-				cqrs.NewGroupEventHandler(h.OnMessageAdded),
-				cqrs.NewGroupEventHandler(h.OnTicketClosed),
-				cqrs.NewGroupEventHandler(h.OnTicketReopened),
-			)
+			return ep.AddHandlersGroup("support-tickets", handlers.SupportTicketsGroupHandlers(h)...)
 		},
 	})
 }

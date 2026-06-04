@@ -49,7 +49,7 @@ func (h *InvitationsHandler) OnInvitationCreated(ctx context.Context, e *events.
 // Created уходит в retry до появления строки.
 
 func (h *InvitationsHandler) OnInvitationAccepted(ctx context.Context, e *events.InvitationAccepted) error {
-	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", e.InvitationID, e.Version(), map[string]any{
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", "version", e.InvitationID, e.Version(), map[string]any{
 		"status": "accepted",
 	}); err != nil {
 		return fmt.Errorf("failed to update invitation: %w", err)
@@ -60,7 +60,7 @@ func (h *InvitationsHandler) OnInvitationAccepted(ctx context.Context, e *events
 }
 
 func (h *InvitationsHandler) OnInvitationExpired(ctx context.Context, e *events.InvitationExpired) error {
-	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", e.InvitationID, e.Version(), map[string]any{
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", "version", e.InvitationID, e.Version(), map[string]any{
 		"status": "expired",
 	}); err != nil {
 		return fmt.Errorf("failed to update invitation: %w", err)
@@ -71,7 +71,7 @@ func (h *InvitationsHandler) OnInvitationExpired(ctx context.Context, e *events.
 }
 
 func (h *InvitationsHandler) OnInvitationCancelled(ctx context.Context, e *events.InvitationCancelled) error {
-	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", e.InvitationID, e.Version(), map[string]any{
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", "version", e.InvitationID, e.Version(), map[string]any{
 		"status": "cancelled",
 	}); err != nil {
 		return fmt.Errorf("failed to update invitation: %w", err)

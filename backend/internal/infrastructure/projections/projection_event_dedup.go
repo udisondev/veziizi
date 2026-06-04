@@ -3,6 +3,7 @@ package projections
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -40,4 +41,17 @@ func (p *ProjectionEventDedupProjection) Begin(ctx context.Context, projectionNa
 		return false, fmt.Errorf("insert projection_event_dedup: %w", err)
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// DeleteOlderThan удаляет dedup-строки старше cutoff. Строки нужны только на
+// окно повторной доставки (retry + XAUTOCLAIM), дальше — мёртвый вес, раздувающий
+// таблицу и индекс в hot path каждого события. Вызывается dedup-cleanup воркером.
+func (p *ProjectionEventDedupProjection) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	tag, err := p.db.Exec(ctx,
+		`DELETE FROM projection_event_dedup WHERE processed_at < $1`, cutoff,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete old projection_event_dedup rows: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }

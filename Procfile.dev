@@ -19,3 +19,4 @@ support: ./bin/worker-support-tickets
 support-notifier: ./bin/worker-support-tickets-notifier
 rate-limiter: ./bin/worker-rate-limiter-cleanup
 vehicles: ./bin/worker-vehicles
+dedup-cleanup: ./bin/worker-dedup-cleanup

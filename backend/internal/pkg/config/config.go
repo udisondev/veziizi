@@ -165,6 +165,20 @@ type WorkerConfig struct {
 	// строка отключает PoisonQueue (тогда после исчерпания попыток сообщение
 	// останется в горячем nack-цикле, как было до этапа 3).
 	DeadLetterTopic string `env:"WORKER_DEADLETTER_TOPIC" envDefault:"deadletter"`
+	// DeadLetterMaxLen — отдельный потолок длины DLQ-стрима. 0 (default) — без
+	// trim'а: отравленные события нельзя терять молча, их разбирает человек
+	// (dlq-redrive). НЕ наследует REDIS_STREAM_MAXLEN намеренно.
+	DeadLetterMaxLen int64 `env:"WORKER_DEADLETTER_MAXLEN" envDefault:"0"`
+
+	// ForwarderPollInterval — период опроса Postgres outbox forwarder'ом.
+	// Дефолт watermill-sql (1s) добавлял бы секунду латентности всему пайплайну.
+	ForwarderPollInterval time.Duration `env:"FORWARDER_POLL_INTERVAL" envDefault:"100ms"`
+
+	// DedupCleanupInterval / DedupRetention — параметры scheduled-воркера
+	// dedup-cleanup: dedup-строки (projection_event_dedup, notification_dedup)
+	// нужны только на окно повторной доставки, retention с большим запасом.
+	DedupCleanupInterval time.Duration `env:"WORKER_DEDUP_CLEANUP_INTERVAL" envDefault:"1h"`
+	DedupRetention       time.Duration `env:"WORKER_DEDUP_RETENTION" envDefault:"168h"`
 }
 
 type FraudConfig struct {

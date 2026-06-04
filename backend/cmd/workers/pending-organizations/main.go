@@ -17,11 +17,7 @@ func main() {
 		LogFile:       "pending-organizations-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewPendingOrganizationsHandler(f.DB())
-			return ep.AddHandlersGroup("pending-organizations",
-				cqrs.NewGroupEventHandler(h.OnCreated),
-				cqrs.NewGroupEventHandler(h.OnApproved),
-				cqrs.NewGroupEventHandler(h.OnRejected),
-			)
+			return ep.AddHandlersGroup("pending-organizations", handlers.PendingOrganizationsGroupHandlers(h)...)
 		},
 	})
 }

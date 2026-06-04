@@ -168,7 +168,9 @@ func (s *SessionFraudSuite) TestSFR004_UnusualLoginTime() {
 	orgID := uuid.New()
 	ctx := context.Background()
 
-	// Записываем 10 логинов в 10:00-11:00 для создания гистограммы
+	// Записываем 10 логинов для создания гистограммы. ВАЖНО: RecordSessionEvent
+	// игнорирует event.CreatedAt (created_at = NOW() в БД), поэтому «типичный
+	// час» в гистограмме — ТЕКУЩИЙ UTC-час, а не аргумент hour.
 	s.recordLogins(memberID, orgID, 10, 10)
 
 	// Настраиваем behavior с 10+ логинами
@@ -176,8 +178,12 @@ func (s *SessionFraudSuite) TestSFR004_UnusualLoginTime() {
 	lastLogin := time.Now().Add(-8 * time.Hour)
 	s.setupBehavior(memberID, lastLogin, 55.75, 37.62, "RU", 10, typicalHours)
 
-	// Логин в 3:00 — разница 7 часов с типичными 10:00
-	loginTime := time.Date(2026, 3, 31, 3, 0, 0, 0, time.UTC)
+	// Логин смещаем на 7 часов (циклически) от текущего UTC-часа — стабильно
+	// превышает UnusualHourThreshold. Захардкоженная дата делала тест флакающим
+	// по времени суток запуска.
+	now := time.Now().UTC()
+	unusualHour := (now.Hour() + 7) % 24
+	loginTime := time.Date(now.Year(), now.Month(), now.Day(), unusualHour, 0, 0, 0, time.UTC)
 
 	result, err := s.analyzer.AnalyzeLogin(ctx, session.LoginAnalysisInput{
 		MemberID:       memberID,

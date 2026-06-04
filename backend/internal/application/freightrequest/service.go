@@ -80,7 +80,7 @@ func NewService(
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*freightrequest.FreightRequest, error) {
-	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
+	res, err := s.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, freightrequest.ErrFreightRequestNotFound
@@ -91,7 +91,10 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*freightrequest.Freigh
 		return nil, fmt.Errorf("load freight request: %w", err)
 	}
 
-	fr := freightrequest.NewFromEvents(id, evts)
+	fr, err := freightrequest.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return nil, fmt.Errorf("restore freight request: %w", err)
+	}
 	if fr.Version() == 0 {
 		return nil, freightrequest.ErrFreightRequestNotFound
 	}
@@ -673,7 +676,9 @@ func (s *Service) saveAndPublish(ctx context.Context, fr *freightrequest.Freight
 	}
 
 	if err := s.db.InTx(ctx, func(ctx context.Context) error {
-		if err := s.eventStore.Save(ctx, changes...); err != nil {
+		// SaveWithState пишет снапшот каждые snapshotThreshold версий: без него
+		// rebuild-проекции и Get перечитывали бы весь растущий стрим агрегата.
+		if err := s.eventStore.SaveWithState(ctx, fr.State(), changes...); err != nil {
 			slog.Error("failed to save freight request events",
 				slog.String("freight_request_id", fr.ID().String()),
 				slog.Int("event_count", len(changes)),

@@ -63,7 +63,7 @@ func (h *SupportTicketsHandler) OnMessageAdded(ctx context.Context, e *events.Me
 		newStatus = values.TicketStatusAwaitingReply.String()
 	}
 
-	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", e.AggregateID(), e.Version(), map[string]any{
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", "version", e.AggregateID(), e.Version(), map[string]any{
 		"status":     newStatus,
 		"updated_at": e.OccurredAt(),
 	}); err != nil {
@@ -77,7 +77,7 @@ func (h *SupportTicketsHandler) OnMessageAdded(ctx context.Context, e *events.Me
 }
 
 func (h *SupportTicketsHandler) OnTicketClosed(ctx context.Context, e *events.TicketClosed) error {
-	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", e.AggregateID(), e.Version(), map[string]any{
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", "version", e.AggregateID(), e.Version(), map[string]any{
 		"status":     values.TicketStatusClosed.String(),
 		"updated_at": e.OccurredAt(),
 		"closed_at":  e.OccurredAt(),
@@ -92,7 +92,7 @@ func (h *SupportTicketsHandler) OnTicketClosed(ctx context.Context, e *events.Ti
 }
 
 func (h *SupportTicketsHandler) OnTicketReopened(ctx context.Context, e *events.TicketReopened) error {
-	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", e.AggregateID(), e.Version(), map[string]any{
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "support_tickets_lookup", "version", e.AggregateID(), e.Version(), map[string]any{
 		"status":     values.TicketStatusAwaitingReply.String(),
 		"updated_at": e.OccurredAt(),
 		"closed_at":  nil,

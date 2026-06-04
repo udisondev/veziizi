@@ -21,13 +21,7 @@ func main() {
 				f.OrganizationsProjection(),
 				f.FreightRequestsProjection(),
 			)
-			return ep.AddHandlersGroup("organizations",
-				cqrs.NewGroupEventHandler(h.OnCreated),
-				cqrs.NewGroupEventHandler(h.OnApproved),
-				cqrs.NewGroupEventHandler(h.OnRejected),
-				cqrs.NewGroupEventHandler(h.OnSuspended),
-				cqrs.NewGroupEventHandler(h.OnUpdated),
-			)
+			return ep.AddHandlersGroup("organizations", handlers.OrganizationsGroupHandlers(h)...)
 		},
 	})
 }

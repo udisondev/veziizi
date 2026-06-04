@@ -318,103 +318,60 @@ func (s *Suite) startEventHandlers() error {
 		return ep.AddHandlersGroup(consumerGroup, handlers...)
 	}
 
+	// Списки хендлеров берутся из eventHandlers.XGroupHandlers — те же функции,
+	// что используют cmd/workers/*/main.go: e2e гоняет ровно прод-набор, и новый
+	// OnXxx нельзя забыть в одной из копий.
 	membersH := eventHandlers.NewMembersHandler(db)
 	if err := register("organization.events", "e2e_members",
-		cqrs.NewGroupEventHandler(membersH.OnMemberAdded),
-		cqrs.NewGroupEventHandler(membersH.OnMemberRemoved),
-		cqrs.NewGroupEventHandler(membersH.OnMemberRoleChanged),
-		cqrs.NewGroupEventHandler(membersH.OnMemberBlocked),
-		cqrs.NewGroupEventHandler(membersH.OnMemberUnblocked),
-	); err != nil {
+		eventHandlers.MembersGroupHandlers(membersH)...); err != nil {
 		return err
 	}
 
 	orgsH := eventHandlers.NewOrganizationsHandler(s.Factory.EventStore(), s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
 	if err := register("organization.events", "e2e_organizations",
-		cqrs.NewGroupEventHandler(orgsH.OnCreated),
-		cqrs.NewGroupEventHandler(orgsH.OnApproved),
-		cqrs.NewGroupEventHandler(orgsH.OnRejected),
-		cqrs.NewGroupEventHandler(orgsH.OnSuspended),
-		cqrs.NewGroupEventHandler(orgsH.OnUpdated),
-	); err != nil {
+		eventHandlers.OrganizationsGroupHandlers(orgsH)...); err != nil {
 		return err
 	}
 
 	invH := eventHandlers.NewInvitationsHandler(db)
 	if err := register("organization.events", "e2e_invitations",
-		cqrs.NewGroupEventHandler(invH.OnInvitationCreated),
-		cqrs.NewGroupEventHandler(invH.OnInvitationAccepted),
-		cqrs.NewGroupEventHandler(invH.OnInvitationExpired),
-		cqrs.NewGroupEventHandler(invH.OnInvitationCancelled),
-	); err != nil {
+		eventHandlers.InvitationsGroupHandlers(invH)...); err != nil {
 		return err
 	}
 
 	pendingH := eventHandlers.NewPendingOrganizationsHandler(db)
 	if err := register("organization.events", "e2e_pending_orgs",
-		cqrs.NewGroupEventHandler(pendingH.OnCreated),
-		cqrs.NewGroupEventHandler(pendingH.OnApproved),
-		cqrs.NewGroupEventHandler(pendingH.OnRejected),
-	); err != nil {
+		eventHandlers.PendingOrganizationsGroupHandlers(pendingH)...); err != nil {
 		return err
 	}
 
 	frH := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore(), s.Factory.FreightInvitesProjection())
 	if err := register("freightrequest.events", "e2e_freight_requests",
-		cqrs.NewGroupEventHandler(frH.OnCreated),
-		cqrs.NewGroupEventHandler(frH.OnUpdated),
-		cqrs.NewGroupEventHandler(frH.OnReassigned),
-		cqrs.NewGroupEventHandler(frH.OnCancelled),
-		cqrs.NewGroupEventHandler(frH.OnExpired),
-		cqrs.NewGroupEventHandler(frH.OnOfferMade),
-		cqrs.NewGroupEventHandler(frH.OnOfferWithdrawn),
-		cqrs.NewGroupEventHandler(frH.OnOfferSelected),
-		cqrs.NewGroupEventHandler(frH.OnOfferRejected),
-		cqrs.NewGroupEventHandler(frH.OnOfferConfirmed),
-		cqrs.NewGroupEventHandler(frH.OnOfferDeclined),
-		cqrs.NewGroupEventHandler(frH.OnOfferUnselected),
-		cqrs.NewGroupEventHandler(frH.OnOfferCancelledWithRequest),
-		cqrs.NewGroupEventHandler(frH.OnCustomerCompleted),
-		cqrs.NewGroupEventHandler(frH.OnCarrierCompleted),
-		cqrs.NewGroupEventHandler(frH.OnFreightRequestCompleted),
-		cqrs.NewGroupEventHandler(frH.OnReviewLeft),
-		cqrs.NewGroupEventHandler(frH.OnCancelledAfterConfirmed),
-		cqrs.NewGroupEventHandler(frH.OnCarrierMemberReassigned),
-		cqrs.NewGroupEventHandler(frH.OnCarrierInvited),
-	); err != nil {
+		eventHandlers.FreightRequestsGroupHandlers(frH)...); err != nil {
 		return err
 	}
 
 	supportH := eventHandlers.NewSupportTicketsHandler(db)
 	if err := register("support.events", "e2e_support_tickets",
-		cqrs.NewGroupEventHandler(supportH.OnTicketCreated),
-		cqrs.NewGroupEventHandler(supportH.OnMessageAdded),
-		cqrs.NewGroupEventHandler(supportH.OnTicketClosed),
-		cqrs.NewGroupEventHandler(supportH.OnTicketReopened),
-	); err != nil {
+		eventHandlers.SupportTicketsGroupHandlers(supportH)...); err != nil {
 		return err
 	}
 
 	fraudH := eventHandlers.NewFraudsterHandler(s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
 	if err := register("organization.events", "e2e_fraudster",
-		cqrs.NewGroupEventHandler(fraudH.OnFraudsterMarked),
-		cqrs.NewGroupEventHandler(fraudH.OnFraudsterUnmarked),
-	); err != nil {
+		eventHandlers.FraudsterGroupHandlers(fraudH)...); err != nil {
 		return err
 	}
 
 	receiverH := eventHandlers.NewReviewReceiverHandler(s.Factory.ReviewService())
 	if err := register("freightrequest.events", "e2e_review_receiver",
-		cqrs.NewGroupEventHandler(receiverH.OnReviewLeft),
-		cqrs.NewGroupEventHandler(receiverH.OnReviewEdited),
-	); err != nil {
+		eventHandlers.ReviewReceiverGroupHandlers(receiverH)...); err != nil {
 		return err
 	}
 
 	analyzerH := eventHandlers.NewReviewAnalyzerHandler(s.Factory.ReviewService(), s.Factory.ReviewAnalyzer())
 	if err := register("review.events", "e2e_review_analyzer",
-		cqrs.NewGroupEventHandler(analyzerH.OnReviewReceived),
-	); err != nil {
+		eventHandlers.ReviewAnalyzerGroupHandlers(analyzerH)...); err != nil {
 		return err
 	}
 
@@ -425,14 +382,13 @@ func (s *Suite) startEventHandlers() error {
 		s.Factory.ProjectionEventDedupProjection(),
 	)
 	if err := register("review.events", "e2e_reviews_projection",
-		cqrs.NewGroupEventHandler(reviewsProjH.OnReceived),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnEdited),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnAnalyzed),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnApproved),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnRejected),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnActivated),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnDeactivated),
-	); err != nil {
+		eventHandlers.ReviewsProjectionGroupHandlers(reviewsProjH)...); err != nil {
+		return err
+	}
+
+	vehiclesH := eventHandlers.NewVehiclesHandler(db, s.Factory.VehiclesProjection(), s.Factory.PendingVehiclesProjection())
+	if err := register("organization.events", "e2e_vehicles",
+		eventHandlers.VehiclesGroupHandlers(vehiclesH)...); err != nil {
 		return err
 	}
 

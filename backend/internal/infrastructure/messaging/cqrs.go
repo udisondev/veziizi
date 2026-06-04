@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
@@ -20,10 +21,13 @@ import (
 // функции — forwarder-воркер: он читает Postgres outbox-топик (OutboxTopic)
 // и перекладывает сообщения в Redis. SQL-подписка с одним offset'ом на группу
 // под FOR UPDATE здесь уместна: forwarder работает в одном инстансе.
+// pollInterval — период опроса outbox-таблицы. Дефолт watermill-sql (1s)
+// добавлял бы секунду базовой латентности всему событийному пайплайну.
 func NewSQLSubscriber(
 	pool *pgxpool.Pool,
 	topic string,
 	consumerGroup string,
+	pollInterval time.Duration,
 	logger watermill.LoggerAdapter,
 ) (message.Subscriber, error) {
 	sub, err := sql.NewSubscriber(
@@ -32,6 +36,7 @@ func NewSQLSubscriber(
 			SchemaAdapter:  sql.DefaultPostgreSQLSchema{},
 			OffsetsAdapter: sql.DefaultPostgreSQLOffsetsAdapter{},
 			ConsumerGroup:  consumerGroup,
+			PollInterval:   pollInterval,
 		},
 		logger,
 	)

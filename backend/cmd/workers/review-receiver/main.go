@@ -17,10 +17,7 @@ func main() {
 		LogFile:       "review-receiver-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewReviewReceiverHandler(f.ReviewService())
-			return ep.AddHandlersGroup("review-receiver",
-				cqrs.NewGroupEventHandler(h.OnReviewLeft),
-				cqrs.NewGroupEventHandler(h.OnReviewEdited),
-			)
+			return ep.AddHandlersGroup("review-receiver", handlers.ReviewReceiverGroupHandlers(h)...)
 		},
 	})
 }

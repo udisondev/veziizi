@@ -71,7 +71,7 @@ var offerLookupColumns = []string{
 // rebuild перечитывает агрегат из event store и переписывает строки проекции
 // полным UPSERT'ом в одной tx. Все событийные хендлеры сводятся к нему.
 func (h *FreightRequestsHandler) rebuild(ctx context.Context, id uuid.UUID) error {
-	evts, err := h.eventStore.Load(ctx, id, events.AggregateType)
+	res, err := h.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			// Событие опередило запись агрегата в стор — невозможно при текущей
@@ -84,7 +84,10 @@ func (h *FreightRequestsHandler) rebuild(ctx context.Context, id uuid.UUID) erro
 		return fmt.Errorf("load freight request: %w", err)
 	}
 
-	fr := freightrequest.NewFromEvents(id, evts)
+	fr, err := freightrequest.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return fmt.Errorf("restore freight request: %w", err)
+	}
 	if fr.Version() == 0 {
 		slog.Warn("freight request has no events, skipping rebuild", slog.String("id", id.String()))
 		return nil
@@ -135,12 +138,15 @@ func (h *FreightRequestsHandler) upsertLookup(ctx context.Context, fr *freightre
 	// Денормализация данных организации-заказчика — как и раньше, из event
 	// store (организация может быть ещё не видна в organizations_lookup).
 	var orgName, orgINN, orgCountry *string
-	orgEvts, err := h.eventStore.Load(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
+	orgRes, err := h.eventStore.LoadWithSnapshot(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
 	if err != nil && !errors.Is(err, eventstore.ErrAggregateNotFound) {
 		return fmt.Errorf("load organization for denormalization: %w", err)
 	}
-	if len(orgEvts) > 0 {
-		org := organization.NewFromEvents(fr.CustomerOrgID(), orgEvts)
+	if orgRes != nil && (len(orgRes.Events) > 0 || orgRes.SnapshotState != nil) {
+		org, err := organization.NewFromStore(fr.CustomerOrgID(), orgRes.SnapshotState, orgRes.Events)
+		if err != nil {
+			return fmt.Errorf("restore organization for denormalization: %w", err)
+		}
 		name := org.Name()
 		inn := org.INN()
 		country := org.Country().String()
@@ -170,7 +176,7 @@ func (h *FreightRequestsHandler) upsertLookup(ctx context.Context, fr *freightre
 			fr.CancelledAfterConfirmedAt(),
 			fr.Version(),
 		).
-		Suffix(versionGuardUpsertSuffix("freight_requests_lookup", freightRequestLookupColumns...)).
+		Suffix(projections.VersionGuardUpsertSuffix("freight_requests_lookup", freightRequestLookupColumns...)).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build upsert query: %w", err)
@@ -205,7 +211,7 @@ func (h *FreightRequestsHandler) upsertOffers(ctx context.Context, fr *freightre
 	}
 
 	query, args, err := builder.
-		Suffix(versionGuardUpsertSuffix("offers_lookup", offerLookupColumns...)).
+		Suffix(projections.VersionGuardUpsertSuffix("offers_lookup", offerLookupColumns...)).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build upsert query: %w", err)

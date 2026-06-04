@@ -10,7 +10,7 @@ var (
 // Money represents a monetary amount with currency
 type Money struct {
 	Amount   int64    `json:"amount"`
-	Currency Currency `json:"currency"`
+	Currency Currency `json:"currency,omitempty"`
 }
 
 // NewMoney creates a new Money value. Returns error if amount is negative.

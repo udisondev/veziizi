@@ -50,6 +50,8 @@ services:
   telegram-bot:
     <<: *staging-service
 
+  # forwarder — СТРОГО ОДИН инстанс (advisory lock не даст второму стартовать,
+  # но и не пытайтесь масштабировать).
   worker-forwarder:
     <<: *staging-service
 
@@ -95,5 +97,14 @@ services:
   worker-support-tickets:
     <<: *staging-service
 
+  worker-support-tickets-notifier:
+    <<: *staging-service
+
+  worker-vehicles:
+    <<: *staging-service
+
   worker-rate-limiter-cleanup:
+    <<: *staging-service
+
+  worker-dedup-cleanup:
     <<: *staging-service

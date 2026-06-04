@@ -22,15 +22,7 @@ func main() {
 				f.OrganizationRatingsProjection(),
 				f.ProjectionEventDedupProjection(),
 			)
-			return ep.AddHandlersGroup("reviews-projection",
-				cqrs.NewGroupEventHandler(h.OnReceived),
-				cqrs.NewGroupEventHandler(h.OnEdited),
-				cqrs.NewGroupEventHandler(h.OnAnalyzed),
-				cqrs.NewGroupEventHandler(h.OnApproved),
-				cqrs.NewGroupEventHandler(h.OnRejected),
-				cqrs.NewGroupEventHandler(h.OnActivated),
-				cqrs.NewGroupEventHandler(h.OnDeactivated),
-			)
+			return ep.AddHandlersGroup("reviews-projection", handlers.ReviewsProjectionGroupHandlers(h)...)
 		},
 	})
 }

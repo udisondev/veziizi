@@ -17,12 +17,7 @@ func main() {
 		LogFile:       "invitations-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewInvitationsHandler(f.DB())
-			return ep.AddHandlersGroup("invitations",
-				cqrs.NewGroupEventHandler(h.OnInvitationCreated),
-				cqrs.NewGroupEventHandler(h.OnInvitationAccepted),
-				cqrs.NewGroupEventHandler(h.OnInvitationExpired),
-				cqrs.NewGroupEventHandler(h.OnInvitationCancelled),
-			)
+			return ep.AddHandlersGroup("invitations", handlers.InvitationsGroupHandlers(h)...)
 		},
 	})
 }

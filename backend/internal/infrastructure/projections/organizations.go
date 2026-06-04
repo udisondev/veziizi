@@ -88,24 +88,25 @@ func (p *OrganizationsProjection) GetNames(ctx context.Context, ids []uuid.UUID)
 	return result, nil
 }
 
+// organizationUpsertColumns — обновляемые колонки organizations_lookup (без id
+// и insert-only created_at). Используются и в INSERT, и в ON CONFLICT DO UPDATE.
+var organizationUpsertColumns = []string{"name", "legal_name", "inn", "status", "updated_at", "version"}
+
 // Upsert пишет полное состояние организации с version-guard'ом: устаревший
 // rebuild (меньшая версия агрегата) не перетирает свежие данные, повторная
 // запись той же версии идемпотентна.
 func (p *OrganizationsProjection) Upsert(ctx context.Context, org OrganizationLookup) error {
-	query := `
-		INSERT INTO organizations_lookup (id, name, legal_name, inn, status, created_at, updated_at, version)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
-		ON CONFLICT (id) DO UPDATE SET
-			name = EXCLUDED.name,
-			legal_name = EXCLUDED.legal_name,
-			inn = EXCLUDED.inn,
-			status = EXCLUDED.status,
-			updated_at = NOW(),
-			version = EXCLUDED.version
-		WHERE organizations_lookup.version <= EXCLUDED.version
-	`
+	query, args, err := p.psql.
+		Insert("organizations_lookup").
+		Columns(append([]string{"id", "created_at"}, organizationUpsertColumns...)...).
+		Values(org.ID, org.CreatedAt, org.Name, org.LegalName, org.INN, org.Status, squirrel.Expr("NOW()"), org.Version).
+		Suffix(VersionGuardUpsertSuffix("organizations_lookup", organizationUpsertColumns...)).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build upsert query: %w", err)
+	}
 
-	if _, err := p.db.Exec(ctx, query, org.ID, org.Name, org.LegalName, org.INN, org.Status, org.CreatedAt, org.Version); err != nil {
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
 		return fmt.Errorf("upsert organization: %w", err)
 	}
 

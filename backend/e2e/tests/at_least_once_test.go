@@ -36,13 +36,23 @@ func (s *AtLeastOnceSuite) SetupSuite() {
 	s.f = testSuite.Factory
 }
 
-func (s *AtLeastOnceSuite) memberRow(memberID uuid.UUID) (role, status string, version int64) {
+func (s *AtLeastOnceSuite) memberRow(memberID uuid.UUID) (role, status string, roleVersion, statusVersion int64) {
 	s.T().Helper()
 	err := s.f.DB().QueryRow(context.Background(),
-		`SELECT role, status, version FROM members_lookup WHERE id = $1`, memberID,
-	).Scan(&role, &status, &version)
+		`SELECT role, status, role_version, status_version FROM members_lookup WHERE id = $1`, memberID,
+	).Scan(&role, &status, &roleVersion, &statusVersion)
 	s.Require().NoError(err, "load member row")
-	return role, status, version
+	return role, status, roleVersion, statusVersion
+}
+
+func (s *AtLeastOnceSuite) memberRowExists(memberID uuid.UUID) bool {
+	s.T().Helper()
+	var exists bool
+	err := s.f.DB().QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM members_lookup WHERE id = $1)`, memberID,
+	).Scan(&exists)
+	s.Require().NoError(err, "check member row")
+	return exists
 }
 
 // TestALO001_StatusUpdateBeforeCreatedRetries: статусное событие, пришедшее
@@ -81,9 +91,9 @@ func (s *AtLeastOnceSuite) TestALO001_StatusUpdateBeforeCreatedRetries() {
 	// Retry статусного события теперь проходит.
 	s.Require().NoError(h.OnMemberRoleChanged(ctx, roleChanged))
 
-	role, _, version := s.memberRow(memberID)
+	role, _, roleVersion, _ := s.memberRow(memberID)
 	s.Assert().Equal("administrator", role)
-	s.Assert().Equal(int64(3), version)
+	s.Assert().Equal(int64(3), roleVersion)
 }
 
 // TestALO002_StaleEventDoesNotOverwriteNewerState: устаревшее событие (меньшая
@@ -122,9 +132,9 @@ func (s *AtLeastOnceSuite) TestALO002_StaleEventDoesNotOverwriteNewerState() {
 	}
 	s.Require().NoError(h.OnMemberUnblocked(ctx, unblocked), "устаревшее событие должно молча ack'аться")
 
-	_, status, version := s.memberRow(memberID)
+	_, status, _, statusVersion := s.memberRow(memberID)
 	s.Assert().Equal("blocked", status, "устаревший unblock не должен перетирать свежий block")
-	s.Assert().Equal(int64(5), version)
+	s.Assert().Equal(int64(5), statusVersion)
 }
 
 // TestALO003_DuplicateDeliveryIsIdempotent: повторная доставка того же события
@@ -155,9 +165,98 @@ func (s *AtLeastOnceSuite) TestALO003_DuplicateDeliveryIsIdempotent() {
 	s.Require().NoError(h.OnMemberBlocked(ctx, blocked))
 	s.Require().NoError(h.OnMemberBlocked(ctx, blocked), "повтор статусного события — идемпотентен")
 
-	_, status, version := s.memberRow(memberID)
+	_, status, _, statusVersion := s.memberRow(memberID)
 	s.Assert().Equal("blocked", status)
-	s.Assert().Equal(int64(2), version)
+	s.Assert().Equal(int64(2), statusVersion)
+}
+
+// TestALO005_OrthogonalFieldsOutOfOrder: role и status guard'ятся раздельными
+// version-колонками. Свежий status-событие (v5), обогнавшее более раннее
+// role-событие (v3), НЕ должно заставить guard выбросить роль — v3 несёт
+// единственную актуальную роль.
+func (s *AtLeastOnceSuite) TestALO005_OrthogonalFieldsOutOfOrder() {
+	ctx := context.Background()
+	h := eventHandlers.NewMembersHandler(s.f.DB())
+
+	orgID := uuid.New()
+	memberID := uuid.New()
+
+	added := &orgEvents.MemberAdded{
+		BaseEvent:    eventstore.NewBaseEvent(orgID, orgEvents.AggregateType, 1),
+		MemberID:     memberID,
+		Email:        helpers.RandomEmail(),
+		PasswordHash: "hash",
+		Name:         "Test Member",
+		Role:         orgValues.MemberRoleEmployee,
+	}
+	s.Require().NoError(h.OnMemberAdded(ctx, added))
+
+	// Out-of-order: блокировка (v5) обогнала смену роли (v3).
+	blocked := &orgEvents.MemberBlocked{
+		BaseEvent: eventstore.NewBaseEvent(orgID, orgEvents.AggregateType, 5),
+		MemberID:  memberID,
+		BlockedBy: uuid.New(),
+	}
+	s.Require().NoError(h.OnMemberBlocked(ctx, blocked))
+
+	roleChanged := &orgEvents.MemberRoleChanged{
+		BaseEvent: eventstore.NewBaseEvent(orgID, orgEvents.AggregateType, 3),
+		MemberID:  memberID,
+		OldRole:   orgValues.MemberRoleEmployee,
+		NewRole:   orgValues.MemberRoleAdministrator,
+		ChangedBy: uuid.New(),
+	}
+	s.Require().NoError(h.OnMemberRoleChanged(ctx, roleChanged))
+
+	role, status, roleVersion, statusVersion := s.memberRow(memberID)
+	s.Assert().Equal("administrator", role, "роль из v3 — единственная актуальная, v5-блокировка не должна её выбрасывать")
+	s.Assert().Equal("blocked", status)
+	s.Assert().Equal(int64(3), roleVersion)
+	s.Assert().Equal(int64(5), statusVersion)
+}
+
+// TestALO006_RemovedMemberNotResurrected: tombstone в members_removed защищает
+// от воскрешения строки повторно доставленным MemberAdded и переводит статусные
+// события удалённого участника в молчаливый Ack вместо вечного retry → DLQ.
+func (s *AtLeastOnceSuite) TestALO006_RemovedMemberNotResurrected() {
+	ctx := context.Background()
+	h := eventHandlers.NewMembersHandler(s.f.DB())
+
+	orgID := uuid.New()
+	memberID := uuid.New()
+
+	added := &orgEvents.MemberAdded{
+		BaseEvent:    eventstore.NewBaseEvent(orgID, orgEvents.AggregateType, 2),
+		MemberID:     memberID,
+		Email:        helpers.RandomEmail(),
+		PasswordHash: "hash",
+		Name:         "Test Member",
+		Role:         orgValues.MemberRoleEmployee,
+	}
+	s.Require().NoError(h.OnMemberAdded(ctx, added))
+
+	removed := &orgEvents.MemberRemoved{
+		BaseEvent: eventstore.NewBaseEvent(orgID, orgEvents.AggregateType, 8),
+		MemberID:  memberID,
+	}
+	s.Require().NoError(h.OnMemberRemoved(ctx, removed))
+	s.Require().False(s.memberRowExists(memberID), "строка удалена")
+
+	// Повторная доставка Added после Removed — НЕ воскрешает строку.
+	s.Require().NoError(h.OnMemberAdded(ctx, added))
+	s.Assert().False(s.memberRowExists(memberID), "redelivered Added не должен воскрешать удалённого участника")
+
+	// Статусное событие после удаления — молчаливый Ack (не retry/DLQ).
+	roleChanged := &orgEvents.MemberRoleChanged{
+		BaseEvent: eventstore.NewBaseEvent(orgID, orgEvents.AggregateType, 6),
+		MemberID:  memberID,
+		OldRole:   orgValues.MemberRoleEmployee,
+		NewRole:   orgValues.MemberRoleAdministrator,
+		ChangedBy: uuid.New(),
+	}
+	s.Require().NoError(h.OnMemberRoleChanged(ctx, roleChanged),
+		"статусное событие удалённого участника должно ack'аться по tombstone'у")
+	s.Assert().False(s.memberRowExists(memberID))
 }
 
 // TestALO004_DuplicateReviewLeftCreatesSingleReview: повторная доставка

@@ -37,7 +37,7 @@ func NewOrganizationsHandler(
 }
 
 func (h *OrganizationsHandler) rebuild(ctx context.Context, id uuid.UUID) error {
-	evts, err := h.eventStore.Load(ctx, id, events.AggregateType)
+	res, err := h.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			slog.Warn("organization not found in event store, skipping rebuild",
@@ -47,7 +47,10 @@ func (h *OrganizationsHandler) rebuild(ctx context.Context, id uuid.UUID) error 
 		return fmt.Errorf("load organization: %w", err)
 	}
 
-	org := organization.NewFromEvents(id, evts)
+	org, err := organization.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return fmt.Errorf("restore organization: %w", err)
+	}
 	if org.Version() == 0 {
 		slog.Warn("organization has no events, skipping rebuild", slog.String("org_id", id.String()))
 		return nil

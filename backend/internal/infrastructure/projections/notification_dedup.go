@@ -3,6 +3,7 @@ package projections
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -53,4 +54,17 @@ func (p *NotificationDedupProjection) MarkSent(ctx context.Context, messageUUID 
 		return fmt.Errorf("insert notification_dedup: %w", err)
 	}
 	return nil
+}
+
+// DeleteOlderThan удаляет dedup-строки старше cutoff: message UUID живёт только
+// на окно повторной доставки одного watermill-сообщения, дальше строка — мёртвый
+// вес. Вызывается dedup-cleanup воркером.
+func (p *NotificationDedupProjection) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	tag, err := p.db.Exec(ctx,
+		`DELETE FROM notification_dedup WHERE sent_at < $1`, cutoff,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete old notification_dedup rows: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }

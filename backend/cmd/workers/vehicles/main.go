@@ -17,13 +17,7 @@ func main() {
 		LogFile:       "vehicles-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewVehiclesHandler(f.DB(), f.VehiclesProjection(), f.PendingVehiclesProjection())
-			return ep.AddHandlersGroup("vehicles",
-				cqrs.NewGroupEventHandler(h.OnAdded),
-				cqrs.NewGroupEventHandler(h.OnUpdated),
-				cqrs.NewGroupEventHandler(h.OnVerified),
-				cqrs.NewGroupEventHandler(h.OnRejected),
-				cqrs.NewGroupEventHandler(h.OnArchived),
-			)
+			return ep.AddHandlersGroup("vehicles", handlers.VehiclesGroupHandlers(h)...)
 		},
 	})
 }

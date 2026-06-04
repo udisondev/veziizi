@@ -125,7 +125,7 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*RegisterO
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
-	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
+	res, err := s.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, organization.ErrOrganizationNotFound
@@ -135,7 +135,11 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*organization.Organiza
 			slog.String("error", err.Error()))
 		return nil, fmt.Errorf("load organization: %w", err)
 	}
-	return organization.NewFromEvents(id, evts), nil
+	org, err := organization.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return nil, fmt.Errorf("restore organization: %w", err)
+	}
+	return org, nil
 }
 
 // GetByIDs загружает несколько организаций одним batch запросом.
@@ -607,7 +611,9 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 	}
 
 	if err := s.db.InTx(ctx, func(ctx context.Context) error {
-		if err := s.eventStore.Save(ctx, changes...); err != nil {
+		// SaveWithState пишет снапшот каждые snapshotThreshold версий: без него
+		// rebuild-проекции и Get перечитывали бы весь растущий стрим агрегата.
+		if err := s.eventStore.SaveWithState(ctx, org.State(), changes...); err != nil {
 			slog.Error("failed to save organization events",
 				slog.String("organization_id", org.ID().String()),
 				slog.Int("event_count", len(changes)),

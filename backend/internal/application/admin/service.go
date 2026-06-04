@@ -36,17 +36,21 @@ func NewService(
 }
 
 func (s *Service) GetOrganization(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
-	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
+	res, err := s.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, organization.ErrOrganizationNotFound
 		}
 		return nil, fmt.Errorf("failed to load organization: %w", err)
 	}
-	if len(evts) == 0 {
+	org, err := organization.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return nil, fmt.Errorf("restore organization: %w", err)
+	}
+	if org.Version() == 0 {
 		return nil, organization.ErrOrganizationNotFound
 	}
-	return organization.NewFromEvents(id, evts), nil
+	return org, nil
 }
 
 func (s *Service) ListPendingOrganizations(ctx context.Context) ([]projections.PendingOrganization, error) {
@@ -97,7 +101,8 @@ func (s *Service) saveAndPublish(ctx context.Context, org *organization.Organiza
 	}
 
 	return s.db.InTx(ctx, func(ctx context.Context) error {
-		if err := s.eventStore.Save(ctx, changes...); err != nil {
+		// SaveWithState пишет снапшот каждые snapshotThreshold версий.
+		if err := s.eventStore.SaveWithState(ctx, org.State(), changes...); err != nil {
 			return fmt.Errorf("failed to save events: %w", err)
 		}
 

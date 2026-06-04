@@ -4,8 +4,8 @@ import "fmt"
 
 // VehicleRequirements represents requirements for the transport vehicle
 type VehicleRequirements struct {
-	VehicleType    VehicleType    `json:"vehicle_type"`
-	VehicleSubType VehicleSubType `json:"vehicle_subtype"`
+	VehicleType    VehicleType    `json:"vehicle_type,omitempty"`
+	VehicleSubType VehicleSubType `json:"vehicle_subtype,omitempty"`
 	LoadingTypes   []LoadingType  `json:"loading_types,omitempty"`
 	Capacity       float64        `json:"capacity,omitempty"`
 	Volume         float64        `json:"volume,omitempty"`

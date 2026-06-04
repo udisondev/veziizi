@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
@@ -29,6 +30,11 @@ import (
 // SQL-подписчика outbox-топика.
 const forwarderName = "forwarder"
 
+// forwarderAdvisoryLockID — ключ Postgres advisory lock'а, гарантирующего
+// единственный инстанс forwarder'а. Произвольная константа, уникальная в
+// рамках приложения.
+const forwarderAdvisoryLockID int64 = 0x76657a5f66776431 // "vez_fwd1"
+
 // outboxLag — главный health-индикатор forwarder'а: сколько сообщений лежит
 // в Postgres outbox и ещё не переложено в Redis. Растущий лаг = forwarder
 // не справляется или Redis недоступен; события при этом НЕ теряются.
@@ -36,6 +42,30 @@ var outboxLag = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "veziizi_forwarder_outbox_lag",
 	Help: "Messages in Postgres outbox not yet forwarded to Redis Streams",
 })
+
+// deadletterDepth — сколько сообщений лежит в DLQ-стриме. Любое ненулевое
+// значение требует внимания: отравленные события сами не рассосутся
+// (разбор — cmd/tools/dlq-redrive после фикса причины).
+var deadletterDepth = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "veziizi_deadletter_depth",
+	Help: "Messages in the deadletter Redis stream awaiting manual triage",
+})
+
+// streamGroupLag / streamGroupPending — отставание consumer group'ов по каждому
+// стриму (XINFO GROUPS, Redis 7+). Растущий lag у группы = воркер лежит или не
+// успевает; если lag приближается к REDIS_STREAM_MAXLEN, trim начнёт выбрасывать
+// ещё не прочитанные группой события (восстановление — только backfill из
+// event store).
+var (
+	streamGroupLag = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "veziizi_redis_stream_group_lag",
+		Help: "Entries not yet delivered to the consumer group (XINFO GROUPS lag)",
+	}, []string{"stream", "group"})
+	streamGroupPending = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "veziizi_redis_stream_group_pending",
+		Help: "Entries delivered to the consumer group but not yet acked",
+	}, []string{"stream", "group"})
+)
 
 // watchOutboxLag периодически замеряет лаг: MAX(offset) сообщений минус
 // offset_acked consumer group'ы forwarder'а.
@@ -56,6 +86,43 @@ func watchOutboxLag(ctx context.Context, pool *pgxpool.Pool, interval time.Durat
 				continue
 			}
 			outboxLag.Set(float64(lag))
+		}
+	}
+}
+
+// watchRedisLag периодически снимает метрики Redis-стримов: глубину deadletter
+// и лаг/pending каждого consumer group'а на каждом известном стриме.
+func watchRedisLag(ctx context.Context, client redis.UniversalClient, deadLetterTopic string, interval time.Duration) {
+	topics := messaging.RedisStreamTopics()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if deadLetterTopic != "" {
+				depth, err := client.XLen(ctx, deadLetterTopic).Result()
+				if err == nil {
+					deadletterDepth.Set(float64(depth))
+				} else if ctx.Err() == nil {
+					slog.Error("failed to measure deadletter depth", slog.String("error", err.Error()))
+				}
+			}
+
+			for _, topic := range topics {
+				groups, err := client.XInfoGroups(ctx, topic).Result()
+				if err != nil {
+					// Стрим ещё не создан (нет публикаций) — норма, молчим.
+					continue
+				}
+				for _, g := range groups {
+					streamGroupLag.WithLabelValues(topic, g.Name).Set(float64(g.Lag))
+					streamGroupPending.WithLabelValues(topic, g.Name).Set(float64(g.Pending))
+				}
+			}
 		}
 	}
 }
@@ -124,6 +191,26 @@ func RunForwarder() {
 	pool := f.MustPool()
 	slog.Info("forwarder connected to database")
 
+	// «СТРОГО 1 инстанс» — enforced, а не convention: advisory lock в Postgres.
+	// Второй инстанс (compose --scale, k8s maxSurge>0, дубль манифеста) не
+	// стартует молча ломать порядок публикации, а громко падает. Lock держится
+	// выделенным соединением до завершения процесса.
+	lockConn, err := pool.Acquire(ctx)
+	if err != nil {
+		slog.Error("failed to acquire connection for forwarder lock", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer lockConn.Release()
+	var lockAcquired bool
+	if err := lockConn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, forwarderAdvisoryLockID).Scan(&lockAcquired); err != nil {
+		slog.Error("failed to acquire forwarder advisory lock", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	if !lockAcquired {
+		slog.Error("another forwarder instance is already running (advisory lock held) — forwarder must be a single instance")
+		os.Exit(1)
+	}
+
 	redisClient := f.MustRedisClient()
 	slog.Info("forwarder connected to redis")
 
@@ -133,9 +220,11 @@ func RunForwarder() {
 	}
 	defer hb.Stop()
 
-	// Метрика лага outbox + /metrics endpoint. Лаг — единственный критичный
-	// индикатор forwarder'а: копится → Redis/forwarder деградировал.
+	// Метрики + /metrics endpoint: лаг outbox (копится → Redis/forwarder
+	// деградировал), глубина deadletter и лаг consumer group'ов по стримам
+	// (группа отстаёт → воркер лежит; lag ~ MAXLEN → trim начнёт терять события).
 	go watchOutboxLag(ctx, pool, 15*time.Second)
+	go watchRedisLag(ctx, redisClient, appCfg.Worker.DeadLetterTopic, 15*time.Second)
 	if appCfg.Metrics.Enabled {
 		metricsSrv := metrics.NewServer(appCfg.Metrics.Addr)
 		go func() {
@@ -154,7 +243,7 @@ func RunForwarder() {
 
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 
-	sqlSub, err := messaging.NewSQLSubscriber(pool, messaging.OutboxTopic, forwarderName, wmLogger)
+	sqlSub, err := messaging.NewSQLSubscriber(pool, messaging.OutboxTopic, forwarderName, appCfg.Worker.ForwarderPollInterval, wmLogger)
 	if err != nil {
 		slog.Error("failed to create outbox subscriber", slog.String("error", err.Error()))
 		os.Exit(1)
