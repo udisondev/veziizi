@@ -25,7 +25,7 @@ func main() {
 
 	worker.Run(worker.Config{
 		Name:          "email-sender",
-		Topic:         "notification.email",
+		Topic:         messaging.TopicNotificationEmail,
 		ConsumerGroup: "email_sender",
 		LogFile:       "email-sender-worker.log",
 		Marshaler:     messaging.NotificationMarshaler(),
@@ -36,9 +36,7 @@ func main() {
 				f.DeliveryLogProjection(),
 				f.NotificationDedupProjection(),
 			)
-			return ep.AddHandlersGroup("email-sender",
-				cqrs.NewGroupEventHandler(h.OnEmailNotification),
-			)
+			return ep.AddHandlersGroup("email-sender", handlers.EmailSenderGroupHandlers(h)...)
 		},
 	})
 }

@@ -25,7 +25,8 @@ func (r *Repository) Save(ctx context.Context, org *organization.Organization) e
 		return nil
 	}
 
-	if err := r.store.Save(ctx, changes...); err != nil {
+	// SaveWithState пишет снапшот каждые snapshotThreshold версий.
+	if err := r.store.SaveWithState(ctx, org.State(), changes...); err != nil {
 		if errors.Is(err, eventstore.ErrConcurrentModification) {
 			return fmt.Errorf("organization was modified concurrently: %w", err)
 		}
@@ -37,7 +38,7 @@ func (r *Repository) Save(ctx context.Context, org *organization.Organization) e
 }
 
 func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*organization.Organization, error) {
-	evts, err := r.store.Load(ctx, id, events.AggregateType)
+	res, err := r.store.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, organization.ErrOrganizationNotFound
@@ -45,5 +46,9 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (*organization.Organ
 		return nil, fmt.Errorf("failed to load organization events: %w", err)
 	}
 
-	return organization.NewFromEvents(id, evts), nil
+	org, err := organization.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return nil, fmt.Errorf("restore organization: %w", err)
+	}
+	return org, nil
 }

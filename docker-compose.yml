@@ -7,6 +7,8 @@ x-backend: &backend
   depends_on:
     postgres:
       condition: service_healthy
+    redis:
+      condition: service_healthy
 
 services:
   postgres:
@@ -18,6 +20,19 @@ services:
       test: ["CMD-SHELL", "pg_isready -U veziizi"]
       interval: 5s
       timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: veziizi-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 5
     restart: unless-stopped
 
@@ -37,6 +52,12 @@ services:
   telegram-bot:
     <<: *backend
     command: ["telegram-bot"]
+
+  # forwarder — единственный потребитель Postgres outbox, перекладывает события
+  # в Redis Streams. Всегда РОВНО ОДИН инстанс (не масштабировать).
+  worker-forwarder:
+    <<: *backend
+    command: ["worker-forwarder"]
 
   worker-members:
     <<: *backend
@@ -94,9 +115,22 @@ services:
     <<: *backend
     command: ["worker-support-tickets"]
 
+  worker-support-tickets-notifier:
+    <<: *backend
+    command: ["worker-support-tickets-notifier"]
+
+  worker-vehicles:
+    <<: *backend
+    command: ["worker-vehicles"]
+
   worker-rate-limiter-cleanup:
     <<: *backend
     command: ["worker-rate-limiter-cleanup"]
 
+  worker-dedup-cleanup:
+    <<: *backend
+    command: ["worker-dedup-cleanup"]
+
 volumes:
   postgres_data:
+  redis_data:

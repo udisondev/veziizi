@@ -7,8 +7,9 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
-// testConfigWithDSN creates a configuration with the provided database DSN.
-func testConfigWithDSN(databaseURL string) *config.Config {
+// testConfigWithDSN creates a configuration with the provided database DSN
+// and Redis URL (per-suite Redis DB index for isolation).
+func testConfigWithDSN(databaseURL, redisURL string) *config.Config {
 	sessionSecret := os.Getenv("TEST_SESSION_SECRET")
 	if sessionSecret == "" {
 		sessionSecret = "test-session-secret-32-bytes!!"
@@ -33,6 +34,18 @@ func testConfigWithDSN(databaseURL string) *config.Config {
 		},
 		Database: config.DatabaseConfig{
 			URL: databaseURL,
+		},
+		Redis: config.RedisConfig{
+			URL:          redisURL,
+			ConsumerName: "e2e",
+			// Тестовые тайминги быстрее продовых: nack-redelivery почти сразу
+			// (versionGuardedUpdate ретраит «событие раньше Created»), короткий
+			// BlockTime чтобы router быстро завершался на Shutdown.
+			MaxIdleTime:     10 * time.Second,
+			ClaimInterval:   time.Second,
+			NackResendSleep: 20 * time.Millisecond,
+			BlockTime:       50 * time.Millisecond,
+			MaxLen:          100000,
 		},
 		Session: config.SessionConfig{
 			Secret:      sessionSecret,

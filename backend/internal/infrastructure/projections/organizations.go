@@ -31,6 +31,9 @@ type OrganizationLookup struct {
 	Status    string    `db:"status"`
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
+	// Version — версия агрегата на момент rebuild'а проекции. Guard в Upsert
+	// отбрасывает запись устаревшего состояния (см. rebuild-from-aggregate).
+	Version int64 `db:"version"`
 }
 
 // GetByID retrieves organization by ID
@@ -85,59 +88,26 @@ func (p *OrganizationsProjection) GetNames(ctx context.Context, ids []uuid.UUID)
 	return result, nil
 }
 
-// Upsert inserts or updates organization in lookup table
+// organizationUpsertColumns — обновляемые колонки organizations_lookup (без id
+// и insert-only created_at). Используются и в INSERT, и в ON CONFLICT DO UPDATE.
+var organizationUpsertColumns = []string{"name", "legal_name", "inn", "status", "updated_at", "version"}
+
+// Upsert пишет полное состояние организации с version-guard'ом: устаревший
+// rebuild (меньшая версия агрегата) не перетирает свежие данные, повторная
+// запись той же версии идемпотентна.
 func (p *OrganizationsProjection) Upsert(ctx context.Context, org OrganizationLookup) error {
-	query := `
-		INSERT INTO organizations_lookup (id, name, legal_name, inn, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW())
-		ON CONFLICT (id) DO UPDATE SET
-			name = EXCLUDED.name,
-			legal_name = EXCLUDED.legal_name,
-			inn = EXCLUDED.inn,
-			status = EXCLUDED.status,
-			updated_at = NOW()
-	`
+	query, args, err := p.psql.
+		Insert("organizations_lookup").
+		Columns(append([]string{"id", "created_at"}, organizationUpsertColumns...)...).
+		Values(org.ID, org.CreatedAt, org.Name, org.LegalName, org.INN, org.Status, squirrel.Expr("NOW()"), org.Version).
+		Suffix(VersionGuardUpsertSuffix("organizations_lookup", organizationUpsertColumns...)).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build upsert query: %w", err)
+	}
 
-	if _, err := p.db.Exec(ctx, query, org.ID, org.Name, org.LegalName, org.INN, org.Status, org.CreatedAt); err != nil {
+	if _, err := p.db.Exec(ctx, query, args...); err != nil {
 		return fmt.Errorf("upsert organization: %w", err)
-	}
-
-	return nil
-}
-
-// UpdateStatus updates organization status
-func (p *OrganizationsProjection) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	query, args, err := p.psql.
-		Update("organizations_lookup").
-		Set("status", status).
-		Set("updated_at", squirrel.Expr("NOW()")).
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := p.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update organization status: %w", err)
-	}
-
-	return nil
-}
-
-// UpdateName updates organization name
-func (p *OrganizationsProjection) UpdateName(ctx context.Context, id uuid.UUID, name string) error {
-	query, args, err := p.psql.
-		Update("organizations_lookup").
-		Set("name", name).
-		Set("updated_at", squirrel.Expr("NOW()")).
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := p.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update organization name: %w", err)
 	}
 
 	return nil

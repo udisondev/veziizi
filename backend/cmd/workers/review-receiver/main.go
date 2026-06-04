@@ -5,6 +5,7 @@ import (
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -12,15 +13,12 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "review-receiver",
-		Topic:         "freightrequest.events",
+		Topic:         messaging.TopicFreightRequestEvents,
 		ConsumerGroup: "review_receiver",
 		LogFile:       "review-receiver-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewReviewReceiverHandler(f.ReviewService())
-			return ep.AddHandlersGroup("review-receiver",
-				cqrs.NewGroupEventHandler(h.OnReviewLeft),
-				cqrs.NewGroupEventHandler(h.OnReviewEdited),
-			)
+			return ep.AddHandlersGroup("review-receiver", handlers.ReviewReceiverGroupHandlers(h)...)
 		},
 	})
 }

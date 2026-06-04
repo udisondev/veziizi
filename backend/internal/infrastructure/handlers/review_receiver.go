@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	freightEvents "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
 // ReviewReceiverHandler listens for FreightRequest.ReviewLeft events
@@ -44,6 +46,14 @@ func (h *ReviewReceiverHandler) OnReviewLeft(ctx context.Context, e *freightEven
 		CompletedAt:      time.Unix(e.CompletedAt, 0),
 	})
 	if err != nil {
+		// ReviewID детерминирован (зашит в событие ReviewLeft), поэтому повторная
+		// at-least-once доставка упирается в UNIQUE(aggregate_id, version) в event
+		// store — Review уже создан, это идемпотентный повтор, Ack.
+		if errors.Is(err, eventstore.ErrConcurrentModification) || errors.Is(err, eventstore.ErrEventVersionConflict) {
+			slog.Debug("review already exists, idempotent replay",
+				slog.String("review_id", e.ReviewID.String()))
+			return nil
+		}
 		slog.Error("failed to create review from freight request event",
 			slog.String("freight_request_id", e.AggregateID().String()),
 			slog.String("review_id", e.ReviewID.String()),

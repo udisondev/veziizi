@@ -22,15 +22,22 @@ import (
 // SendMessage проверяем notification_dedup.IsSent; после успешной отправки
 // фиксируем MarkSent. Транзиентная ошибка → возвращаем err, Retry middleware
 // перезапустит handler без потери уведомления.
+// TelegramSender — отправка сообщения в Telegram. *notifications.TelegramClient
+// реализует интерфейс; e2e подменяет записывающим fake'ом (suite не должен
+// ходить в api.telegram.org).
+type TelegramSender interface {
+	SendMessageWithButton(chatID int64, text, buttonText, buttonURL string) error
+}
+
 type TelegramSenderHandler struct {
-	client      *notifications.TelegramClient
+	client      TelegramSender
 	appConfig   *config.Config
 	deliveryLog *projections.NotificationDeliveryLogProjection
 	dedup       *projections.NotificationDedupProjection
 }
 
 func NewTelegramSenderHandler(
-	client *notifications.TelegramClient,
+	client TelegramSender,
 	appConfig *config.Config,
 	deliveryLog *projections.NotificationDeliveryLogProjection,
 	dedup *projections.NotificationDedupProjection,

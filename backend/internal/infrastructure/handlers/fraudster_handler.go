@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	orgEvents "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
+	reviewDomain "github.com/udisondev/veziizi/backend/internal/domain/review"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
@@ -63,8 +65,18 @@ func (h *FraudsterHandler) OnFraudsterMarked(ctx context.Context, e *orgEvents.F
 	reason := fmt.Sprintf("reviewer marked as fraudster: %s", e.Reason)
 	result := h.reviewService.BatchDeactivate(ctx, reviewIDs, reason)
 
-	// Логируем ошибки если есть
+	// Терминальный статус — не failure, а идемпотентный повтор: отзыв уже
+	// деактивирован (повторная at-least-once доставка события либо
+	// конкурентный инстанс успел раньше). Домен защищает от двойного
+	// занижения рейтинга, хендлеру остаётся Ack.
+	var realFailures int
 	for i, failedID := range result.FailedIDs {
+		if errors.Is(result.Errors[i], reviewDomain.ErrReviewTerminalStatus) {
+			slog.Debug("review already deactivated, skipping",
+				slog.String("review_id", failedID.String()))
+			continue
+		}
+		realFailures++
 		slog.Error("failed to deactivate review",
 			slog.String("review_id", failedID.String()),
 			slog.String("error", result.Errors[i].Error()),
@@ -75,12 +87,12 @@ func (h *FraudsterHandler) OnFraudsterMarked(ctx context.Context, e *orgEvents.F
 		slog.String("org_id", orgID.String()),
 		slog.Int("total_found", len(reviewIDs)),
 		slog.Int("deactivated", result.SuccessCount),
-		slog.Int("failed", len(result.FailedIDs)),
+		slog.Int("failed", realFailures),
 	)
 
-	if len(result.FailedIDs) > 0 {
+	if realFailures > 0 {
 		return fmt.Errorf("failed to deactivate %d of %d reviews for fraudster %s",
-			len(result.FailedIDs), len(reviewIDs), orgID)
+			realFailures, len(reviewIDs), orgID)
 	}
 
 	return nil

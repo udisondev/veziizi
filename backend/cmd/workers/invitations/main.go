@@ -5,6 +5,7 @@ import (
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -12,17 +13,12 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "invitations",
-		Topic:         "organization.events",
+		Topic:         messaging.TopicOrganizationEvents,
 		ConsumerGroup: "invitations_projection",
 		LogFile:       "invitations-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
 			h := handlers.NewInvitationsHandler(f.DB())
-			return ep.AddHandlersGroup("invitations",
-				cqrs.NewGroupEventHandler(h.OnInvitationCreated),
-				cqrs.NewGroupEventHandler(h.OnInvitationAccepted),
-				cqrs.NewGroupEventHandler(h.OnInvitationExpired),
-				cqrs.NewGroupEventHandler(h.OnInvitationCancelled),
-			)
+			return ep.AddHandlersGroup("invitations", handlers.InvitationsGroupHandlers(h)...)
 		},
 	})
 }

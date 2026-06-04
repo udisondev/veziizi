@@ -4,11 +4,13 @@ package setup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,8 +24,11 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	wmSql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
 	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+	"github.com/ThreeDotsLabs/watermill/components/forwarder"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	eventHandlers "github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
@@ -37,6 +42,9 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/geoip"
 )
 
+// e2eForwarderGroup — consumer group SQL-подписчика outbox-топика в suite.
+const e2eForwarderGroup = "e2e_forwarder"
+
 // Suite represents a test suite with shared infrastructure.
 // Use NewSuite() to create a new suite for each test group.
 type Suite struct {
@@ -44,6 +52,9 @@ type Suite struct {
 	BaseURL string
 	Factory *factory.Factory
 	Config  *config.Config
+	// TelegramFake — записывающая замена handlers.TelegramSender: e2e не ходит
+	// в api.telegram.org, тесты ассертят отправки через Sent()/SentTo().
+	TelegramFake *FakeTelegramSender
 
 	server            *httpServer.Server
 	listener          net.Listener
@@ -52,6 +63,9 @@ type Suite struct {
 	wg                sync.WaitGroup
 	postgresContainer *PostgresContainer
 	eventRouter       *message.Router
+	// consumerGroups: topic → e2e consumer group'ы, зарегистрированные на нём.
+	// Используется Sync() для ожидания опустошения стримов.
+	consumerGroups map[string][]string
 }
 
 // SharedSuite is a singleton suite for tests that can share infrastructure.
@@ -90,6 +104,7 @@ func GetSharedSuite(t *testing.T) *Suite {
 		cancel:            sharedSuite.cancel,
 		postgresContainer: sharedSuite.postgresContainer,
 		eventRouter:       sharedSuite.eventRouter,
+		consumerGroups:    sharedSuite.consumerGroups,
 	}
 }
 
@@ -153,7 +168,19 @@ func newSuite(t *testing.T) (*Suite, error) {
 		return nil, fmt.Errorf("failed to create per-suite database: %w", err)
 	}
 
-	cfg := testConfigWithDSN(dsn)
+	// Shared Redis container; each suite gets its own DB index — нативная
+	// изоляция стримов и consumer group'ов между сьютами.
+	if _, err := GetSharedRedis(ctx); err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to start shared redis: %w", err)
+	}
+	redisURL, err := NextRedisURL()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to allocate redis db: %w", err)
+	}
+
+	cfg := testConfigWithDSN(dsn, redisURL)
 
 	f := factory.New(cfg)
 
@@ -195,13 +222,14 @@ func newSuite(t *testing.T) (*Suite, error) {
 	cfg.HTTP.Addr = fmt.Sprintf("127.0.0.1:%d", port)
 
 	suite := &Suite{
-		T:        t,
-		BaseURL:  baseURL,
-		Factory:  f,
-		Config:   cfg,
-		listener: listener,
-		ctx:      ctx,
-		cancel:   cancel,
+		T:              t,
+		BaseURL:        baseURL,
+		Factory:        f,
+		Config:         cfg,
+		listener:       listener,
+		ctx:            ctx,
+		cancel:         cancel,
+		consumerGroups: make(map[string][]string),
 		// postgresContainer left nil: lifecycle owned by GetSharedPostgres /
 		// StopSharedPostgres (called from TestMain).
 	}
@@ -224,158 +252,134 @@ func newSuite(t *testing.T) (*Suite, error) {
 	return suite, nil
 }
 
-// startEventHandlers поднимает CQRS-EventGroupProcessor для каждого воркера
-// в одном in-process router'е. Это эквивалент production worker.Run, но
-// все consumer group'ы со своими e2e_-префиксами — чтобы тесты не делили
-// offset с реальными воркерами и не теряли события между прогонами.
+// startEventHandlers поднимает in-process эквивалент production-пайплайна:
+//   - forwarder: SQL-подписчик outbox-топика (50ms poll) → Redis-стримы
+//     этого suite (свой DB index);
+//   - CQRS-EventGroupProcessor для каждого воркера на Redis consumer group'ах
+//     с e2e_-префиксами.
 //
-// PollInterval сокращён до 50ms (default 1s), иначе async-тесты review
-// pipeline / fraudster handler / freight reassign падают по timeout при
-// параллельном запуске нескольких suites.
+// Это полный продовый путь доставки: publish → Postgres outbox → forwarder →
+// Redis Streams → consumer groups → хендлеры.
 func (s *Suite) startEventHandlers() error {
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 	pool := s.Factory.MustPool()
 	db := s.Factory.DB()
+	redisClient := s.Factory.MustRedisClient()
 
 	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
 	if err != nil {
 		return fmt.Errorf("failed to create router: %w", err)
 	}
 
-	// Helper для регистрации CQRS-handler'ов одного воркера. Создаёт
-	// EventGroupProcessor с e2e-специфичным SubscriberConstructor (50ms poll)
-	// и сразу регистрирует группу хендлеров.
-	register := func(topic, consumerGroup string, handlers ...cqrs.GroupEventHandler) error {
+	// In-process forwarder: переиспользует общий router (forwarder.Config.Router),
+	// поэтому отдельный Run не нужен — стартует вместе с router.Run ниже.
+	outboxSub, err := wmSql.NewSubscriber(
+		wmSql.BeginnerFromPgx(pool),
+		wmSql.SubscriberConfig{
+			SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
+			OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
+			ConsumerGroup:  e2eForwarderGroup,
+			PollInterval:   50 * time.Millisecond,
+		},
+		wmLogger,
+	)
+	if err != nil {
+		return fmt.Errorf("create outbox subscriber: %w", err)
+	}
+	if err := outboxSub.SubscribeInitialize(messaging.OutboxTopic); err != nil {
+		return fmt.Errorf("init outbox subscriber: %w", err)
+	}
+	redisPub, err := messaging.NewRedisPublisher(redisClient, s.Config.Redis, wmLogger)
+	if err != nil {
+		return fmt.Errorf("create redis publisher: %w", err)
+	}
+	if _, err := forwarder.NewForwarder(outboxSub, redisPub, wmLogger, forwarder.Config{
+		ForwarderTopic: messaging.OutboxTopic,
+		Router:         router,
+	}); err != nil {
+		return fmt.Errorf("create forwarder: %w", err)
+	}
+
+	// Helper для регистрации CQRS-handler'ов одного воркера: Redis consumer
+	// group + suite-уникальное имя консьюмера. registerM — вариант с явным
+	// marshaler'ом: notification.* топики несут JSON-команды
+	// (messaging.NotificationMarshaler), а не EventEnvelope.
+	registerM := func(topic, consumerGroup string, marshaler cqrs.CommandEventMarshaler, handlers ...cqrs.GroupEventHandler) error {
 		ep, err := cqrs.NewEventGroupProcessorWithConfig(router, cqrs.EventGroupProcessorConfig{
 			GenerateSubscribeTopic: func(cqrs.EventGroupProcessorGenerateSubscribeTopicParams) (string, error) {
 				return topic, nil
 			},
 			SubscriberConstructor: func(cqrs.EventGroupProcessorSubscriberConstructorParams) (message.Subscriber, error) {
-				sub, err := wmSql.NewSubscriber(
-					wmSql.BeginnerFromPgx(pool),
-					wmSql.SubscriberConfig{
-						SchemaAdapter:  wmSql.DefaultPostgreSQLSchema{},
-						OffsetsAdapter: wmSql.DefaultPostgreSQLOffsetsAdapter{},
-						ConsumerGroup:  consumerGroup,
-						PollInterval:   50 * time.Millisecond,
-					},
-					wmLogger,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("create subscriber %s: %w", consumerGroup, err)
-				}
-				if err := sub.SubscribeInitialize(topic); err != nil {
-					return nil, fmt.Errorf("init subscriber %s: %w", consumerGroup, err)
-				}
-				return sub, nil
+				return messaging.NewRedisSubscriber(redisClient, consumerGroup, "e2e-"+consumerGroup, s.Config.Redis, wmLogger)
 			},
-			Marshaler:         messaging.EventEnvelopeMarshaler{},
+			Marshaler:         marshaler,
 			Logger:            wmLogger,
 			AckOnUnknownEvent: true,
 		})
 		if err != nil {
 			return fmt.Errorf("create event processor %s: %w", consumerGroup, err)
 		}
+		s.consumerGroups[topic] = append(s.consumerGroups[topic], consumerGroup)
 		return ep.AddHandlersGroup(consumerGroup, handlers...)
 	}
+	register := func(topic, consumerGroup string, handlers ...cqrs.GroupEventHandler) error {
+		return registerM(topic, consumerGroup, messaging.EventEnvelopeMarshaler{}, handlers...)
+	}
 
+	// Списки хендлеров берутся из eventHandlers.XGroupHandlers — те же функции,
+	// что используют cmd/workers/*/main.go: e2e гоняет ровно прод-набор, и новый
+	// OnXxx нельзя забыть в одной из копий.
 	membersH := eventHandlers.NewMembersHandler(db)
-	if err := register("organization.events", "e2e_members",
-		cqrs.NewGroupEventHandler(membersH.OnMemberAdded),
-		cqrs.NewGroupEventHandler(membersH.OnMemberRemoved),
-		cqrs.NewGroupEventHandler(membersH.OnMemberRoleChanged),
-		cqrs.NewGroupEventHandler(membersH.OnMemberBlocked),
-		cqrs.NewGroupEventHandler(membersH.OnMemberUnblocked),
-	); err != nil {
+	if err := register(messaging.TopicOrganizationEvents, "e2e_members",
+		eventHandlers.MembersGroupHandlers(membersH)...); err != nil {
 		return err
 	}
 
-	orgsH := eventHandlers.NewOrganizationsHandler(s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
-	if err := register("organization.events", "e2e_organizations",
-		cqrs.NewGroupEventHandler(orgsH.OnCreated),
-		cqrs.NewGroupEventHandler(orgsH.OnApproved),
-		cqrs.NewGroupEventHandler(orgsH.OnRejected),
-		cqrs.NewGroupEventHandler(orgsH.OnSuspended),
-		cqrs.NewGroupEventHandler(orgsH.OnUpdated),
-	); err != nil {
+	orgsH := eventHandlers.NewOrganizationsHandler(s.Factory.EventStore(), s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
+	if err := register(messaging.TopicOrganizationEvents, "e2e_organizations",
+		eventHandlers.OrganizationsGroupHandlers(orgsH)...); err != nil {
 		return err
 	}
 
 	invH := eventHandlers.NewInvitationsHandler(db)
-	if err := register("organization.events", "e2e_invitations",
-		cqrs.NewGroupEventHandler(invH.OnInvitationCreated),
-		cqrs.NewGroupEventHandler(invH.OnInvitationAccepted),
-		cqrs.NewGroupEventHandler(invH.OnInvitationExpired),
-		cqrs.NewGroupEventHandler(invH.OnInvitationCancelled),
-	); err != nil {
+	if err := register(messaging.TopicOrganizationEvents, "e2e_invitations",
+		eventHandlers.InvitationsGroupHandlers(invH)...); err != nil {
 		return err
 	}
 
-	pendingH := eventHandlers.NewPendingOrganizationsHandler(db)
-	if err := register("organization.events", "e2e_pending_orgs",
-		cqrs.NewGroupEventHandler(pendingH.OnCreated),
-		cqrs.NewGroupEventHandler(pendingH.OnApproved),
-		cqrs.NewGroupEventHandler(pendingH.OnRejected),
-	); err != nil {
+	pendingH := eventHandlers.NewPendingOrganizationsHandler(db, s.Factory.EventStore())
+	if err := register(messaging.TopicOrganizationEvents, "e2e_pending_orgs",
+		eventHandlers.PendingOrganizationsGroupHandlers(pendingH)...); err != nil {
 		return err
 	}
 
 	frH := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore(), s.Factory.FreightInvitesProjection())
-	if err := register("freightrequest.events", "e2e_freight_requests",
-		cqrs.NewGroupEventHandler(frH.OnCreated),
-		cqrs.NewGroupEventHandler(frH.OnUpdated),
-		cqrs.NewGroupEventHandler(frH.OnReassigned),
-		cqrs.NewGroupEventHandler(frH.OnCancelled),
-		cqrs.NewGroupEventHandler(frH.OnExpired),
-		cqrs.NewGroupEventHandler(frH.OnOfferMade),
-		cqrs.NewGroupEventHandler(frH.OnOfferWithdrawn),
-		cqrs.NewGroupEventHandler(frH.OnOfferSelected),
-		cqrs.NewGroupEventHandler(frH.OnOfferRejected),
-		cqrs.NewGroupEventHandler(frH.OnOfferConfirmed),
-		cqrs.NewGroupEventHandler(frH.OnOfferDeclined),
-		cqrs.NewGroupEventHandler(frH.OnOfferUnselected),
-		cqrs.NewGroupEventHandler(frH.OnOfferCancelledWithRequest),
-		cqrs.NewGroupEventHandler(frH.OnCustomerCompleted),
-		cqrs.NewGroupEventHandler(frH.OnCarrierCompleted),
-		cqrs.NewGroupEventHandler(frH.OnFreightRequestCompleted),
-		cqrs.NewGroupEventHandler(frH.OnReviewLeft),
-		cqrs.NewGroupEventHandler(frH.OnCancelledAfterConfirmed),
-		cqrs.NewGroupEventHandler(frH.OnCarrierMemberReassigned),
-		cqrs.NewGroupEventHandler(frH.OnCarrierInvited),
-	); err != nil {
+	if err := register(messaging.TopicFreightRequestEvents, "e2e_freight_requests",
+		eventHandlers.FreightRequestsGroupHandlers(frH)...); err != nil {
 		return err
 	}
 
 	supportH := eventHandlers.NewSupportTicketsHandler(db)
-	if err := register("support.events", "e2e_support_tickets",
-		cqrs.NewGroupEventHandler(supportH.OnTicketCreated),
-		cqrs.NewGroupEventHandler(supportH.OnMessageAdded),
-		cqrs.NewGroupEventHandler(supportH.OnTicketClosed),
-		cqrs.NewGroupEventHandler(supportH.OnTicketReopened),
-	); err != nil {
+	if err := register(messaging.TopicSupportEvents, "e2e_support_tickets",
+		eventHandlers.SupportTicketsGroupHandlers(supportH)...); err != nil {
 		return err
 	}
 
 	fraudH := eventHandlers.NewFraudsterHandler(s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
-	if err := register("organization.events", "e2e_fraudster",
-		cqrs.NewGroupEventHandler(fraudH.OnFraudsterMarked),
-		cqrs.NewGroupEventHandler(fraudH.OnFraudsterUnmarked),
-	); err != nil {
+	if err := register(messaging.TopicOrganizationEvents, "e2e_fraudster",
+		eventHandlers.FraudsterGroupHandlers(fraudH)...); err != nil {
 		return err
 	}
 
 	receiverH := eventHandlers.NewReviewReceiverHandler(s.Factory.ReviewService())
-	if err := register("freightrequest.events", "e2e_review_receiver",
-		cqrs.NewGroupEventHandler(receiverH.OnReviewLeft),
-		cqrs.NewGroupEventHandler(receiverH.OnReviewEdited),
-	); err != nil {
+	if err := register(messaging.TopicFreightRequestEvents, "e2e_review_receiver",
+		eventHandlers.ReviewReceiverGroupHandlers(receiverH)...); err != nil {
 		return err
 	}
 
 	analyzerH := eventHandlers.NewReviewAnalyzerHandler(s.Factory.ReviewService(), s.Factory.ReviewAnalyzer())
-	if err := register("review.events", "e2e_review_analyzer",
-		cqrs.NewGroupEventHandler(analyzerH.OnReviewReceived),
-	); err != nil {
+	if err := register(messaging.TopicReviewEvents, "e2e_review_analyzer",
+		eventHandlers.ReviewAnalyzerGroupHandlers(analyzerH)...); err != nil {
 		return err
 	}
 
@@ -385,17 +389,75 @@ func (s *Suite) startEventHandlers() error {
 		s.Factory.OrganizationRatingsProjection(),
 		s.Factory.ProjectionEventDedupProjection(),
 	)
-	if err := register("review.events", "e2e_reviews_projection",
-		cqrs.NewGroupEventHandler(reviewsProjH.OnReceived),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnEdited),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnAnalyzed),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnApproved),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnRejected),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnActivated),
-		cqrs.NewGroupEventHandler(reviewsProjH.OnDeactivated),
-	); err != nil {
+	if err := register(messaging.TopicReviewEvents, "e2e_reviews_projection",
+		eventHandlers.ReviewsProjectionGroupHandlers(reviewsProjH)...); err != nil {
 		return err
 	}
+
+	vehiclesH := eventHandlers.NewVehiclesHandler(db, s.Factory.EventStore(), s.Factory.VehiclesProjection(), s.Factory.PendingVehiclesProjection())
+	if err := register(messaging.TopicOrganizationEvents, "e2e_vehicles",
+		eventHandlers.VehiclesGroupHandlers(vehiclesH)...); err != nil {
+		return err
+	}
+
+	// --- Notification-путь: те же хендлеры, что в прод-воркерах ---
+
+	supportNotifierH := eventHandlers.NewSupportAdminNotifierHandler(
+		db,
+		s.Factory.ProjectionEventDedupProjection(),
+		adminRepo.NewRepository(db),
+		s.Factory.MustNotificationBus(),
+	)
+	if err := register(messaging.TopicSupportEvents, "e2e_support_admin_notifier",
+		eventHandlers.SupportAdminNotifierGroupHandlers(supportNotifierH)...); err != nil {
+		return err
+	}
+
+	s.TelegramFake = &FakeTelegramSender{}
+	telegramH := eventHandlers.NewTelegramSenderHandler(
+		s.TelegramFake,
+		s.Config,
+		s.Factory.DeliveryLogProjection(),
+		s.Factory.NotificationDedupProjection(),
+	)
+	if err := registerM(messaging.TopicNotificationTelegram, "e2e_telegram_sender",
+		messaging.NotificationMarshaler(),
+		eventHandlers.TelegramSenderGroupHandlers(telegramH)...); err != nil {
+		return err
+	}
+
+	// Email.Enabled=false в e2e-конфиге → NoopEmailProvider, внешнего I/O нет.
+	emailH := eventHandlers.NewEmailSenderHandler(
+		s.Factory.EmailProvider(),
+		s.Config,
+		s.Factory.DeliveryLogProjection(),
+		s.Factory.NotificationDedupProjection(),
+	)
+	if err := registerM(messaging.TopicNotificationEmail, "e2e_email_sender",
+		messaging.NotificationMarshaler(),
+		eventHandlers.EmailSenderGroupHandlers(emailH)...); err != nil {
+		return err
+	}
+
+	// notification-dispatcher — legacy-хендлер (NoPublishHandlerFunc), не CQRS:
+	// регистрируем как прод worker.go (router.AddConsumerHandler). Consumer
+	// group обязан попасть в s.consumerGroups — иначе Sync() не дождётся его.
+	dispatcherSub, err := messaging.NewRedisSubscriber(
+		redisClient, "e2e_notification_dispatcher", "e2e-notification-dispatcher", s.Config.Redis, wmLogger)
+	if err != nil {
+		return fmt.Errorf("create dispatcher subscriber: %w", err)
+	}
+	dispatcherH := eventHandlers.NewNotificationDispatcherHandler(
+		db,
+		s.Factory.ProjectionEventDedupProjection(),
+		s.Factory.NotificationRulesRegistry(),
+		s.Factory.NotificationService(),
+		s.Factory.MustNotificationBus(),
+	)
+	router.AddConsumerHandler("e2e_notification_dispatcher_handler",
+		messaging.TopicFreightRequestEvents, dispatcherSub, dispatcherH.Handle)
+	s.consumerGroups[messaging.TopicFreightRequestEvents] = append(
+		s.consumerGroups[messaging.TopicFreightRequestEvents], "e2e_notification_dispatcher")
 
 	s.eventRouter = router
 
@@ -559,8 +621,91 @@ func ShutdownShared() {
 	}
 }
 
-// Sync waits for event handlers to process pending events.
-// Uses a simple delay since watermill doesn't expose queue depth.
+// Sync ждёт, пока пайплайн доставки прогонит все опубликованные события:
+//  1. forwarder вычитал Postgres outbox до конца (offset_acked == MAX(offset));
+//  2. каждая e2e consumer group на каждом стриме догнала last stream id и не
+//     имеет pending (недоack'нутых) сообщений.
+//
+// Фиксированный sleep здесь больше не работает: к доставке добавился хоп
+// outbox → forwarder → Redis. Поллим состояние с дедлайном; по истечении
+// возвращаемся молча — тест упадёт сам с внятным diff'ом состояния проекции.
 func (s *Suite) Sync() {
-	time.Sleep(50 * time.Millisecond)
+	const (
+		deadline = 5 * time.Second
+		step     = 15 * time.Millisecond
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
+
+	pool := s.Factory.MustPool()
+	redisClient := s.Factory.MustRedisClient()
+
+	// Два стабильных прохода подряд: одиночный снапшот может поймать паузу
+	// между «forwarder вычитал outbox» и «сообщение появилось в стриме»
+	// (forwarder ack'ает outbox после publish, но XADD и offset-commit — две
+	// системы), а также окно между ack хендлера и публикацией им нового
+	// события (review-receiver порождает review.events).
+	stable := 0
+	for stable < 2 {
+		if ctx.Err() != nil {
+			slog.Warn("suite sync deadline exceeded, continuing anyway")
+			return
+		}
+		if s.pipelineDrained(ctx, pool, redisClient) {
+			stable++
+		} else {
+			stable = 0
+		}
+		time.Sleep(step)
+	}
+}
+
+func (s *Suite) pipelineDrained(ctx context.Context, pool *pgxpool.Pool, redisClient redis.UniversalClient) bool {
+	// 1. Forwarder догнал outbox.
+	var maxOffset, acked int64
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX("offset"), 0) FROM "watermill_`+messaging.OutboxTopic+`"`,
+	).Scan(&maxOffset); err != nil {
+		return false
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX(offset_acked), 0) FROM "watermill_offsets_`+messaging.OutboxTopic+`" WHERE consumer_group = $1`,
+		e2eForwarderGroup,
+	).Scan(&acked); err != nil {
+		return false
+	}
+	if acked < maxOffset {
+		return false
+	}
+
+	// 2. Все consumer group'ы догнали свои стримы.
+	for topic, groups := range s.consumerGroups {
+		lastID, err := redisClient.XInfoStream(ctx, topic).Result()
+		if err != nil {
+			if errors.Is(err, redis.Nil) || strings.Contains(err.Error(), "no such key") {
+				continue // стрим ещё не создан — нечего обрабатывать
+			}
+			return false
+		}
+		groupInfos, err := redisClient.XInfoGroups(ctx, topic).Result()
+		if err != nil {
+			return false
+		}
+		byName := make(map[string]redis.XInfoGroup, len(groupInfos))
+		for _, g := range groupInfos {
+			byName[g.Name] = g
+		}
+		for _, group := range groups {
+			g, ok := byName[group]
+			if !ok {
+				return false // группа ещё не создана подписчиком
+			}
+			if g.Pending > 0 || g.LastDeliveredID != lastID.LastGeneratedID {
+				return false
+			}
+		}
+	}
+
+	return true
 }

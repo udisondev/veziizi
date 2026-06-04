@@ -3,12 +3,14 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization"
@@ -18,6 +20,17 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
+// FreightRequestsHandler обновляет freight_requests_lookup и offers_lookup по
+// паттерну rebuild-from-aggregate: на любое событие агрегата перечитывает его
+// из event store и пишет ПОЛНОЕ состояние UPSERT'ом с version-guard'ом
+// (см. versionGuardUpsertSuffix).
+//
+// Проекция = f(aggregate state). Это делает хендлер безопасным для
+// at-least-once доставки и конкурентной обработки N инстансами:
+//   - порядок событий не важен — event store всегда консистентен и упорядочен
+//     по (aggregate_id, version), в отличие от самой проекции;
+//   - повторная доставка идемпотентна — rebuild той же версии пишет те же данные;
+//   - конкурентный устаревший rebuild отбрасывается version-guard'ом.
 type FreightRequestsHandler struct {
 	db         dbtx.TxManager
 	eventStore eventstore.Store
@@ -34,18 +47,282 @@ func NewFreightRequestsHandler(db dbtx.TxManager, eventStore eventstore.Store, i
 	}
 }
 
-// OnOfferWithdrawn / OnOfferRejected / OnOfferCancelledWithRequest — обёртки
-// для CQRS-регистрации. Бизнес-логика — простой UPDATE статуса оффера.
+// freightRequestLookupColumns — все обновляемые колонки freight_requests_lookup
+// (без id). Используются и в INSERT, и в ON CONFLICT DO UPDATE.
+var freightRequestLookupColumns = []string{
+	"request_number", "customer_org_id", "status", "expires_at", "created_at",
+	"origin_address", "destination_address", "route", "cargo_weight", "cargo_volume",
+	"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
+	"payment_method", "payment_terms", "vat_type",
+	"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
+	"route_city_ids", "route_country_ids",
+	"origin_city_ids", "origin_country_ids",
+	"destination_city_ids", "destination_country_ids",
+	"carrier_org_id", "carrier_member_id", "confirmed_at",
+	"customer_completed", "carrier_completed", "completed_at",
+	"cancelled_after_confirmed_at",
+	"version",
+}
+
+var offerLookupColumns = []string{
+	"freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at",
+	"version",
+}
+
+// rebuild перечитывает агрегат из event store и переписывает строки проекции
+// полным UPSERT'ом в одной tx. Все событийные хендлеры сводятся к нему.
+func (h *FreightRequestsHandler) rebuild(ctx context.Context, id uuid.UUID) error {
+	res, err := h.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
+	if err != nil {
+		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+			// Событие опередило запись агрегата в стор — невозможно при текущей
+			// схеме (outbox пишется в той же tx, что и события), но не падаем:
+			// следующее событие агрегата достроит проекцию.
+			slog.Warn("freight request not found in event store, skipping rebuild",
+				slog.String("id", id.String()))
+			return nil
+		}
+		return fmt.Errorf("load freight request: %w", err)
+	}
+
+	fr, err := freightrequest.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return fmt.Errorf("restore freight request: %w", err)
+	}
+	if fr.Version() == 0 {
+		slog.Warn("freight request has no events, skipping rebuild", slog.String("id", id.String()))
+		return nil
+	}
+
+	return h.db.InTx(ctx, func(ctx context.Context) error {
+		if err := h.upsertLookup(ctx, fr); err != nil {
+			return fmt.Errorf("upsert freight request lookup: %w", err)
+		}
+		if err := h.upsertOffers(ctx, fr); err != nil {
+			return fmt.Errorf("upsert offers lookup: %w", err)
+		}
+		return nil
+	})
+}
+
+func (h *FreightRequestsHandler) upsertLookup(ctx context.Context, fr *freightrequest.FreightRequest) error {
+	route := fr.Route()
+	originAddr, destAddr := extractRouteAddresses(route)
+
+	routeJSON, err := json.Marshal(route)
+	if err != nil {
+		return fmt.Errorf("marshal route: %w", err)
+	}
+
+	payment := fr.Payment()
+	var priceAmount *int64
+	var priceCurrency *string
+	if payment.Price != nil {
+		priceAmount = &payment.Price.Amount
+		curr := payment.Price.Currency.String()
+		priceCurrency = &curr
+	}
+	var paymentMethod, paymentTerms, vatType *string
+	if payment.Method != "" {
+		pm := payment.Method.String()
+		paymentMethod = &pm
+	}
+	if payment.Terms != "" {
+		pt := payment.Terms.String()
+		paymentTerms = &pt
+	}
+	if payment.VatType != "" {
+		vt := payment.VatType.String()
+		vatType = &vt
+	}
+
+	// Денормализация данных организации-заказчика. Полный реплей org-агрегата
+	// на каждом из ~22 типов freight-событий — лишняя работа: INN/country
+	// иммутабельны, а имя освежает отдельный путь OrganizationUpdated →
+	// UpdateCustomerOrgName. Поэтому сначала пробуем переиспользовать денорм
+	// из уже существующей строки проекции; в event store идём только когда
+	// денорма ещё нет (первое событие заявки, либо организация была не видна
+	// при прошлом rebuild'е — тогда пустой денорм самоизлечится здесь же).
+	orgName, orgINN, orgCountry, err := h.existingOrgDenorm(ctx, fr.ID())
+	if err != nil {
+		return err
+	}
+	if orgName == nil {
+		orgRes, err := h.eventStore.LoadWithSnapshot(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
+		if err != nil && !errors.Is(err, eventstore.ErrAggregateNotFound) {
+			return fmt.Errorf("load organization for denormalization: %w", err)
+		}
+		if orgRes != nil && (len(orgRes.Events) > 0 || orgRes.SnapshotState != nil) {
+			org, err := organization.NewFromStore(fr.CustomerOrgID(), orgRes.SnapshotState, orgRes.Events)
+			if err != nil {
+				return fmt.Errorf("restore organization for denormalization: %w", err)
+			}
+			name := org.Name()
+			inn := org.INN()
+			country := org.Country().String()
+			orgName = &name
+			orgINN = &inn
+			orgCountry = &country
+		}
+	}
+
+	cargo := fr.Cargo()
+	vehicleReqs := fr.VehicleRequirements()
+
+	query, args, err := h.psql.
+		Insert("freight_requests_lookup").
+		Columns(append([]string{"id"}, freightRequestLookupColumns...)...).
+		Values(
+			fr.ID(),
+			fr.RequestNumber(), fr.CustomerOrgID(), fr.Status().String(), fr.ExpiresAt(), fr.CreatedAt(),
+			originAddr, destAddr, routeJSON, cargo.Weight, cargo.Volume,
+			priceAmount, priceCurrency, vehicleReqs.VehicleType.String(), vehicleReqs.VehicleSubType.String(),
+			paymentMethod, paymentTerms, vatType,
+			orgName, orgINN, orgCountry, fr.CustomerMemberID(),
+			extractRouteCityIDs(route), extractRouteCountryIDs(route),
+			extractEndpointCityIDs(route, endpointOrigin), extractEndpointCountryIDs(route, endpointOrigin),
+			extractEndpointCityIDs(route, endpointDestination), extractEndpointCountryIDs(route, endpointDestination),
+			fr.CarrierOrgID(), fr.CarrierMemberID(), fr.ConfirmedAt(),
+			fr.CustomerCompleted(), fr.CarrierCompleted(), fr.CompletedAt(),
+			fr.CancelledAfterConfirmedAt(),
+			fr.Version(),
+		).
+		Suffix(projections.VersionGuardUpsertSuffix("freight_requests_lookup", freightRequestLookupColumns...)).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build upsert query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("exec upsert: %w", err)
+	}
+	return nil
+}
+
+// existingOrgDenorm читает денормализованные поля организации-заказчика из
+// текущей строки freight_requests_lookup. nil-имя = денорма ещё нет (строки
+// нет либо org был недоступен) — вызывающий идёт в event store.
+func (h *FreightRequestsHandler) existingOrgDenorm(ctx context.Context, frID uuid.UUID) (name, inn, country *string, err error) {
+	row := h.db.QueryRow(ctx,
+		`SELECT customer_org_name, customer_org_inn, customer_org_country
+		 FROM freight_requests_lookup WHERE id = $1`, frID)
+	if err := row.Scan(&name, &inn, &country); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, nil, nil
+		}
+		return nil, nil, nil, fmt.Errorf("read existing org denorm: %w", err)
+	}
+	return name, inn, country, nil
+}
+
+func (h *FreightRequestsHandler) upsertOffers(ctx context.Context, fr *freightrequest.FreightRequest) error {
+	offers := fr.OffersList()
+	if len(offers) == 0 {
+		return nil
+	}
+
+	builder := h.psql.
+		Insert("offers_lookup").
+		Columns(append([]string{"id"}, offerLookupColumns...)...)
+	for _, o := range offers {
+		var memberID *uuid.UUID
+		if o.CarrierMemberID() != uuid.Nil {
+			id := o.CarrierMemberID()
+			memberID = &id
+		}
+		builder = builder.Values(
+			o.ID(),
+			fr.ID(), o.CarrierOrgID(), memberID, o.Status().String(), o.CreatedAt(),
+			fr.Version(),
+		)
+	}
+
+	query, args, err := builder.
+		Suffix(projections.VersionGuardUpsertSuffix("offers_lookup", offerLookupColumns...)).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build upsert query: %w", err)
+	}
+
+	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("exec upsert: %w", err)
+	}
+	return nil
+}
+
+// Все событийные хендлеры — обёртки над rebuild: конкретный тип события не
+// важен, проекция всегда строится из полного состояния агрегата.
+
+func (h *FreightRequestsHandler) OnCreated(ctx context.Context, e *events.FreightRequestCreated) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnUpdated(ctx context.Context, e *events.FreightRequestUpdated) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnReassigned(ctx context.Context, e *events.FreightRequestReassigned) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnCancelled(ctx context.Context, e *events.FreightRequestCancelled) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnExpired(ctx context.Context, e *events.FreightRequestExpired) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnOfferMade(ctx context.Context, e *events.OfferMade) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
 func (h *FreightRequestsHandler) OnOfferWithdrawn(ctx context.Context, e *events.OfferWithdrawn) error {
-	return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusWithdrawn.String())
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnOfferSelected(ctx context.Context, e *events.OfferSelected) error {
+	return h.rebuild(ctx, e.AggregateID())
 }
 
 func (h *FreightRequestsHandler) OnOfferRejected(ctx context.Context, e *events.OfferRejected) error {
-	return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnOfferConfirmed(ctx context.Context, e *events.OfferConfirmed) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnOfferDeclined(ctx context.Context, e *events.OfferDeclined) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnOfferUnselected(ctx context.Context, e *events.OfferUnselected) error {
+	return h.rebuild(ctx, e.AggregateID())
 }
 
 func (h *FreightRequestsHandler) OnOfferCancelledWithRequest(ctx context.Context, e *events.OfferCancelledWithRequest) error {
-	return h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusRejected.String())
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnCustomerCompleted(ctx context.Context, e *events.CustomerCompleted) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnCarrierCompleted(ctx context.Context, e *events.CarrierCompleted) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnFreightRequestCompleted(ctx context.Context, e *events.FreightRequestCompleted) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnCancelledAfterConfirmed(ctx context.Context, e *events.CancelledAfterConfirmed) error {
+	return h.rebuild(ctx, e.AggregateID())
+}
+
+func (h *FreightRequestsHandler) OnCarrierMemberReassigned(ctx context.Context, e *events.CarrierMemberReassigned) error {
+	return h.rebuild(ctx, e.AggregateID())
 }
 
 // OnReviewLeft — no-op: создание Review aggregate делает review-receiver на том
@@ -71,101 +348,6 @@ func (h *FreightRequestsHandler) OnCarrierInvited(ctx context.Context, e *events
 		InvitedBy:        e.InvitedBy,
 		InvitedAt:        e.OccurredAt(),
 	})
-}
-
-func (h *FreightRequestsHandler) OnCreated(ctx context.Context, e *events.FreightRequestCreated) error {
-	expiresAt := time.Unix(e.ExpiresAt, 0)
-
-	// Extract display data
-	originAddr, destAddr := extractRouteAddresses(e.Route)
-
-	// Serialize route to JSON
-	routeJSON, err := json.Marshal(e.Route)
-	if err != nil {
-		return fmt.Errorf("marshal route: %w", err)
-	}
-
-	var priceAmount *int64
-	var priceCurrency *string
-	if e.Payment.Price != nil {
-		priceAmount = &e.Payment.Price.Amount
-		curr := e.Payment.Price.Currency.String()
-		priceCurrency = &curr
-	}
-
-	// Load organization data for denormalization
-	var orgName, orgINN, orgCountry *string
-	orgEvts, err := h.eventStore.Load(ctx, e.CustomerOrgID, orgEvents.AggregateType)
-	if err != nil {
-		return fmt.Errorf("load organization for denormalization: %w", err)
-	}
-	if len(orgEvts) > 0 {
-		org := organization.NewFromEvents(e.CustomerOrgID, orgEvts)
-		name := org.Name()
-		inn := org.INN()
-		country := org.Country().String()
-		orgName = &name
-		orgINN = &inn
-		orgCountry = &country
-	}
-
-	// Extract city and country IDs from route for filtering
-	routeCityIDs := extractRouteCityIDs(e.Route)
-	routeCountryIDs := extractRouteCountryIDs(e.Route)
-	originCityIDs := extractEndpointCityIDs(e.Route, endpointOrigin)
-	originCountryIDs := extractEndpointCountryIDs(e.Route, endpointOrigin)
-	destinationCityIDs := extractEndpointCityIDs(e.Route, endpointDestination)
-	destinationCountryIDs := extractEndpointCountryIDs(e.Route, endpointDestination)
-
-	// Extract payment info
-	var paymentMethod, paymentTerms, vatType *string
-	if e.Payment.Method != "" {
-		pm := e.Payment.Method.String()
-		paymentMethod = &pm
-	}
-	if e.Payment.Terms != "" {
-		pt := e.Payment.Terms.String()
-		paymentTerms = &pt
-	}
-	if e.Payment.VatType != "" {
-		vt := e.Payment.VatType.String()
-		vatType = &vt
-	}
-
-	query, args, err := h.psql.
-		Insert("freight_requests_lookup").
-		Columns(
-			"id", "request_number", "customer_org_id", "status", "expires_at", "created_at",
-			"origin_address", "destination_address", "route", "cargo_weight", "cargo_volume",
-			"price_amount", "price_currency", "vehicle_type", "vehicle_subtype",
-			"payment_method", "payment_terms", "vat_type",
-			"customer_org_name", "customer_org_inn", "customer_org_country", "customer_member_id",
-			"route_city_ids", "route_country_ids",
-			"origin_city_ids", "origin_country_ids",
-			"destination_city_ids", "destination_country_ids",
-		).
-		Values(
-			e.AggregateID(), e.RequestNumber, e.CustomerOrgID, values.FreightRequestStatusPublished.String(), expiresAt, e.OccurredAt(),
-			originAddr, destAddr, routeJSON, e.Cargo.Weight, e.Cargo.Volume,
-			priceAmount, priceCurrency, e.VehicleRequirements.VehicleType.String(), e.VehicleRequirements.VehicleSubType.String(),
-			paymentMethod, paymentTerms, vatType,
-			orgName, orgINN, orgCountry, e.CustomerMemberID,
-			routeCityIDs, routeCountryIDs,
-			originCityIDs, originCountryIDs,
-			destinationCityIDs, destinationCountryIDs,
-		).
-		Suffix("ON CONFLICT (id) DO NOTHING").
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build insert query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("insert freight request: %w", err)
-	}
-
-	slog.Debug("freight request created", slog.String("id", e.AggregateID().String()), slog.Int64("request_number", e.RequestNumber))
-	return nil
 }
 
 func extractRouteAddresses(route values.Route) (origin, destination string) {
@@ -239,349 +421,4 @@ func extractEndpointCountryIDs(route values.Route, kind endpointKind) []int {
 		return nil
 	}
 	return []int{*p.CountryID}
-}
-
-func (h *FreightRequestsHandler) OnUpdated(ctx context.Context, e *events.FreightRequestUpdated) error {
-	// Update display columns if relevant data changed
-	builder := h.psql.Update("freight_requests_lookup").Where(squirrel.Eq{"id": e.AggregateID()})
-	hasUpdates := false
-
-	if e.Route != nil {
-		originAddr, destAddr := extractRouteAddresses(*e.Route)
-		routeJSON, err := json.Marshal(e.Route)
-		if err != nil {
-			return fmt.Errorf("marshal route: %w", err)
-		}
-		routeCityIDs := extractRouteCityIDs(*e.Route)
-		routeCountryIDs := extractRouteCountryIDs(*e.Route)
-		originCityIDs := extractEndpointCityIDs(*e.Route, endpointOrigin)
-		originCountryIDs := extractEndpointCountryIDs(*e.Route, endpointOrigin)
-		destinationCityIDs := extractEndpointCityIDs(*e.Route, endpointDestination)
-		destinationCountryIDs := extractEndpointCountryIDs(*e.Route, endpointDestination)
-		builder = builder.
-			Set("origin_address", originAddr).
-			Set("destination_address", destAddr).
-			Set("route", routeJSON).
-			Set("route_city_ids", routeCityIDs).
-			Set("route_country_ids", routeCountryIDs).
-			Set("origin_city_ids", originCityIDs).
-			Set("origin_country_ids", originCountryIDs).
-			Set("destination_city_ids", destinationCityIDs).
-			Set("destination_country_ids", destinationCountryIDs)
-		hasUpdates = true
-	}
-
-	if e.Cargo != nil {
-		builder = builder.Set("cargo_weight", e.Cargo.Weight).Set("cargo_volume", e.Cargo.Volume)
-		hasUpdates = true
-	}
-
-	if e.VehicleRequirements != nil {
-		builder = builder.
-			Set("vehicle_type", e.VehicleRequirements.VehicleType.String()).
-			Set("vehicle_subtype", e.VehicleRequirements.VehicleSubType.String())
-		hasUpdates = true
-	}
-
-	if e.Payment != nil {
-		if e.Payment.Price != nil {
-			builder = builder.Set("price_amount", e.Payment.Price.Amount).Set("price_currency", e.Payment.Price.Currency.String())
-			hasUpdates = true
-		}
-		if e.Payment.Method != "" {
-			builder = builder.Set("payment_method", e.Payment.Method.String())
-			hasUpdates = true
-		}
-		if e.Payment.Terms != "" {
-			builder = builder.Set("payment_terms", e.Payment.Terms.String())
-			hasUpdates = true
-		}
-		if e.Payment.VatType != "" {
-			builder = builder.Set("vat_type", e.Payment.VatType.String())
-			hasUpdates = true
-		}
-	}
-
-	if !hasUpdates {
-		slog.Debug("freight request updated (no display columns changed)", slog.String("id", e.AggregateID().String()))
-		return nil
-	}
-
-	query, args, err := builder.ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update freight request display data: %w", err)
-	}
-
-	slog.Debug("freight request updated", slog.String("id", e.AggregateID().String()))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnReassigned(ctx context.Context, e *events.FreightRequestReassigned) error {
-	query, args, err := h.psql.
-		Update("freight_requests_lookup").
-		Set("customer_member_id", e.NewMemberID).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build reassign query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update customer_member_id: %w", err)
-	}
-
-	slog.Debug("freight request reassigned",
-		slog.String("id", e.AggregateID().String()),
-		slog.String("new_member_id", e.NewMemberID.String()))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnCancelled(ctx context.Context, e *events.FreightRequestCancelled) error {
-	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusCancelled.String())
-}
-
-func (h *FreightRequestsHandler) OnExpired(ctx context.Context, e *events.FreightRequestExpired) error {
-	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusExpired.String())
-}
-
-func (h *FreightRequestsHandler) OnOfferMade(ctx context.Context, e *events.OfferMade) error {
-	query, args, err := h.psql.
-		Insert("offers_lookup").
-		Columns("id", "freight_request_id", "carrier_org_id", "carrier_member_id", "status", "created_at").
-		Values(e.OfferID, e.AggregateID(), e.CarrierOrgID, e.CarrierMemberID, values.OfferStatusPending.String(), e.OccurredAt()).
-		Suffix("ON CONFLICT (id) DO NOTHING").
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build insert query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("insert offer: %w", err)
-	}
-
-	slog.Debug("offer made", slog.String("offer_id", e.OfferID.String()))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnOfferSelected(ctx context.Context, e *events.OfferSelected) error {
-	// Update offer status
-	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusSelected.String()); err != nil {
-		return err
-	}
-
-	// Update freight request status
-	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusSelected.String())
-}
-
-func (h *FreightRequestsHandler) OnOfferConfirmed(ctx context.Context, e *events.OfferConfirmed) error {
-	// Update offer status
-	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusConfirmed.String()); err != nil {
-		return err
-	}
-
-	// Get carrier info from offer
-	var carrierOrgID uuid.UUID
-	var carrierMemberID *uuid.UUID
-	query, args, err := h.psql.
-		Select("carrier_org_id", "carrier_member_id").
-		From("offers_lookup").
-		Where(squirrel.Eq{"id": e.OfferID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build select query: %w", err)
-	}
-
-	if err := h.db.QueryRow(ctx, query, args...).Scan(&carrierOrgID, &carrierMemberID); err != nil {
-		return fmt.Errorf("get carrier info from offer: %w", err)
-	}
-
-	// Update freight request with carrier info and confirmed status
-	confirmedAt := e.OccurredAt()
-	query, args, err = h.psql.
-		Update("freight_requests_lookup").
-		Set("status", values.FreightRequestStatusConfirmed.String()).
-		Set("carrier_org_id", carrierOrgID).
-		Set("carrier_member_id", carrierMemberID).
-		Set("confirmed_at", confirmedAt).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update freight request with carrier info: %w", err)
-	}
-
-	slog.Debug("offer confirmed",
-		slog.String("freight_request_id", e.AggregateID().String()),
-		slog.String("offer_id", e.OfferID.String()),
-		slog.String("carrier_org_id", carrierOrgID.String()))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnOfferDeclined(ctx context.Context, e *events.OfferDeclined) error {
-	// Update offer status
-	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusDeclined.String()); err != nil {
-		return err
-	}
-
-	// Update freight request - back to published
-	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusPublished.String())
-}
-
-func (h *FreightRequestsHandler) OnOfferUnselected(ctx context.Context, e *events.OfferUnselected) error {
-	// Update offer status - back to pending
-	if err := h.updateOfferStatus(ctx, e.OfferID, values.OfferStatusPending.String()); err != nil {
-		return err
-	}
-
-	// Update freight request - back to published
-	return h.updateStatus(ctx, e.AggregateID(), values.FreightRequestStatusPublished.String())
-}
-
-func (h *FreightRequestsHandler) updateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	query, args, err := h.psql.
-		Update("freight_requests_lookup").
-		Set("status", status).
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update freight request status: %w", err)
-	}
-
-	return nil
-}
-
-func (h *FreightRequestsHandler) updateOfferStatus(ctx context.Context, id uuid.UUID, status string) error {
-	query, args, err := h.psql.
-		Update("offers_lookup").
-		Set("status", status).
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update offer status: %w", err)
-	}
-
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnCustomerCompleted(ctx context.Context, e *events.CustomerCompleted) error {
-	query, args, err := h.psql.
-		Update("freight_requests_lookup").
-		Set("customer_completed", true).
-		Set("status", values.FreightRequestStatusPartiallyCompleted.String()).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update customer completed: %w", err)
-	}
-
-	slog.Debug("customer completed freight request",
-		slog.String("id", e.AggregateID().String()),
-		slog.String("completed_by", e.CompletedBy.String()))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnCarrierCompleted(ctx context.Context, e *events.CarrierCompleted) error {
-	query, args, err := h.psql.
-		Update("freight_requests_lookup").
-		Set("carrier_completed", true).
-		Set("status", values.FreightRequestStatusPartiallyCompleted.String()).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update carrier completed: %w", err)
-	}
-
-	slog.Debug("carrier completed freight request",
-		slog.String("id", e.AggregateID().String()),
-		slog.String("completed_by", e.CompletedBy.String()))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnFreightRequestCompleted(ctx context.Context, e *events.FreightRequestCompleted) error {
-	completedAt := e.OccurredAt()
-
-	query, args, err := h.psql.
-		Update("freight_requests_lookup").
-		Set("status", values.FreightRequestStatusCompleted.String()).
-		Set("completed_at", completedAt).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update freight request completed: %w", err)
-	}
-
-	slog.Debug("freight request fully completed",
-		slog.String("id", e.AggregateID().String()),
-		slog.Time("completed_at", completedAt))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnCancelledAfterConfirmed(ctx context.Context, e *events.CancelledAfterConfirmed) error {
-	cancelledAt := e.OccurredAt()
-
-	query, args, err := h.psql.
-		Update("freight_requests_lookup").
-		Set("status", values.FreightRequestStatusCancelledAfterConfirmed.String()).
-		Set("cancelled_after_confirmed_at", cancelledAt).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update cancelled after confirmed: %w", err)
-	}
-
-	slog.Debug("freight request cancelled after confirmed",
-		slog.String("id", e.AggregateID().String()),
-		slog.String("cancelled_by", e.CancelledBy.String()))
-	return nil
-}
-
-func (h *FreightRequestsHandler) OnCarrierMemberReassigned(ctx context.Context, e *events.CarrierMemberReassigned) error {
-	query, args, err := h.psql.
-		Update("freight_requests_lookup").
-		Set("carrier_member_id", e.NewMemberID).
-		Where(squirrel.Eq{"id": e.AggregateID()}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build reassign carrier query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("update carrier_member_id: %w", err)
-	}
-
-	slog.Debug("carrier member reassigned",
-		slog.String("id", e.AggregateID().String()),
-		slog.String("new_member_id", e.NewMemberID.String()))
-	return nil
 }

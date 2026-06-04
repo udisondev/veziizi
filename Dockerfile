@@ -11,10 +11,10 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/api ./backend/cmd/api && \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/telegram-bot ./backend/cmd/telegram-bot && \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/create-admin ./backend/cmd/tools/create-admin && \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/seed-geo ./backend/cmd/tools/seed-geo && \
-    for w in members invitations pending-organizations organizations freight-requests \
+    for w in forwarder members invitations pending-organizations organizations freight-requests \
              review-receiver review-analyzer reviews-projection review-activator \
              fraudster-handler notification-dispatcher telegram-sender email-sender \
-             support-tickets rate-limiter-cleanup; do \
+             support-tickets support-tickets-notifier vehicles rate-limiter-cleanup dedup-cleanup; do \
       CGO_ENABLED=0 go build -ldflags="-s -w" -o "/bin/worker-${w}" "./backend/cmd/workers/${w}"; \
     done
 

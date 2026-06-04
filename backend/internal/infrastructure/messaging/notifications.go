@@ -36,13 +36,15 @@ type EmailNotification struct {
 // заданы исторически (notification.telegram / notification.email) и сохраняются
 // для совместимости с существующими сообщениями в очереди.
 var notificationTopics = map[string]string{
-	"TelegramNotification": "notification.telegram",
-	"EmailNotification":    "notification.email",
+	"TelegramNotification": TopicNotificationTelegram,
+	"EmailNotification":    TopicNotificationEmail,
 }
 
 // NotificationBus — CQRS event bus для команд на отправку уведомлений.
-// Использует JSONMarshaler (notifications не EventEnvelope) и autocommit
-// publisher (вне tx event store — это независимая публикация в очередь).
+// Использует JSONMarshaler (notifications не EventEnvelope). Publisher —
+// forwarder-обёрнутый tx-aware outbox-publisher (EventPublisher.ForwarderPublisher):
+// команда пишется в Postgres outbox (атомарно с tx, если она есть в ctx) и
+// доставляется forwarder'ом в Redis-стрим notification.telegram / .email.
 type NotificationBus struct {
 	bus *cqrs.EventBus
 }
