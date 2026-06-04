@@ -6,6 +6,7 @@ import (
 	_ "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -13,7 +14,7 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "freight-requests",
-		Topic:         "freightrequest.events",
+		Topic:         messaging.TopicFreightRequestEvents,
 		ConsumerGroup: "freight_requests_projection",
 		LogFile:       "freight-requests-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {

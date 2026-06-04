@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
@@ -34,7 +35,7 @@ func main() {
 
 	worker.Run(worker.Config{
 		Name:          "support-tickets-notifier",
-		Topic:         "support.events",
+		Topic:         messaging.TopicSupportEvents,
 		ConsumerGroup: "support_tickets_admin_notifier",
 		LogFile:       "support-tickets-notifier-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {

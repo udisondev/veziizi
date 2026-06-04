@@ -109,11 +109,11 @@ func (p *EventPublisher) Close() error {
 // Менять AggregateType или имена топиков нельзя: первое сломает Load aggregate'ов
 // из БД, второе — оставит ранее опубликованные сообщения в orphan-таблицах.
 var aggregateTopics = map[string]string{
-	"organization":    "organization.events",
-	"freight_request": "freightrequest.events",
-	"review":          "review.events",
-	"support_ticket":  "support.events",
-	"notification":    "notification.events",
+	"organization":    TopicOrganizationEvents,
+	"freight_request": TopicFreightRequestEvents,
+	"review":          TopicReviewEvents,
+	"support_ticket":  TopicSupportEvents,
+	"notification":    TopicNotificationEvents,
 }
 
 // RedisStreamTopics возвращает все Redis-стримы, в которые forwarder публикует

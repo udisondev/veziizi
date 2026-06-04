@@ -7,6 +7,7 @@ import (
 	_ "github.com/udisondev/veziizi/backend/internal/domain/notification/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -18,7 +19,7 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "notification-dispatcher",
-		Topic:         "freightrequest.events",
+		Topic:         messaging.TopicFreightRequestEvents,
 		ConsumerGroup: "notification_dispatcher",
 		LogFile:       "notification-dispatcher-worker.log",
 		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {

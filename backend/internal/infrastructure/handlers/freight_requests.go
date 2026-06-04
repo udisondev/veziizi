@@ -9,6 +9,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/freightrequest/values"
@@ -135,24 +136,34 @@ func (h *FreightRequestsHandler) upsertLookup(ctx context.Context, fr *freightre
 		vatType = &vt
 	}
 
-	// Денормализация данных организации-заказчика — как и раньше, из event
-	// store (организация может быть ещё не видна в organizations_lookup).
-	var orgName, orgINN, orgCountry *string
-	orgRes, err := h.eventStore.LoadWithSnapshot(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
-	if err != nil && !errors.Is(err, eventstore.ErrAggregateNotFound) {
-		return fmt.Errorf("load organization for denormalization: %w", err)
+	// Денормализация данных организации-заказчика. Полный реплей org-агрегата
+	// на каждом из ~22 типов freight-событий — лишняя работа: INN/country
+	// иммутабельны, а имя освежает отдельный путь OrganizationUpdated →
+	// UpdateCustomerOrgName. Поэтому сначала пробуем переиспользовать денорм
+	// из уже существующей строки проекции; в event store идём только когда
+	// денорма ещё нет (первое событие заявки, либо организация была не видна
+	// при прошлом rebuild'е — тогда пустой денорм самоизлечится здесь же).
+	orgName, orgINN, orgCountry, err := h.existingOrgDenorm(ctx, fr.ID())
+	if err != nil {
+		return err
 	}
-	if orgRes != nil && (len(orgRes.Events) > 0 || orgRes.SnapshotState != nil) {
-		org, err := organization.NewFromStore(fr.CustomerOrgID(), orgRes.SnapshotState, orgRes.Events)
-		if err != nil {
-			return fmt.Errorf("restore organization for denormalization: %w", err)
+	if orgName == nil {
+		orgRes, err := h.eventStore.LoadWithSnapshot(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
+		if err != nil && !errors.Is(err, eventstore.ErrAggregateNotFound) {
+			return fmt.Errorf("load organization for denormalization: %w", err)
 		}
-		name := org.Name()
-		inn := org.INN()
-		country := org.Country().String()
-		orgName = &name
-		orgINN = &inn
-		orgCountry = &country
+		if orgRes != nil && (len(orgRes.Events) > 0 || orgRes.SnapshotState != nil) {
+			org, err := organization.NewFromStore(fr.CustomerOrgID(), orgRes.SnapshotState, orgRes.Events)
+			if err != nil {
+				return fmt.Errorf("restore organization for denormalization: %w", err)
+			}
+			name := org.Name()
+			inn := org.INN()
+			country := org.Country().String()
+			orgName = &name
+			orgINN = &inn
+			orgCountry = &country
+		}
 	}
 
 	cargo := fr.Cargo()
@@ -186,6 +197,22 @@ func (h *FreightRequestsHandler) upsertLookup(ctx context.Context, fr *freightre
 		return fmt.Errorf("exec upsert: %w", err)
 	}
 	return nil
+}
+
+// existingOrgDenorm читает денормализованные поля организации-заказчика из
+// текущей строки freight_requests_lookup. nil-имя = денорма ещё нет (строки
+// нет либо org был недоступен) — вызывающий идёт в event store.
+func (h *FreightRequestsHandler) existingOrgDenorm(ctx context.Context, frID uuid.UUID) (name, inn, country *string, err error) {
+	row := h.db.QueryRow(ctx,
+		`SELECT customer_org_name, customer_org_inn, customer_org_country
+		 FROM freight_requests_lookup WHERE id = $1`, frID)
+	if err := row.Scan(&name, &inn, &country); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, nil, nil
+		}
+		return nil, nil, nil, fmt.Errorf("read existing org denorm: %w", err)
+	}
+	return name, inn, country, nil
 }
 
 func (h *FreightRequestsHandler) upsertOffers(ctx context.Context, fr *freightrequest.FreightRequest) error {

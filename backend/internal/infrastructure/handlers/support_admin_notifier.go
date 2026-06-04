@@ -69,12 +69,10 @@ func (h *SupportAdminNotifierHandler) OnTicketCreated(ctx context.Context, e *ev
 func (h *SupportAdminNotifierHandler) notifyTicketCreated(ctx context.Context, e *events.TicketCreated) error {
 	admins, err := h.adminRepo.GetAdminsWithTelegram(ctx)
 	if err != nil {
-		slog.Error("failed to get admins with telegram", slog.String("error", err.Error()))
-		// Возвращаем nil: иначе очередь застрянет на проблеме с БД админов,
-		// которая ортогональна созданию тикета. PoisonQueue middleware ловит
-		// только persistent fail — здесь это transient (БД может ожить).
-		// TODO(observability): добавить counter в metrics.
-		return nil
+		// Ошибку обязаны пробросить: мы внутри dedup-tx, return nil закоммитил бы
+		// dedup-резерв и redelivery было бы подавлено — уведомление о новом тикете
+		// потерялось бы навсегда. Rollback снимает резерв → retry.
+		return fmt.Errorf("get admins with telegram: %w", err)
 	}
 	if len(admins) == 0 {
 		slog.Debug("no admins with telegram to notify")
@@ -86,7 +84,9 @@ func (h *SupportAdminNotifierHandler) notifyTicketCreated(ctx context.Context, e
 	link := fmt.Sprintf("/admin/support/%s", e.AggregateID().String())
 
 	for _, a := range admins {
-		h.publish(ctx, a, title, body, link)
+		if err := h.publish(ctx, a, title, body, link); err != nil {
+			return err
+		}
 	}
 
 	slog.Info("admin notifications sent for new ticket",
@@ -119,12 +119,18 @@ func (h *SupportAdminNotifierHandler) notifyMessageAdded(ctx context.Context, e 
 	link := fmt.Sprintf("/admin/support/%s", e.AggregateID().String())
 
 	for _, a := range admins {
-		h.publish(ctx, a, title, body, link)
+		if err := h.publish(ctx, a, title, body, link); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (h *SupportAdminNotifierHandler) publish(ctx context.Context, a admin.AdminWithTelegram, title, body, link string) {
+// publish — ошибка публикации пробрасывается наружу: мы внутри dedup-tx,
+// проглоченная ошибка = закоммиченный dedup-резерв = потерянное уведомление.
+// NotificationBus пишет в outbox той же tx, так что rollback откатит и уже
+// опубликованные в этом цикле сообщения — дублей при retry не будет.
+func (h *SupportAdminNotifierHandler) publish(ctx context.Context, a admin.AdminWithTelegram, title, body, link string) error {
 	if err := h.notifBus.Publish(ctx, messaging.TelegramNotification{
 		MemberID: a.ID,
 		ChatID:   a.TelegramChatID,
@@ -132,10 +138,9 @@ func (h *SupportAdminNotifierHandler) publish(ctx context.Context, a admin.Admin
 		Body:     body,
 		Link:     link,
 	}); err != nil {
-		slog.Warn("failed to publish admin notification",
-			slog.String("admin_id", a.ID.String()),
-			slog.String("error", err.Error()))
+		return fmt.Errorf("publish admin notification for %s: %w", a.ID, err)
 	}
+	return nil
 }
 
 func truncateContent(content string, maxLen int) string {

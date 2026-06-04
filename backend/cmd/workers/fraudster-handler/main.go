@@ -6,6 +6,7 @@ import (
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -13,7 +14,7 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "fraudster-handler",
-		Topic:         "organization.events",
+		Topic:         messaging.TopicOrganizationEvents,
 		ConsumerGroup: "fraudster_handler",
 		LogFile:       "fraudster-handler-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {

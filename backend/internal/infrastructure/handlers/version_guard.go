@@ -20,6 +20,19 @@ import (
 // тогда событие ack'ается вместо вечного retry.
 var errProjectionRowMissing = errors.New("projection row missing")
 
+// lockProjectionRow берёт advisory xact-lock по id строки проекции, сериализуя
+// конкурентные хендлеры одной сущности на N инстансах. Нужен там, где
+// version-guard'а недостаточно: пары INSERT/DELETE (tombstone у members,
+// таблицы присутствия pending_*) и rebuild-from-aggregate с удалением строк —
+// без лока запись со старым снимком агрегата могла бы закоммититься поверх
+// свежей. Чтение агрегата обязано идти ПОСЛЕ взятия лока.
+func lockProjectionRow(ctx context.Context, db dbtx.TxManager, id uuid.UUID) error {
+	if _, err := db.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, id); err != nil {
+		return fmt.Errorf("advisory lock projection row %s: %w", id, err)
+	}
+	return nil
+}
+
 // versionGuardedUpdate выполняет статусный UPDATE строки проекции с
 // version-guard'ом. Используется sub-entity проекциями (members, invitations,
 // support tickets), где полный rebuild из агрегата невозможен или избыточен

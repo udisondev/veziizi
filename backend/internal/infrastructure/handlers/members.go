@@ -38,16 +38,6 @@ func NewMembersHandler(db dbtx.TxManager) *MembersHandler {
 	}
 }
 
-// lockMemberRow берёт advisory xact-lock по member id: Added и Removed одного
-// участника на конкурентных инстансах выполняются строго последовательно —
-// без lock'а INSERT мог бы пройти между DELETE и commit tombstone'а соседней tx.
-func lockMemberRow(ctx context.Context, db dbtx.TxManager, id uuid.UUID) error {
-	if _, err := db.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, id); err != nil {
-		return fmt.Errorf("advisory lock member %s: %w", id, err)
-	}
-	return nil
-}
-
 // memberRemoved проверяет tombstone удалённого участника.
 func (h *MembersHandler) memberRemoved(ctx context.Context, id uuid.UUID) (bool, error) {
 	var exists bool
@@ -73,7 +63,7 @@ func (h *MembersHandler) OnMemberAdded(ctx context.Context, e *events.MemberAdde
 	}
 
 	return h.db.InTx(ctx, func(ctx context.Context) error {
-		if err := lockMemberRow(ctx, h.db, e.MemberID); err != nil {
+		if err := lockProjectionRow(ctx, h.db, e.MemberID); err != nil {
 			return err
 		}
 
@@ -122,11 +112,11 @@ func (h *MembersHandler) OnMemberAdded(ctx context.Context, e *events.MemberAdde
 }
 
 // OnMemberRemoved пишет tombstone и удаляет строку одной tx (под advisory
-// lock'ом — см. lockMemberRow). Повтор идемпотентен: tombstone ON CONFLICT
+// lock'ом — см. lockProjectionRow). Повтор идемпотентен: tombstone ON CONFLICT
 // DO NOTHING, DELETE — no-op.
 func (h *MembersHandler) OnMemberRemoved(ctx context.Context, e *events.MemberRemoved) error {
 	return h.db.InTx(ctx, func(ctx context.Context) error {
-		if err := lockMemberRow(ctx, h.db, e.MemberID); err != nil {
+		if err := lockProjectionRow(ctx, h.db, e.MemberID); err != nil {
 			return err
 		}
 

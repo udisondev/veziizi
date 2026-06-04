@@ -26,7 +26,7 @@ func main() {
 
 	worker.Run(worker.Config{
 		Name:          "telegram-sender",
-		Topic:         "notification.telegram",
+		Topic:         messaging.TopicNotificationTelegram,
 		ConsumerGroup: "telegram_sender",
 		LogFile:       "telegram-sender-worker.log",
 		Marshaler:     messaging.NotificationMarshaler(),

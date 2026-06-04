@@ -114,10 +114,19 @@ func (h *ReviewsProjectionHandler) OnEdited(ctx context.Context, e *events.Revie
 				comment = $3
 			WHERE id = $1
 		`
-		if _, err := h.db.Exec(ctx, query,
+		res, err := h.db.Exec(ctx, query,
 			e.AggregateID(), e.NewRating, e.NewComment,
-		); err != nil {
+		)
+		if err != nil {
 			return fmt.Errorf("update review lookup: %w", err)
+		}
+		// 0 строк = ReviewEdited обогнал ReviewReceived (out-of-order при N
+		// инстансах). Молчаливый nil закоммитил бы dedup-резерв и правка
+		// потерялась бы навсегда; errProjectionRowMissing → rollback → retry
+		// дождётся появления строки.
+		if res.RowsAffected() == 0 {
+			return fmt.Errorf("reviews_lookup row %s not found yet, ReviewEdited before ReviewReceived: %w",
+				e.AggregateID(), errProjectionRowMissing)
 		}
 
 		// If rating changed, adjust interaction stats
@@ -167,11 +176,20 @@ func (h *ReviewsProjectionHandler) OnAnalyzed(ctx context.Context, e *events.Rev
 				status = $7
 			WHERE id = $1
 		`
-		if _, err := h.db.Exec(ctx, query,
+		res, err := h.db.Exec(ctx, query,
 			e.AggregateID(), e.RawWeight, e.FraudScore, e.RequiresModeration,
 			e.ActivationDate, analyzedAt, status,
-		); err != nil {
+		)
+		if err != nil {
 			return fmt.Errorf("update review lookup: %w", err)
+		}
+		// 0 строк = ReviewAnalyzed обогнал ReviewReceived: без проверки UPDATE
+		// молча no-op'ится, fraud signals ниже вставились бы осиротевшими, а
+		// dedup-резерв закоммитился бы — raw_weight/fraud_score/activation_date
+		// потеряны навсегда. errProjectionRowMissing → rollback → retry.
+		if res.RowsAffected() == 0 {
+			return fmt.Errorf("reviews_lookup row %s not found yet, ReviewAnalyzed before ReviewReceived: %w",
+				e.AggregateID(), errProjectionRowMissing)
 		}
 
 		// Insert fraud signals (batch INSERT)

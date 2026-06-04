@@ -135,17 +135,23 @@ func CreateTestAdmin(cfg *config.Config) error {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
+	// telegram_chat_id — фиксированный: support-admin-notifier шлёт уведомления
+	// админам с заполненным chat id (GetAdminsWithTelegram), тесты ассертят
+	// отправки через Suite.TelegramFake.SentTo(TestAdminTelegramChatID).
 	_, err = db.Exec(`
-		INSERT INTO platform_admins (id, email, password_hash, name, is_active)
-		VALUES ($1, $2, $3, $4, true)
+		INSERT INTO platform_admins (id, email, password_hash, name, is_active, telegram_chat_id)
+		VALUES ($1, $2, $3, $4, true, $5)
 		ON CONFLICT (email) DO NOTHING
-	`, uuid.New(), "admin@veziizi.local", string(hash), "Test Admin")
+	`, uuid.New(), "admin@veziizi.local", string(hash), "Test Admin", TestAdminTelegramChatID)
 	if err != nil {
 		return fmt.Errorf("failed to create test admin: %w", err)
 	}
 
 	return nil
 }
+
+// TestAdminTelegramChatID — chat id тестового админа из CreateTestAdmin.
+const TestAdminTelegramChatID int64 = 999000001
 
 // SeedGeoData inserts test geographic data.
 func SeedGeoData(cfg *config.Config) error {

@@ -9,6 +9,12 @@ import (
 // (backend/e2e/setup/suite.go): раньше списки дублировались построчно без
 // compile-time связи, и новый OnXxx легко было забыть в одной из копий —
 // прод и e2e тогда молча расходились.
+//
+// e2e гоняет полный прод-набор event-driven воркеров, включая notification-путь
+// (notification-dispatcher — legacy NoPublishHandlerFunc, регистрируется через
+// router.AddConsumerHandler, как в pkg/worker). Вне e2e остаются только
+// scheduled-воркеры (review-activator, dedup-cleanup и т.п.) — у них нет
+// событийного пути.
 
 func MembersGroupHandlers(h *MembersHandler) []cqrs.GroupEventHandler {
 	return []cqrs.GroupEventHandler{

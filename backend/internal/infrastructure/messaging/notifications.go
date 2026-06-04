@@ -36,8 +36,8 @@ type EmailNotification struct {
 // заданы исторически (notification.telegram / notification.email) и сохраняются
 // для совместимости с существующими сообщениями в очереди.
 var notificationTopics = map[string]string{
-	"TelegramNotification": "notification.telegram",
-	"EmailNotification":    "notification.email",
+	"TelegramNotification": TopicNotificationTelegram,
+	"EmailNotification":    TopicNotificationEmail,
 }
 
 // NotificationBus — CQRS event bus для команд на отправку уведомлений.

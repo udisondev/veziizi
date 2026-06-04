@@ -5,6 +5,7 @@ import (
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/support/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -15,7 +16,7 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "support-tickets",
-		Topic:         "support.events",
+		Topic:         messaging.TopicSupportEvents,
 		ConsumerGroup: "support_tickets_projection",
 		LogFile:       "support-tickets-worker.log",
 		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {

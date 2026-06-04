@@ -52,6 +52,9 @@ type Suite struct {
 	BaseURL string
 	Factory *factory.Factory
 	Config  *config.Config
+	// TelegramFake — записывающая замена handlers.TelegramSender: e2e не ходит
+	// в api.telegram.org, тесты ассертят отправки через Sent()/SentTo().
+	TelegramFake *FakeTelegramSender
 
 	server            *httpServer.Server
 	listener          net.Listener
@@ -298,8 +301,10 @@ func (s *Suite) startEventHandlers() error {
 	}
 
 	// Helper для регистрации CQRS-handler'ов одного воркера: Redis consumer
-	// group + suite-уникальное имя консьюмера.
-	register := func(topic, consumerGroup string, handlers ...cqrs.GroupEventHandler) error {
+	// group + suite-уникальное имя консьюмера. registerM — вариант с явным
+	// marshaler'ом: notification.* топики несут JSON-команды
+	// (messaging.NotificationMarshaler), а не EventEnvelope.
+	registerM := func(topic, consumerGroup string, marshaler cqrs.CommandEventMarshaler, handlers ...cqrs.GroupEventHandler) error {
 		ep, err := cqrs.NewEventGroupProcessorWithConfig(router, cqrs.EventGroupProcessorConfig{
 			GenerateSubscribeTopic: func(cqrs.EventGroupProcessorGenerateSubscribeTopicParams) (string, error) {
 				return topic, nil
@@ -307,7 +312,7 @@ func (s *Suite) startEventHandlers() error {
 			SubscriberConstructor: func(cqrs.EventGroupProcessorSubscriberConstructorParams) (message.Subscriber, error) {
 				return messaging.NewRedisSubscriber(redisClient, consumerGroup, "e2e-"+consumerGroup, s.Config.Redis, wmLogger)
 			},
-			Marshaler:         messaging.EventEnvelopeMarshaler{},
+			Marshaler:         marshaler,
 			Logger:            wmLogger,
 			AckOnUnknownEvent: true,
 		})
@@ -317,60 +322,63 @@ func (s *Suite) startEventHandlers() error {
 		s.consumerGroups[topic] = append(s.consumerGroups[topic], consumerGroup)
 		return ep.AddHandlersGroup(consumerGroup, handlers...)
 	}
+	register := func(topic, consumerGroup string, handlers ...cqrs.GroupEventHandler) error {
+		return registerM(topic, consumerGroup, messaging.EventEnvelopeMarshaler{}, handlers...)
+	}
 
 	// Списки хендлеров берутся из eventHandlers.XGroupHandlers — те же функции,
 	// что используют cmd/workers/*/main.go: e2e гоняет ровно прод-набор, и новый
 	// OnXxx нельзя забыть в одной из копий.
 	membersH := eventHandlers.NewMembersHandler(db)
-	if err := register("organization.events", "e2e_members",
+	if err := register(messaging.TopicOrganizationEvents, "e2e_members",
 		eventHandlers.MembersGroupHandlers(membersH)...); err != nil {
 		return err
 	}
 
 	orgsH := eventHandlers.NewOrganizationsHandler(s.Factory.EventStore(), s.Factory.OrganizationsProjection(), s.Factory.FreightRequestsProjection())
-	if err := register("organization.events", "e2e_organizations",
+	if err := register(messaging.TopicOrganizationEvents, "e2e_organizations",
 		eventHandlers.OrganizationsGroupHandlers(orgsH)...); err != nil {
 		return err
 	}
 
 	invH := eventHandlers.NewInvitationsHandler(db)
-	if err := register("organization.events", "e2e_invitations",
+	if err := register(messaging.TopicOrganizationEvents, "e2e_invitations",
 		eventHandlers.InvitationsGroupHandlers(invH)...); err != nil {
 		return err
 	}
 
-	pendingH := eventHandlers.NewPendingOrganizationsHandler(db)
-	if err := register("organization.events", "e2e_pending_orgs",
+	pendingH := eventHandlers.NewPendingOrganizationsHandler(db, s.Factory.EventStore())
+	if err := register(messaging.TopicOrganizationEvents, "e2e_pending_orgs",
 		eventHandlers.PendingOrganizationsGroupHandlers(pendingH)...); err != nil {
 		return err
 	}
 
 	frH := eventHandlers.NewFreightRequestsHandler(db, s.Factory.EventStore(), s.Factory.FreightInvitesProjection())
-	if err := register("freightrequest.events", "e2e_freight_requests",
+	if err := register(messaging.TopicFreightRequestEvents, "e2e_freight_requests",
 		eventHandlers.FreightRequestsGroupHandlers(frH)...); err != nil {
 		return err
 	}
 
 	supportH := eventHandlers.NewSupportTicketsHandler(db)
-	if err := register("support.events", "e2e_support_tickets",
+	if err := register(messaging.TopicSupportEvents, "e2e_support_tickets",
 		eventHandlers.SupportTicketsGroupHandlers(supportH)...); err != nil {
 		return err
 	}
 
 	fraudH := eventHandlers.NewFraudsterHandler(s.Factory.ReviewService(), s.Factory.ReviewsProjection(), s.Factory.FraudDataProjection())
-	if err := register("organization.events", "e2e_fraudster",
+	if err := register(messaging.TopicOrganizationEvents, "e2e_fraudster",
 		eventHandlers.FraudsterGroupHandlers(fraudH)...); err != nil {
 		return err
 	}
 
 	receiverH := eventHandlers.NewReviewReceiverHandler(s.Factory.ReviewService())
-	if err := register("freightrequest.events", "e2e_review_receiver",
+	if err := register(messaging.TopicFreightRequestEvents, "e2e_review_receiver",
 		eventHandlers.ReviewReceiverGroupHandlers(receiverH)...); err != nil {
 		return err
 	}
 
 	analyzerH := eventHandlers.NewReviewAnalyzerHandler(s.Factory.ReviewService(), s.Factory.ReviewAnalyzer())
-	if err := register("review.events", "e2e_review_analyzer",
+	if err := register(messaging.TopicReviewEvents, "e2e_review_analyzer",
 		eventHandlers.ReviewAnalyzerGroupHandlers(analyzerH)...); err != nil {
 		return err
 	}
@@ -381,16 +389,75 @@ func (s *Suite) startEventHandlers() error {
 		s.Factory.OrganizationRatingsProjection(),
 		s.Factory.ProjectionEventDedupProjection(),
 	)
-	if err := register("review.events", "e2e_reviews_projection",
+	if err := register(messaging.TopicReviewEvents, "e2e_reviews_projection",
 		eventHandlers.ReviewsProjectionGroupHandlers(reviewsProjH)...); err != nil {
 		return err
 	}
 
-	vehiclesH := eventHandlers.NewVehiclesHandler(db, s.Factory.VehiclesProjection(), s.Factory.PendingVehiclesProjection())
-	if err := register("organization.events", "e2e_vehicles",
+	vehiclesH := eventHandlers.NewVehiclesHandler(db, s.Factory.EventStore(), s.Factory.VehiclesProjection(), s.Factory.PendingVehiclesProjection())
+	if err := register(messaging.TopicOrganizationEvents, "e2e_vehicles",
 		eventHandlers.VehiclesGroupHandlers(vehiclesH)...); err != nil {
 		return err
 	}
+
+	// --- Notification-путь: те же хендлеры, что в прод-воркерах ---
+
+	supportNotifierH := eventHandlers.NewSupportAdminNotifierHandler(
+		db,
+		s.Factory.ProjectionEventDedupProjection(),
+		adminRepo.NewRepository(db),
+		s.Factory.MustNotificationBus(),
+	)
+	if err := register(messaging.TopicSupportEvents, "e2e_support_admin_notifier",
+		eventHandlers.SupportAdminNotifierGroupHandlers(supportNotifierH)...); err != nil {
+		return err
+	}
+
+	s.TelegramFake = &FakeTelegramSender{}
+	telegramH := eventHandlers.NewTelegramSenderHandler(
+		s.TelegramFake,
+		s.Config,
+		s.Factory.DeliveryLogProjection(),
+		s.Factory.NotificationDedupProjection(),
+	)
+	if err := registerM(messaging.TopicNotificationTelegram, "e2e_telegram_sender",
+		messaging.NotificationMarshaler(),
+		eventHandlers.TelegramSenderGroupHandlers(telegramH)...); err != nil {
+		return err
+	}
+
+	// Email.Enabled=false в e2e-конфиге → NoopEmailProvider, внешнего I/O нет.
+	emailH := eventHandlers.NewEmailSenderHandler(
+		s.Factory.EmailProvider(),
+		s.Config,
+		s.Factory.DeliveryLogProjection(),
+		s.Factory.NotificationDedupProjection(),
+	)
+	if err := registerM(messaging.TopicNotificationEmail, "e2e_email_sender",
+		messaging.NotificationMarshaler(),
+		eventHandlers.EmailSenderGroupHandlers(emailH)...); err != nil {
+		return err
+	}
+
+	// notification-dispatcher — legacy-хендлер (NoPublishHandlerFunc), не CQRS:
+	// регистрируем как прод worker.go (router.AddConsumerHandler). Consumer
+	// group обязан попасть в s.consumerGroups — иначе Sync() не дождётся его.
+	dispatcherSub, err := messaging.NewRedisSubscriber(
+		redisClient, "e2e_notification_dispatcher", "e2e-notification-dispatcher", s.Config.Redis, wmLogger)
+	if err != nil {
+		return fmt.Errorf("create dispatcher subscriber: %w", err)
+	}
+	dispatcherH := eventHandlers.NewNotificationDispatcherHandler(
+		db,
+		s.Factory.ProjectionEventDedupProjection(),
+		s.Factory.NotificationRulesRegistry(),
+		s.Factory.NotificationService(),
+		s.Factory.MustNotificationBus(),
+	)
+	router.AddConsumerHandler("e2e_notification_dispatcher_handler",
+		messaging.TopicFreightRequestEvents, dispatcherSub, dispatcherH.Handle)
+	s.consumerGroups[messaging.TopicFreightRequestEvents] = append(
+		s.consumerGroups[messaging.TopicFreightRequestEvents], "e2e_notification_dispatcher")
 
 	s.eventRouter = router
 

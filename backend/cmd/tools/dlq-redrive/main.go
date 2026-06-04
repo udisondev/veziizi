@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"os"
 	"os/signal"
 	"syscall"
@@ -106,7 +107,10 @@ loop:
 			}
 
 			redrivenMsg := message.NewMessage(msg.UUID, msg.Payload)
-			redrivenMsg.Metadata = msg.Metadata
+			// Клонируем metadata: алиас мутировал бы оригинал — после Nack
+			// redisstream ресендит тот же in-memory msg, и без PoisonedTopicKey
+			// он ушёл бы в ветку "skipping" с Ack вместо повторного publish.
+			redrivenMsg.Metadata = maps.Clone(msg.Metadata)
 			// Снимаем poison-метки, чтобы redriven-сообщение не выглядело отравленным.
 			delete(redrivenMsg.Metadata, middleware.PoisonedTopicKey)
 			delete(redrivenMsg.Metadata, middleware.ReasonForPoisonedKey)

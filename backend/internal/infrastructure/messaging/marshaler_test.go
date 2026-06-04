@@ -73,7 +73,7 @@ func TestEventGroupProcessor_DispatchesByType(t *testing.T) {
 
 	ep, err := cqrs.NewEventGroupProcessorWithConfig(router, cqrs.EventGroupProcessorConfig{
 		GenerateSubscribeTopic: func(cqrs.EventGroupProcessorGenerateSubscribeTopicParams) (string, error) {
-			return "organization.events", nil
+			return messaging.TopicOrganizationEvents, nil
 		},
 		SubscriberConstructor: func(cqrs.EventGroupProcessorSubscriberConstructorParams) (message.Subscriber, error) {
 			return pubsub, nil
@@ -126,7 +126,7 @@ func TestEventGroupProcessor_DispatchesByType(t *testing.T) {
 	unknownMsg := message.NewMessage(uuid.New().String(), []byte(`{}`))
 	unknownMsg.Metadata.Set("event_type", "something.irrelevant")
 
-	require.NoError(t, pubsub.Publish("organization.events", addedMsg, removedMsg, unknownMsg))
+	require.NoError(t, pubsub.Publish(messaging.TopicOrganizationEvents, addedMsg, removedMsg, unknownMsg))
 
 	select {
 	case got := <-addedCh:
