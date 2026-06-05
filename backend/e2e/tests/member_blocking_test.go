@@ -17,9 +17,10 @@ import (
 // MemberBlockingSuite tests member blocking functionality.
 type MemberBlockingSuite struct {
 	suite.Suite
-	baseURL string
-	c       *client.Client
-	suite   *setup.Suite
+	baseURL     string
+	c           *client.Client
+	suite       *setup.Suite
+	adminClient *client.Client
 
 	// Shared organization for tests
 	org *fixtures.CreatedOrganization
@@ -36,13 +37,13 @@ func (s *MemberBlockingSuite) SetupSuite() {
 	s.c = client.New(s.baseURL)
 
 	// Setup admin client for approving organizations
-	adminClient := client.New(s.baseURL)
-	adminLogin, err := adminClient.AdminLogin("admin@veziizi.local", "admin123")
+	s.adminClient = client.New(s.baseURL)
+	adminLogin, err := s.adminClient.AdminLogin("admin@veziizi.local", "admin123")
 	s.Require().NoError(err)
 	s.Require().Equal(200, adminLogin.StatusCode, "admin login failed")
 
 	// Create shared approved organization
-	s.org = fixtures.NewActiveOrganization(s.T(), s.c, adminClient).Create()
+	s.org = fixtures.NewActiveOrganization(s.T(), s.c, s.adminClient).Create()
 }
 
 // Helper: блокировка member через прямое обновление БД
@@ -227,8 +228,8 @@ func (s *MemberBlockingSuite) TestBLOCK007_LoginBlockedForBlockedMember() {
 // ==================== БЛОК-008: Заблокированный member не может смотреть профили ====================
 
 func (s *MemberBlockingSuite) TestBLOCK008_CannotAccessMemberProfiles() {
-	// Создаём отдельную организацию для этого теста
-	org := fixtures.NewOrganization(s.T(), s.c).Create()
+	// Создаём отдельную активную организацию (CreateInvitation требует active status)
+	org := fixtures.NewActiveOrganization(s.T(), s.c, s.adminClient).Create()
 	testClient := s.c.Clone()
 
 	// Создаём второго member в организации через invitation
@@ -254,8 +255,8 @@ func (s *MemberBlockingSuite) TestBLOCK008_CannotAccessMemberProfiles() {
 	member2Client := s.c.Clone()
 	acceptResp, err := member2Client.AcceptInvitation(token, client.AcceptInvitationRequest{
 		Password: "password123",
-		Name:     helpers.StringPtr("Member 2"),
-		Phone:    helpers.StringPtr("+79001234567"),
+		Name:     new("Member 2"),
+		Phone:    new("+79001234567"),
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, acceptResp.StatusCode)

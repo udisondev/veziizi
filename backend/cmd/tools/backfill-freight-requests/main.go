@@ -66,13 +66,17 @@ func main() {
 	slog.Info("found freight requests to backfill", slog.Int("count", len(ids)))
 
 	for _, id := range ids {
-		events, err := es.Load(ctx, id, frEvents.AggregateType)
+		res, err := es.LoadWithSnapshot(ctx, id, frEvents.AggregateType)
 		if err != nil {
 			slog.Error("failed to load events", slog.String("id", id.String()), slog.String("error", err.Error()))
 			continue
 		}
 
-		fr := freightrequest.NewFromEvents(id, events)
+		fr, err := freightrequest.NewFromStore(id, res.SnapshotState, res.Events)
+		if err != nil {
+			slog.Error("failed to restore freight request", slog.String("id", id.String()), slog.String("error", err.Error()))
+			continue
+		}
 		if fr.Version() == 0 {
 			slog.Warn("no events for freight request", slog.String("id", id.String()))
 			continue
@@ -99,20 +103,27 @@ func main() {
 
 		// Load organization data
 		var orgName, orgINN, orgCountry *string
-		orgEvts, err := es.Load(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
+		orgRes, err := es.LoadWithSnapshot(ctx, fr.CustomerOrgID(), orgEvents.AggregateType)
 		if err != nil {
 			slog.Warn("failed to load organization",
 				slog.String("id", id.String()),
 				slog.String("org_id", fr.CustomerOrgID().String()),
 				slog.String("error", err.Error()))
-		} else if len(orgEvts) > 0 {
-			org := organization.NewFromEvents(fr.CustomerOrgID(), orgEvts)
-			name := org.Name()
-			inn := org.INN()
-			country := org.Country().String()
-			orgName = &name
-			orgINN = &inn
-			orgCountry = &country
+		} else if len(orgRes.Events) > 0 || orgRes.SnapshotState != nil {
+			org, err := organization.NewFromStore(fr.CustomerOrgID(), orgRes.SnapshotState, orgRes.Events)
+			if err != nil {
+				slog.Warn("failed to restore organization",
+					slog.String("id", id.String()),
+					slog.String("org_id", fr.CustomerOrgID().String()),
+					slog.String("error", err.Error()))
+			} else {
+				name := org.Name()
+				inn := org.INN()
+				country := org.Country().String()
+				orgName = &name
+				orgINN = &inn
+				orgCountry = &country
+			}
 		}
 
 		query, args, err := psql.

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { computed } from 'vue'
 import type { CreateFreightRequestRequest, RoutePoint } from '@/types/freightRequest'
 import {
@@ -40,28 +42,28 @@ function getPointTypeLabel(point: RoutePoint): string {
 
 function getPointBorderClass(point: RoutePoint): string {
   if (point.is_loading && point.is_unloading) {
-    return 'border-l-purple-500'
+    return 'border-l-primary'
   }
   if (point.is_loading) {
-    return 'border-l-blue-500'
+    return 'border-l-primary'
   }
   if (point.is_unloading) {
-    return 'border-l-green-500'
+    return 'border-l-success'
   }
-  return 'border-l-gray-300'
+  return 'border-l-border'
 }
 
 function getPointBadgeClass(point: RoutePoint): string {
   if (point.is_loading && point.is_unloading) {
-    return 'bg-purple-100 text-purple-700'
+    return 'bg-accent text-accent-foreground'
   }
   if (point.is_loading) {
-    return 'bg-blue-100 text-blue-700'
+    return 'bg-accent text-accent-foreground'
   }
   if (point.is_unloading) {
-    return 'bg-green-100 text-green-700'
+    return 'bg-success/10 text-success'
   }
-  return 'bg-gray-100 text-gray-700'
+  return 'bg-muted text-muted-foreground'
 }
 
 function formatDate(dateStr: string): string {
@@ -101,15 +103,15 @@ function handleCommentInput(event: Event) {
 
 <template>
   <div class="space-y-6" data-tutorial="confirmation-summary">
-    <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-green-800">
+    <div class="bg-success/10 border border-success/30 rounded-lg p-4 text-success">
       <p class="font-medium">Проверьте данные перед публикацией</p>
       <p class="text-sm mt-1">После публикации заявка станет доступна перевозчикам.</p>
     </div>
 
     <!-- Route -->
-    <div class="bg-gray-50 rounded-lg p-4">
-      <h4 class="font-medium text-gray-900 mb-3 flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+    <div class="bg-muted rounded-lg p-4">
+      <h4 class="font-medium text-foreground mb-3 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
           <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
         </svg>
         Маршрут
@@ -133,8 +135,8 @@ function handleCommentInput(event: Event) {
             {{ getPointTypeLabel(point) }}
           </span>
           <div class="flex-1">
-            <div class="font-medium text-gray-900">{{ point.address }}</div>
-            <div class="text-sm text-gray-500">
+            <div class="font-medium text-foreground">{{ point.address }}</div>
+            <div class="text-sm text-muted-foreground">
               {{ formatDate(point.date_from) }}
               <template v-if="point.date_to"> — {{ formatDate(point.date_to) }}</template>
               <template v-if="point.time_from">
@@ -142,11 +144,11 @@ function handleCommentInput(event: Event) {
                 <template v-if="point.time_to"> — {{ formatTime(point.time_to) }}</template>
               </template>
             </div>
-            <div v-if="point.contact_name || point.contact_phone" class="text-sm text-gray-500">
+            <div v-if="point.contact_name || point.contact_phone" class="text-sm text-muted-foreground">
               Контакт: {{ point.contact_name }}
               <template v-if="point.contact_phone">, {{ point.contact_phone }}</template>
             </div>
-            <div v-if="point.comment" class="text-sm text-gray-400 italic">
+            <div v-if="point.comment" class="text-sm text-muted-foreground italic">
               {{ point.comment }}
             </div>
           </div>
@@ -162,9 +164,9 @@ function handleCommentInput(event: Event) {
     </div>
 
     <!-- Cargo -->
-    <div class="bg-gray-50 rounded-lg p-4">
-      <h4 class="font-medium text-gray-900 mb-3 flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+    <div class="bg-muted rounded-lg p-4">
+      <h4 class="font-medium text-foreground mb-3 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
           <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z" />
           <path fill-rule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clip-rule="evenodd" />
         </svg>
@@ -172,32 +174,32 @@ function handleCommentInput(event: Event) {
       </h4>
 
       <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <dt class="text-gray-500">Описание:</dt>
-        <dd class="text-gray-900">{{ requestData.cargo.description }}</dd>
+        <dt class="text-muted-foreground">Описание:</dt>
+        <dd class="text-foreground">{{ requestData.cargo.description }}</dd>
 
-        <dt class="text-gray-500">Вес:</dt>
-        <dd class="text-gray-900">{{ requestData.cargo.weight.toLocaleString('ru-RU') }} кг</dd>
+        <dt class="text-muted-foreground">Вес:</dt>
+        <dd class="text-foreground">{{ requestData.cargo.weight.toLocaleString('ru-RU') }} кг</dd>
 
         <template v-if="requestData.cargo.volume">
-          <dt class="text-gray-500">Объём:</dt>
-          <dd class="text-gray-900">{{ requestData.cargo.volume }} м³</dd>
+          <dt class="text-muted-foreground">Объём:</dt>
+          <dd class="text-foreground">{{ requestData.cargo.volume }} м³</dd>
         </template>
 
         <template v-if="requestData.cargo.dimensions">
-          <dt class="text-gray-500">Габариты:</dt>
-          <dd class="text-gray-900">
+          <dt class="text-muted-foreground">Габариты:</dt>
+          <dd class="text-foreground">
             {{ requestData.cargo.dimensions.length }} × {{ requestData.cargo.dimensions.width }} × {{ requestData.cargo.dimensions.height }} м
           </dd>
         </template>
 
         <template v-if="requestData.cargo.quantity">
-          <dt class="text-gray-500">Количество:</dt>
-          <dd class="text-gray-900">{{ requestData.cargo.quantity }} мест</dd>
+          <dt class="text-muted-foreground">Количество:</dt>
+          <dd class="text-foreground">{{ requestData.cargo.quantity }} мест</dd>
         </template>
 
         <template v-if="requestData.cargo.adr_class && requestData.cargo.adr_class !== 'none'">
-          <dt class="text-gray-500">Класс опасности:</dt>
-          <dd class="text-gray-900 text-orange-600 font-medium">
+          <dt class="text-muted-foreground">Класс опасности:</dt>
+          <dd class="text-foreground text-orange-600 font-medium">
             {{ adrClassLabels[requestData.cargo.adr_class] }}
           </dd>
         </template>
@@ -205,9 +207,9 @@ function handleCommentInput(event: Event) {
     </div>
 
     <!-- Vehicle -->
-    <div class="bg-gray-50 rounded-lg p-4">
-      <h4 class="font-medium text-gray-900 mb-3 flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+    <div class="bg-muted rounded-lg p-4">
+      <h4 class="font-medium text-foreground mb-3 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
           <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
           <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM14 7a1 1 0 00-1 1v6.05A2.5 2.5 0 0115.95 16H17a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0015 7h-1z" />
         </svg>
@@ -215,51 +217,51 @@ function handleCommentInput(event: Event) {
       </h4>
 
       <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <dt class="text-gray-500">Тип транспорта:</dt>
-        <dd class="text-gray-900">
+        <dt class="text-muted-foreground">Тип транспорта:</dt>
+        <dd class="text-foreground">
           {{ vehicleTypeLabels[requestData.vehicle_requirements.vehicle_type] }}
         </dd>
 
-        <dt class="text-gray-500">Подтип:</dt>
-        <dd class="text-gray-900">
+        <dt class="text-muted-foreground">Подтип:</dt>
+        <dd class="text-foreground">
           {{ vehicleSubTypeLabels[requestData.vehicle_requirements.vehicle_subtype] }}
         </dd>
 
         <template v-if="requestData.vehicle_requirements.loading_types?.length">
-          <dt class="text-gray-500">Погрузка:</dt>
-          <dd class="text-gray-900">
+          <dt class="text-muted-foreground">Погрузка:</dt>
+          <dd class="text-foreground">
             {{ requestData.vehicle_requirements.loading_types.map(t => loadingTypeLabels[t]).join(', ') }}
           </dd>
         </template>
 
         <template v-if="requestData.vehicle_requirements.capacity">
-          <dt class="text-gray-500">Грузоподъёмность:</dt>
-          <dd class="text-gray-900">{{ requestData.vehicle_requirements.capacity.toLocaleString('ru-RU') }} кг</dd>
+          <dt class="text-muted-foreground">Грузоподъёмность:</dt>
+          <dd class="text-foreground">{{ requestData.vehicle_requirements.capacity.toLocaleString('ru-RU') }} кг</dd>
         </template>
 
         <template v-if="requestData.vehicle_requirements.volume">
-          <dt class="text-gray-500">Объём кузова:</dt>
-          <dd class="text-gray-900">{{ requestData.vehicle_requirements.volume }} м³</dd>
+          <dt class="text-muted-foreground">Объём кузова:</dt>
+          <dd class="text-foreground">{{ requestData.vehicle_requirements.volume }} м³</dd>
         </template>
 
         <template v-if="requestData.vehicle_requirements.temperature">
-          <dt class="text-gray-500">Температура:</dt>
-          <dd class="text-gray-900">
+          <dt class="text-muted-foreground">Температура:</dt>
+          <dd class="text-foreground">
             {{ requestData.vehicle_requirements.temperature.min }}°C — {{ requestData.vehicle_requirements.temperature.max }}°C
           </dd>
         </template>
 
         <template v-if="requestData.vehicle_requirements.thermograph">
-          <dt class="text-gray-500">Термописец:</dt>
-          <dd class="text-gray-900">Да</dd>
+          <dt class="text-muted-foreground">Термописец:</dt>
+          <dd class="text-foreground">Да</dd>
         </template>
       </dl>
     </div>
 
     <!-- Payment -->
-    <div class="bg-gray-50 rounded-lg p-4">
-      <h4 class="font-medium text-gray-900 mb-3 flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+    <div class="bg-muted rounded-lg p-4">
+      <h4 class="font-medium text-foreground mb-3 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
           <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" />
         </svg>
         Оплата
@@ -267,19 +269,19 @@ function handleCommentInput(event: Event) {
 
       <!-- Если цена указана -->
       <template v-if="hasPrice">
-        <div class="text-2xl font-bold text-gray-900 mb-2">
+        <div class="text-2xl font-bold text-foreground mb-2">
           {{ formatPrice(requestData.payment.price!.amount, requestData.payment.price!.currency) }}
         </div>
 
         <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <dt class="text-gray-500">НДС:</dt>
-          <dd class="text-gray-900">{{ vatTypeLabels[requestData.payment.vat_type] }}</dd>
+          <dt class="text-muted-foreground">НДС:</dt>
+          <dd class="text-foreground">{{ vatTypeLabels[requestData.payment.vat_type] }}</dd>
 
-          <dt class="text-gray-500">Способ:</dt>
-          <dd class="text-gray-900">{{ paymentMethodLabels[requestData.payment.method] }}</dd>
+          <dt class="text-muted-foreground">Способ:</dt>
+          <dd class="text-foreground">{{ paymentMethodLabels[requestData.payment.method] }}</dd>
 
-          <dt class="text-gray-500">Условия:</dt>
-          <dd class="text-gray-900">
+          <dt class="text-muted-foreground">Условия:</dt>
+          <dd class="text-foreground">
             {{ paymentTermsLabels[requestData.payment.terms] }}
             <template v-if="requestData.payment.deferred_days">
               ({{ requestData.payment.deferred_days }} дн.)
@@ -290,20 +292,19 @@ function handleCommentInput(event: Event) {
 
       <!-- Если цена не указана -->
       <template v-else>
-        <p class="text-gray-500">Цена не указана — перевозчики предложат свою</p>
+        <p class="text-muted-foreground">Цена не указана — перевозчики предложат свою</p>
       </template>
     </div>
 
     <!-- Comment -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">
+      <Label>
         Комментарий к заявке
-      </label>
-      <textarea
+      </Label>
+      <Textarea
         :value="comment"
         placeholder="Дополнительная информация для перевозчиков"
         rows="3"
-        class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
         @input="handleCommentInput"
       />
     </div>

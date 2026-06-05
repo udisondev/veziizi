@@ -2,9 +2,11 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { ACCOUNT_BLOCKED_MESSAGE, getErrorMessage, isApiError } from '@/api/errors'
 
 // UI Components
 import { Button } from '@/components/ui/button'
+import { AppLink } from '@/components/ui/app-link'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,20 +20,23 @@ const auth = useAuthStore()
 
 const email = ref('')
 const password = ref('')
-const error = ref('')
 const isLoading = ref(false)
+const error = ref<string | null>(null)
 const showRegistrationSuccess = computed(() => route.query.registered === 'true')
 
 async function handleSubmit() {
-  error.value = ''
   isLoading.value = true
-
+  error.value = null
   try {
     await auth.login({ email: email.value, password: password.value })
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Ошибка входа'
+    if (isApiError(e) && e.isAccountBlocked()) {
+      error.value = ACCOUNT_BLOCKED_MESSAGE
+    } else {
+      error.value = getErrorMessage(e)
+    }
   } finally {
     isLoading.value = false
   }
@@ -39,7 +44,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-background py-12 px-4">
+  <div class="flex items-center justify-center bg-background py-12 px-4" style="min-height: calc(100vh - 3.5rem)">
     <Card class="w-full max-w-md">
       <CardHeader class="text-center">
         <CardTitle class="text-2xl">Вход в систему</CardTitle>
@@ -108,9 +113,7 @@ async function handleSubmit() {
       <CardFooter class="justify-center">
         <p class="text-sm text-muted-foreground">
           Нет аккаунта?
-          <router-link to="/register" class="text-primary hover:underline">
-            Регистрация организации
-          </router-link>
+          <AppLink to="/register">Регистрация организации</AppLink>
         </p>
       </CardFooter>
     </Card>

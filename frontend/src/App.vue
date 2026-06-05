@@ -3,6 +3,7 @@ import { computed, ref, onMounted } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppHeader from '@/components/ui/AppHeader.vue'
+import AuthHeader from '@/components/ui/AuthHeader.vue'
 import AccountBlockedBanner from '@/components/AccountBlockedBanner.vue'
 import DevUserSwitcher from '@/components/dev/DevUserSwitcher.vue'
 import { Toaster } from '@/components/ui/toast'
@@ -25,6 +26,8 @@ const showHeader = computed(() => {
   // Show only for authenticated users
   return auth.isAuthenticated
 })
+
+const showAuthHeader = computed(() => !!(route.meta.public && !route.meta.admin))
 
 const showBanner = computed(() => auth.isAuthenticated && auth.isBlocked)
 
@@ -51,6 +54,7 @@ onMounted(async () => {
 
     <div :class="{ 'pt-24': showBanner }">
       <AppHeader v-if="showHeader" />
+      <AuthHeader v-else-if="showAuthHeader" />
       <RouterView :key="route.path" />
     </div>
 

@@ -2,6 +2,7 @@ package organization
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,9 +36,11 @@ type Organization struct {
 
 	members     map[uuid.UUID]*entities.Member
 	invitations map[uuid.UUID]*entities.Invitation
+	vehicles    map[uuid.UUID]*entities.Vehicle
 
 	membersCache     []entities.Member
 	invitationsCache []entities.Invitation
+	vehiclesCache    []entities.Vehicle
 }
 
 // New creates a new Organization (for registration)
@@ -64,6 +67,7 @@ func New(
 		Base:        aggregate.NewBase(id),
 		members:     make(map[uuid.UUID]*entities.Member),
 		invitations: make(map[uuid.UUID]*entities.Invitation),
+		vehicles:    make(map[uuid.UUID]*entities.Vehicle),
 	}
 
 	// Apply OrganizationCreated
@@ -102,6 +106,7 @@ func NewFromEvents(id uuid.UUID, evts []eventstore.Event) *Organization {
 		Base:        aggregate.NewBase(id),
 		members:     make(map[uuid.UUID]*entities.Member),
 		invitations: make(map[uuid.UUID]*entities.Invitation),
+		vehicles:    make(map[uuid.UUID]*entities.Vehicle),
 	}
 
 	for _, evt := range evts {
@@ -178,6 +183,34 @@ func (o *Organization) GetInvitationByToken(token string) (*entities.Invitation,
 		}
 	}
 	return nil, false
+}
+
+// VehiclesList returns all vehicles including archived ones. Use IsActive to filter.
+func (o *Organization) VehiclesList() []entities.Vehicle {
+	if o.vehiclesCache == nil {
+		o.vehiclesCache = make([]entities.Vehicle, 0, len(o.vehicles))
+		for _, v := range o.vehicles {
+			o.vehiclesCache = append(o.vehiclesCache, *v)
+		}
+	}
+	return o.vehiclesCache
+}
+
+func (o *Organization) GetVehicle(id uuid.UUID) (*entities.Vehicle, bool) {
+	v, ok := o.vehicles[id]
+	return v, ok
+}
+
+func (o *Organization) hasActiveVehicleByRegNumber(regNumber string) bool {
+	for _, v := range o.vehicles {
+		// License plates are compared case-insensitively: "А123БВ77" and
+		// "а123бв77" identify the same vehicle, so users can't smuggle in a
+		// duplicate by changing case.
+		if v.IsActive() && strings.EqualFold(v.RegistrationNumber(), regNumber) {
+			return true
+		}
+	}
+	return false
 }
 
 // Commands
@@ -377,7 +410,7 @@ func (o *Organization) AcceptInvitation(
 		Name:                    finalName,
 		Phone:                   finalPhone,
 		Role:                    inv.Role(),
-		InvitedBy:               ptr(inv.CreatedBy()),
+		InvitedBy:               new(inv.CreatedBy()),
 		RegistrationIP:          registrationIP,
 		RegistrationFingerprint: registrationFingerprint,
 		RegistrationUserAgent:   registrationUserAgent,
@@ -644,6 +677,162 @@ func (o *Organization) UnmarkFraudster(adminID uuid.UUID, reason string) error {
 	return nil
 }
 
+// Vehicle commands
+
+func specsToPayload(specs entities.VehicleSpecs) events.VehicleSpecsPayload {
+	return events.VehicleSpecsPayload{
+		RegistrationNumber: specs.RegistrationNumber,
+		Brand:              specs.Brand,
+		Model:              specs.Model,
+		VehicleType:        specs.VehicleType,
+		VehicleSubType:     specs.VehicleSubType,
+		LoadingTypes:       specs.LoadingTypes,
+		Capacity:           specs.Capacity,
+		Volume:             specs.Volume,
+		Length:             specs.Length,
+		Width:              specs.Width,
+		Height:             specs.Height,
+		RequiresADR:        specs.RequiresADR,
+		Temperature:        specs.Temperature,
+		Thermograph:        specs.Thermograph,
+	}
+}
+
+func payloadToSpecs(p events.VehicleSpecsPayload) entities.VehicleSpecs {
+	return entities.VehicleSpecs{
+		RegistrationNumber: p.RegistrationNumber,
+		Brand:              p.Brand,
+		Model:              p.Model,
+		VehicleType:        p.VehicleType,
+		VehicleSubType:     p.VehicleSubType,
+		LoadingTypes:       p.LoadingTypes,
+		Capacity:           p.Capacity,
+		Volume:             p.Volume,
+		Length:             p.Length,
+		Width:              p.Width,
+		Height:             p.Height,
+		RequiresADR:        p.RequiresADR,
+		Temperature:        p.Temperature,
+		Thermograph:        p.Thermograph,
+	}
+}
+
+func (o *Organization) AddVehicle(actorID, vehicleID uuid.UUID, specs entities.VehicleSpecs) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("add vehicle in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
+	actor, ok := o.members[actorID]
+	if !ok {
+		return fmt.Errorf("add vehicle in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
+	}
+	if !actor.CanManageVehicles() {
+		return fmt.Errorf("add vehicle in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
+	}
+	if o.hasActiveVehicleByRegNumber(specs.RegistrationNumber) {
+		return fmt.Errorf("add vehicle in org %s with reg %s: %w", o.ID(), specs.RegistrationNumber, ErrVehicleAlreadyExists)
+	}
+
+	o.Apply(events.VehicleAdded{
+		BaseEvent: eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		VehicleID: vehicleID,
+		Specs:     specsToPayload(specs),
+		AddedBy:   actorID,
+	})
+	return nil
+}
+
+func (o *Organization) UpdateVehicle(actorID, vehicleID uuid.UUID, specs entities.VehicleSpecs) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("update vehicle in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
+	actor, ok := o.members[actorID]
+	if !ok {
+		return fmt.Errorf("update vehicle in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
+	}
+	if !actor.CanManageVehicles() {
+		return fmt.Errorf("update vehicle in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
+	}
+	vehicle, ok := o.vehicles[vehicleID]
+	if !ok {
+		return fmt.Errorf("update vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotFound)
+	}
+	if vehicle.IsArchived() {
+		return fmt.Errorf("update vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleArchived)
+	}
+	// Ensure the new registration_number doesn't collide with another active vehicle.
+	if vehicle.RegistrationNumber() != specs.RegistrationNumber && o.hasActiveVehicleByRegNumber(specs.RegistrationNumber) {
+		return fmt.Errorf("update vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleAlreadyExists)
+	}
+
+	o.Apply(events.VehicleUpdated{
+		BaseEvent: eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		VehicleID: vehicleID,
+		Specs:     specsToPayload(specs),
+		UpdatedBy: actorID,
+	})
+	return nil
+}
+
+func (o *Organization) ArchiveVehicle(actorID, vehicleID uuid.UUID) error {
+	actor, ok := o.members[actorID]
+	if !ok {
+		return fmt.Errorf("archive vehicle in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
+	}
+	if !actor.CanManageVehicles() {
+		return fmt.Errorf("archive vehicle in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
+	}
+	vehicle, ok := o.vehicles[vehicleID]
+	if !ok {
+		return fmt.Errorf("archive vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotFound)
+	}
+	if vehicle.IsArchived() {
+		return fmt.Errorf("archive vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleArchived)
+	}
+
+	o.Apply(events.VehicleArchived{
+		BaseEvent:  eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		VehicleID:  vehicleID,
+		ArchivedBy: actorID,
+	})
+	return nil
+}
+
+// VerifyVehicle is invoked by admin flow. It does not check member permissions.
+func (o *Organization) VerifyVehicle(adminID, vehicleID uuid.UUID) error {
+	vehicle, ok := o.vehicles[vehicleID]
+	if !ok {
+		return fmt.Errorf("verify vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotFound)
+	}
+	if !vehicle.Status().CanBeModerated() {
+		return fmt.Errorf("verify vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotPending)
+	}
+
+	o.Apply(events.VehicleVerified{
+		BaseEvent:  eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		VehicleID:  vehicleID,
+		VerifiedBy: adminID,
+	})
+	return nil
+}
+
+func (o *Organization) RejectVehicle(adminID, vehicleID uuid.UUID, reason string) error {
+	vehicle, ok := o.vehicles[vehicleID]
+	if !ok {
+		return fmt.Errorf("reject vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotFound)
+	}
+	if !vehicle.Status().CanBeModerated() {
+		return fmt.Errorf("reject vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotPending)
+	}
+
+	o.Apply(events.VehicleRejected{
+		BaseEvent:  eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		VehicleID:  vehicleID,
+		RejectedBy: adminID,
+		Reason:     reason,
+	})
+	return nil
+}
+
 // Apply applies event and records it as change
 func (o *Organization) Apply(evt eventstore.Event) {
 	o.apply(evt)
@@ -654,6 +843,7 @@ func (o *Organization) Apply(evt eventstore.Event) {
 func (o *Organization) apply(evt eventstore.Event) {
 	o.membersCache = nil
 	o.invitationsCache = nil
+	o.vehiclesCache = nil
 
 	switch e := evt.(type) {
 	case events.OrganizationCreated:
@@ -774,11 +964,31 @@ func (o *Organization) apply(evt eventstore.Event) {
 		o.fraudsterMarkedAt = nil
 		o.fraudsterMarkedBy = nil
 		o.fraudsterReason = ""
-	}
-}
 
-func ptr[T any](v T) *T {
-	return &v
+	case events.VehicleAdded:
+		vehicle := entities.NewVehicle(e.VehicleID, payloadToSpecs(e.Specs), e.OccurredAt())
+		o.vehicles[e.VehicleID] = &vehicle
+
+	case events.VehicleUpdated:
+		if v, ok := o.vehicles[e.VehicleID]; ok {
+			v.MarkPending(payloadToSpecs(e.Specs), e.OccurredAt())
+		}
+
+	case events.VehicleVerified:
+		if v, ok := o.vehicles[e.VehicleID]; ok {
+			v.Verify(e.OccurredAt())
+		}
+
+	case events.VehicleRejected:
+		if v, ok := o.vehicles[e.VehicleID]; ok {
+			v.Reject(e.Reason, e.OccurredAt())
+		}
+
+	case events.VehicleArchived:
+		if v, ok := o.vehicles[e.VehicleID]; ok {
+			v.Archive(e.OccurredAt())
+		}
+	}
 }
 
 // =====================================
@@ -806,6 +1016,17 @@ type OrganizationSnapshot struct {
 	FraudsterReason      string                           `json:"fraudster_reason,omitempty"`
 	Members              map[uuid.UUID]MemberSnapshot     `json:"members"`
 	Invitations          map[uuid.UUID]InvitationSnapshot `json:"invitations"`
+	Vehicles             map[uuid.UUID]VehicleSnapshot    `json:"vehicles,omitempty"`
+}
+
+// VehicleSnapshot represents serializable state of Vehicle entity
+type VehicleSnapshot struct {
+	ID              uuid.UUID                  `json:"id"`
+	Specs           events.VehicleSpecsPayload `json:"specs"`
+	Status          values.VehicleStatus       `json:"status"`
+	RejectionReason string                     `json:"rejection_reason,omitempty"`
+	CreatedAt       time.Time                  `json:"created_at"`
+	UpdatedAt       time.Time                  `json:"updated_at"`
 }
 
 // MemberSnapshot represents serializable state of Member entity
@@ -867,6 +1088,18 @@ func (o *Organization) State() any {
 		}
 	}
 
+	vehicles := make(map[uuid.UUID]VehicleSnapshot, len(o.vehicles))
+	for id, v := range o.vehicles {
+		vehicles[id] = VehicleSnapshot{
+			ID:              v.ID(),
+			Specs:           specsToPayload(v.Specs()),
+			Status:          v.Status(),
+			RejectionReason: v.RejectionReason(),
+			CreatedAt:       v.CreatedAt(),
+			UpdatedAt:       v.UpdatedAt(),
+		}
+	}
+
 	return OrganizationSnapshot{
 		ID:                   o.ID(),
 		Version:              o.Version(),
@@ -887,6 +1120,7 @@ func (o *Organization) State() any {
 		FraudsterReason:      o.fraudsterReason,
 		Members:              members,
 		Invitations:          invitations,
+		Vehicles:             vehicles,
 	}
 }
 
@@ -950,6 +1184,19 @@ func (o *Organization) FromSnapshot(state any) error {
 		o.invitations[id] = &inv
 	}
 
+	o.vehicles = make(map[uuid.UUID]*entities.Vehicle, len(snap.Vehicles))
+	for id, vs := range snap.Vehicles {
+		v := entities.RestoreVehicle(
+			vs.ID,
+			payloadToSpecs(vs.Specs),
+			vs.Status,
+			vs.RejectionReason,
+			vs.CreatedAt,
+			vs.UpdatedAt,
+		)
+		o.vehicles[id] = &v
+	}
+
 	return nil
 }
 
@@ -960,6 +1207,7 @@ func NewFromSnapshot(id uuid.UUID, state any) (*Organization, error) {
 		Base:        aggregate.NewBase(id),
 		members:     make(map[uuid.UUID]*entities.Member),
 		invitations: make(map[uuid.UUID]*entities.Invitation),
+		vehicles:    make(map[uuid.UUID]*entities.Vehicle),
 	}
 
 	if err := org.FromSnapshot(state); err != nil {

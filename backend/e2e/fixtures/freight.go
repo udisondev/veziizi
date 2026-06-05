@@ -43,16 +43,16 @@ func NewFreightRequest(t *testing.T, c *client.Client) *FreightRequestBuilder {
 				{
 					IsLoading:   true,
 					IsUnloading: false,
-					CountryID:   intPtr(1),
-					CityID:      intPtr(1),
+					CountryID:   new(1),
+					CityID:      new(1),
 					Address:     "Moscow, Test Street 1",
 					DateFrom:    tomorrow,
 				},
 				{
 					IsLoading:   false,
 					IsUnloading: true,
-					CountryID:   intPtr(1),
-					CityID:      intPtr(2),
+					CountryID:   new(1),
+					CityID:      new(2),
 					Address:     "Saint Petersburg, Test Street 2",
 					DateFrom:    dayAfter,
 				},
@@ -137,13 +137,18 @@ func (b *FreightRequestBuilder) WithPrice(amount int64, currency string) *Freigh
 	return b
 }
 
-// WithPayment sets full payment info.
+// WithPayment sets full payment info. For terms="deferred" a default
+// deferred_days=30 is applied so callers don't need to remember the invariant
+// from PaymentTerms.Validate.
 func (b *FreightRequestBuilder) WithPayment(amount int64, currency, vatType, method, terms string) *FreightRequestBuilder {
 	b.payment = client.Payment{
 		Price:   &client.Money{Amount: amount, Currency: currency},
 		VatType: vatType,
 		Method:  method,
 		Terms:   terms,
+	}
+	if terms == "deferred" {
+		b.payment.DeferredDays = 30
 	}
 	return b
 }
@@ -324,10 +329,5 @@ func (b *OfferBuilder) Create() *CreatedOffer {
 func (b *OfferBuilder) CreateWithStatus() (*client.Response[client.CreateOfferResponse], error) {
 	b.t.Helper()
 	return b.client.CreateOffer(b.freightRequestID, b.Build())
-}
-
-// Helper functions
-func intPtr(i int) *int {
-	return &i
 }
 

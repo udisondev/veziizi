@@ -73,7 +73,7 @@ const allCourses: CourseInfo[] = [
     title: 'Создание заявки',
     description: 'Научитесь создавать заявки на перевозку',
     icon: Package,
-    color: 'bg-blue-100 text-blue-600',
+    color: 'bg-accent text-accent-foreground',
     duration: '~5 мин',
   },
   {
@@ -81,7 +81,7 @@ const allCourses: CourseInfo[] = [
     title: 'Выбор предложения',
     description: 'Как выбирать предложения перевозчиков',
     icon: Truck,
-    color: 'bg-green-100 text-green-600',
+    color: 'bg-success/10 text-success',
     duration: '~2 мин',
   },
   {
@@ -220,7 +220,7 @@ onMounted(() => {
         <Card
           v-for="course in courses"
           :key="course.id"
-          class="cursor-pointer transition-all hover:border-primary hover:shadow-md"
+          interactive
           @click="startCourse(course.id)"
         >
           <CardHeader class="flex-row items-start gap-4 p-4">
@@ -236,7 +236,7 @@ onMounted(() => {
                 <div class="flex items-center gap-1.5 shrink-0 w-full lg:w-auto">
                   <Badge variant="outline" class="text-xs">{{ course.duration }}</Badge>
                   <Play v-if="!isCompleted(course.id)" class="h-3 w-3 text-muted-foreground" />
-                  <CheckCircle v-else class="h-4 w-4 text-green-500" />
+                  <CheckCircle v-else class="h-4 w-4 text-success" />
                 </div>
               </div>
             </div>
@@ -261,7 +261,7 @@ onMounted(() => {
           </CardHeader>
           <CardContent>
             <div v-if="success" class="text-center py-4">
-              <div class="text-green-600 font-medium mb-2">Обращение создано!</div>
+              <div class="text-success font-medium mb-2">Обращение создано!</div>
               <p class="text-sm text-muted-foreground">Перенаправляем...</p>
             </div>
 
@@ -310,7 +310,7 @@ onMounted(() => {
             <div
               v-for="ticket in recentTickets"
               :key="ticket.id"
-              class="p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+              class="p-3 rounded-lg border bg-card shadow-sm hover:shadow-md cursor-pointer transition-shadow"
               @click="router.push(`/support/tickets/${ticket.id}`)"
             >
               <div class="flex items-start justify-between gap-2">

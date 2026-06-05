@@ -117,12 +117,12 @@ async function submitReview() {
           <div class="flex items-center gap-2">
             <Check
               v-if="freightRequest.customer_completed"
-              class="h-4 w-4 text-green-600"
+              class="h-4 w-4 text-success"
             />
             <Clock v-else class="h-4 w-4 text-muted-foreground" />
             <span>
               Заказчик:
-              <span v-if="freightRequest.customer_completed" class="text-green-600">
+              <span v-if="freightRequest.customer_completed" class="text-success">
                 завершил {{ freightRequest.customer_completed_at ? formatDateTime(freightRequest.customer_completed_at) : '' }}
               </span>
               <span v-else class="text-muted-foreground">ожидает</span>
@@ -131,12 +131,12 @@ async function submitReview() {
           <div class="flex items-center gap-2">
             <Check
               v-if="freightRequest.carrier_completed"
-              class="h-4 w-4 text-green-600"
+              class="h-4 w-4 text-success"
             />
             <Clock v-else class="h-4 w-4 text-muted-foreground" />
             <span>
               Перевозчик:
-              <span v-if="freightRequest.carrier_completed" class="text-green-600">
+              <span v-if="freightRequest.carrier_completed" class="text-success">
                 завершил {{ freightRequest.carrier_completed_at ? formatDateTime(freightRequest.carrier_completed_at) : '' }}
               </span>
               <span v-else class="text-muted-foreground">ожидает</span>

@@ -1,12 +1,12 @@
 package main
 
 import (
-	// Event registration - CRITICAL for deserialization
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
-
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -14,15 +14,16 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "fraudster-handler",
-		Topic:         "organization.events",
+		Topic:         messaging.TopicOrganizationEvents,
 		ConsumerGroup: "fraudster_handler",
 		LogFile:       "fraudster-handler-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewFraudsterHandler(
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewFraudsterHandler(
 				f.ReviewService(),
 				f.ReviewsProjection(),
 				f.FraudDataProjection(),
-			).Handle
+			)
+			return ep.AddHandlersGroup("fraudster-handler", handlers.FraudsterGroupHandlers(h)...)
 		},
 	})
 }

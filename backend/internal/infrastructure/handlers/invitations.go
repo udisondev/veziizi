@@ -2,15 +2,12 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
@@ -26,38 +23,7 @@ func NewInvitationsHandler(db dbtx.TxManager) *InvitationsHandler {
 	}
 }
 
-// Handle обрабатывает watermill message. Возвращает nil для ack, error для nack.
-func (h *InvitationsHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *InvitationsHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.InvitationCreated:
-		return h.onInvitationCreated(ctx, e)
-	case events.InvitationAccepted:
-		return h.onInvitationAccepted(ctx, e)
-	case events.InvitationExpired:
-		return h.onInvitationExpired(ctx, e)
-	case events.InvitationCancelled:
-		return h.onInvitationCancelled(ctx, e)
-	}
-	return nil
-}
-
-func (h *InvitationsHandler) onInvitationCreated(ctx context.Context, e events.InvitationCreated) error {
+func (h *InvitationsHandler) OnInvitationCreated(ctx context.Context, e *events.InvitationCreated) error {
 	expiresAt := time.Unix(e.ExpiresAt, 0)
 
 	query, args, err := h.psql.
@@ -78,17 +44,14 @@ func (h *InvitationsHandler) onInvitationCreated(ctx context.Context, e events.I
 	return nil
 }
 
-func (h *InvitationsHandler) onInvitationAccepted(ctx context.Context, e events.InvitationAccepted) error {
-	query, args, err := h.psql.
-		Update("invitations_lookup").
-		Set("status", "accepted").
-		Where(squirrel.Eq{"id": e.InvitationID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
-	}
+// Статусные апдейты идут через versionGuardedUpdate: устаревшее событие
+// (out-of-order при N инстансах) не перетирает свежий статус, событие раньше
+// Created уходит в retry до появления строки.
 
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+func (h *InvitationsHandler) OnInvitationAccepted(ctx context.Context, e *events.InvitationAccepted) error {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", "version", e.InvitationID, e.Version(), map[string]any{
+		"status": "accepted",
+	}); err != nil {
 		return fmt.Errorf("failed to update invitation: %w", err)
 	}
 
@@ -96,17 +59,10 @@ func (h *InvitationsHandler) onInvitationAccepted(ctx context.Context, e events.
 	return nil
 }
 
-func (h *InvitationsHandler) onInvitationExpired(ctx context.Context, e events.InvitationExpired) error {
-	query, args, err := h.psql.
-		Update("invitations_lookup").
-		Set("status", "expired").
-		Where(squirrel.Eq{"id": e.InvitationID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+func (h *InvitationsHandler) OnInvitationExpired(ctx context.Context, e *events.InvitationExpired) error {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", "version", e.InvitationID, e.Version(), map[string]any{
+		"status": "expired",
+	}); err != nil {
 		return fmt.Errorf("failed to update invitation: %w", err)
 	}
 
@@ -114,17 +70,10 @@ func (h *InvitationsHandler) onInvitationExpired(ctx context.Context, e events.I
 	return nil
 }
 
-func (h *InvitationsHandler) onInvitationCancelled(ctx context.Context, e events.InvitationCancelled) error {
-	query, args, err := h.psql.
-		Update("invitations_lookup").
-		Set("status", "cancelled").
-		Where(squirrel.Eq{"id": e.InvitationID}).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
-	}
-
-	if _, err := h.db.Exec(ctx, query, args...); err != nil {
+func (h *InvitationsHandler) OnInvitationCancelled(ctx context.Context, e *events.InvitationCancelled) error {
+	if err := versionGuardedUpdate(ctx, h.db, h.psql, "invitations_lookup", "version", e.InvitationID, e.Version(), map[string]any{
+		"status": "cancelled",
+	}); err != nil {
 		return fmt.Errorf("failed to update invitation: %w", err)
 	}
 

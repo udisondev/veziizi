@@ -11,7 +11,7 @@ const props = defineProps<{
 const slots = useSlots()
 
 const classes = computed(() =>
-  cn('flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between', props.class)
+  cn('flex flex-row items-center justify-between gap-6', props.class)
 )
 
 // Если есть default слот, используем его вместо title prop
@@ -20,14 +20,14 @@ const hasDefaultSlot = computed(() => !!slots.default)
 
 <template>
   <div :class="classes">
-    <div v-if="hasDefaultSlot">
+    <div v-if="hasDefaultSlot" class="min-w-0">
       <slot />
     </div>
-    <div v-else>
+    <div v-else class="min-w-0">
       <h1 class="text-2xl font-bold tracking-tight text-foreground">{{ title }}</h1>
       <p v-if="description" class="text-muted-foreground">{{ description }}</p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0">
       <slot name="actions" />
     </div>
   </div>

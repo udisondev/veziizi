@@ -55,23 +55,23 @@ async function loadFreightRequest() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background">
+  <div class="min-h-screen bg-white md:bg-background">
     <!-- Header -->
     <DetailPageHeader :back-to="backTo" back-label="Назад к заявке" />
 
     <!-- Content -->
-    <main class="max-w-3xl mx-auto px-4 py-6">
+    <main class="max-w-5xl mx-auto px-4 py-6">
       <!-- Loading -->
-      <div v-if="isLoading" class="text-center py-12">
-        <div class="text-gray-500">Загрузка...</div>
+      <div v-if="isLoading" class="text-center py-12 text-muted-foreground">
+        Загрузка...
       </div>
 
       <!-- Error -->
-      <div v-else-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+      <div v-else-if="error" class="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg">
         {{ error }}
         <router-link
           :to="route.params.id ? `/freight-requests/${route.params.id}` : '/'"
-          class="ml-4 text-red-600 underline"
+          class="ml-4 underline"
         >
           Вернуться
         </router-link>
@@ -80,6 +80,7 @@ async function loadFreightRequest() {
       <!-- Wizard -->
       <FreightRequestWizard
         v-else-if="freightRequest"
+        title="Редактирование заявки"
         :edit-mode="true"
         :freight-request-id="freightRequest.id"
         :initial-data="freightRequest"

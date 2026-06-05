@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 )
 
@@ -17,6 +18,7 @@ type EventMeta struct {
 	IP             string    // Client IP
 	UserAgent      string    // User-Agent
 	Fingerprint    string    // Browser fingerprint
+	CorrelationID  string    // chi RequestID, прокидывается через async-цепочку для observability
 }
 
 // WithEventMeta добавляет метаданные события в контекст.
@@ -50,6 +52,9 @@ func (m EventMeta) ToMap() map[string]string {
 	if m.Fingerprint != "" {
 		result["fingerprint"] = m.Fingerprint
 	}
+	if m.CorrelationID != "" {
+		result["correlation_id"] = m.CorrelationID
+	}
 
 	if len(result) == 0 {
 		return nil
@@ -59,6 +64,8 @@ func (m EventMeta) ToMap() map[string]string {
 
 // EventMetaFromRequest создаёт EventMeta из HTTP request.
 // memberID и orgID должны быть получены из session отдельно.
+// CorrelationID берётся из chi RequestID middleware (chiMiddleware.RequestID
+// должен быть подключён выше по стеку, иначе строка будет пустой).
 func EventMetaFromRequest(r *http.Request, memberID, orgID uuid.UUID) EventMeta {
 	return EventMeta{
 		MemberID:       memberID,
@@ -66,5 +73,6 @@ func EventMetaFromRequest(r *http.Request, memberID, orgID uuid.UUID) EventMeta 
 		IP:             GetClientIP(r),
 		UserAgent:      GetUserAgent(r),
 		Fingerprint:    GetFingerprint(r),
+		CorrelationID:  chiMiddleware.GetReqID(r.Context()),
 	}
 }

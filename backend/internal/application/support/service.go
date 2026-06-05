@@ -37,17 +37,21 @@ func NewService(
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*support.Ticket, error) {
-	evts, err := s.eventStore.Load(ctx, id, events.AggregateType)
+	res, err := s.eventStore.LoadWithSnapshot(ctx, id, events.AggregateType)
 	if err != nil {
 		if errors.Is(err, eventstore.ErrAggregateNotFound) {
 			return nil, support.ErrTicketNotFound
 		}
 		return nil, fmt.Errorf("load ticket: %w", err)
 	}
-	if len(evts) == 0 {
+	t, err := support.NewFromStore(id, res.SnapshotState, res.Events)
+	if err != nil {
+		return nil, fmt.Errorf("restore ticket: %w", err)
+	}
+	if t.Version() == 0 {
 		return nil, support.ErrTicketNotFound
 	}
-	return support.NewFromEvents(id, evts), nil
+	return t, nil
 }
 
 type CreateTicketInput struct {
@@ -171,11 +175,12 @@ func (s *Service) saveAndPublish(ctx context.Context, t *support.Ticket) error {
 	}
 
 	return s.db.InTx(ctx, func(ctx context.Context) error {
-		if err := s.eventStore.Save(ctx, changes...); err != nil {
+		// SaveWithState пишет снапшот каждые snapshotThreshold версий.
+		if err := s.eventStore.SaveWithState(ctx, t.State(), changes...); err != nil {
 			return fmt.Errorf("save events: %w", err)
 		}
 
-		if err := s.publisher.Publish(ctx, "support.events", changes...); err != nil {
+		if err := s.publisher.Publish(ctx, changes...); err != nil {
 			return fmt.Errorf("publish events: %w", err)
 		}
 

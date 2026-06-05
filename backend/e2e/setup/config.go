@@ -7,8 +7,9 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
-// testConfigWithDSN creates a configuration with the provided database DSN.
-func testConfigWithDSN(databaseURL string) *config.Config {
+// testConfigWithDSN creates a configuration with the provided database DSN
+// and Redis URL (per-suite Redis DB index for isolation).
+func testConfigWithDSN(databaseURL, redisURL string) *config.Config {
 	sessionSecret := os.Getenv("TEST_SESSION_SECRET")
 	if sessionSecret == "" {
 		sessionSecret = "test-session-secret-32-bytes!!"
@@ -34,6 +35,18 @@ func testConfigWithDSN(databaseURL string) *config.Config {
 		Database: config.DatabaseConfig{
 			URL: databaseURL,
 		},
+		Redis: config.RedisConfig{
+			URL:          redisURL,
+			ConsumerName: "e2e",
+			// Тестовые тайминги быстрее продовых: nack-redelivery почти сразу
+			// (versionGuardedUpdate ретраит «событие раньше Created»), короткий
+			// BlockTime чтобы router быстро завершался на Shutdown.
+			MaxIdleTime:     10 * time.Second,
+			ClaimInterval:   time.Second,
+			NackResendSleep: 20 * time.Millisecond,
+			BlockTime:       50 * time.Millisecond,
+			MaxLen:          100000,
+		},
 		Session: config.SessionConfig{
 			Secret:      sessionSecret,
 			AdminSecret: adminSessionSecret,
@@ -53,6 +66,62 @@ func testConfigWithDSN(databaseURL string) *config.Config {
 			Provider:    "resend",
 			FromAddress: "test@veziizi.local",
 			FromName:    "Veziizi Test",
+		},
+		Security: config.SecurityConfig{
+			// Must match production defaults (config.go envDefault) — otherwise
+			// BodyLimit middleware silently truncates JSON requests to 0 bytes
+			// and every endpoint returns "invalid request body".
+			MaxJSONBodySize:        1 * 1024 * 1024,  // 1 MB
+			MaxFileUploadSize:      10 * 1024 * 1024, // 10 MB
+			MaxFailedLoginAttempts: 100000,           // effectively unlimited for tests
+			AccountLockoutDuration: 15 * time.Minute,
+			ShutdownTimeout:        30 * time.Second,
+		},
+		RateLimit: config.RateLimitConfig{
+			// Inflate test limits so we never trip on rate limiting during e2e runs.
+			PublicMaxRequests: 100000,
+			GeoMaxRequests:    100000,
+			AdminMaxRequests:  100000,
+			WindowDuration:    time.Minute,
+			BlockDuration:     15 * time.Minute,
+			CleanupThreshold:  time.Hour,
+			CleanupInterval:   10 * time.Minute,
+		},
+		Worker: config.WorkerConfig{
+			ShutdownTimeout:            30 * time.Second,
+			HeartbeatInterval:          30 * time.Second,
+			ReviewActivatorInterval:    time.Minute,
+			ReviewActivatorBatchSize:   100,
+			RateLimiterCleanupInterval: 10 * time.Minute,
+		},
+		Fraud: config.FraudConfig{
+			// Session/request limits (irrelevant for review fraud tests, but keep
+			// values aligned with config defaults so tests don't hit unexpected gates).
+			MaxRequestsPerMinute: 100,
+			MaxRequestsPerHour:   1000,
+			BlockDurationMinutes: 15,
+			ScrapingThreshold:    50,
+
+			// Review fraud — match config.go envDefault values, otherwise all
+			// thresholds collapse to zero and detectors misbehave.
+			MutualReviewsPerMonth:       5,
+			FastCompletionHours:         2,
+			PerfectRatingsCount:         3,
+			NewOrgBurstReviewsPerWeek:   10,
+			ModerationScoreThreshold:    0.3,
+			ActivationDelayDays:         7,
+			SuspiciousDelayDays:         14,
+			TextSimilarityThreshold:     0.8,
+			TextSimilarityMinReviews:    3,
+			TimingPatternWindowHours:    2,
+			TimingPatternMinReviews:     10,
+			RatingManipFriendAvgMin:     4.5,
+			RatingManipOtherAvgMax:      2.5,
+			RatingManipMinFriendReviews: 3,
+			BurstAfterLowDays:           7,
+			BurstAfterLowCount:          5,
+			DormantDays:                 90,
+			DormantBurstCount:           5,
 		},
 	}
 }

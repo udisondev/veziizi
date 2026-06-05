@@ -20,6 +20,7 @@ export interface CursorPaginatedResponse<T> {
 
 export interface FreightRequestListParams {
   customer_org_id?: string
+  carrier_org_id?: string
   member_id?: string
   statuses?: string  // comma-separated statuses
   org_name?: string
@@ -38,8 +39,14 @@ export interface FreightRequestListParams {
   payment_methods?: string // comma-separated
   payment_terms?: string // comma-separated
   vat_types?: string // comma-separated
-  route_city_ids?: string // comma-separated city IDs
-  route_country_ids?: string // comma-separated country IDs (for filtering by country without city)
+  route_city_ids?: string // comma-separated city IDs (любая точка маршрута)
+  route_country_ids?: string // comma-separated country IDs (любая точка, без города)
+  origin_city_ids?: string // города начала маршрута
+  origin_country_ids?: string // страны начала маршрута (без города)
+  destination_city_ids?: string // города конца маршрута
+  destination_country_ids?: string // страны конца маршрута (без города)
+  has_pending_offers?: boolean
+  sort_by?: 'created_at_desc' | 'expires_at_asc' | 'price_desc' | 'weight_desc' | 'loading_date_asc' | 'offers_count_asc'
   limit?: number
   cursor?: string // cursor для keyset pagination
 }
@@ -52,6 +59,7 @@ export const freightRequestsApi = {
   async list(params?: FreightRequestListParams): Promise<CursorPaginatedResponse<FreightRequestListItem>> {
     const searchParams = new URLSearchParams()
     if (params?.customer_org_id) searchParams.set('customer_org_id', params.customer_org_id)
+    if (params?.carrier_org_id) searchParams.set('carrier_org_id', params.carrier_org_id)
     if (params?.member_id) searchParams.set('member_id', params.member_id)
     if (params?.statuses) searchParams.set('statuses', params.statuses)
     if (params?.org_name) searchParams.set('org_name', params.org_name)
@@ -72,6 +80,12 @@ export const freightRequestsApi = {
     if (params?.vat_types) searchParams.set('vat_types', params.vat_types)
     if (params?.route_city_ids) searchParams.set('route_city_ids', params.route_city_ids)
     if (params?.route_country_ids) searchParams.set('route_country_ids', params.route_country_ids)
+    if (params?.origin_city_ids) searchParams.set('origin_city_ids', params.origin_city_ids)
+    if (params?.origin_country_ids) searchParams.set('origin_country_ids', params.origin_country_ids)
+    if (params?.destination_city_ids) searchParams.set('destination_city_ids', params.destination_city_ids)
+    if (params?.destination_country_ids) searchParams.set('destination_country_ids', params.destination_country_ids)
+    if (params?.has_pending_offers) searchParams.set('has_pending_offers', 'true')
+    if (params?.sort_by) searchParams.set('sort_by', params.sort_by)
     // Pagination
     if (params?.limit) searchParams.set('limit', params.limit.toString())
     if (params?.cursor) searchParams.set('cursor', params.cursor)

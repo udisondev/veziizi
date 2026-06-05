@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSubscriptionsStore } from '@/stores/subscriptions'
 import { storeToRefs } from 'pinia'
 import { MAX_SUBSCRIPTIONS_PER_MEMBER } from '@/types/subscription'
 import type { FreightSubscription } from '@/types/subscription'
+import { freightRequestsApi } from '@/api/freightRequests'
+import { subscriptionToParams, useSubscriptionNavigation } from '@/composables/useSubscriptionNavigation'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -14,44 +17,52 @@ import { PageHeader, LoadingSpinner, EmptyState } from '@/components/shared'
 
 // Subscription Components
 import SubscriptionCard from '@/components/subscriptions/SubscriptionCard.vue'
-import SubscriptionFormDialog from '@/components/subscriptions/SubscriptionFormDialog.vue'
 
 // Icons
 import { Plus, Bell, Info } from 'lucide-vue-next'
 
+const router = useRouter()
 const store = useSubscriptionsStore()
 const { subscriptions, isLoading, canCreateMore, subscriptionsCount, activeCount } = storeToRefs(store)
+const { goToSubscriptionResults } = useSubscriptionNavigation()
 
-const isFormOpen = ref(false)
-const editingSubscription = ref<FreightSubscription | null>(null)
+const matchCounts = ref<Record<string, number>>({})
 
-function openCreateForm() {
-  editingSubscription.value = null
-  isFormOpen.value = true
+// Отслеживаем только ID и is_active — перезагружаем счётчики при изменении состава или активности
+const subscriptionKeys = computed(() =>
+  subscriptions.value.map(s => `${s.id}:${s.is_active}`).join(',')
+)
+
+async function loadMatchCounts() {
+  const active = subscriptions.value.filter(s => s.is_active)
+  matchCounts.value = {}
+  if (!active.length) return
+  const results = await Promise.allSettled(active.map(sub => freightRequestsApi.list(subscriptionToParams(sub))))
+  active.forEach((sub, i) => {
+    const r = results[i]
+    if (r?.status === 'fulfilled') matchCounts.value[sub.id] = r.value.items?.length ?? 0
+  })
 }
 
-function openEditForm(subscription: FreightSubscription) {
-  editingSubscription.value = subscription
-  isFormOpen.value = true
+function goToCreate() {
+  router.push({ name: 'subscription-create' })
 }
 
-function closeForm() {
-  isFormOpen.value = false
-  editingSubscription.value = null
-}
-
-async function handleFormSuccess() {
-  closeForm()
-  await store.fetchSubscriptions()
+function goToEdit(subscription: FreightSubscription) {
+  router.push({ name: 'subscription-edit', params: { id: subscription.id } })
 }
 
 async function handleDelete(id: string) {
   await store.deleteSubscription(id)
 }
 
-async function handleToggleActive(id: string) {
-  await store.toggleActive(id)
+function handleToggleActive(id: string, value: boolean) {
+  store.toggleActive(id, value)
 }
+
+watch(subscriptionKeys, () => {
+  loadMatchCounts()
+}, { immediate: true })
 
 onMounted(() => {
   store.fetchSubscriptions()
@@ -62,11 +73,11 @@ onMounted(() => {
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <PageHeader title="Рассылка" class="mb-6">
       <template #actions>
-        <Button v-if="canCreateMore" @click="openCreateForm">
+        <Button v-if="canCreateMore" @click="goToCreate">
           <Plus class="h-4 w-4 mr-2" />
           Создать подписку
         </Button>
-        <span v-else class="text-sm text-muted-foreground">
+        <span v-else class="text-sm text-warning font-medium">
           Достигнут лимит ({{ MAX_SUBSCRIPTIONS_PER_MEMBER }})
         </span>
       </template>
@@ -76,10 +87,10 @@ onMounted(() => {
 
     <template v-else>
       <!-- Info Card -->
-      <Card class="mb-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+      <Card class="mb-6 bg-accent border-primary/20">
         <CardContent class="flex items-start gap-3 pt-6">
-          <Info class="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-          <div class="text-sm text-blue-800 dark:text-blue-200">
+          <Info class="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+          <div class="text-sm text-accent-foreground">
             <p class="font-medium mb-1">Как это работает</p>
             <p>
               Создайте подписки с нужными фильтрами, и вы будете получать уведомления
@@ -93,7 +104,7 @@ onMounted(() => {
       <!-- Stats -->
       <div class="flex items-center gap-6 mb-6 text-sm text-muted-foreground">
         <span>Всего подписок: <strong class="text-foreground">{{ subscriptionsCount }}</strong></span>
-        <span>Активных: <strong class="text-green-600">{{ activeCount }}</strong></span>
+        <span>Активных: <strong class="text-success">{{ activeCount }}</strong></span>
       </div>
 
       <!-- Subscriptions List -->
@@ -102,9 +113,11 @@ onMounted(() => {
           v-for="subscription in subscriptions"
           :key="subscription.id"
           :subscription="subscription"
-          @edit="openEditForm"
+          :match-count="matchCounts[subscription.id]"
+          @edit="goToEdit"
           @delete="handleDelete"
           @toggle-active="handleToggleActive"
+          @view-matches="goToSubscriptionResults(subscription)"
         />
       </div>
 
@@ -118,20 +131,12 @@ onMounted(() => {
           <Bell class="h-12 w-12 text-muted-foreground/50" />
         </template>
         <template #action>
-          <Button @click="openCreateForm">
+          <Button @click="goToCreate">
             <Plus class="h-4 w-4 mr-2" />
             Создать подписку
           </Button>
         </template>
       </EmptyState>
     </template>
-
-    <!-- Form Dialog -->
-    <SubscriptionFormDialog
-      v-model:open="isFormOpen"
-      :subscription="editingSubscription"
-      @success="handleFormSuccess"
-      @cancel="closeForm"
-    />
   </div>
 </template>

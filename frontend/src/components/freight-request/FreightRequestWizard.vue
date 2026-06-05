@@ -1,27 +1,35 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFreightRequestForm } from '@/composables/useFreightRequestForm'
 import { useTutorialEvent } from '@/composables/useTutorialEvent'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { scrollToFirstError } from '@/utils/scrollToError'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from '@/components/ui/dialog'
 import WizardStepIndicator from './WizardStepIndicator.vue'
 import RouteStep from './steps/RouteStep.vue'
 import CargoStep from './steps/CargoStep.vue'
 import VehicleStep from './steps/VehicleStep.vue'
 import PaymentStep from './steps/PaymentStep.vue'
 import ConfirmationStep from './steps/ConfirmationStep.vue'
-import type { FreightRequest } from '@/types/freightRequest'
+import type { FreightRequest, VehicleType, VehicleSubType } from '@/types/freightRequest'
 
 interface Props {
   editMode?: boolean
   freightRequestId?: string
   initialData?: FreightRequest
+  title?: string
+  hideStepper?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   editMode: false,
+  hideStepper: false,
 })
 
 const router = useRouter()
@@ -31,8 +39,34 @@ const onboarding = useOnboardingStore()
 
 const isLoading = ref(false)
 const apiError = ref('')
+const showCancelConfirm = ref(false)
 
-const steps = ['Маршрут', 'Груз', 'Транспорт', 'Оплата', 'Подтверждение']
+function handleCancel() {
+  showCancelConfirm.value = true
+}
+
+function confirmCancel() {
+  showCancelConfirm.value = false
+  form.resetForm()
+  router.push(props.editMode && props.freightRequestId ? `/freight-requests/${props.freightRequestId}` : '/requests')
+}
+
+const hasFormData = computed(() => {
+  const hasRoute = form.routePoints.value.some(p => p.address || p.city_id)
+  const hasCargo = !!form.cargo.description || (form.cargo.weight ?? 0) > 0
+  const hasVehicle = !!form.vehicle.vehicle_type
+  const hasPayment = !!form.payment.price || form.payment.no_price
+  const hasComment = !!form.comment.value
+  return hasRoute || hasCargo || hasVehicle || hasPayment || hasComment
+})
+
+const steps = ['Маршрут', 'Груз', 'Транспорт', 'Оплата', 'Готово']
+
+defineExpose({
+  currentStep: computed(() => form.currentStep.value),
+  goToStep: form.goToStep,
+  steps,
+})
 
 onMounted(() => {
   if (props.editMode && props.initialData) {
@@ -62,12 +96,12 @@ async function handleSubmit() {
       cargo_weight: form.cargo.weight || 0,
       price_amount: form.payment.price?.amount,
       price_currency: form.payment.price?.currency,
-      vehicle_type: form.vehicle.vehicle_type || 'truck',
-      vehicle_subtype: form.vehicle.vehicle_subtype || 'tilt',
+      vehicle_type: (form.vehicle.vehicle_type || 'truck') as VehicleType,
+      vehicle_subtype: (form.vehicle.vehicle_subtype || 'tilt') as VehicleSubType,
       created_at: new Date().toISOString(),
     })
     emitTutorial('freightRequest:created', { id: 'sandbox-request' })
-    router.push('/')
+    router.push('/requests')
     return
   }
 
@@ -101,7 +135,6 @@ function handleNext() {
       emitTutorial('wizard:next')
     } else {
       // Валидация не прошла - скроллим к первой ошибке
-      console.log('[handleNext] validation failed, errors:', JSON.stringify(form.errors))
       scrollToFirstError(form.errors)
     }
   }
@@ -109,25 +142,29 @@ function handleNext() {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto">
-    <!-- Step indicator -->
-    <WizardStepIndicator
-      :steps="steps"
-      :current-step="form.currentStep.value"
-      @go-to="form.goToStep"
-    />
+  <div class="bg-white md:rounded-xl md:border md:border-border md:shadow-md">
+    <!-- Card header: title + stepper -->
+    <div class="pb-4 border-b border-border md:px-6 md:pt-6">
+      <h2 v-if="title" class="text-xl font-bold text-foreground mb-6">{{ title }}</h2>
+      <div :class="hideStepper ? 'lg:hidden' : ''">
+        <WizardStepIndicator
+          :steps="steps"
+          :current-step="form.currentStep.value"
+          @go-to="form.goToStep"
+        />
+      </div>
+    </div>
 
     <!-- API Error -->
     <div
       v-if="apiError"
-      class="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md mb-6"
+      class="mt-4 md:mx-6 bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg"
     >
       {{ apiError }}
     </div>
 
     <!-- Steps content -->
-    <div class="bg-white shadow-sm rounded-lg p-6">
-      <!-- Step 1: Route -->
+    <div class="py-6 md:px-6">
       <RouteStep
         v-if="form.currentStep.value === 1"
         data-tutorial="route-step"
@@ -138,8 +175,6 @@ function handleNext() {
         @update-point="form.updateRoutePoint"
         @reorder="form.reorderRoutePoints"
       />
-
-      <!-- Step 2: Cargo -->
       <CargoStep
         v-else-if="form.currentStep.value === 2"
         data-tutorial="cargo-step"
@@ -148,8 +183,6 @@ function handleNext() {
         @update:cargo="Object.assign(form.cargo, $event)"
         @validate-field="form.validateField"
       />
-
-      <!-- Step 3: Vehicle -->
       <VehicleStep
         v-else-if="form.currentStep.value === 3"
         data-tutorial="vehicle-step"
@@ -158,8 +191,6 @@ function handleNext() {
         @update:vehicle="Object.assign(form.vehicle, $event)"
         @validate-field="form.validateField"
       />
-
-      <!-- Step 4: Payment -->
       <PaymentStep
         v-else-if="form.currentStep.value === 4"
         data-tutorial="payment-step"
@@ -168,8 +199,6 @@ function handleNext() {
         @update:payment="Object.assign(form.payment, $event)"
         @validate-field="form.validateField"
       />
-
-      <!-- Step 5: Confirmation -->
       <ConfirmationStep
         v-else-if="form.currentStep.value === 5"
         :request-data="form.requestData.value"
@@ -179,51 +208,67 @@ function handleNext() {
     </div>
 
     <!-- Navigation buttons -->
-    <div class="flex gap-4 mt-6" data-tutorial="wizard-buttons">
+    <div class="py-4 border-t border-border flex items-center justify-between gap-3 md:px-6" data-tutorial="wizard-buttons">
       <button
-        v-if="form.currentStep.value > 1"
+        v-if="hasFormData"
         type="button"
-        data-tutorial="back-btn"
-        class="flex-1 py-3 px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-        @click="form.prevStep"
+        class="text-base md:text-sm text-muted-foreground hover:text-foreground transition-colors"
+        @click="handleCancel"
       >
-        Назад
+        Сбросить форму
       </button>
+      <div v-else />
 
-      <button
-        type="button"
-        data-tutorial="submit-btn"
-        :disabled="isLoading"
-        :class="[
-          'flex-1 py-3 px-4 border border-transparent rounded-md text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors',
-          form.currentStep.value === form.totalSteps
-            ? 'bg-green-600 hover:bg-green-700'
-            : 'bg-blue-600 hover:bg-blue-700',
-          isLoading ? 'opacity-50 cursor-not-allowed' : '',
-        ]"
-        @click="handleNext"
-      >
-        <template v-if="isLoading">
-          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          {{ editMode ? 'Сохранение...' : 'Публикация...' }}
-        </template>
-        <template v-else>
-          {{ form.currentStep.value === form.totalSteps ? (editMode ? 'Сохранить изменения' : 'Опубликовать') : 'Далее' }}
-        </template>
-      </button>
-    </div>
+      <div class="flex items-center gap-3">
+        <Button
+          v-if="form.currentStep.value > 1"
+          type="button"
+          variant="outline"
+          class="h-12 text-base md:h-10 md:text-sm"
+          data-tutorial="back-btn"
+          @click="form.prevStep"
+        >
+          Назад
+        </Button>
 
-    <!-- Cancel link -->
-    <div class="text-center mt-4">
-      <router-link
-        :to="editMode && freightRequestId ? `/freight-requests/${freightRequestId}` : '/'"
-        class="text-gray-500 hover:text-gray-700 text-sm"
-      >
-        Отмена
-      </router-link>
+        <Button
+          type="button"
+          class="h-12 text-base md:h-10 md:text-sm"
+          data-tutorial="submit-btn"
+          :disabled="isLoading"
+          @click="handleNext"
+        >
+        <svg v-if="isLoading" class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+        {{ isLoading
+          ? (editMode ? 'Сохранение...' : 'Публикация...')
+          : form.currentStep.value === form.totalSteps
+            ? (editMode ? 'Сохранить изменения' : 'Опубликовать')
+            : 'Далее'
+        }}
+      </Button>
+      </div>
     </div>
   </div>
+
+  <Dialog v-model:open="showCancelConfirm">
+    <DialogContent class="w-auto gap-8">
+      <DialogHeader class="space-y-3">
+        <DialogTitle>Отменить создание заявки?</DialogTitle>
+        <DialogDescription>
+          Все введённые данные будут потеряны.
+        </DialogDescription>
+      </DialogHeader>
+      <DialogFooter class="gap-3">
+        <Button variant="outline" @click="showCancelConfirm = false">
+          Продолжить заполнение
+        </Button>
+        <Button variant="destructive" @click="confirmCancel">
+          Сбросить форму
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>

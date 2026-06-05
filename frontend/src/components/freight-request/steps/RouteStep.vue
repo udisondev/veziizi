@@ -51,7 +51,7 @@ const hasValidCoordinates = computed(() =>
     <!-- Route error -->
     <div
       v-if="errors.route"
-      class="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md"
+      class="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg"
     >
       {{ errors.route }}
     </div>
@@ -83,7 +83,7 @@ const hasValidCoordinates = computed(() =>
     <!-- Add point button (одна кнопка) -->
     <button
       type="button"
-      class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-lg hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+      class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-border text-muted-foreground rounded-lg hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
       data-tutorial="route-add-point-btn"
       @click="handleAddPoint"
     >
@@ -99,19 +99,19 @@ const hasValidCoordinates = computed(() =>
 
     <!-- Map preview -->
     <div v-if="hasValidCoordinates">
-      <h4 class="text-sm font-medium text-gray-700 mb-2">Маршрут на карте</h4>
-      <LeafletMap :points="routePoints" height="250px" />
+      <h4 class="text-sm font-medium text-foreground mb-2">Маршрут на карте</h4>
+      <LeafletMap :points="routePoints" />
     </div>
 
-    <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-gray-500">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto mb-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div v-else class="bg-muted/50 border border-border rounded-lg p-4 text-center text-muted-foreground">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
       </svg>
       <p class="text-sm">Карта появится после выбора адресов с координатами</p>
     </div>
 
     <!-- Help text -->
-    <p class="text-sm text-gray-500">
+    <p class="text-sm text-muted-foreground">
       Перетаскивайте карточки за иконку слева для изменения порядка точек маршрута.
       Первая точка всегда погрузка, последняя — разгрузка.
     </p>

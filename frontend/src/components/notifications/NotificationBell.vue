@@ -4,7 +4,10 @@ import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
+import type { Notification } from '@/types/notification'
+import { getNotificationLink } from '@/types/notification'
 import { tutorialBus } from '@/sandbox/events'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -13,9 +16,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
+import BottomSheet from '@/components/shared/BottomSheet.vue'
 import NotificationItem from './NotificationItem.vue'
 
 import { Bell } from 'lucide-vue-next'
+
+const { isMobile } = useBreakpoint()
 
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
@@ -35,11 +41,10 @@ const recentNotifications = computed(() => notificationsStore.recentNotification
 const unreadCount = computed(() => notificationsStore.unreadCount)
 const hasUnread = computed(() => notificationsStore.hasUnread)
 
-function handleNotificationClick(notification: { id: string; link?: string }) {
+function handleNotificationClick(notification: Notification) {
   isOpen.value = false
   notificationsStore.markAsRead(notification.id)
 
-  // Эмитим событие для tutorial
   if (onboarding.isSandboxMode) {
     tutorialBus.emit('notification:clicked', {
       id: notification.id,
@@ -47,9 +52,8 @@ function handleNotificationClick(notification: { id: string; link?: string }) {
     })
   }
 
-  if (notification.link) {
-    router.push(notification.link)
-  }
+  const link = getNotificationLink(notification)
+  if (link) router.push(link)
 }
 
 function goToAllNotifications() {
@@ -73,11 +77,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <DropdownMenu v-model:open="isOpen">
-    <DropdownMenuTrigger as-child>
-      <Button variant="ghost" size="icon" class="relative" data-tutorial="notification-bell">
+  <div class="relative group/bell">
+
+    <!-- Mobile: кнопка + BottomSheet -->
+    <template v-if="isMobile">
+      <Button
+        variant="ghost"
+        size="icon"
+        class="relative text-slate-300 hover:text-white hover:bg-slate-800"
+        data-tutorial="notification-bell"
+        @click="isOpen = true"
+      >
         <Bell class="h-5 w-5" />
-        <!-- Badge с количеством -->
         <span
           v-if="hasUnread"
           class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground"
@@ -85,51 +96,103 @@ onUnmounted(() => {
           {{ unreadCount > 99 ? '99+' : unreadCount }}
         </span>
       </Button>
-    </DropdownMenuTrigger>
-
-    <DropdownMenuContent align="end" class="w-80 p-0">
-      <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b" data-tutorial="notification-dropdown">
-        <span class="font-semibold">Уведомления</span>
-        <Button
-          v-if="hasUnread"
-          variant="ghost"
-          size="sm"
-          class="text-xs h-7"
-          @click="handleMarkAllRead"
-        >
-          Прочитать все
-        </Button>
-      </div>
-
-      <!-- Notifications list -->
-      <div class="max-h-96 overflow-y-auto">
-        <template v-if="recentNotifications.length > 0">
-          <NotificationItem
-            v-for="notification in recentNotifications"
-            :key="notification.id"
-            :notification="notification"
-            compact
-            data-tutorial="notification-item"
-            @click="handleNotificationClick(notification)"
-          />
-        </template>
-        <div v-else class="py-8 text-center text-muted-foreground text-sm">
-          Нет уведомлений
+      <BottomSheet v-model="isOpen" label="Уведомления">
+        <div v-if="hasUnread" class="px-4 pb-2 flex justify-end flex-shrink-0" data-tutorial="notification-dropdown">
+          <Button variant="ghost" size="sm" class="text-xs h-7" @click="handleMarkAllRead">
+            Прочитать все
+          </Button>
         </div>
-      </div>
+        <div class="overflow-y-auto flex-1">
+          <template v-if="recentNotifications.length > 0">
+            <NotificationItem
+              v-for="notification in recentNotifications"
+              :key="notification.id"
+              :notification="notification"
+              data-tutorial="notification-item"
+              @click="handleNotificationClick(notification)"
+            />
+          </template>
+          <div v-else class="py-8 text-center text-muted-foreground text-sm">
+            Нет уведомлений
+          </div>
+        </div>
+        <div class="p-3 border-t flex-shrink-0">
+          <Button variant="outline" class="w-full" @click="goToAllNotifications">
+            Все уведомления
+          </Button>
+        </div>
+      </BottomSheet>
+    </template>
 
-      <!-- Footer -->
-      <Separator />
-      <div class="p-2">
-        <Button
-          variant="ghost"
-          class="w-full justify-center text-sm"
-          @click="goToAllNotifications"
-        >
-          Все уведомления
-        </Button>
+    <!-- Desktop: кнопка внутри DropdownMenu -->
+    <template v-else>
+      <DropdownMenu v-model:open="isOpen">
+        <DropdownMenuTrigger as-child>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="relative text-slate-300 hover:text-white hover:bg-slate-800"
+            data-tutorial="notification-bell"
+          >
+            <Bell class="h-5 w-5" />
+            <span
+              v-if="hasUnread"
+              class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground"
+            >
+              {{ unreadCount > 99 ? '99+' : unreadCount }}
+            </span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" class="w-80 p-0 bg-slate-800 border-slate-700 text-slate-100">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700" data-tutorial="notification-dropdown">
+            <span class="font-semibold text-slate-100">Уведомления</span>
+            <Button
+              v-if="hasUnread"
+              variant="ghost"
+              size="sm"
+              class="text-xs h-7 text-slate-300 hover:text-white hover:bg-slate-700"
+              @click="handleMarkAllRead"
+            >
+              Прочитать все
+            </Button>
+          </div>
+          <div class="max-h-96 overflow-y-auto">
+            <template v-if="recentNotifications.length > 0">
+              <NotificationItem
+                v-for="notification in recentNotifications"
+                :key="notification.id"
+                :notification="notification"
+                compact
+                dark
+                data-tutorial="notification-item"
+                @click="handleNotificationClick(notification)"
+              />
+            </template>
+            <div v-else class="py-8 text-center text-slate-400 text-sm">
+              Нет уведомлений
+            </div>
+          </div>
+          <Separator class="bg-slate-700" />
+          <div class="p-2">
+            <Button
+              variant="ghost"
+              class="w-full justify-center text-sm text-slate-300 hover:text-white hover:bg-slate-700"
+              @click="goToAllNotifications"
+            >
+              Все уведомления
+            </Button>
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <!-- Tooltip (только десктоп) -->
+      <div
+        v-if="!isOpen"
+        class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2.5 py-1 rounded-md bg-slate-700 text-slate-100 text-sm shadow-md whitespace-nowrap opacity-0 group-hover/bell:opacity-100 transition-opacity duration-150 z-50"
+      >
+        Уведомления
       </div>
-    </DropdownMenuContent>
-  </DropdownMenu>
+    </template>
+
+  </div>
 </template>

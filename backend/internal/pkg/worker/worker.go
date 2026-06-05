@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/redis/go-redis/v9"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/heartbeat"
@@ -24,8 +26,21 @@ type Config struct {
 	ConsumerGroup string
 	LogFile       string
 
-	// Handler receives Factory and returns message handler
+	// Handler — legacy-стиль: один raw NoPublishHandlerFunc на топик, внутри
+	// которого хендлер сам распаковывает EventEnvelope и делает type switch.
+	// Используется воркерами, которые ещё не мигрировали на CQRS.
 	Handler func(f *factory.Factory) message.NoPublishHandlerFunc
+
+	// Setup — CQRS-стиль: фабрика регистрирует типизированные хендлеры на
+	// EventGroupProcessor. Все хендлеры группы шарят один Redis-подписчик
+	// (один ConsumerGroup на воркер, как и у Handler). Если задан Setup,
+	// поле Handler игнорируется.
+	Setup func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error
+
+	// Marshaler — формат сообщений. По умолчанию EventEnvelopeMarshaler (для
+	// доменных событий из event store). Для топиков с JSON-командами
+	// (notification.telegram/email) задай messaging.NotificationMarshaler().
+	Marshaler cqrs.CommandEventMarshaler
 }
 
 func Run(cfg Config) {
@@ -63,6 +78,29 @@ func Run(cfg Config) {
 	pool := f.MustPool()
 	slog.Info(fmt.Sprintf("%s worker connected to database", cfg.Name))
 
+	// Redis — транспорт событий: воркер подписывается на стрим cfg.Topic через
+	// consumer group. consumerName обязан быть уникальным на инстанс, иначе
+	// реплики делят один pending-список и крадут сообщения друг у друга.
+	redisClient := f.MustRedisClient()
+	consumerName := appCfg.Redis.ConsumerName
+	if consumerName == "" {
+		host, err := os.Hostname()
+		if err != nil {
+			slog.Error("failed to get hostname for consumer name", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		consumerName = cfg.Name + "-" + host
+	}
+	slog.Info(fmt.Sprintf("%s worker connected to redis", cfg.Name),
+		slog.String("consumer_group", cfg.ConsumerGroup),
+		slog.String("consumer_name", consumerName))
+
+	// Best-effort детекция коллизии consumer name: два живых консьюмера под
+	// одним именем невидимо крадут сообщения друг у друга. Не фатально (air
+	// перезапускает воркер быстрее, чем idle успевает вырасти), но в логах
+	// должно быть громко.
+	warnOnConsumerNameCollision(ctx, redisClient, cfg.Topic, cfg.ConsumerGroup, consumerName)
+
 	// Heartbeat
 	hb := heartbeat.New(pool, cfg.Name, "event", appCfg.Worker.HeartbeatInterval)
 	if err := hb.Start(ctx); err != nil {
@@ -72,32 +110,58 @@ func Run(cfg Config) {
 
 	wmLogger := watermill.NewSlogLogger(slog.Default())
 
-	subscriber, err := sql.NewSubscriber(
-		sql.BeginnerFromPgx(pool),
-		sql.SubscriberConfig{
-			SchemaAdapter:  sql.DefaultPostgreSQLSchema{},
-			OffsetsAdapter: sql.DefaultPostgreSQLOffsetsAdapter{},
-			ConsumerGroup:  cfg.ConsumerGroup,
-		},
-		wmLogger,
-	)
-	if err != nil {
-		slog.Error("failed to create subscriber", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-
-	if err := subscriber.SubscribeInitialize(cfg.Topic); err != nil {
-		slog.Error("failed to initialize subscriber", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
-
 	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
 	if err != nil {
 		slog.Error("failed to create router", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	router.AddConsumerHandler(cfg.Name+"_handler", cfg.Topic, subscriber, cfg.Handler(f))
+	// Publisher для poison queue пишет напрямую в Redis-стрим DLQ-топика:
+	// исчерпавшее ретраи сообщение должно уехать из очереди даже когда Postgres
+	// outbox-путь деградировал, и оно не нуждается в tx-гарантиях.
+	// MaxLen у DLQ свой (по умолчанию 0 = без trim'а): отравленные события
+	// нельзя терять молча общим REDIS_STREAM_MAXLEN.
+	var poisonPub message.Publisher
+	if appCfg.Worker.DeadLetterTopic != "" {
+		dlqRedisCfg := appCfg.Redis
+		dlqRedisCfg.MaxLen = appCfg.Worker.DeadLetterMaxLen
+		poisonPub, err = messaging.NewRedisPublisher(redisClient, dlqRedisCfg, wmLogger)
+		if err != nil {
+			slog.Error("failed to create poison queue publisher", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}
+	if err := applyStandardMiddleware(router, appCfg.Worker, wmLogger, poisonPub); err != nil {
+		slog.Error("failed to apply middleware", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	switch {
+	case cfg.Setup != nil:
+		marshaler := cfg.Marshaler
+		if marshaler == nil {
+			marshaler = messaging.EventEnvelopeMarshaler{}
+		}
+		ep, err := messaging.NewEventGroupProcessor(router, redisClient, appCfg.Redis, cfg.Topic, cfg.ConsumerGroup, consumerName, marshaler, wmLogger)
+		if err != nil {
+			slog.Error("failed to create event group processor", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		if err := cfg.Setup(f, ep); err != nil {
+			slog.Error("worker setup failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	case cfg.Handler != nil:
+		subscriber, err := messaging.NewRedisSubscriber(redisClient, cfg.ConsumerGroup, consumerName, appCfg.Redis, wmLogger)
+		if err != nil {
+			slog.Error("failed to create subscriber", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		router.AddConsumerHandler(cfg.Name+"_handler", cfg.Topic, subscriber, cfg.Handler(f))
+	default:
+		slog.Error("worker config has neither Setup nor Handler")
+		os.Exit(1)
+	}
 
 	go func() {
 		if err := router.Run(ctx); err != nil {
@@ -127,6 +191,31 @@ func Run(cfg Config) {
 	case <-time.After(appCfg.Worker.ShutdownTimeout):
 		slog.Error(fmt.Sprintf("%s worker shutdown timed out, forcing exit", cfg.Name))
 		os.Exit(1)
+	}
+}
+
+// warnOnConsumerNameCollision проверяет, нет ли в consumer group'е живого
+// консьюмера с тем же именем (idle меньше порога). Молча пропускает любые
+// ошибки: стрим/группа могли ещё не существовать.
+func warnOnConsumerNameCollision(ctx context.Context, client redis.UniversalClient, topic, group, consumerName string) {
+	const aliveThreshold = 15 * time.Second
+
+	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	consumers, err := client.XInfoConsumers(checkCtx, topic, group).Result()
+	if err != nil {
+		return
+	}
+	for _, c := range consumers {
+		if c.Name == consumerName && c.Idle >= 0 && c.Idle < aliveThreshold {
+			slog.Warn("ACTIVE consumer with the same name already exists in the group — "+
+				"two replicas under one name will invisibly steal each other's messages; "+
+				"set a unique REDIS_CONSUMER_NAME per instance",
+				slog.String("topic", topic),
+				slog.String("consumer_group", group),
+				slog.String("consumer_name", consumerName))
+		}
 	}
 }
 

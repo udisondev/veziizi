@@ -2,21 +2,14 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
-import type { NotificationCategory } from '@/types/notification'
-import { categoryLabels, allCategories } from '@/types/notification'
+import type { Notification, NotificationCategory } from '@/types/notification'
+import { categoryLabels, allCategories, getNotificationLink } from '@/types/notification'
 
 // UI Components
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Card } from '@/components/ui/card'
+import { TabsSlider } from '@/components/ui/tabs'
+import { SelectField } from '@/components/ui/select-field'
 
 // Shared Components
 import {
@@ -24,7 +17,6 @@ import {
   LoadingSpinner,
   EmptyState,
   ErrorBanner,
-  FilterSheet,
 } from '@/components/shared'
 
 // Components
@@ -39,11 +31,17 @@ const notificationsStore = useNotificationsStore()
 // Filters
 const readFilter = ref<'all' | 'unread' | 'read'>('all')
 const categoryFilter = ref<NotificationCategory | 'all'>('all')
-const showFilters = ref(false)
 
-// Temp filters for sheet
-const tempReadFilter = ref<'all' | 'unread' | 'read'>('all')
-const tempCategory = ref<NotificationCategory | 'all'>('all')
+const readFilterItems = [
+  { value: 'all', label: 'Все' },
+  { value: 'unread', label: 'Непрочитанные' },
+  { value: 'read', label: 'Прочитанные' },
+]
+
+const categoryOptions = [
+  { value: 'all', label: 'Все категории' },
+  ...allCategories.map(cat => ({ value: cat, label: categoryLabels[cat] })),
+]
 
 const isLoading = computed(() => notificationsStore.isLoading)
 const error = computed(() => notificationsStore.error)
@@ -64,13 +62,6 @@ const hasActiveFilters = computed(() =>
   readFilter.value !== 'all' || categoryFilter.value !== 'all'
 )
 
-const activeFiltersCount = computed(() => {
-  let count = 0
-  if (readFilter.value !== 'all') count++
-  if (categoryFilter.value !== 'all') count++
-  return count
-})
-
 async function loadNotifications() {
   await notificationsStore.fetchNotifications({
     category: categoryFilter.value !== 'all' ? categoryFilter.value : undefined,
@@ -79,33 +70,14 @@ async function loadNotifications() {
   })
 }
 
-function handleNotificationClick(notification: { id: string; link?: string }) {
+function handleNotificationClick(notification: Notification) {
   notificationsStore.markAsRead(notification.id)
-  if (notification.link) {
-    router.push(notification.link)
-  }
+  const link = getNotificationLink(notification)
+  if (link) router.push(link)
 }
 
 function goToSettings() {
   router.push('/notifications/settings')
-}
-
-// Filter sheet handlers
-function openFilters() {
-  tempReadFilter.value = readFilter.value
-  tempCategory.value = categoryFilter.value
-  showFilters.value = true
-}
-
-function applyFilters() {
-  readFilter.value = tempReadFilter.value
-  categoryFilter.value = tempCategory.value
-  showFilters.value = false
-}
-
-function resetFilters() {
-  tempReadFilter.value = 'all'
-  tempCategory.value = 'all'
 }
 
 function resetAllFilters() {
@@ -126,67 +98,37 @@ onMounted(() => {
   <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <PageHeader title="Уведомления" class="mb-6">
       <template #actions>
-        <div class="flex gap-2">
-          <Button variant="outline" @click="goToSettings">
-            <Settings class="mr-2 h-4 w-4" />
-            Настройки
-          </Button>
-
-          <FilterSheet
-            v-model:open="showFilters"
-            :active-filters-count="activeFiltersCount"
-            description="Фильтрация уведомлений"
-            @open="openFilters"
-            @apply="applyFilters"
-            @reset="resetFilters"
-          >
-            <!-- Read filter -->
-            <div class="space-y-2">
-              <Label>Статус</Label>
-              <Tabs v-model="tempReadFilter" class="w-full">
-                <TabsList class="grid w-full grid-cols-3">
-                  <TabsTrigger value="all">Все</TabsTrigger>
-                  <TabsTrigger value="unread">Непрочитанные</TabsTrigger>
-                  <TabsTrigger value="read">Прочитанные</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-
-            <!-- Category filter -->
-            <div class="space-y-2">
-              <Label>Категория</Label>
-              <Select v-model="tempCategory">
-                <SelectTrigger>
-                  <SelectValue placeholder="Все категории" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все категории</SelectItem>
-                  <SelectItem
-                    v-for="cat in allCategories"
-                    :key="cat"
-                    :value="cat"
-                  >
-                    {{ categoryLabels[cat] }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </FilterSheet>
-        </div>
+        <Button variant="outline" @click="goToSettings">
+          <Settings class="mr-2 h-4 w-4" />
+          Настройки
+        </Button>
       </template>
     </PageHeader>
 
-    <!-- Active filters indicator -->
-    <Card v-if="hasActiveFilters" class="mb-6 border-primary/20 bg-primary/5">
-      <CardContent class="flex items-center justify-between py-3">
-        <div class="text-sm text-primary">
-          Активные фильтры: {{ activeFiltersCount }}
+    <!-- Filters -->
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
+      <TabsSlider v-model="readFilter" :items="readFilterItems" stretch class="sm:hidden" />
+      <TabsSlider v-model="readFilter" :items="readFilterItems" class="hidden sm:block" />
+
+      <div class="flex items-center gap-3">
+        <div class="w-full sm:w-56">
+          <SelectField
+            v-model="categoryFilter"
+            :options="categoryOptions"
+            sheet-label="Категория"
+          />
         </div>
-        <Button variant="ghost" size="sm" @click="resetAllFilters">
+        <Button
+          v-if="hasActiveFilters"
+          variant="ghost"
+          size="sm"
+          class="text-muted-foreground shrink-0"
+          @click="resetAllFilters"
+        >
           Сбросить
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
 
     <!-- Mark all as read -->
     <div v-if="notificationsStore.hasUnread" class="mb-4 flex justify-end">
@@ -219,6 +161,7 @@ onMounted(() => {
         v-for="notification in filteredNotifications"
         :key="notification.id"
         class="overflow-hidden"
+        interactive
       >
         <NotificationItem
           :notification="notification"

@@ -96,16 +96,53 @@ func (p *ReviewsProjection) ListPendingModeration(ctx context.Context, limit, of
 		return []ReviewForModeration{}, 0, nil
 	}
 
-	// Load fraud signals for each review
+	// Загружаем fraud_signals для всех ревью одним запросом — раньше был
+	// N+1: 1 запрос на review × 50 ревью = 51 запрос к БД, потенциальный
+	// DoS-вектор через админ-панель.
+	reviewIDs := make([]uuid.UUID, 0, len(result))
 	for i := range result {
-		signals, err := p.getFraudSignals(ctx, result[i].ID)
-		if err != nil {
-			return nil, 0, fmt.Errorf("get fraud signals: %w", err)
-		}
-		result[i].FraudSignals = signals
+		reviewIDs = append(reviewIDs, result[i].ID)
+	}
+	signalsByReview, err := p.fraudSignalsByReviewIDs(ctx, reviewIDs)
+	if err != nil {
+		return nil, 0, fmt.Errorf("get fraud signals: %w", err)
+	}
+	for i := range result {
+		result[i].FraudSignals = signalsByReview[result[i].ID]
 	}
 
 	return result, total, nil
+}
+
+// fraudSignalsByReviewIDs возвращает map review_id → []FraudSignalInfo одним
+// SELECT'ом по WHERE review_id = ANY($1). Используется в страничных листингах
+// модерации, чтобы не пускать N+1 в БД.
+func (p *ReviewsProjection) fraudSignalsByReviewIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]FraudSignalInfo, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	const query = `
+		SELECT review_id, signal_type, severity, description, score_impact
+		FROM review_fraud_signals
+		WHERE review_id = ANY($1)
+		ORDER BY review_id, score_impact DESC
+	`
+	rows, err := p.db.Query(ctx, query, ids)
+	if err != nil {
+		return nil, fmt.Errorf("query signals batch: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[uuid.UUID][]FraudSignalInfo, len(ids))
+	for rows.Next() {
+		var reviewID uuid.UUID
+		var s FraudSignalInfo
+		if err := rows.Scan(&reviewID, &s.Type, &s.Severity, &s.Description, &s.ScoreImpact); err != nil {
+			return nil, fmt.Errorf("scan signal batch: %w", err)
+		}
+		out[reviewID] = append(out[reviewID], s)
+	}
+	return out, rows.Err()
 }
 
 // GetFraudSignalsByReviewID returns fraud signals for a review (public)

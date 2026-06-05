@@ -1,10 +1,11 @@
-# Dev override: `task up` starts only Postgres
+# Dev override: `task up` starts Postgres + Redis
 # Full Docker dev: `task dev:docker` (--profile docker-dev)
 
 x-dev-env: &dev-env
   APP_ENV: development
   LOG_LEVEL: debug
   DATABASE_URL: postgres://veziizi:veziizi@postgres:5432/veziizi?sslmode=disable
+  REDIS_URL: redis://redis:6379/0
   HTTP_ADDR: ":8080"
   SESSION_SECRET: dev-secret-not-for-production!!
   SESSION_ADMIN_SECRET: dev-admin-secret-not-for-prod!
@@ -27,6 +28,10 @@ services:
       POSTGRES_PASSWORD: veziizi
       POSTGRES_DB: veziizi
 
+  redis:
+    ports:
+      - "6379:6379"
+
   api:
     profiles: [docker-dev]
     ports:
@@ -41,6 +46,11 @@ services:
       - "80:80"
 
   telegram-bot:
+    profiles: [docker-dev]
+    environment:
+      <<: *dev-env
+
+  worker-forwarder:
     profiles: [docker-dev]
     environment:
       <<: *dev-env

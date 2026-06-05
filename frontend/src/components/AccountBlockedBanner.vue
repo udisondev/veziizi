@@ -12,14 +12,14 @@ const show = computed(() => authStore.isAuthenticated && authStore.isBlocked)
   <Transition name="slide-down">
     <div
       v-if="show"
-      class="fixed top-0 left-0 right-0 z-[100] bg-red-600 text-white shadow-lg"
+      class="fixed top-0 left-0 right-0 z-[100] bg-destructive text-destructive-foreground shadow-lg"
     >
       <div class="container mx-auto px-4 py-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4">
             <!-- Icon -->
             <div
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-700"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/70"
             >
               <svg
                 class="h-6 w-6"
@@ -39,7 +39,7 @@ const show = computed(() => authStore.isAuthenticated && authStore.isBlocked)
             <!-- Message -->
             <div class="flex-1">
               <h3 class="text-lg font-semibold">Ваш аккаунт заблокирован</h3>
-              <p class="text-sm text-red-100">
+              <p class="text-sm text-destructive-foreground/80">
                 Доступ к функциям платформы ограничен. Пожалуйста, свяжитесь с
                 администратором вашей организации или с поддержкой для
                 получения дополнительной информации.
@@ -51,7 +51,7 @@ const show = computed(() => authStore.isAuthenticated && authStore.isBlocked)
           <div class="flex items-center gap-3">
             <button
               @click="authStore.logout"
-              class="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium transition-colors hover:bg-red-800"
+              class="rounded-lg bg-destructive/70 px-4 py-2 text-sm font-medium transition-colors hover:bg-destructive/60"
             >
               Выйти
             </button>

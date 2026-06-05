@@ -25,6 +25,9 @@ type (
 	// Admin fraud types
 	FraudsterResponse  = handlers.FraudsterResponse
 	FraudstersResponse = handlers.FraudstersResponse
+
+	// Freight request response types
+	FreightRequestCountResponse = handlers.FreightRequestCountResponse
 )
 
 // Response wraps HTTP response data with status code.
@@ -154,7 +157,7 @@ type OrganizationMemberDetail struct {
 }
 
 type OrganizationFullResponse struct {
-	ID        string                     `json:"id"`
+	ID        uuid.UUID                  `json:"id"`
 	Name      string                     `json:"name"`
 	INN       string                     `json:"inn"`
 	LegalName string                     `json:"legal_name"`

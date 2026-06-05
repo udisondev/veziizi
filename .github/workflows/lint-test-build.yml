@@ -15,9 +15,9 @@ jobs:
           go-version-file: go.mod
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.11.4
 
   lint-frontend:
     name: Lint Frontend
@@ -93,9 +93,25 @@ jobs:
       - name: Run tests
         run: go test -v -race -count=1 ./backend/internal/...
 
+  test-e2e:
+    name: E2E Test
+    needs: [lint-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # E2E поднимают Postgres и Redis сами через testcontainers —
+      # внешние services и env не нужны (см. backend/e2e/setup/).
+      - name: Run E2E tests
+        run: go test -v -count=1 -p=1 -timeout 20m ./backend/e2e/tests/...
+
   build:
     name: Build Backend
-    needs: [test, build-frontend]
+    needs: [test, test-e2e, build-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -108,7 +124,8 @@ jobs:
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/api ./backend/cmd/api
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/telegram-bot ./backend/cmd/telegram-bot
-          for worker in members invitations pending-organizations organizations freight-requests review-receiver review-analyzer reviews-projection review-activator fraudster-handler notification-dispatcher telegram-sender email-sender support-tickets rate-limiter-cleanup; do
+          # Список синхронизирован с WORKERS в Taskfile.yml
+          for worker in forwarder members invitations pending-organizations organizations freight-requests review-receiver review-analyzer reviews-projection review-activator fraudster-handler notification-dispatcher telegram-sender email-sender support-tickets support-tickets-notifier rate-limiter-cleanup dedup-cleanup vehicles; do
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "bin/worker-${worker}" "./backend/cmd/workers/${worker}"
           done
 

@@ -1,6 +1,6 @@
 import { api } from './client'
 import type { RegisterRequest, RegisterResponse } from '@/types/registration'
-import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats } from '@/types/admin'
+import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats, DashboardStats, PendingOfferItem } from '@/types/admin'
 import { type CursorPaginatedResponse } from './freightRequests'
 
 export const organizationsApi = {
@@ -24,6 +24,10 @@ export const organizationsApi = {
     return api.get(`/organizations/${id}/stats`)
   },
 
+  getDashboardStats(id: string): Promise<DashboardStats> {
+    return api.get(`/organizations/${id}/dashboard-stats`)
+  },
+
   async getReviews(id: string, params?: { limit?: number; cursor?: string }): Promise<CursorPaginatedResponse<OrganizationReview>> {
     const query = new URLSearchParams()
     if (params?.limit) query.set('limit', params.limit.toString())
@@ -31,5 +35,12 @@ export const organizationsApi = {
     const queryStr = query.toString()
     const result = await api.get<CursorPaginatedResponse<OrganizationReview> | null>(`/organizations/${id}/reviews${queryStr ? `?${queryStr}` : ''}`)
     return result ?? { items: [], has_more: false }
+  },
+
+  async getPendingOffers(id: string, limit = 20, memberId?: string): Promise<PendingOfferItem[]> {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (memberId) params.set('member_id', memberId)
+    const result = await api.get<{ items: PendingOfferItem[] }>(`/organizations/${id}/pending-offers?${params}`)
+    return result?.items ?? []
   },
 }

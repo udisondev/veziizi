@@ -2,12 +2,11 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	freightEvents "github.com/udisondev/veziizi/backend/internal/domain/freightrequest/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
@@ -25,31 +24,7 @@ func NewReviewReceiverHandler(reviewService *reviewApp.Service) *ReviewReceiverH
 	}
 }
 
-func (h *ReviewReceiverHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-
-	switch e := evt.(type) {
-	case freightEvents.ReviewLeft:
-		return h.onReviewLeft(msg.Context(), e)
-	case freightEvents.ReviewEdited:
-		return h.onReviewEdited(msg.Context(), e)
-	default:
-		// Ignore other freight request events
-		return nil
-	}
-}
-
-func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvents.ReviewLeft) error {
+func (h *ReviewReceiverHandler) OnReviewLeft(ctx context.Context, e *freightEvents.ReviewLeft) error {
 	slog.Info("processing review left event",
 		slog.String("freight_request_id", e.AggregateID().String()),
 		slog.String("review_id", e.ReviewID.String()),
@@ -71,6 +46,14 @@ func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvent
 		CompletedAt:      time.Unix(e.CompletedAt, 0),
 	})
 	if err != nil {
+		// ReviewID детерминирован (зашит в событие ReviewLeft), поэтому повторная
+		// at-least-once доставка упирается в UNIQUE(aggregate_id, version) в event
+		// store — Review уже создан, это идемпотентный повтор, Ack.
+		if errors.Is(err, eventstore.ErrConcurrentModification) || errors.Is(err, eventstore.ErrEventVersionConflict) {
+			slog.Debug("review already exists, idempotent replay",
+				slog.String("review_id", e.ReviewID.String()))
+			return nil
+		}
 		slog.Error("failed to create review from freight request event",
 			slog.String("freight_request_id", e.AggregateID().String()),
 			slog.String("review_id", e.ReviewID.String()),
@@ -86,7 +69,7 @@ func (h *ReviewReceiverHandler) onReviewLeft(ctx context.Context, e freightEvent
 	return nil
 }
 
-func (h *ReviewReceiverHandler) onReviewEdited(ctx context.Context, e freightEvents.ReviewEdited) error {
+func (h *ReviewReceiverHandler) OnReviewEdited(ctx context.Context, e *freightEvents.ReviewEdited) error {
 	slog.Info("processing review edited event",
 		slog.String("freight_request_id", e.AggregateID().String()),
 		slog.String("review_id", e.ReviewID.String()),

@@ -11,32 +11,69 @@
 package tests
 
 import (
+	"context"
 	"os"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/udisondev/veziizi/backend/e2e/setup"
 )
 
+var (
+	suitesMu sync.Mutex
+	suites   = map[string]*setup.Suite{}
+)
+
 func TestMain(m *testing.M) {
-	// This is a package-level setup. Individual test files can use
-	// setup.GetSharedSuite(t) to get the shared suite, or
-	// setup.NewSuite(t) for isolated tests.
-
-	// For now, we'll let individual tests set up their own suites
-	// since shared suite setup requires a *testing.T which isn't
-	// available in TestMain.
-
 	code := m.Run()
-
-	// Cleanup shared suite if it was created
 	setup.ShutdownShared()
-
+	// Tear down all per-class suites manually — we used NewSuiteUnmanaged so
+	// nothing else will stop their watermill routers / HTTP servers.
+	suitesMu.Lock()
+	for _, s := range suites {
+		s.Shutdown()
+	}
+	suitesMu.Unlock()
+	// Stop the package-wide Postgres container (per-suite DBs lived inside it).
+	if err := setup.StopSharedPostgres(context.Background()); err != nil {
+		// Test exit code is what matters; just log.
+		_, _ = os.Stderr.WriteString("StopSharedPostgres: " + err.Error() + "\n")
+	}
+	// Stop the package-wide Redis container (per-suite DB indexes lived inside it).
+	if err := setup.StopSharedRedis(context.Background()); err != nil {
+		_, _ = os.Stderr.WriteString("StopSharedRedis: " + err.Error() + "\n")
+	}
 	os.Exit(code)
 }
 
-// getSuite returns a shared test suite for the current test.
-// Use this for tests that can share infrastructure.
+// getSuite returns an isolated test suite scoped to the current Test*Suite
+// class (`Test<Name>Suite`), not to each individual t.Run subtest.
+//
+// One Postgres container + watermill router per Test class means subtests
+// inside the same suite see the same state (members_lookup, event bus), while
+// parallel Test*Suite classes stay fully isolated. Shared infrastructure
+// across classes is forbidden — it hides race bugs in async pipelines (see
+// feedback_e2e_isolation memory).
 func getSuite(t *testing.T) *setup.Suite {
-	return setup.GetSharedSuite(t)
+	t.Helper()
+
+	// t.Name() returns "TestXxxSuite/TestYy" for subtests; first segment is
+	// the top-level test that owns the lifecycle.
+	className := strings.SplitN(t.Name(), "/", 2)[0]
+
+	suitesMu.Lock()
+	defer suitesMu.Unlock()
+
+	if s, ok := suites[className]; ok {
+		return s
+	}
+	// Build a fresh suite on first request for this class. We can't use
+	// setup.NewSuite here because it ties the suite lifetime to t.Cleanup of
+	// the FIRST subtest that requested it — later subtests would then see a
+	// closed pool. Lifecycle is owned by TestMain instead.
+	s := setup.NewSuiteUnmanaged(t)
+	suites[className] = s
+	return s
 }
 

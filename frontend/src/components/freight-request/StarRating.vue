@@ -67,7 +67,7 @@ const displayRating = computed(() => hoverRating.value || props.modelValue)
       <Star
         :class="[
           sizeClasses[size],
-          star <= displayRating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300',
+          star <= displayRating ? 'text-warning fill-warning' : 'text-muted-foreground/30',
         ]"
       />
     </button>

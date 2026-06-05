@@ -2,134 +2,111 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/review/values"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
-// ReviewsProjectionHandler handles review events and updates lookup tables
+const reviewsProjectionName = "reviews-projection"
+
+// ReviewsProjectionHandler handles review events and updates lookup tables.
+//
+// В отличие от других проекций здесь много накопительных операций
+// (IncrementPendingReviews, AddWeightedRating, AdjustReviewRatingDelta — см.
+// FraudDataProjection / OrganizationRatingsProjection). При at-least-once
+// доставке повторный апплай раздувает счётчики, поэтому каждый handler
+// сначала резервирует event_id в projection_event_dedup внутри той же tx,
+// что и сама операция. См. курс 10-at-least-once-delivery.
 type ReviewsProjectionHandler struct {
 	db        dbtx.TxManager
 	psql      squirrel.StatementBuilderType
 	fraudData *projections.FraudDataProjection
 	ratings   *projections.OrganizationRatingsProjection
+	dedup     *projections.ProjectionEventDedupProjection
 }
 
 func NewReviewsProjectionHandler(
 	db dbtx.TxManager,
 	fraudData *projections.FraudDataProjection,
 	ratings *projections.OrganizationRatingsProjection,
+	dedup *projections.ProjectionEventDedupProjection,
 ) *ReviewsProjectionHandler {
 	return &ReviewsProjectionHandler{
 		db:        db,
 		psql:      squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 		fraudData: fraudData,
 		ratings:   ratings,
+		dedup:     dedup,
 	}
 }
 
-func (h *ReviewsProjectionHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", "error", err, "action", "skipped_retry")
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
+// withDedup оборачивает накопительные операции проекции в общую tx с
+// dedup-резервом event_id — тонкая обёртка над общим dedupGuard (см. dedup.go).
+func (h *ReviewsProjectionHandler) withDedup(ctx context.Context, fn func(ctx context.Context) error) error {
+	eventID, err := eventIDFromCtx(ctx)
 	if err != nil {
-		slog.Error("failed to unmarshal event", "error", err, "action", "skipped_retry")
-		return fmt.Errorf("unmarshal event: %w", err)
+		return err
 	}
-
-	return h.handleEvent(msg.Context(), evt)
+	return dedupGuard(ctx, h.db, h.dedup, reviewsProjectionName, eventID, fn)
 }
 
-func (h *ReviewsProjectionHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case events.ReviewReceived:
-		return h.onReceived(ctx, e)
-	case events.ReviewEdited:
-		return h.onEdited(ctx, e)
-	case events.ReviewAnalyzed:
-		return h.onAnalyzed(ctx, e)
-	case events.ReviewApproved:
-		return h.onApproved(ctx, e)
-	case events.ReviewRejected:
-		return h.onRejected(ctx, e)
-	case events.ReviewActivated:
-		return h.onActivated(ctx, e)
-	case events.ReviewDeactivated:
-		return h.onDeactivated(ctx, e)
-	}
-	return nil
-}
-
-func (h *ReviewsProjectionHandler) onReceived(ctx context.Context, e events.ReviewReceived) error {
+func (h *ReviewsProjectionHandler) OnReceived(ctx context.Context, e *events.ReviewReceived) error {
 	slog.Info("review received",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.String("order_id", e.OrderID.String()),
 		slog.Int("rating", e.Rating),
 	)
 
-	// Insert into reviews_lookup
-	row := &projections.ReviewLookupRow{
-		ID:                 e.AggregateID(),
-		OrderID:            e.OrderID,
-		ReviewerOrgID:      e.ReviewerOrgID,
-		ReviewedOrgID:      e.ReviewedOrgID,
-		Rating:             e.Rating,
-		Comment:            e.Comment,
-		OrderAmount:        e.OrderAmount,
-		OrderCurrency:      e.OrderCurrency,
-		OrderCreatedAt:     e.OrderCreatedAt,
-		OrderCompletedAt:   e.OrderCompletedAt,
-		RawWeight:          1.0,
-		FinalWeight:        0.0,
-		FraudScore:         0.0,
-		RequiresModeration: false,
-		Status:             values.StatusPendingAnalysis.String(),
-		CreatedAt:          e.OccurredAt(),
-	}
+	return h.withDedup(ctx, func(ctx context.Context) error {
+		row := &projections.ReviewLookupRow{
+			ID:                 e.AggregateID(),
+			OrderID:            e.OrderID,
+			ReviewerOrgID:      e.ReviewerOrgID,
+			ReviewedOrgID:      e.ReviewedOrgID,
+			Rating:             e.Rating,
+			Comment:            e.Comment,
+			OrderAmount:        e.OrderAmount,
+			OrderCurrency:      e.OrderCurrency,
+			OrderCreatedAt:     e.OrderCreatedAt,
+			OrderCompletedAt:   e.OrderCompletedAt,
+			RawWeight:          1.0,
+			FinalWeight:        0.0,
+			FraudScore:         0.0,
+			RequiresModeration: false,
+			Status:             values.StatusPendingAnalysis.String(),
+			CreatedAt:          e.OccurredAt(),
+		}
 
-	if err := h.fraudData.UpsertReviewLookup(ctx, row); err != nil {
-		return fmt.Errorf("upsert review lookup: %w", err)
-	}
-
-	// Increment pending reviews counter
-	if err := h.ratings.IncrementPendingReviews(ctx, e.ReviewedOrgID); err != nil {
-		return fmt.Errorf("increment pending reviews: %w", err)
-	}
-
-	// Update interaction stats (атомарный INSERT/UPDATE)
-	if err := h.fraudData.IncrementReviewStats(ctx, e.ReviewerOrgID, e.ReviewedOrgID, e.Rating); err != nil {
-		return fmt.Errorf("update interaction stats: %w", err)
-	}
-
-	// Increment total reviews left by reviewer (атомарный INSERT/UPDATE)
-	if err := h.fraudData.IncrementTotalReviewsLeft(ctx, e.ReviewerOrgID); err != nil {
-		return fmt.Errorf("update reviewer reputation: %w", err)
-	}
-
-	return nil
+		if err := h.fraudData.UpsertReviewLookup(ctx, row); err != nil {
+			return fmt.Errorf("upsert review lookup: %w", err)
+		}
+		if err := h.ratings.IncrementPendingReviews(ctx, e.ReviewedOrgID); err != nil {
+			return fmt.Errorf("increment pending reviews: %w", err)
+		}
+		if err := h.fraudData.IncrementReviewStats(ctx, e.ReviewerOrgID, e.ReviewedOrgID, e.Rating); err != nil {
+			return fmt.Errorf("update interaction stats: %w", err)
+		}
+		if err := h.fraudData.IncrementTotalReviewsLeft(ctx, e.ReviewerOrgID); err != nil {
+			return fmt.Errorf("update reviewer reputation: %w", err)
+		}
+		return nil
+	})
 }
 
-func (h *ReviewsProjectionHandler) onEdited(ctx context.Context, e events.ReviewEdited) error {
+func (h *ReviewsProjectionHandler) OnEdited(ctx context.Context, e *events.ReviewEdited) error {
 	slog.Info("review edited",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Int("old_rating", e.OldRating),
 		slog.Int("new_rating", e.NewRating),
 	)
 
-	return h.db.InTx(ctx, func(ctx context.Context) error {
+	return h.withDedup(ctx, func(ctx context.Context) error {
 		// Update rating and comment in reviews_lookup
 		query := `
 			UPDATE reviews_lookup SET
@@ -137,10 +114,19 @@ func (h *ReviewsProjectionHandler) onEdited(ctx context.Context, e events.Review
 				comment = $3
 			WHERE id = $1
 		`
-		if _, err := h.db.Exec(ctx, query,
+		res, err := h.db.Exec(ctx, query,
 			e.AggregateID(), e.NewRating, e.NewComment,
-		); err != nil {
+		)
+		if err != nil {
 			return fmt.Errorf("update review lookup: %w", err)
+		}
+		// 0 строк = ReviewEdited обогнал ReviewReceived (out-of-order при N
+		// инстансах). Молчаливый nil закоммитил бы dedup-резерв и правка
+		// потерялась бы навсегда; errProjectionRowMissing → rollback → retry
+		// дождётся появления строки.
+		if res.RowsAffected() == 0 {
+			return fmt.Errorf("reviews_lookup row %s not found yet, ReviewEdited before ReviewReceived: %w",
+				e.AggregateID(), errProjectionRowMissing)
 		}
 
 		// If rating changed, adjust interaction stats
@@ -160,7 +146,7 @@ func (h *ReviewsProjectionHandler) onEdited(ctx context.Context, e events.Review
 	})
 }
 
-func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.ReviewAnalyzed) error {
+func (h *ReviewsProjectionHandler) OnAnalyzed(ctx context.Context, e *events.ReviewAnalyzed) error {
 	slog.Info("review analyzed",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Float64("raw_weight", e.RawWeight),
@@ -168,7 +154,7 @@ func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.Revi
 		slog.Bool("requires_moderation", e.RequiresModeration),
 	)
 
-	return h.db.InTx(ctx, func(ctx context.Context) error {
+	return h.withDedup(ctx, func(ctx context.Context) error {
 		// Determine status after analysis.
 		// If requires moderation → pending_moderation.
 		// If not → keep pending_analysis; ReviewApproved event (which follows immediately) will set approved.
@@ -190,11 +176,20 @@ func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.Revi
 				status = $7
 			WHERE id = $1
 		`
-		if _, err := h.db.Exec(ctx, query,
+		res, err := h.db.Exec(ctx, query,
 			e.AggregateID(), e.RawWeight, e.FraudScore, e.RequiresModeration,
 			e.ActivationDate, analyzedAt, status,
-		); err != nil {
+		)
+		if err != nil {
 			return fmt.Errorf("update review lookup: %w", err)
+		}
+		// 0 строк = ReviewAnalyzed обогнал ReviewReceived: без проверки UPDATE
+		// молча no-op'ится, fraud signals ниже вставились бы осиротевшими, а
+		// dedup-резерв закоммитился бы — raw_weight/fraud_score/activation_date
+		// потеряны навсегда. errProjectionRowMissing → rollback → retry.
+		if res.RowsAffected() == 0 {
+			return fmt.Errorf("reviews_lookup row %s not found yet, ReviewAnalyzed before ReviewReceived: %w",
+				e.AggregateID(), errProjectionRowMissing)
 		}
 
 		// Insert fraud signals (batch INSERT)
@@ -218,13 +213,13 @@ func (h *ReviewsProjectionHandler) onAnalyzed(ctx context.Context, e events.Revi
 	})
 }
 
-func (h *ReviewsProjectionHandler) onApproved(ctx context.Context, e events.ReviewApproved) error {
+func (h *ReviewsProjectionHandler) OnApproved(ctx context.Context, e *events.ReviewApproved) error {
 	slog.Info("review approved",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Float64("final_weight", e.FinalWeight),
 	)
 
-	return h.db.InTx(ctx, func(ctx context.Context) error {
+	return h.withDedup(ctx, func(ctx context.Context) error {
 		moderatedAt := e.OccurredAt()
 
 		// Update reviews_lookup
@@ -256,13 +251,13 @@ func (h *ReviewsProjectionHandler) onApproved(ctx context.Context, e events.Revi
 	})
 }
 
-func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.ReviewRejected) error {
+func (h *ReviewsProjectionHandler) OnRejected(ctx context.Context, e *events.ReviewRejected) error {
 	slog.Info("review rejected",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.String("reason", e.Reason),
 	)
 
-	return h.db.InTx(ctx, func(ctx context.Context) error {
+	return h.withDedup(ctx, func(ctx context.Context) error {
 		moderatedAt := e.OccurredAt()
 
 		// Update reviews_lookup
@@ -304,13 +299,13 @@ func (h *ReviewsProjectionHandler) onRejected(ctx context.Context, e events.Revi
 	})
 }
 
-func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.ReviewActivated) error {
+func (h *ReviewsProjectionHandler) OnActivated(ctx context.Context, e *events.ReviewActivated) error {
 	slog.Info("review activated",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.Float64("final_weight", e.FinalWeight),
 	)
 
-	return h.db.InTx(ctx, func(ctx context.Context) error {
+	return h.withDedup(ctx, func(ctx context.Context) error {
 		activatedAt := e.OccurredAt()
 
 		// Update reviews_lookup
@@ -347,13 +342,13 @@ func (h *ReviewsProjectionHandler) onActivated(ctx context.Context, e events.Rev
 	})
 }
 
-func (h *ReviewsProjectionHandler) onDeactivated(ctx context.Context, e events.ReviewDeactivated) error {
+func (h *ReviewsProjectionHandler) OnDeactivated(ctx context.Context, e *events.ReviewDeactivated) error {
 	slog.Info("review deactivated",
 		slog.String("review_id", e.AggregateID().String()),
 		slog.String("reason", e.Reason),
 	)
 
-	return h.db.InTx(ctx, func(ctx context.Context) error {
+	return h.withDedup(ctx, func(ctx context.Context) error {
 		// Get review data before updating
 		reviewData, err := h.getReviewData(ctx, e.AggregateID())
 		if err != nil {

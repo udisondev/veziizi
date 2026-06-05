@@ -87,6 +87,22 @@ const currencySymbols: Record<Currency, string> = {
 }
 
 /**
+ * Конвертирует копейки в рубли для отображения в input
+ * @example centsToAmount(150000) -> 1500
+ */
+export function centsToAmount(cents: number): number {
+  return cents / 100
+}
+
+/**
+ * Конвертирует рубли из input в копейки для хранения
+ * @example amountToCents(1500) -> 150000
+ */
+export function amountToCents(amount: number): number {
+  return Math.round(amount * 100)
+}
+
+/**
  * Форматирует деньги (из копеек в рубли с символом валюты)
  * @example formatMoney({ amount: 150000, currency: 'RUB' }) -> '1 500 ₽'
  */
@@ -142,6 +158,24 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
+}
+
+// ============================================================================
+// Склонение
+// ============================================================================
+
+/**
+ * Возвращает правильную форму слова в зависимости от числа (русский язык)
+ * @example pluralizeRu(1, 'заявка', 'заявки', 'заявок') -> 'заявка'
+ * @example pluralizeRu(3, 'заявка', 'заявки', 'заявок') -> 'заявки'
+ * @example pluralizeRu(11, 'заявка', 'заявки', 'заявок') -> 'заявок'
+ */
+export function pluralizeRu(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return one
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few
+  return many
 }
 
 // ============================================================================

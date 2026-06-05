@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useConfirmModal } from '@/composables/useModal'
+import { validateEmail as validateEmailUtil } from '@/utils/validation'
 import { useAuthStore } from '@/stores/auth'
 import { vMaska } from 'maska/vue'
 import { invitationsApi } from '@/api/invitations'
@@ -13,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { SelectField } from '@/components/ui/select-field'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Select,
@@ -45,7 +48,6 @@ import {
   EmptyState,
   ErrorBanner,
   ConfirmDialog,
-  FilterSheet,
 } from '@/components/shared'
 
 // Icons
@@ -59,10 +61,8 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 
 // Filters
-const showFilters = ref(false)
 type InvitationStatusFilter = InvitationStatus | 'all'
 const statusFilter = ref<InvitationStatusFilter>('all')
-const tempStatus = ref<InvitationStatusFilter>('all')
 
 const statusOptions: { value: InvitationStatusFilter; label: string }[] = [
   { value: 'all', label: 'Все статусы' },
@@ -93,15 +93,21 @@ const form = ref({
   phone: '',
 })
 
+const fieldErrors = ref<Record<string, string>>({})
+
+function validateEmail(): boolean {
+  const error = validateEmailUtil(form.value.email)
+  fieldErrors.value.email = error ?? ''
+  return !error
+}
+
 // Cancel invitation
 const cancellingId = ref<string | null>(null)
-const showCancelModal = ref(false)
-const cancellingInvitation = ref<InvitationListItem | null>(null)
 const cancelError = ref<string | null>(null)
+const cancelModal = useConfirmModal<InvitationListItem>()
 
 // Computed
 const hasActiveFilters = computed(() => statusFilter.value !== 'all')
-const activeFiltersCount = computed(() => (statusFilter.value !== 'all' ? 1 : 0))
 
 // Load data
 async function loadData() {
@@ -122,9 +128,12 @@ async function loadData() {
   }
 }
 
+watch(statusFilter, loadData)
+
 // CRUD
 async function createInvitation() {
   if (!auth.organizationId) return
+  if (!validateEmail()) return
 
   isSubmitting.value = true
   formError.value = null
@@ -140,6 +149,7 @@ async function createInvitation() {
 
     createdToken.value = response.token
     form.value = { email: '', role: 'employee', name: '', phone: '' }
+    fieldErrors.value = {}
     await loadData()
   } catch (e: unknown) {
     formError.value = e instanceof Error ? e.message : 'Не удалось создать приглашение'
@@ -157,26 +167,24 @@ function closeForm() {
 }
 
 function openCancelModal(item: InvitationListItem) {
-  cancellingInvitation.value = item
   cancelError.value = null
-  showCancelModal.value = true
+  cancelModal.open(item)
 }
 
 function closeCancelModal() {
-  showCancelModal.value = false
-  cancellingInvitation.value = null
   cancelError.value = null
+  cancelModal.close()
 }
 
 async function confirmCancel() {
-  if (!auth.organizationId || !cancellingInvitation.value) return
+  if (!auth.organizationId || !cancelModal.data.value) return
 
-  cancellingId.value = cancellingInvitation.value.id
+  cancellingId.value = cancelModal.data.value.id
   cancelError.value = null
 
   try {
-    await invitationsApi.cancel(auth.organizationId, cancellingInvitation.value.id)
-    const item = invitations.value.find((i) => i.id === cancellingInvitation.value!.id)
+    await invitationsApi.cancel(auth.organizationId, cancelModal.data.value.id)
+    const item = invitations.value.find((i) => i.id === cancelModal.data.value!.id)
     if (item) {
       item.status = 'cancelled'
     }
@@ -213,26 +221,6 @@ async function copyToClipboard(text: string) {
   }, 2000)
 }
 
-// Filter functions
-function openFilters() {
-  tempStatus.value = statusFilter.value
-  showFilters.value = true
-}
-
-function applyFilters() {
-  statusFilter.value = tempStatus.value
-  loadData()
-  showFilters.value = false
-}
-
-function resetFilters() {
-  tempStatus.value = 'all'
-}
-
-function resetAllFilters() {
-  statusFilter.value = 'all'
-  loadData()
-}
 
 // Expose for parent
 defineExpose({
@@ -248,45 +236,21 @@ onMounted(() => {
 <template>
   <div class="space-y-4">
     <!-- Toolbar -->
-    <div class="flex items-center justify-between gap-2">
-      <FilterSheet
-        v-model:open="showFilters"
-        :active-filters-count="activeFiltersCount"
-        description="Фильтрация приглашений"
-        @open="openFilters"
-        @apply="applyFilters"
-        @reset="resetFilters"
-      >
-        <div class="space-y-2">
-          <Label>Статус</Label>
-          <Select v-model="tempStatus">
-            <SelectTrigger>
-              <SelectValue placeholder="Все статусы" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </FilterSheet>
-
-      <Button data-tutorial="invite-btn" @click="showForm = true">
-        <Plus class="mr-2 h-4 w-4" />
-        Пригласить
-      </Button>
+    <div class="flex items-center gap-2">
+      <div class="w-48 shrink-0">
+        <SelectField
+          v-model="statusFilter"
+          :options="statusOptions"
+          sheet-label="Статус"
+        />
+      </div>
+      <div class="ml-auto shrink-0">
+        <Button data-tutorial="invite-btn" @click="showForm = true">
+          <Plus class="mr-2 h-4 w-4" />
+          Пригласить
+        </Button>
+      </div>
     </div>
-
-    <!-- Active filters -->
-    <Card v-if="hasActiveFilters" class="border-primary/20 bg-primary/5">
-      <CardContent class="flex items-center justify-between py-3">
-        <span class="text-sm text-primary">
-          Статус: {{ statusOptions.find((o) => o.value === statusFilter)?.label }}
-        </span>
-        <Button variant="ghost" size="sm" @click="resetAllFilters"> Сбросить </Button>
-      </CardContent>
-    </Card>
 
     <!-- Loading -->
     <LoadingSpinner v-if="isLoading" text="Загрузка приглашений..." />
@@ -425,12 +389,20 @@ onMounted(() => {
             {{ formError }}
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-email"> Email <span class="text-destructive">*</span> </Label>
-            <Input id="inv-email" v-model="form.email" type="email" required placeholder="user@example.com" />
+            <Input
+              id="inv-email"
+              v-model="form.email"
+              type="email"
+              placeholder="user@example.com"
+              :has-error="!!fieldErrors.email"
+              @blur="validateEmail"
+            />
+            <p v-if="fieldErrors.email" class="mt-1 text-sm text-destructive">{{ fieldErrors.email }}</p>
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-role"> Роль <span class="text-destructive">*</span> </Label>
             <Select v-model="form.role">
               <SelectTrigger>
@@ -444,7 +416,7 @@ onMounted(() => {
             </Select>
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-name">
               ФИО
               <span class="text-muted-foreground font-normal">(опционально)</span>
@@ -453,7 +425,7 @@ onMounted(() => {
             <p class="text-xs text-muted-foreground">Если заполнить, приглашённый не сможет изменить</p>
           </div>
 
-          <div class="space-y-2">
+          <div>
             <Label for="inv-phone">
               Телефон
               <span class="text-muted-foreground font-normal">(опционально)</span>
@@ -482,9 +454,9 @@ onMounted(() => {
 
     <!-- Cancel Dialog -->
     <ConfirmDialog
-      :open="showCancelModal"
+      :open="cancelModal.isOpen.value"
       title="Отменить приглашение?"
-      :description="`Вы уверены, что хотите отменить приглашение для ${cancellingInvitation?.email}? Пользователь не сможет принять это приглашение.`"
+      :description="`Вы уверены, что хотите отменить приглашение для ${cancelModal.data.value?.email}? Пользователь не сможет принять это приглашение.`"
       confirm-text="Отменить приглашение"
       confirm-variant="destructive"
       :loading="cancellingId !== null"

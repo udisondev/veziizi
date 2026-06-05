@@ -4,10 +4,15 @@ import { cn } from '@/lib/utils'
 
 const props = defineProps<{
   class?: string
+  interactive?: boolean
 }>()
 
 const classes = computed(() =>
-  cn('rounded-lg border bg-card text-card-foreground shadow-sm', props.class)
+  cn(
+    'rounded-xl border bg-card text-card-foreground shadow-md',
+    props.interactive && 'cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-xl',
+    props.class
+  )
 )
 </script>
 

@@ -98,6 +98,21 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Сначала проверяем перманентную блокировку аккаунта: она должна
+	// перебивать временный brute-force lockout, иначе заблокированный
+	// пользователь с висящим locked_until увидит "invalid credentials"
+	// вместо "account is blocked".
+	if member.Status != "active" {
+		if err := h.members.RecordLoginHistory(
+			r.Context(), member.ID, member.OrganizationID,
+			meta.IP, meta.Fingerprint, meta.UserAgent, "failed_blocked",
+		); err != nil {
+			slog.Error("failed to record login history", slog.String("error", err.Error()))
+		}
+		writeError(w, http.StatusForbidden, "account is blocked")
+		return
+	}
+
 	// Check account lockout (brute-force protection)
 	locked, err := h.members.IsAccountLocked(r.Context(), member.ID)
 	if err != nil {
@@ -106,18 +121,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if locked {
-		writeError(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-
-	if member.Status != "active" {
-		// Record failed login (blocked)
-		if err := h.members.RecordLoginHistory(
-			r.Context(), member.ID, member.OrganizationID,
-			meta.IP, meta.Fingerprint, meta.UserAgent, "failed_blocked",
-		); err != nil {
-			slog.Error("failed to record login history", slog.String("error", err.Error()))
-		}
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}

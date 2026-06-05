@@ -23,6 +23,7 @@ type FreightRequestGetter interface {
 // MemberGetter интерфейс для получения данных о членах
 type MemberGetter interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*MemberInfo, error)
+	ListActiveByOrg(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // SubscriptionMatcher находит подписки, соответствующие заявке (opt-in модель)

@@ -5,12 +5,14 @@
  */
 
 import { useOnboardingStore } from '@/stores/onboarding'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import { storeToRefs } from 'pinia'
 import { Button } from '@/components/ui/button'
 import { X, GraduationCap, SkipForward } from 'lucide-vue-next'
 
 const onboarding = useOnboardingStore()
 const { isSandboxMode, currentStep, scenarioSteps, currentStepIndex } = storeToRefs(onboarding)
+const { isMobile } = useBreakpoint()
 
 function handleExit() {
   onboarding.exitSandbox()
@@ -33,16 +35,19 @@ function handleSkipStep() {
         v-if="isSandboxMode && !currentStep?.showOffersTrainingButton"
         class="fixed bottom-4 left-4 z-[60] flex items-center gap-3 rounded-lg bg-amber-500 px-4 py-2 text-white shadow-lg"
       >
-        <GraduationCap class="h-5 w-5" />
+        <GraduationCap class="h-5 w-5 shrink-0" />
 
-        <div class="flex flex-col">
+        <div v-if="!isMobile" class="flex flex-col">
           <span class="text-sm font-medium">Режим обучения</span>
           <span v-if="currentStep" class="text-xs opacity-90">
             Шаг {{ currentStepIndex + 1 }} из {{ scenarioSteps.length }}
           </span>
         </div>
+        <span v-else-if="currentStep" class="text-xs font-medium">
+          {{ currentStepIndex + 1 }}/{{ scenarioSteps.length }}
+        </span>
 
-        <div class="ml-2 flex items-center gap-1">
+        <div class="flex items-center gap-1" :class="{ 'ml-2': !isMobile }">
           <Button
             v-if="currentStep"
             variant="ghost"

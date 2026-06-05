@@ -2,6 +2,7 @@ package tests
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -179,6 +180,164 @@ func (s *FreightRequestsSuite) TestFR031_InvalidCustomerOrgID() {
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode)
 }
 
+// ==================== GET /api/v1/freight-requests/count ====================
+
+// waitFreightRequestNumber ждёт появления заявки в проекции через List
+// (с фильтром по customer_org_id текущего customer) и возвращает её
+// request_number — нужен для строгих count-фильтров. В Get-эндпоинте
+// поле RequestNumber отдаётся в client'е как string и не годится для
+// целочисленного фильтра.
+func (s *FreightRequestsSuite) waitFreightRequestNumber(id uuid.UUID) int64 {
+	s.T().Helper()
+	return helpers.WaitFor(s.T(), func() (int64, bool) {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"customer_org_id": s.ctx.Customer.OrganizationID.String(),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return 0, false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == id {
+				return it.RequestNumber, true
+			}
+		}
+		return 0, false
+	}, "freight request projection sync")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_Unauthorized() {
+	resp, err := s.ctx.AnonClient.GetFreightRequestsCount(nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_MarketplaceMode_NoFilters() {
+	resp, err := s.ctx.Carrier.Client.GetFreightRequestsCount(nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().GreaterOrEqual(resp.Body.Count, 0, "count must be non-negative")
+}
+
+// TestFR_Count_StrictByRequestNumber — строгий contract: уникальный фильтр
+// (request_number конкретной только что созданной заявки) даёт count==1.
+// Это и проверка корректности COUNT(*), и того, что фильтры реально доходят
+// до SQL — в отличие от слабого "count >= len(items)".
+func (s *FreightRequestsSuite) TestFR_Count_StrictByRequestNumber() {
+	created := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	// RequestNumber берём из проекции (List), а не Get — в client'е поле
+	// FreightRequestResponse.RequestNumber типизировано как string и не годится
+	// для целочисленного фильтра.
+	reqNum := s.waitFreightRequestNumber(created.ID)
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+			"request_number": strconv.FormatInt(reqNum, 10),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		return resp.Body.Count == 1
+	}, "count must be exactly 1 for unique request_number")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_FilterByMinWeight() {
+	fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithWeight(7777).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+			"min_weight": "7000",
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		return resp.Body.Count >= 1
+	}, "count should include FR with weight=7777 when min_weight=7000")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_OwnOrg_AllowsStatusFilter() {
+	filters := map[string]string{
+		"customer_org_id": s.ctx.Customer.OrganizationID.String(),
+		"statuses":        "published,confirmed",
+	}
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(filters)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	s.Assert().GreaterOrEqual(resp.Body.Count, 0)
+}
+
+// TestFR_Count_MarketplaceMode_HidesPrivateOfOthers — SEC invariant:
+// у carrier'а в marketplace-режиме не должны учитываться чужие непубличные
+// заявки. Создаём у customer заявку, отменяем её (status → cancelled),
+// и проверяем, что carrier'у она не видна в count, а customer'у (own org) — видна.
+func (s *FreightRequestsSuite) TestFR_Count_MarketplaceMode_HidesPrivateOfOthers() {
+	created := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	reqNum := s.waitFreightRequestNumber(created.ID)
+	reqNumStr := strconv.FormatInt(reqNum, 10)
+
+	reason := "test cleanup"
+	cancelResp, err := s.ctx.Customer.Client.CancelFreightRequest(created.ID, &reason)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, cancelResp.StatusCode, string(cancelResp.RawBody))
+
+	// Дожидаемся, пока проекция получит событие FreightRequestCancelled и
+	// обновит status='cancelled' — иначе carrier в marketplace-режиме всё
+	// ещё видит её как published. Owner-фильтр List у customer корректно
+	// возвращает запись в любом статусе, status поля и проверяем.
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"request_number": reqNumStr,
+		})
+		if err != nil || resp.StatusCode != http.StatusOK || len(resp.Body.Items) != 1 {
+			return false
+		}
+		return resp.Body.Items[0].Status == "cancelled"
+	}, "projection must reflect cancelled status")
+
+	// Customer (own org) — видит свою отменённую заявку в count.
+	customerResp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"request_number": reqNumStr,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, customerResp.StatusCode, string(customerResp.RawBody))
+	s.Assert().Equal(1, customerResp.Body.Count, "customer must see own cancelled in count")
+
+	// Carrier (чужая org, marketplace-режим) — НЕ видит cancelled.
+	carrierResp, err := s.ctx.Carrier.Client.GetFreightRequestsCount(map[string]string{
+		"request_number": reqNumStr,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, carrierResp.StatusCode, string(carrierResp.RawBody))
+	s.Assert().Equal(0, carrierResp.Body.Count,
+		"marketplace mode must hide other org's non-published requests")
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_InvalidCustomerOrgID() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"customer_org_id": "not-a-uuid",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_InvalidStatus() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"customer_org_id": s.ctx.Customer.OrganizationID.String(),
+		"statuses":        "garbage",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
+}
+
+func (s *FreightRequestsSuite) TestFR_Count_NegativeMinWeight_Rejected() {
+	resp, err := s.ctx.Customer.Client.GetFreightRequestsCount(map[string]string{
+		"min_weight": "-1",
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode, string(resp.RawBody))
+}
+
 // ==================== GET /api/v1/freight-requests/{id} ====================
 
 func (s *FreightRequestsSuite) TestFR036_GetExistingRequest() {
@@ -201,8 +360,8 @@ func (s *FreightRequestsSuite) buildUpdateRequest() client.CreateFreightRequestR
 	return client.CreateFreightRequestRequest{
 		Route: client.Route{
 			Points: []client.RoutePoint{
-				{IsLoading: true, IsUnloading: false, CountryID: intPtr(1), CityID: intPtr(1), Address: "Moscow", DateFrom: tomorrow},
-				{IsLoading: false, IsUnloading: true, CountryID: intPtr(1), CityID: intPtr(3), Address: "Kazan", DateFrom: dayAfter},
+				{IsLoading: true, IsUnloading: false, CountryID: new(1), CityID: new(1), Address: "Moscow", DateFrom: tomorrow},
+				{IsLoading: false, IsUnloading: true, CountryID: new(1), CityID: new(3), Address: "Kazan", DateFrom: dayAfter},
 			},
 		},
 		Cargo:               client.Cargo{Description: "Updated cargo", Weight: 2000, Quantity: 1},
@@ -243,7 +402,7 @@ func (s *FreightRequestsSuite) TestFR049_UpdateNonexistent() {
 func (s *FreightRequestsSuite) TestFR053_SuccessfulCancel() {
 	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
 
-	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, helpers.StringPtr("No longer needed"))
+	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, new("No longer needed"))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 }
@@ -554,7 +713,7 @@ func (s *FreightRequestsSuite) TestFR120_CancelSelected_Success() {
 	_, _ = s.ctx.Customer.Client.SelectOffer(fr.ID, offer.OfferID)
 
 	// Cancel FR from selected status
-	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, helpers.StringPtr("Changed plans"))
+	resp, err := s.ctx.Customer.Client.CancelFreightRequest(fr.ID, new("Changed plans"))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(resp.RawBody))
 
@@ -729,6 +888,321 @@ func (s *FreightRequestsSuite) TestFR134_FilterByVatTypes() {
 	}, "FR with excluded VAT should appear in vat_types filter")
 }
 
+// routeBetween строит маршрут «origin → destination» с указанными country/
+// city ID. Дата first точки — завтра, second — послезавтра (валидация Route
+// требует возрастающую последовательность). Семантика denormalize в
+// freight_requests_lookup: first point → origin_*, last → destination_*.
+func routeBetween(originCountry, originCity, destCountry, destCity int) (client.RoutePoint, client.RoutePoint) {
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	dayAfter := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
+	oc, oci := originCountry, originCity
+	dc, dci := destCountry, destCity
+	return client.RoutePoint{
+			IsLoading: true, IsUnloading: false,
+			CountryID: &oc, CityID: &oci,
+			Address: "origin-addr", DateFrom: tomorrow,
+		}, client.RoutePoint{
+			IsLoading: false, IsUnloading: true,
+			CountryID: &dc, CityID: &dci,
+			Address: "destination-addr", DateFrom: dayAfter,
+		}
+}
+
+func (s *FreightRequestsSuite) TestFR136_FilterByOriginCity() {
+	// Уникальные ID, чтобы не конкурировать с другими тестами suite-а и
+	// shared FR. ID не имеют FK на geo_cities — это поле для денормализации.
+	originCity := 711_001
+	destCity := 711_002
+	origin, dest := routeBetween(710, originCity, 720, destCity)
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithRoute(origin, dest).
+		Create()
+
+	// Положительный: origin_city_ids=originCity → FR должен находиться.
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"origin_city_ids": strconv.Itoa(originCity),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with origin city should match origin_city_ids filter")
+
+	// Негативный: destination_city_ids=originCity (роль не совпадает) →
+	// FR не должен находиться. Проекция должна записать originCity ТОЛЬКО
+	// в origin_city_ids, а destination_city_ids у этой заявки — destCity.
+	resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+		"destination_city_ids": strconv.Itoa(originCity),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	for _, it := range resp.Body.Items {
+		s.Assert().NotEqualf(fr.ID, it.ID,
+			"FR with origin city=%d must NOT appear in destination_city_ids=%d filter",
+			originCity, originCity)
+	}
+}
+
+func (s *FreightRequestsSuite) TestFR137_FilterByDestinationCity() {
+	originCity := 712_001
+	destCity := 712_002
+	origin, dest := routeBetween(710, originCity, 720, destCity)
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithRoute(origin, dest).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"destination_city_ids": strconv.Itoa(destCity),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with destination city should match destination_city_ids filter")
+
+	// Негативный: origin_city_ids=destCity → не должно найти FR.
+	resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+		"origin_city_ids": strconv.Itoa(destCity),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	for _, it := range resp.Body.Items {
+		s.Assert().NotEqualf(fr.ID, it.ID,
+			"FR with destination city=%d must NOT appear in origin_city_ids=%d filter",
+			destCity, destCity)
+	}
+}
+
+func (s *FreightRequestsSuite) TestFR138_FilterByOriginCountry() {
+	originCountry := 713
+	destCountry := 723
+	origin, dest := routeBetween(originCountry, 713_001, destCountry, 723_001)
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithRoute(origin, dest).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"origin_country_ids": strconv.Itoa(originCountry),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with origin country should match origin_country_ids filter")
+
+	resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+		"destination_country_ids": strconv.Itoa(originCountry),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	for _, it := range resp.Body.Items {
+		s.Assert().NotEqualf(fr.ID, it.ID,
+			"FR with origin country=%d must NOT appear in destination_country_ids=%d filter",
+			originCountry, originCountry)
+	}
+}
+
+func (s *FreightRequestsSuite) TestFR139_FilterByDestinationCountry() {
+	originCountry := 714
+	destCountry := 724
+	origin, dest := routeBetween(originCountry, 714_001, destCountry, 724_001)
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithRoute(origin, dest).
+		Create()
+
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"destination_country_ids": strconv.Itoa(destCountry),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR with destination country should match destination_country_ids filter")
+
+	resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+		"origin_country_ids": strconv.Itoa(destCountry),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
+	for _, it := range resp.Body.Items {
+		s.Assert().NotEqualf(fr.ID, it.ID,
+			"FR with destination country=%d must NOT appear in origin_country_ids=%d filter",
+			destCountry, destCountry)
+	}
+}
+
+// TestFR140 страхует, что OnUpdated пересчитывает origin_*_ids/
+// destination_*_ids при смене маршрута. Без этого теста легко забыть
+// одну из 6 колонок в .Set(...) — и баг проявится только в проде, когда
+// заявку отредактируют и она перестанет матчиться по новому маршруту.
+func (s *FreightRequestsSuite) TestFR140_UpdateRouteRebuildsEndpointArrays() {
+	originCityV1 := 740_001
+	originCityV2 := 740_011
+	destCity := 740_002
+	originCountry := 740
+	destCountry := 750
+	origin, dest := routeBetween(originCountry, originCityV1, destCountry, destCity)
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithRoute(origin, dest).
+		Create()
+
+	// Дождёмся, чтобы V1 точно попал в проекцию — иначе негативная ветка
+	// дальше может пройти просто потому, что проекция ещё не догнала Insert.
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"origin_city_ids": strconv.Itoa(originCityV1),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR должен матчиться по origin_city_ids перед обновлением")
+
+	// Обновляем маршрут: меняем только city первой точки (origin).
+	updReq := s.buildUpdateRequest()
+	updReq.Route.Points[0].CountryID = &originCountry
+	updReq.Route.Points[0].CityID = &originCityV2
+	updReq.Route.Points[1].CountryID = &destCountry
+	updReq.Route.Points[1].CityID = &destCity
+	upd, err := s.ctx.Customer.Client.UpdateFreightRequest(fr.ID, updReq)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, upd.StatusCode, string(upd.RawBody))
+
+	// Позитив: фильтр по новому origin city находит FR.
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"origin_city_ids": strconv.Itoa(originCityV2),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "после Update FR должен матчиться по новому origin_city_ids")
+
+	// Негатив: фильтр по старому origin city больше НЕ находит FR.
+	// Это и есть проверка «OnUpdated действительно перезаписал колонку»,
+	// а не «оставил старое значение».
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"origin_city_ids": strconv.Itoa(originCityV1),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return false
+			}
+		}
+		return true
+	}, "после Update FR не должен находиться по старому origin_city_ids")
+}
+
+// TestFR141 страхует, что origin_* / destination_* не загрязняются city/
+// country промежуточных точек на многоточечном маршруте. Только первая
+// точка → origin, только последняя → destination, middle — нигде.
+//
+// Без этого теста legко сломать денормализацию циклом `for _, p := range
+// route.Points` вместо явного `route.Points[0]` / `route.Points[len-1]`.
+func (s *FreightRequestsSuite) TestFR141_MiddlePointsNotInEndpointArrays() {
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	day2 := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
+	day3 := time.Now().AddDate(0, 0, 3).Format("2006-01-02")
+
+	originCountry, midCountry, destCountry := 741, 742, 743
+	originCity, midCity, destCity := 741_001, 742_001, 743_001
+
+	points := []client.RoutePoint{
+		{IsLoading: true, IsUnloading: false, CountryID: &originCountry, CityID: &originCity, Address: "origin", DateFrom: tomorrow},
+		{IsLoading: true, IsUnloading: true, CountryID: &midCountry, CityID: &midCity, Address: "middle", DateFrom: day2},
+		{IsLoading: false, IsUnloading: true, CountryID: &destCountry, CityID: &destCity, Address: "destination", DateFrom: day3},
+	}
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
+		WithRoutePoints(points).
+		Create()
+
+	// Позитив: матч по реальным endpoint'ам.
+	helpers.Wait(s.T(), func() bool {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			"origin_city_ids":      strconv.Itoa(originCity),
+			"destination_city_ids": strconv.Itoa(destCity),
+		})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			return false
+		}
+		for _, it := range resp.Body.Items {
+			if it.ID == fr.ID {
+				return true
+			}
+		}
+		return false
+	}, "FR должен матчиться по реальным origin/destination city")
+
+	// Негатив #1: middle city не должен попасть ни в origin_city_ids, ни в
+	// destination_city_ids.
+	for _, role := range []string{"origin_city_ids", "destination_city_ids"} {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			role: strconv.Itoa(midCity),
+		})
+		s.Require().NoError(err)
+		s.Require().Equalf(http.StatusOK, resp.StatusCode, "[%s] %s", role, string(resp.RawBody))
+		for _, it := range resp.Body.Items {
+			s.Assert().NotEqualf(fr.ID, it.ID,
+				"middle city=%d НЕ должен матчиться по %s — это срединная точка",
+				midCity, role)
+		}
+	}
+
+	// Негатив #2: то же для country (на случай, если кто-то починит city,
+	// но забудет про country).
+	for _, role := range []string{"origin_country_ids", "destination_country_ids"} {
+		resp, err := s.ctx.Customer.Client.GetFreightRequests(map[string]string{
+			role: strconv.Itoa(midCountry),
+		})
+		s.Require().NoError(err)
+		s.Require().Equalf(http.StatusOK, resp.StatusCode, "[%s] %s", role, string(resp.RawBody))
+		for _, it := range resp.Body.Items {
+			s.Assert().NotEqualf(fr.ID, it.ID,
+				"middle country=%d НЕ должен матчиться по %s — это срединная точка",
+				midCountry, role)
+		}
+	}
+}
+
 func (s *FreightRequestsSuite) TestFR135_FilterCombined() {
 	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).
 		WithVolume(20.0).
@@ -752,11 +1226,6 @@ func (s *FreightRequestsSuite) TestFR135_FilterCombined() {
 		}
 		return false
 	}, "FR should appear with combined filters")
-}
-
-// Helper function
-func intPtr(i int) *int {
-	return &i
 }
 
 // ============================================================================

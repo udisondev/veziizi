@@ -107,7 +107,9 @@ func (s *OrganizationsSuite) TestORG026_GetExistingOrganization() {
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
 	s.Assert().Equal(s.org.OrganizationID, resp.Body.ID, "id")
-	s.Assert().Equal("pending", resp.Body.Status, "status")
+	// s.org is created via NewActiveOrganization which approves it through admin,
+	// so the public endpoint should report "active".
+	s.Assert().Equal("active", resp.Body.Status, "status")
 }
 
 func (s *OrganizationsSuite) TestORG028_GetWithoutAuth() {
@@ -254,8 +256,8 @@ func (s *OrganizationsSuite) TestORG082_SuccessfulAccept() {
 
 	resp, err := s.c.AcceptInvitation(token, client.AcceptInvitationRequest{
 		Password: "password123",
-		Name:     helpers.StringPtr("New Member"),
-		Phone:    helpers.StringPtr("+79001234567"),
+		Name:     new("New Member"),
+		Phone:    new("+79001234567"),
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, string(resp.RawBody))
@@ -286,8 +288,8 @@ func (s *OrganizationsSuite) TestORG085_EmptyPassword() {
 func (s *OrganizationsSuite) TestORG088_NonexistentToken() {
 	resp, err := s.c.AcceptInvitation("nonexistent-token", client.AcceptInvitationRequest{
 		Password: "password123",
-		Name:     helpers.StringPtr("Test"),
-		Phone:    helpers.StringPtr("+79001234567"),
+		Name:     new("Test"),
+		Phone:    new("+79001234567"),
 	})
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusNotFound, resp.StatusCode)

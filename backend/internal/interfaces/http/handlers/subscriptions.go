@@ -149,7 +149,7 @@ func (h *SubscriptionsHandler) Create(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 			slog.String("member_id", memberID.String()),
 		)
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "invalid subscription criteria")
 		return
 	}
 
@@ -218,7 +218,7 @@ func (h *SubscriptionsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 			slog.String("subscription_id", subscriptionID.String()),
 		)
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "invalid subscription criteria")
 		return
 	}
 
@@ -252,7 +252,7 @@ func (h *SubscriptionsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 			slog.String("subscription_id", subscriptionID.String()),
 		)
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "failed to delete subscription")
 		return
 	}
 
@@ -284,7 +284,7 @@ func (h *SubscriptionsHandler) SetActive(w http.ResponseWriter, r *http.Request)
 			slog.String("error", err.Error()),
 			slog.String("subscription_id", subscriptionID.String()),
 		)
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "failed to update subscription")
 		return
 	}
 

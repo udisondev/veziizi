@@ -1,128 +1,144 @@
 package handlers
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"html"
 	"log/slog"
 	"strings"
 
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+	"github.com/google/uuid"
+
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/notifications"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
-// EmailSenderHandler отправляет уведомления по Email
+// EmailSenderHandler отправляет уведомления по Email. Регистрируется как
+// cqrs.NewEventHandler[messaging.EmailNotification] в воркере email-sender.
+//
+// Идемпотентность: см. TelegramSenderHandler. До provider.Send проверяем
+// notification_dedup.IsSent, после успеха — MarkSent. Транзиентная ошибка
+// от provider возвращается наверх для Retry middleware, без записи в dedup.
 type EmailSenderHandler struct {
 	provider    notifications.EmailProvider
 	appConfig   *config.Config
 	deliveryLog *projections.NotificationDeliveryLogProjection
+	dedup       *projections.NotificationDedupProjection
 }
 
-// NewEmailSenderHandler создает новый handler
 func NewEmailSenderHandler(
 	provider notifications.EmailProvider,
 	appConfig *config.Config,
 	deliveryLog *projections.NotificationDeliveryLogProjection,
+	dedup *projections.NotificationDedupProjection,
 ) *EmailSenderHandler {
 	return &EmailSenderHandler{
 		provider:    provider,
 		appConfig:   appConfig,
 		deliveryLog: deliveryLog,
+		dedup:       dedup,
 	}
 }
 
-// Handle обрабатывает сообщение из очереди
-func (h *EmailSenderHandler) Handle(msg *message.Message) error {
-	var notification EmailNotification
-	if err := json.Unmarshal(msg.Payload, &notification); err != nil {
-		slog.Error("failed to unmarshal email notification",
-			slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal notification: %w", err)
+func (h *EmailSenderHandler) OnEmailNotification(ctx context.Context, n *messaging.EmailNotification) error {
+	msg := cqrs.OriginalMessageFromCtx(ctx)
+	msgUUID, err := uuid.Parse(msg.UUID)
+	if err != nil {
+		return fmt.Errorf("parse message uuid: %w", err)
+	}
+	sent, err := h.dedup.IsSent(ctx, msgUUID, "email")
+	if err != nil {
+		return fmt.Errorf("dedup is sent: %w", err)
+	}
+	if sent {
+		slog.Debug("email notification already sent, skipping",
+			slog.String("message_uuid", msg.UUID),
+			slog.String("member_id", n.MemberID.String()))
+		return nil
 	}
 
-	// Формируем ссылку с доменом приложения
 	link := ""
-	if notification.Link != "" {
+	if n.Link != "" {
 		baseURL := h.appConfig.App.BaseURL
 		if baseURL == "" {
-			baseURL = "https://veziizi.ru" // fallback
+			baseURL = "https://veziizi.ru"
 		}
-		link = baseURL + notification.Link
+		link = baseURL + n.Link
 	}
 
-	// Формируем HTML содержимое письма
-	bodyHTML := h.formatEmailHTML(notification.Title, notification.Body, link)
-	bodyText := h.formatEmailText(notification.Title, notification.Body, link)
+	bodyHTML := h.formatEmailHTML(n.Title, n.Body, link)
+	bodyText := h.formatEmailText(n.Title, n.Body, link)
 
-	// Создаем сообщение
 	emailMsg := notifications.EmailMessage{
-		To:        notification.Email,
-		Subject:   notification.Title,
+		To:        n.Email,
+		Subject:   n.Title,
 		BodyHTML:  bodyHTML,
 		BodyText:  bodyText,
-		EmailType: values.EmailTypeTransactional, // уведомления = транзакционные
+		EmailType: values.EmailTypeTransactional,
 	}
 
-	// Отправляем email
-	result, err := h.provider.Send(msg.Context(), emailMsg)
+	result, err := h.provider.Send(ctx, emailMsg)
 	if err != nil {
 		slog.Error("failed to send email",
-			slog.String("email", notification.Email),
-			slog.String("member_id", notification.MemberID.String()),
+			slog.String("email", n.Email),
+			slog.String("member_id", n.MemberID.String()),
 			slog.String("error", err.Error()))
 
-		// Логируем ошибку доставки
 		if h.deliveryLog != nil {
-			if logErr := h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
-				MemberID:         notification.MemberID,
-				NotificationType: notification.NotificationType,
+			if logErr := h.deliveryLog.LogDelivery(ctx, projections.DeliveryLogInput{
+				MemberID:         n.MemberID,
+				NotificationType: n.NotificationType,
 				Channel:          "email",
 				Status:           "failed",
 				ErrorMessage:     err.Error(),
 			}); logErr != nil {
 				slog.Error("failed to log delivery failure",
-					slog.String("member_id", notification.MemberID.String()),
+					slog.String("member_id", n.MemberID.String()),
 					slog.String("error", logErr.Error()))
 			}
 		}
-
-		// Возвращаем ошибку для retry
 		return fmt.Errorf("send email: %w", err)
+	}
+
+	// Фиксируем sent ПОСЛЕ успешного provider.Send. Ошибка БД не возвращается
+	// наверх — письмо уже ушло, повторная отправка хуже потери строки в
+	// notification_dedup.
+	if err := h.dedup.MarkSent(ctx, msgUUID, "email"); err != nil {
+		slog.Error("failed to mark notification as sent",
+			slog.String("message_uuid", msg.UUID),
+			slog.String("member_id", n.MemberID.String()),
+			slog.String("error", err.Error()))
 	}
 
 	slog.Info("email sent",
 		slog.String("message_id", result.MessageID),
-		slog.String("email", notification.Email),
-		slog.String("member_id", notification.MemberID.String()))
+		slog.String("email", n.Email),
+		slog.String("member_id", n.MemberID.String()))
 
-	// Логируем успешную доставку
 	if h.deliveryLog != nil {
-		if err := h.deliveryLog.LogDelivery(msg.Context(), projections.DeliveryLogInput{
-			MemberID:         notification.MemberID,
-			NotificationType: notification.NotificationType,
+		if err := h.deliveryLog.LogDelivery(ctx, projections.DeliveryLogInput{
+			MemberID:         n.MemberID,
+			NotificationType: n.NotificationType,
 			Channel:          "email",
 			Status:           "sent",
 		}); err != nil {
 			slog.Error("failed to log successful delivery",
-				slog.String("member_id", notification.MemberID.String()),
+				slog.String("member_id", n.MemberID.String()),
 				slog.String("error", err.Error()))
 		}
 	}
-
 	return nil
 }
 
-// formatEmailHTML форматирует HTML письмо
 func (h *EmailSenderHandler) formatEmailHTML(title, body, link string) string {
-	// Экранируем пользовательский контент для защиты от HTML injection
 	safeTitle := html.EscapeString(title)
 	safeBody := html.EscapeString(body)
 
 	linkSection := ""
-	// Валидируем link — только http/https протоколы
 	if link != "" && (strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://")) {
 		safeLink := html.EscapeString(link)
 		linkSection = fmt.Sprintf(`
@@ -134,7 +150,6 @@ func (h *EmailSenderHandler) formatEmailHTML(title, body, link string) string {
 		`, safeLink)
 	}
 
-	// BaseURL — контролируется конфигом, но экранируем на всякий случай
 	safeBaseURL := html.EscapeString(h.appConfig.App.BaseURL)
 
 	return fmt.Sprintf(`
@@ -160,7 +175,6 @@ func (h *EmailSenderHandler) formatEmailHTML(title, body, link string) string {
 	`, safeTitle, safeBody, linkSection, safeBaseURL)
 }
 
-// formatEmailText форматирует текстовую версию письма
 func (h *EmailSenderHandler) formatEmailText(title, body, link string) string {
 	text := fmt.Sprintf("%s\n\n%s", title, body)
 	if link != "" {

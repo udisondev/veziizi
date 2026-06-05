@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 
@@ -111,70 +110,63 @@ func main() {
 		ownerPassword := fmt.Sprintf("%s.owner12345", org.prefix)
 		ownerName := ownerNames[i]
 
-		// Register organization with owner
-		input := organization.RegisterInput{
-			Name:          org.name,
-			INN:           org.inn,
-			LegalName:     org.legalName,
-			Country:       values.CountryRU,
-			Phone:         "+79001234567",
-			Email:         fmt.Sprintf("%s@company.ru", org.prefix),
-			Address:       values.Address("Москва, ул. Тестовая, 1"),
-			OwnerEmail:    ownerEmail,
-			OwnerPassword: ownerPassword,
-			OwnerName:     ownerName,
-			OwnerPhone:    "+79001234567",
-		}
-
-		output, err := orgService.Register(ctx, input)
-		if err != nil {
-			log.Printf("failed to register %s: %v", org.name, err)
-			continue
-		}
-
-		fmt.Printf("=== %s ===\n", org.name)
-		fmt.Printf("  Org ID: %s\n", output.OrganizationID)
-		fmt.Printf("  Owner: %s / %s\n", ownerEmail, ownerPassword)
-
-		// Small delay for events
-		time.Sleep(300 * time.Millisecond)
-
-		// Approve organization
-		approveInput := admin.ApproveInput{
-			OrganizationID: output.OrganizationID,
-			AdminID:        uuid.Nil,
-		}
-		if err := adminService.Approve(ctx, approveInput); err != nil {
-			log.Printf("failed to approve %s: %v", org.name, err)
-			continue
-		}
-		fmt.Printf("  Status: ACTIVE\n")
-
-		// Add additional members
-		for _, m := range additionalMembersByOrg[i] {
-			email := fmt.Sprintf("%s.%s@mail.ru", org.prefix, m.emailPrefix)
-			password := fmt.Sprintf("%s.%s12345", org.prefix, m.emailPrefix)
-			name := m.name
-
-			addInput := organization.AddMemberInput{
-				OrganizationID: output.OrganizationID,
-				Email:          email,
-				Password:       password,
-				Name:           name,
-				Phone:          "+79001234567",
-				Role:           m.role,
+		err := txManager.InTx(ctx, func(ctx context.Context) error {
+			input := organization.RegisterInput{
+				Name:          org.name,
+				INN:           org.inn,
+				LegalName:     org.legalName,
+				Country:       values.CountryRU,
+				Phone:         "+79001234567",
+				Email:         fmt.Sprintf("%s@company.ru", org.prefix),
+				Address:       values.Address("Москва, ул. Тестовая, 1"),
+				OwnerEmail:    ownerEmail,
+				OwnerPassword: ownerPassword,
+				OwnerName:     ownerName,
+				OwnerPhone:    "+79001234567",
 			}
 
-			memberID, err := orgService.AddMemberDirect(ctx, addInput)
+			output, err := orgService.Register(ctx, input)
 			if err != nil {
-				log.Printf("failed to add member %s: %v", email, err)
-				continue
+				return fmt.Errorf("register: %w", err)
 			}
-			fmt.Printf("  %s: %s / %s (ID: %s)\n", m.role, email, password, memberID)
-		}
 
-		fmt.Println()
-		time.Sleep(300 * time.Millisecond)
+			fmt.Printf("=== %s ===\n", org.name)
+			fmt.Printf("  Org ID: %s\n", output.OrganizationID)
+			fmt.Printf("  Owner: %s / %s\n", ownerEmail, ownerPassword)
+
+			if err := adminService.Approve(ctx, admin.ApproveInput{
+				OrganizationID: output.OrganizationID,
+				AdminID:        uuid.Nil,
+			}); err != nil {
+				return fmt.Errorf("approve: %w", err)
+			}
+			fmt.Printf("  Status: ACTIVE\n")
+
+			for _, m := range additionalMembersByOrg[i] {
+				email := fmt.Sprintf("%s.%s@mail.ru", org.prefix, m.emailPrefix)
+				password := fmt.Sprintf("%s.%s12345", org.prefix, m.emailPrefix)
+
+				memberID, err := orgService.AddMemberDirect(ctx, organization.AddMemberInput{
+					OrganizationID: output.OrganizationID,
+					Email:          email,
+					Password:       password,
+					Name:           m.name,
+					Phone:          "+79001234567",
+					Role:           m.role,
+				})
+				if err != nil {
+					return fmt.Errorf("add member %s: %w", email, err)
+				}
+				fmt.Printf("  %s: %s / %s (ID: %s)\n", m.role, email, password, memberID)
+			}
+
+			fmt.Println()
+			return nil
+		})
+		if err != nil {
+			log.Printf("failed to seed %s (rolled back): %v", org.name, err)
+			continue
+		}
 	}
 
 	fmt.Println("Seed completed!")

@@ -90,3 +90,7 @@ func (a *MembersAdapter) GetByID(ctx context.Context, id uuid.UUID) (*rules.Memb
 		OrganizationID: item.OrganizationID,
 	}, nil
 }
+
+func (a *MembersAdapter) ListActiveByOrg(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error) {
+	return a.projection.ListActiveByOrg(ctx, orgID)
+}

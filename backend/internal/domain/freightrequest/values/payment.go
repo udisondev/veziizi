@@ -11,9 +11,9 @@ var ErrDeferredDaysMustBePositive = errors.New("deferred_days must be greater th
 // Payment represents payment information for a freight request
 type Payment struct {
 	Price        *Money        `json:"price,omitempty"` // Optional: if nil, carriers propose their own price
-	VatType      VatType       `json:"vat_type"`
-	Method       PaymentMethod `json:"method"`
-	Terms        PaymentTerms  `json:"terms"`
+	VatType      VatType       `json:"vat_type,omitempty"`
+	Method       PaymentMethod `json:"method,omitempty"`
+	Terms        PaymentTerms  `json:"terms,omitempty"`
 	DeferredDays int           `json:"deferred_days,omitempty"`
 }
 

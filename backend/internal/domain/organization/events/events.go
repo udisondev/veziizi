@@ -3,6 +3,7 @@ package events
 import (
 	"github.com/google/uuid"
 	"github.com/udisondev/veziizi/backend/internal/domain/organization/values"
+	"github.com/udisondev/veziizi/backend/internal/domain/transport"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 )
 
@@ -27,6 +28,11 @@ const (
 	TypeInvitationCancelled   = "invitation.cancelled"
 	TypeFraudsterMarked       = "fraudster.marked"
 	TypeFraudsterUnmarked     = "fraudster.unmarked"
+	TypeVehicleAdded          = "vehicle.added"
+	TypeVehicleUpdated        = "vehicle.updated"
+	TypeVehicleVerified       = "vehicle.verified"
+	TypeVehicleRejected       = "vehicle.rejected"
+	TypeVehicleArchived       = "vehicle.archived"
 )
 
 func init() {
@@ -47,6 +53,11 @@ func init() {
 	eventstore.RegisterEventType[InvitationCancelled](TypeInvitationCancelled)
 	eventstore.RegisterEventType[FraudsterMarked](TypeFraudsterMarked)
 	eventstore.RegisterEventType[FraudsterUnmarked](TypeFraudsterUnmarked)
+	eventstore.RegisterEventType[VehicleAdded](TypeVehicleAdded)
+	eventstore.RegisterEventType[VehicleUpdated](TypeVehicleUpdated)
+	eventstore.RegisterEventType[VehicleVerified](TypeVehicleVerified)
+	eventstore.RegisterEventType[VehicleRejected](TypeVehicleRejected)
+	eventstore.RegisterEventType[VehicleArchived](TypeVehicleArchived)
 }
 
 // OrganizationCreated is emitted when organization is registered
@@ -231,3 +242,69 @@ type FraudsterUnmarked struct {
 }
 
 func (e FraudsterUnmarked) EventType() string { return TypeFraudsterUnmarked }
+
+// VehicleSpecsPayload mirrors entities.VehicleSpecs for event serialization.
+type VehicleSpecsPayload struct {
+	RegistrationNumber string                   `json:"registration_number"`
+	Brand              string                   `json:"brand"`
+	Model              string                   `json:"model"`
+	VehicleType        transport.VehicleType    `json:"vehicle_type"`
+	VehicleSubType     transport.VehicleSubType `json:"vehicle_subtype"`
+	LoadingTypes       []transport.LoadingType  `json:"loading_types,omitempty"`
+	Capacity           float64                  `json:"capacity,omitempty"`
+	Volume             float64                  `json:"volume,omitempty"`
+	Length             float64                  `json:"length,omitempty"`
+	Width              float64                  `json:"width,omitempty"`
+	Height             float64                  `json:"height,omitempty"`
+	RequiresADR        bool                     `json:"requires_adr,omitempty"`
+	Temperature        *transport.Temperature   `json:"temperature,omitempty"`
+	Thermograph        bool                     `json:"thermograph,omitempty"`
+}
+
+// VehicleAdded is emitted when a member adds a vehicle to the org fleet.
+type VehicleAdded struct {
+	eventstore.BaseEvent
+	VehicleID uuid.UUID           `json:"vehicle_id"`
+	Specs     VehicleSpecsPayload `json:"specs"`
+	AddedBy   uuid.UUID           `json:"added_by"`
+}
+
+func (e VehicleAdded) EventType() string { return TypeVehicleAdded }
+
+// VehicleUpdated is emitted when a member updates a vehicle. Resets status to pending.
+type VehicleUpdated struct {
+	eventstore.BaseEvent
+	VehicleID uuid.UUID           `json:"vehicle_id"`
+	Specs     VehicleSpecsPayload `json:"specs"`
+	UpdatedBy uuid.UUID           `json:"updated_by"`
+}
+
+func (e VehicleUpdated) EventType() string { return TypeVehicleUpdated }
+
+// VehicleVerified is emitted when an admin verifies a pending vehicle.
+type VehicleVerified struct {
+	eventstore.BaseEvent
+	VehicleID  uuid.UUID `json:"vehicle_id"`
+	VerifiedBy uuid.UUID `json:"verified_by"` // admin ID
+}
+
+func (e VehicleVerified) EventType() string { return TypeVehicleVerified }
+
+// VehicleRejected is emitted when an admin rejects a pending vehicle.
+type VehicleRejected struct {
+	eventstore.BaseEvent
+	VehicleID  uuid.UUID `json:"vehicle_id"`
+	RejectedBy uuid.UUID `json:"rejected_by"` // admin ID
+	Reason     string    `json:"reason"`
+}
+
+func (e VehicleRejected) EventType() string { return TypeVehicleRejected }
+
+// VehicleArchived is emitted when a member archives a vehicle.
+type VehicleArchived struct {
+	eventstore.BaseEvent
+	VehicleID  uuid.UUID `json:"vehicle_id"`
+	ArchivedBy uuid.UUID `json:"archived_by"` // member ID
+}
+
+func (e VehicleArchived) EventType() string { return TypeVehicleArchived }

@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { FormField } from '@/components/ui/form-field'
 import { computed } from 'vue'
+import { parseInputInt, parseInputString } from '@/utils/inputParsers'
+import { centsToAmount, amountToCents } from '@/utils/formatters'
 import type { Payment, Currency, VatType, PaymentMethod, PaymentTerms } from '@/types/freightRequest'
 import {
   currencyOptions,
@@ -8,13 +13,7 @@ import {
   paymentTermsOptions,
   currencyLabels,
 } from '@/types/freightRequest'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { SelectField } from '@/components/ui/select-field'
 
 interface Props {
   payment: Payment
@@ -36,23 +35,19 @@ function updateField<K extends keyof Payment>(field: K, value: Payment[K]) {
 // Конвертация рублей в копейки для отображения/ввода
 const displayAmount = computed(() => {
   if (!props.payment.price?.amount) return ''
-  return (props.payment.price.amount / 100).toString()
+  return centsToAmount(props.payment.price.amount).toString()
 })
 
 function handleAmountInput(event: Event) {
-  const inputValue = (event.target as HTMLInputElement).value
+  const inputValue = parseInputString(event)
 
   if (!inputValue) {
-    // Если поле очищено, убираем price
     updateField('price', undefined)
     return
   }
 
-  const value = parseFloat(inputValue) || 0
-  // Конвертируем в копейки
-  const amountInCents = Math.round(value * 100)
   const currentCurrency = props.payment.price?.currency || 'RUB'
-  updateField('price', { amount: amountInCents, currency: currentCurrency })
+  updateField('price', { amount: amountToCents(parseFloat(inputValue) || 0), currency: currentCurrency })
 }
 
 function handleCurrencyChange(currency: Currency) {
@@ -77,8 +72,7 @@ function handleTermsChange(terms: PaymentTerms) {
 }
 
 function handleDeferredDaysInput(event: Event) {
-  const value = parseInt((event.target as HTMLInputElement).value) || undefined
-  updateField('deferred_days', value)
+  updateField('deferred_days', parseInputInt(event))
 }
 
 function handleNoPriceChange(event: Event) {
@@ -94,10 +88,6 @@ const showDeferredDays = computed(() => props.payment.terms === 'deferred')
 
 const hasPrice = computed(() => !!props.payment.price?.amount)
 
-const inputClass = (field: string) => [
-  'appearance-none block w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-  props.errors[field] ? 'border-red-300' : 'border-gray-300',
-]
 </script>
 
 <template>
@@ -108,150 +98,117 @@ const inputClass = (field: string) => [
         id="no-price"
         type="checkbox"
         :checked="payment.no_price"
-        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+        class="h-4 w-4 accent-primary rounded"
         @change="handleNoPriceChange"
       />
-      <label for="no-price" class="text-sm text-gray-700">
+      <Label for="no-price" class="mb-0 inline cursor-pointer">
         Не указывать цену
-        <span class="text-gray-500">(перевозчики предложат свою)</span>
-      </label>
+        <span class="text-muted-foreground">(перевозчики предложат свою)</span>
+      </Label>
     </div>
 
     <!-- Price (показываем только если галочка не отмечена) -->
-    <div v-if="!payment.no_price" data-tutorial="payment-price">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Стоимость перевозки <span class="text-red-500">*</span>
-      </label>
+    <FormField
+      v-if="!payment.no_price"
+      label="Стоимость перевозки"
+      required
+      :error="errors.price"
+      data-tutorial="payment-price"
+    >
       <div class="relative">
-        <input
+        <Input
           type="number"
           :value="displayAmount"
           placeholder="Укажите сумму"
           min="0"
           step="100"
-          :class="inputClass('price')"
+          :has-error="!!errors.price"
           @input="handleAmountInput"
           @blur="emit('validateField', 'price')"
         />
-        <span v-if="hasPrice" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+        <span v-if="hasPrice" class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
           {{ currencyLabels[payment.price?.currency || 'RUB'] }}
         </span>
       </div>
-      <p v-if="errors.price" class="mt-1 text-sm text-red-600">
-        {{ errors.price }}
-      </p>
-    </div>
+    </FormField>
 
     <!-- Currency -->
     <div v-if="!payment.no_price" data-tutorial="payment-currency">
-      <label class="block text-sm font-medium text-gray-700 mb-1">
-        Валюта
-      </label>
-      <Select
+      <Label>Валюта</Label>
+      <SelectField
         :model-value="payment.price?.currency || 'RUB'"
+        :options="currencyOptions"
+        placeholder="Выберите валюту"
+        sheet-label="Валюта"
         @update:model-value="handleCurrencyChange($event as Currency)"
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Выберите валюту" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="option in currencyOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
+      />
     </div>
 
     <!-- Все остальные поля оплаты показываем только если цена указывается -->
     <template v-if="!payment.no_price">
       <!-- VAT type -->
       <div data-tutorial="payment-vat">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          НДС
-        </label>
-        <Select
+        <Label>НДС</Label>
+        <SelectField
           :model-value="payment.vat_type"
+          :options="vatTypeOptions"
+          placeholder="Выберите тип НДС"
+          sheet-label="НДС"
           @update:model-value="handleVatTypeChange($event as VatType)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите тип НДС" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in vatTypeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
       </div>
 
       <!-- Payment method -->
       <div data-tutorial="payment-method">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Способ оплаты
-        </label>
-        <Select
+        <Label>Способ оплаты</Label>
+        <SelectField
           :model-value="payment.method"
+          :options="paymentMethodOptions"
+          placeholder="Выберите способ оплаты"
+          sheet-label="Способ оплаты"
           @update:model-value="handleMethodChange($event as PaymentMethod)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите способ оплаты" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in paymentMethodOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
       </div>
 
       <!-- Payment terms -->
       <div data-tutorial="payment-terms">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Условия оплаты
-        </label>
-        <Select
+        <Label>Условия оплаты</Label>
+        <SelectField
           :model-value="payment.terms"
+          :options="paymentTermsOptions"
+          placeholder="Выберите условия оплаты"
+          sheet-label="Условия оплаты"
           @update:model-value="handleTermsChange($event as PaymentTerms)"
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Выберите условия оплаты" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="option in paymentTermsOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
       </div>
 
       <!-- Deferred days -->
-      <div v-if="showDeferredDays">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Дней отсрочки <span class="text-red-500">*</span>
-        </label>
-        <input
+      <FormField
+        v-if="showDeferredDays"
+        label="Дней отсрочки"
+        required
+        :error="errors.deferred_days"
+      >
+        <Input
           type="number"
           :value="payment.deferred_days || ''"
           placeholder="30"
           min="1"
           step="1"
-          :class="inputClass('deferred_days')"
+          :has-error="!!errors.deferred_days"
           @input="handleDeferredDaysInput"
           @blur="emit('validateField', 'deferred_days')"
         />
-        <p v-if="errors.deferred_days" class="mt-1 text-sm text-red-600">
-          {{ errors.deferred_days }}
-        </p>
-      </div>
+      </FormField>
 
       <!-- Summary (только если указана цена) -->
-      <div v-if="hasPrice" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 class="text-sm font-medium text-blue-900 mb-2">Итого</h4>
-        <div class="text-2xl font-bold text-blue-900">
+      <div v-if="hasPrice" class="bg-accent border border-primary/20 rounded-lg p-4">
+        <h4 class="text-sm font-medium text-accent-foreground mb-2">Итого</h4>
+        <div class="text-2xl font-bold text-accent-foreground">
           {{ Number(displayAmount).toLocaleString('ru-RU') }}
           {{ currencyLabels[payment.price?.currency || 'RUB'] }}
         </div>
-        <div class="text-sm text-blue-700 mt-1">
+        <div class="text-sm text-accent-foreground/80 mt-1">
           {{ vatTypeOptions.find(o => o.value === payment.vat_type)?.label }}
           •
           {{ paymentTermsOptions.find(o => o.value === payment.terms)?.label }}

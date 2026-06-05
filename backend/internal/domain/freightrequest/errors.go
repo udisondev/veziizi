@@ -38,4 +38,10 @@ var (
 
 	// Cancellation errors
 	ErrCannotCancelAfterConfirmed = errors.New("cannot cancel in current status")
+
+	// Invitation errors (CarrierInvited flow)
+	ErrCannotInviteOwnOrg     = errors.New("cannot invite own organization to its own freight request")
+	ErrCarrierAlreadyInvited  = errors.New("carrier has already been invited to this freight request")
+	ErrInvitationLimitReached = errors.New("invitation limit reached for this freight request")
+	ErrVehicleNotEligible     = errors.New("vehicle is not eligible for invitation (must be verified)")
 )

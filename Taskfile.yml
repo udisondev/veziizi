@@ -10,7 +10,8 @@ vars:
   POSTGRES_PORT: '{{.POSTGRES_PORT | default "5432"}}'
   DATABASE_URL: 'postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_DB}}?sslmode=disable'
   TEST_DATABASE_URL: 'postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/veziizi_test?sslmode=disable'
-  WORKERS: members invitations pending-organizations organizations freight-requests review-receiver review-analyzer reviews-projection review-activator fraudster-handler notification-dispatcher telegram-sender email-sender support-tickets rate-limiter-cleanup
+  WORKERS: forwarder members invitations pending-organizations organizations freight-requests review-receiver review-analyzer reviews-projection review-activator fraudster-handler notification-dispatcher telegram-sender email-sender support-tickets support-tickets-notifier rate-limiter-cleanup dedup-cleanup vehicles
+
   COMPOSE_DEV: '-f docker-compose.yml -f docker-compose.dev.yml'
   COMPOSE_STAGING: '-f docker-compose.yml -f docker-compose.staging.yml'
   COMPOSE_PROD: '-f docker-compose.yml -f docker-compose.prod.yml'
@@ -24,12 +25,12 @@ tasks:
   # --- Docker (dev Postgres) ---
 
   up:
-    desc: Start dev Postgres
+    desc: Start dev Postgres + Redis
     cmds:
       - docker compose {{.COMPOSE_DEV}} up -d
 
   down:
-    desc: Stop dev Postgres
+    desc: Stop dev Postgres + Redis
     cmds:
       - docker compose {{.COMPOSE_DEV}} down
 
@@ -369,6 +370,16 @@ tasks:
     desc: Seed test organizations
     cmds:
       - go run ./backend/cmd/tools/seed-orgs
+
+  seed:ui-users:
+    desc: Create test users for UI profile testing
+    cmds:
+      - go run ./backend/cmd/tools/seed-ui-users
+
+  seed:scenario:
+    desc: Seed scenario data (freight requests, offers, reviews) for UI testing
+    cmds:
+      - go run ./backend/cmd/tools/seed-scenario
 
   resend:telegram:
     desc: Resend failed telegram notifications

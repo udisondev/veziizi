@@ -74,8 +74,14 @@ const router = createRouter({
     // Protected routes
     {
       path: '/',
+      name: 'dashboard',
+      component: () => import('@/views/DashboardView.vue'),
+      meta: { title: 'Дашборд' },
+    },
+    {
+      path: '/requests',
       name: 'freight-requests',
-      component: () => import('@/views/FreightRequestsView.vue'),
+      component: () => import('@/views/FreightRequestsMainView.vue'),
       meta: { title: 'Заявки' },
     },
     {
@@ -95,6 +101,12 @@ const router = createRouter({
       name: 'freight-request-edit',
       component: () => import('@/views/FreightRequestEditView.vue'),
       meta: { title: 'Редактирование заявки' },
+    },
+    {
+      path: '/freight-requests/:id/make-offer',
+      name: 'freight-request-make-offer',
+      component: () => import('@/views/MakeOfferView.vue'),
+      meta: { title: 'Сделать предложение' },
     },
 
     // Organization profile (public view)
@@ -125,8 +137,33 @@ const router = createRouter({
       name: 'org-settings',
       component: () => import('@/views/OrgSettingsView.vue'),
       meta: { title: 'Настройки организации' },
-      beforeEnter: roleGuard(['owner', 'administrator']),
+      beforeEnter: roleGuard(['owner']),
     },
+    {
+      path: '/fleet',
+      name: 'fleet',
+      component: () => import('@/views/FleetView.vue'),
+      meta: { title: 'Автопарк' },
+    },
+    {
+      path: '/transport',
+      name: 'transport',
+      component: () => import('@/views/TransportView.vue'),
+      meta: { title: 'Транспорт' },
+    },
+    {
+      path: '/fleet/new',
+      name: 'vehicle-add',
+      component: () => import('@/views/VehicleAddView.vue'),
+      meta: { title: 'Добавить автомобиль' },
+    },
+    {
+      path: '/fleet/:id/edit',
+      name: 'vehicle-edit',
+      component: () => import('@/views/VehicleEditView.vue'),
+      meta: { title: 'Редактировать автомобиль' },
+    },
+
     // My offers (any organization can make offers now)
     {
       path: '/my-offers',
@@ -161,6 +198,18 @@ const router = createRouter({
       name: 'freight-subscriptions',
       component: () => import('@/views/FreightSubscriptionsView.vue'),
       meta: { title: 'Рассылка' },
+    },
+    {
+      path: '/subscriptions/new',
+      name: 'subscription-create',
+      component: () => import('@/views/SubscriptionFormView.vue'),
+      meta: { title: 'Создать подписку' },
+    },
+    {
+      path: '/subscriptions/:id/edit',
+      name: 'subscription-edit',
+      component: () => import('@/views/SubscriptionFormView.vue'),
+      meta: { title: 'Редактировать подписку' },
     },
 
     // Support

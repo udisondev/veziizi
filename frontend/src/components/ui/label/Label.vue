@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Label as LabelPrimitive } from 'reka-ui'
 import { cn } from '@/lib/utils'
 
 const props = defineProps<{
@@ -10,14 +9,14 @@ const props = defineProps<{
 
 const classes = computed(() =>
   cn(
-    'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
+    'text-base font-medium leading-none mb-1.5 block peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
     props.class
   )
 )
 </script>
 
 <template>
-  <LabelPrimitive :class="classes" :for="for">
+  <label :class="classes" :for="for">
     <slot />
-  </LabelPrimitive>
+  </label>
 </template>

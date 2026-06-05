@@ -11,9 +11,9 @@ func (r MemberRole) CanManageMembers() bool {
 	return r == MemberRoleOwner || r == MemberRoleAdministrator
 }
 
-// CanManageOrganization returns true if role can edit organization settings
+// CanManageOrganization returns true if role can edit organization settings (owner only)
 func (r MemberRole) CanManageOrganization() bool {
-	return r == MemberRoleOwner || r == MemberRoleAdministrator
+	return r == MemberRoleOwner
 }
 
 // CanBeRemoved returns true if member with this role can be removed
@@ -23,5 +23,11 @@ func (r MemberRole) CanBeRemoved() bool {
 
 // CanManageFreightRequests returns true if role can manage freight requests (select/reject offers)
 func (r MemberRole) CanManageFreightRequests() bool {
+	return r == MemberRoleOwner || r == MemberRoleAdministrator
+}
+
+// CanManageVehicles returns true if role can add/edit/archive vehicles
+// (submitting them for moderation). Limited to owner and administrator.
+func (r MemberRole) CanManageVehicles() bool {
 	return r == MemberRoleOwner || r == MemberRoleAdministrator
 }

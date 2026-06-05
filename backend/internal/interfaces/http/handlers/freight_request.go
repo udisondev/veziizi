@@ -29,6 +29,8 @@ type FreightRequestHandler struct {
 	orgService        *organization.Service
 	projection        *projections.FreightRequestsProjection
 	membersProjection *projections.MembersProjection
+	invitesProjection *projections.FreightInvitesProjection
+	viewsProjection   *projections.FreightRequestViewsProjection
 	session           *session.Manager
 }
 
@@ -37,6 +39,8 @@ func NewFreightRequestHandler(
 	orgService *organization.Service,
 	projection *projections.FreightRequestsProjection,
 	membersProjection *projections.MembersProjection,
+	invitesProjection *projections.FreightInvitesProjection,
+	viewsProjection *projections.FreightRequestViewsProjection,
 	session *session.Manager,
 ) *FreightRequestHandler {
 	return &FreightRequestHandler{
@@ -44,6 +48,8 @@ func NewFreightRequestHandler(
 		orgService:        orgService,
 		projection:        projection,
 		membersProjection: membersProjection,
+		invitesProjection: invitesProjection,
+		viewsProjection:   viewsProjection,
 		session:           session,
 	}
 }
@@ -55,6 +61,11 @@ type FreightRequestListResponse struct {
 	Items      []projections.FreightRequestListItem `json:"items"`
 	NextCursor *string                              `json:"next_cursor,omitempty"`
 	HasMore    bool                                 `json:"has_more"`
+}
+
+// FreightRequestCountResponse — ответ GET /api/v1/freight-requests/count.
+type FreightRequestCountResponse struct {
+	Count int `json:"count"`
 }
 
 type FreightRequestResponse struct {
@@ -204,6 +215,7 @@ func (h *FreightRequestHandler) toOfferResponse(offer *entities.Offer, orgName, 
 func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/api/v1/freight-requests", h.Create)
 	r.Get("/api/v1/freight-requests", h.List)
+	r.Get("/api/v1/freight-requests/count", h.Count)
 	r.Get("/api/v1/freight-requests/{id}", h.Get)
 	r.Patch("/api/v1/freight-requests/{id}", h.Update)
 	r.Delete("/api/v1/freight-requests/{id}", h.Cancel)
@@ -223,7 +235,13 @@ func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/api/v1/freight-requests/{id}/cancel-confirmed", h.CancelAfterConfirmed)
 	r.Post("/api/v1/freight-requests/{id}/reassign-carrier", h.ReassignCarrierMember)
 	// My offers (for current organization)
+	r.Get("/api/v1/offers/incoming", h.ListIncomingOffers) // входящие — сначала, чтобы chi не поглощал как /offers/{id}
 	r.Get("/api/v1/offers", h.ListMyOffers)
+	// Carrier invitations (customer pings a carrier about an active freight request)
+	r.Post("/api/v1/freight-requests/{id}/invite-carrier", h.InviteCarrier)
+	r.Get("/api/v1/freight-requests/{id}/invites", h.ListInvites)
+	// View history (per-member)
+	r.Get("/api/v1/freight-requests/viewed/list", h.ListViewed)
 }
 
 type CreateFreightRequestRequest struct {
@@ -295,182 +313,26 @@ func (h *FreightRequestHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
-	// Преаллокация: ~22 возможных фильтров + pagination
-	opts := make([]projections.FilterOption, 0, 25)
-
-	// Текущая организация пользователя (для авторизации фильтров)
-	currentOrgID, _ := h.session.GetOrganizationID(r)
-
-	// Определяем, запрашивает ли пользователь свои заявки
-	isOwnOrgFilter := false
-
-	// Опциональный фильтр по customer_org_id
-	if orgIDStr := r.URL.Query().Get("customer_org_id"); orgIDStr != "" {
-		orgID, err := uuid.Parse(orgIDStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid customer_org_id")
-			return
-		}
-		opts = append(opts, projections.WithCustomerOrgID(orgID))
-		isOwnOrgFilter = orgID == currentOrgID
-	}
-
-	if memberIDStr := r.URL.Query().Get("member_id"); memberIDStr != "" {
-		memberID, err := uuid.Parse(memberIDStr)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid member_id")
-			return
-		}
-		opts = append(opts, projections.WithCustomerMemberID(memberID))
-	}
-
-	// SEC: Если пользователь не фильтрует по своей организации,
-	// показываем только published заявки (маркетплейс-режим)
-	if !isOwnOrgFilter {
-		opts = append(opts, projections.WithStatuses([]string{"published"}))
-	} else if statuses := r.URL.Query().Get("statuses"); statuses != "" {
-		// Свои заявки — разрешаем фильтр по статусам
-		statusList := splitComma(statuses)
-		if len(statusList) > 0 {
-			opts = append(opts, projections.WithStatuses(statusList))
-		}
-	}
-
-	// Опциональный фильтр по статусам (CSV) — только для своих заявок (обработан выше)
-	// Для чужих заявок статус принудительно "published"
-
-	if orgName := strings.TrimSpace(r.URL.Query().Get("org_name")); orgName != "" {
-		// Limit org_name search to 100 chars to prevent SQL abuse
-		if len(orgName) > 100 {
-			orgName = orgName[:100]
-		}
-		opts = append(opts, projections.WithOrgNameLike(orgName))
-	}
-
-	if orgINN := r.URL.Query().Get("org_inn"); orgINN != "" {
-		opts = append(opts, projections.WithOrgINN(orgINN))
-	}
-
-	if orgCountry := r.URL.Query().Get("org_country"); orgCountry != "" {
-		opts = append(opts, projections.WithOrgCountry(orgCountry))
-	}
-
-	// Request number filter
-	if requestNumber := r.URL.Query().Get("request_number"); requestNumber != "" {
-		if num, err := parseInt64(requestNumber); err == nil && num > 0 {
-			opts = append(opts, projections.WithRequestNumber(num))
-		}
-	}
-
-	// Extended filters for subscription-like filtering
-	if minWeight := r.URL.Query().Get("min_weight"); minWeight != "" {
-		if w, err := parseFloat(minWeight); err == nil {
-			opts = append(opts, projections.WithMinWeight(w))
-		}
-	}
-
-	if maxWeight := r.URL.Query().Get("max_weight"); maxWeight != "" {
-		if w, err := parseFloat(maxWeight); err == nil {
-			opts = append(opts, projections.WithMaxWeight(w))
-		}
-	}
-
-	if minPrice := r.URL.Query().Get("min_price"); minPrice != "" {
-		if p, err := parseInt64(minPrice); err == nil {
-			opts = append(opts, projections.WithMinPrice(p))
-		}
-	}
-
-	if maxPrice := r.URL.Query().Get("max_price"); maxPrice != "" {
-		if p, err := parseInt64(maxPrice); err == nil {
-			opts = append(opts, projections.WithMaxPrice(p))
-		}
-	}
-
-	if vehicleType := r.URL.Query().Get("vehicle_type"); vehicleType != "" {
-		opts = append(opts, projections.WithVehicleType(vehicleType))
-	}
-
-	if vehicleTypes := r.URL.Query().Get("vehicle_types"); vehicleTypes != "" {
-		types := splitComma(vehicleTypes)
-		if len(types) > 0 {
-			opts = append(opts, projections.WithVehicleTypes(types))
-		}
-	}
-
-	if vehicleSubTypes := r.URL.Query().Get("vehicle_subtypes"); vehicleSubTypes != "" {
-		subtypes := splitComma(vehicleSubTypes)
-		if len(subtypes) > 0 {
-			opts = append(opts, projections.WithVehicleSubTypes(subtypes))
-		}
-	}
-
-	if routeCityIDs := r.URL.Query().Get("route_city_ids"); routeCityIDs != "" {
-		ids := splitCommaInt(routeCityIDs)
-		if len(ids) > 0 {
-			opts = append(opts, projections.WithRouteCities(ids))
-		}
-	}
-
-	if routeCountryIDs := r.URL.Query().Get("route_country_ids"); routeCountryIDs != "" {
-		ids := splitCommaInt(routeCountryIDs)
-		if len(ids) > 0 {
-			opts = append(opts, projections.WithRouteCountries(ids))
-		}
-	}
-
-	// Volume filters
-	if minVolume := r.URL.Query().Get("min_volume"); minVolume != "" {
-		if v, err := parseFloat(minVolume); err == nil {
-			opts = append(opts, projections.WithMinVolume(v))
-		}
-	}
-
-	if maxVolume := r.URL.Query().Get("max_volume"); maxVolume != "" {
-		if v, err := parseFloat(maxVolume); err == nil {
-			opts = append(opts, projections.WithMaxVolume(v))
-		}
-	}
-
-	// Payment filters
-	if paymentMethods := r.URL.Query().Get("payment_methods"); paymentMethods != "" {
-		methods := splitComma(paymentMethods)
-		if len(methods) > 0 {
-			opts = append(opts, projections.WithPaymentMethods(methods))
-		}
-	}
-
-	if paymentTerms := r.URL.Query().Get("payment_terms"); paymentTerms != "" {
-		terms := splitComma(paymentTerms)
-		if len(terms) > 0 {
-			opts = append(opts, projections.WithPaymentTerms(terms))
-		}
-	}
-
-	if vatTypes := r.URL.Query().Get("vat_types"); vatTypes != "" {
-		types := splitComma(vatTypes)
-		if len(types) > 0 {
-			opts = append(opts, projections.WithVatTypes(types))
-		}
+	opts, ok := h.decodeFreightRequestFilters(w, r)
+	if !ok {
+		return
 	}
 
 	// Cursor-based pagination
-	cursorStr := r.URL.Query().Get("cursor")
-	if cursorStr != "" {
+	if cursorStr := r.URL.Query().Get("cursor"); cursorStr != "" {
 		cursor, err := httputil.DecodeCursor[projections.FreightRequestCursor](cursorStr)
 		if err != nil {
-			slog.Warn("invalid cursor, starting from beginning",
+			slog.Warn("invalid cursor",
 				slog.String("cursor", cursorStr),
 				slog.String("error", err.Error()))
-			// Невалидный cursor — начинаем сначала
-		} else {
-			opts = append(opts, projections.WithCursor(*cursor))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
 		}
+		opts = append(opts, projections.WithCursor(*cursor))
 	}
 
-	// SEC-016: Валидированная пагинация
+	// SEC-016: Валидированная пагинация. Запрашиваем limit+1 для определения hasMore.
 	pagination := httputil.ParsePagination(r)
-	// Запрашиваем limit+1 для определения hasMore
 	opts = append(opts, projections.WithLimit(pagination.Limit+1))
 
 	items, err := h.projection.List(r.Context(), opts...)
@@ -491,12 +353,12 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	if hasMore && len(items) > 0 {
 		lastItem := items[len(items)-1]
 		cursorData := projections.FreightRequestCursor{
-			IsPublished:   lastItem.Status == "published",
 			RequestNumber: lastItem.RequestNumber,
 		}
 		encoded, err := httputil.EncodeCursor(cursorData)
 		if err != nil {
 			slog.Error("failed to encode cursor", slog.String("error", err.Error()))
+			hasMore = false
 		} else {
 			nextCursor = &encoded
 		}
@@ -511,6 +373,53 @@ func (h *FreightRequestHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+// Count возвращает количество заявок, удовлетворяющих фильтрам.
+// Принимает тот же набор query-параметров, что и List (кроме cursor / limit).
+// Видимость: SEC-invariant WithVisibleToOrg, как и в List.
+func (h *FreightRequestHandler) Count(w http.ResponseWriter, r *http.Request) {
+	opts, ok := h.decodeFreightRequestFilters(w, r)
+	if !ok {
+		return
+	}
+
+	count, err := h.projection.Count(r.Context(), opts...)
+	if err != nil {
+		slog.Error("failed to count freight requests", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to count freight requests")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, FreightRequestCountResponse{Count: count})
+}
+
+// decodeFreightRequestFilters парсит query-параметры запроса в FreightRequestFilters,
+// валидирует, ставит первым шагом SEC-invariant видимости и возвращает options.
+// На любую ошибку пишет 400 в w и возвращает ok=false — вызывающий должен сразу выйти.
+//
+// SEC: WithVisibleToOrg(orgID) применяется БЕЗУСЛОВНО первым, до пользовательских
+// фильтров — см. projections.WithVisibleToOrg. Fail-safe: без org_id в сессии
+// форсим status=published.
+func (h *FreightRequestHandler) decodeFreightRequestFilters(w http.ResponseWriter, r *http.Request) ([]projections.FilterOption, bool) {
+	var filters FreightRequestFilters
+	if err := httputil.DecodeQuery(r, &filters); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return nil, false
+	}
+	if err := filters.ValidateStatuses(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return nil, false
+	}
+
+	opts := make([]projections.FilterOption, 0, 24)
+	currentOrgID, _ := h.session.GetOrganizationID(r)
+	if currentOrgID != uuid.Nil {
+		opts = append(opts, projections.WithVisibleToOrg(currentOrgID))
+	} else {
+		opts = append(opts, projections.WithStatuses([]string{"published"}))
+	}
+	return filters.AppendOptions(opts), true
+}
+
 func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -520,10 +429,13 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	// Получаем текущую организацию пользователя
 	currentOrgID, _ := h.session.GetOrganizationID(r)
+	currentMemberID, _ := h.session.GetMemberID(r)
 
 	fr, err := h.service.Get(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, eventstore.ErrAggregateNotFound) {
+		// Application service wraps eventstore.ErrAggregateNotFound into the
+		// domain-specific ErrFreightRequestNotFound, so check that directly.
+		if errors.Is(err, frDomain.ErrFreightRequestNotFound) || errors.Is(err, eventstore.ErrAggregateNotFound) {
 			writeError(w, http.StatusNotFound, "freight request not found")
 			return
 		}
@@ -595,6 +507,11 @@ func (h *FreightRequestHandler) Get(w http.ResponseWriter, r *http.Request) {
 		} else {
 			resp.RequestNumber = lookup.RequestNumber
 		}
+	}
+
+	// Track view synchronously. Don't count the customer viewing their own request.
+	if currentMemberID != uuid.Nil && !isCustomer {
+		h.trackView(r.Context(), currentMemberID, id)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -855,7 +772,14 @@ func (h *FreightRequestHandler) ListOffers(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, offers)
 }
 
-// ListMyOffers returns all offers made by current organization with freight request data
+// OutgoingOffersResponse — ответ списка исходящих офферов с cursor-based пагинацией.
+type OutgoingOffersResponse struct {
+	Items      []projections.OfferWithFreightData `json:"items"`
+	NextCursor *string                            `json:"next_cursor,omitempty"`
+	HasMore    bool                               `json:"has_more"`
+}
+
+// ListMyOffers returns offers made by current organization with cursor pagination.
 func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := h.session.GetOrganizationID(r)
 	if !ok {
@@ -863,17 +787,61 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	q := r.URL.Query()
 	var opts []projections.OfferFilterOption
 	opts = append(opts, projections.WithCarrierOrgIDAlias(orgID))
 
-	if status := r.URL.Query().Get("status"); status != "" {
+	// Поддерживаем оба формата: legacy "status" и новый "statuses" (comma-separated)
+	if statuses := q.Get("statuses"); statuses != "" {
+		opts = append(opts, projections.WithOfferStatusesAlias(splitCSV(statuses)))
+	} else if status := q.Get("status"); status != "" {
 		opts = append(opts, projections.WithOfferStatusAlias(status))
 	}
 
-	// SEC-016: Валидированная пагинация
-	pagination := httputil.ParsePagination(r)
-	opts = append(opts, projections.WithOfferLimit(pagination.Limit))
-	opts = append(opts, projections.WithOfferOffset(pagination.Offset))
+	if memberIDStr := q.Get("member_id"); memberIDStr != "" {
+		memberID, err := uuid.Parse(memberIDStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid member_id")
+			return
+		}
+		opts = append(opts, projections.WithCarrierMemberIDAlias(memberID))
+	}
+
+	if v := q.Get("min_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithOfferMinPriceAlias(n))
+		}
+	}
+	if v := q.Get("max_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithOfferMaxPriceAlias(n))
+		}
+	}
+	if v := q.Get("payment_methods"); v != "" {
+		opts = append(opts, projections.WithOfferPaymentMethodsAlias(splitCSV(v)))
+	}
+	if v := q.Get("vat_types"); v != "" {
+		opts = append(opts, projections.WithOfferVatTypesAlias(splitCSV(v)))
+	}
+	opts = append(opts, projections.WithOutgoingOfferSort(q.Get("sort_by")))
+
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.OutgoingOfferCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid outgoing offers cursor", slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		opts = append(opts, projections.WithOutgoingOfferCursor(*cursor))
+	}
+
+	limit := 20
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	opts = append(opts, projections.WithOfferLimit(limit+1))
 
 	items, err := h.projection.ListOffersWithFreightData(r.Context(), opts...)
 	if err != nil {
@@ -882,7 +850,155 @@ func (h *FreightRequestHandler) ListMyOffers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	writeJSON(w, http.StatusOK, items)
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.OutgoingOfferCursor{
+			SortBy:      q.Get("sort_by"),
+			CreatedAt:   last.CreatedAt,
+			PriceAmount: last.PriceAmount,
+			ID:          last.ID,
+		})
+		if err != nil {
+			slog.Error("failed to encode outgoing offers cursor", slog.String("error", err.Error()))
+			hasMore = false
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	writeJSON(w, http.StatusOK, OutgoingOffersResponse{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	})
+}
+
+// IncomingOffersResponse — ответ списка входящих офферов с cursor-based пагинацией.
+type IncomingOffersResponse struct {
+	Items      []projections.IncomingOfferListItem `json:"items"`
+	NextCursor *string                             `json:"next_cursor,omitempty"`
+	HasMore    bool                                `json:"has_more"`
+}
+
+// ListIncomingOffers возвращает офферы, поданные на заявки текущей организации как заказчика.
+func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	q := r.URL.Query()
+	var opts []projections.IncomingOfferFilterOption
+
+	if v := q.Get("statuses"); v != "" {
+		parts := splitCSV(v)
+		opts = append(opts, projections.WithIncomingStatuses(parts))
+	}
+	if v := q.Get("carrier_org_name"); v != "" {
+		opts = append(opts, projections.WithIncomingCarrierOrgName(v))
+	}
+	if v := q.Get("member_id"); v != "" {
+		if id, err := uuid.Parse(v); err == nil {
+			opts = append(opts, projections.WithIncomingCarrierMemberID(id))
+		}
+	}
+	if v := q.Get("freight_request_number"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingFreightRequestNumber(n))
+		}
+	}
+	if v := q.Get("min_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingMinPrice(n))
+		}
+	}
+	if v := q.Get("max_price"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			opts = append(opts, projections.WithIncomingMaxPrice(n))
+		}
+	}
+	if v := q.Get("payment_methods"); v != "" {
+		opts = append(opts, projections.WithIncomingPaymentMethods(splitCSV(v)))
+	}
+	if v := q.Get("vat_types"); v != "" {
+		opts = append(opts, projections.WithIncomingVatTypes(splitCSV(v)))
+	}
+	opts = append(opts, projections.WithIncomingSort(q.Get("sort_by")))
+
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		cursor, err := httputil.DecodeCursor[projections.IncomingOfferCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid incoming offers cursor", slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		opts = append(opts, projections.WithIncomingCursor(*cursor))
+	}
+
+	limit := 20
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	opts = append(opts, projections.WithIncomingLimit(limit+1))
+
+	items, err := h.projection.ListIncomingOffers(r.Context(), orgID, opts...)
+	if err != nil {
+		slog.Error("failed to list incoming offers", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list incoming offers")
+		return
+	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.IncomingOfferCursor{
+			SortBy:      q.Get("sort_by"),
+			CreatedAt:   last.CreatedAt,
+			PriceAmount: last.PriceAmount,
+			ID:          last.ID,
+		})
+		if err != nil {
+			slog.Error("failed to encode incoming offers cursor", slog.String("error", err.Error()))
+			hasMore = false
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	writeJSON(w, http.StatusOK, IncomingOffersResponse{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	})
+}
+
+// splitCSV разбивает строку по запятой.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 type WithdrawOfferRequest struct {
@@ -1425,45 +1541,3 @@ func (h *FreightRequestHandler) handleDomainError(w http.ResponseWriter, err err
 	}
 }
 
-// Helper functions for parsing query parameters
-
-func parseFloat(s string) (float64, error) {
-	return strconv.ParseFloat(s, 64)
-}
-
-func parseInt64(s string) (int64, error) {
-	return strconv.ParseInt(s, 10, 64)
-}
-
-func splitComma(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
-}
-
-func splitCommaInt(s string) []int {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	result := make([]int, 0, len(parts))
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed == "" {
-			continue
-		}
-		if n, err := strconv.Atoi(trimmed); err == nil {
-			result = append(result, n)
-		}
-	}
-	return result
-}

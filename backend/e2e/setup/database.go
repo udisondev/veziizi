@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/migrations"
 	"golang.org/x/crypto/bcrypt"
@@ -35,8 +36,9 @@ func runMigrations(cfg *config.Config) error {
 	return nil
 }
 
-// initWatermillSchema creates Watermill tables for all topics.
-// Uses SchemaInitializingQueries() to get DDL and execute directly.
+// initWatermillSchema creates Watermill tables for the Postgres outbox topic.
+// Доменные топики живут в Redis Streams (создаются на лету forwarder'ом),
+// в Postgres остаётся единственный outbox-топик events_to_forward.
 func initWatermillSchema(cfg *config.Config) error {
 	db, err := sql.Open("postgres", cfg.Database.URL)
 	if err != nil {
@@ -46,28 +48,16 @@ func initWatermillSchema(cfg *config.Config) error {
 
 	schema := wmSql.DefaultPostgreSQLSchema{}
 
-	topics := []string{
-		"organization.events",
-		"freightrequest.events",
-		"order.events",
-		"review.events",
-		"notification.events",
-		"notification.send",
-		"support.events",
+	queries, err := schema.SchemaInitializingQueries(wmSql.SchemaInitializingQueriesParams{
+		Topic: messaging.OutboxTopic,
+	})
+	if err != nil {
+		return fmt.Errorf("get schema queries for %s: %w", messaging.OutboxTopic, err)
 	}
 
-	for _, topic := range topics {
-		queries, err := schema.SchemaInitializingQueries(wmSql.SchemaInitializingQueriesParams{
-			Topic: topic,
-		})
-		if err != nil {
-			return fmt.Errorf("get schema queries for %s: %w", topic, err)
-		}
-
-		for _, q := range queries {
-			if _, err := db.Exec(q.Query, q.Args...); err != nil {
-				return fmt.Errorf("execute schema query for %s: %w", topic, err)
-			}
+	for _, q := range queries {
+		if _, err := db.Exec(q.Query, q.Args...); err != nil {
+			return fmt.Errorf("execute schema query for %s: %w", messaging.OutboxTopic, err)
 		}
 	}
 
@@ -145,17 +135,23 @@ func CreateTestAdmin(cfg *config.Config) error {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
+	// telegram_chat_id — фиксированный: support-admin-notifier шлёт уведомления
+	// админам с заполненным chat id (GetAdminsWithTelegram), тесты ассертят
+	// отправки через Suite.TelegramFake.SentTo(TestAdminTelegramChatID).
 	_, err = db.Exec(`
-		INSERT INTO platform_admins (id, email, password_hash, name, is_active)
-		VALUES ($1, $2, $3, $4, true)
+		INSERT INTO platform_admins (id, email, password_hash, name, is_active, telegram_chat_id)
+		VALUES ($1, $2, $3, $4, true, $5)
 		ON CONFLICT (email) DO NOTHING
-	`, uuid.New(), "admin@veziizi.local", string(hash), "Test Admin")
+	`, uuid.New(), "admin@veziizi.local", string(hash), "Test Admin", TestAdminTelegramChatID)
 	if err != nil {
 		return fmt.Errorf("failed to create test admin: %w", err)
 	}
 
 	return nil
 }
+
+// TestAdminTelegramChatID — chat id тестового админа из CreateTestAdmin.
+const TestAdminTelegramChatID int64 = 999000001
 
 // SeedGeoData inserts test geographic data.
 func SeedGeoData(cfg *config.Config) error {

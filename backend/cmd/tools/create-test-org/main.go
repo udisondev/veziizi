@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/google/uuid"
@@ -65,44 +64,46 @@ func main() {
 	orgService := organization.NewService(txManager, evtStore, publisher, invitations, members, organizations)
 	adminService := admin.NewService(txManager, evtStore, publisher, pendingOrgs)
 
-	// Register organization
-	input := organization.RegisterInput{
-		Name:          *orgName,
-		INN:           "1234567890",
-		LegalName:     *orgName + " LLC",
-		Country:       values.CountryRU,
-		Phone:         "+79001234567",
-		Email:         "org@test.local",
-		Address:       values.Address("Moscow, Test St, 1"),
-		OwnerEmail:    *email,
-		OwnerPassword: *password,
-		OwnerName:     *name,
-		OwnerPhone:    "+79001234567",
-	}
+	var orgID, memberID uuid.UUID
+	if err := txManager.InTx(ctx, func(ctx context.Context) error {
+		output, err := orgService.Register(ctx, organization.RegisterInput{
+			Name:          *orgName,
+			INN:           "1234567890",
+			LegalName:     *orgName + " LLC",
+			Country:       values.CountryRU,
+			Phone:         "+79001234567",
+			Email:         "org@test.local",
+			Address:       values.Address("Moscow, Test St, 1"),
+			OwnerEmail:    *email,
+			OwnerPassword: *password,
+			OwnerName:     *name,
+			OwnerPhone:    "+79001234567",
+		})
+		if err != nil {
+			return fmt.Errorf("register: %w", err)
+		}
+		orgID = output.OrganizationID
+		memberID = output.MemberID
 
-	output, err := orgService.Register(ctx, input)
-	if err != nil {
-		log.Fatalf("failed to register organization: %v", err)
+		if *approve {
+			if err := adminService.Approve(ctx, admin.ApproveInput{
+				OrganizationID: orgID,
+				AdminID:        uuid.Nil,
+			}); err != nil {
+				return fmt.Errorf("approve: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		log.Fatalf("failed to create test org (rolled back): %v", err)
 	}
 
 	fmt.Printf("Organization created:\n")
-	fmt.Printf("  ID: %s\n", output.OrganizationID)
+	fmt.Printf("  ID: %s\n", orgID)
 	fmt.Printf("  Name: %s\n", *orgName)
-	fmt.Printf("  Owner ID: %s\n", output.MemberID)
+	fmt.Printf("  Owner ID: %s\n", memberID)
 	fmt.Printf("  Owner Email: %s\n", *email)
-
-	// Auto-approve if requested
 	if *approve {
-		// Small delay to let events propagate
-		time.Sleep(500 * time.Millisecond)
-
-		approveInput := admin.ApproveInput{
-			OrganizationID: output.OrganizationID,
-			AdminID:        uuid.Nil, // system approval for dev
-		}
-		if err := adminService.Approve(ctx, approveInput); err != nil {
-			log.Fatalf("failed to approve organization: %v", err)
-		}
 		fmt.Printf("  Status: ACTIVE (auto-approved)\n")
 	} else {
 		fmt.Printf("  Status: PENDING\n")

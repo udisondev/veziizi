@@ -15,8 +15,10 @@ import {
 const props = withDefaults(defineProps<{
   notification: Notification
   compact?: boolean
+  dark?: boolean
 }>(), {
   compact: false,
+  dark: false,
 })
 
 const emit = defineEmits<{
@@ -39,10 +41,10 @@ const icon = computed(() => {
 const iconBgClass = computed(() => {
   const category = getCategoryByType(props.notification.notification_type)
   const categoryColorMap: Record<string, string> = {
-    freight_requests: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400',
-    offers: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400',
-    reviews: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400',
-    organization: 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-400',
+    freight_requests: 'bg-warning/10 text-warning',
+    offers: 'bg-accent text-accent-foreground',
+    reviews: 'bg-warning/10 text-warning',
+    organization: 'bg-accent text-accent-foreground',
   }
   return categoryColorMap[category] || 'bg-muted text-muted-foreground'
 })
@@ -71,8 +73,10 @@ function formatDate(dateStr: string): string {
   <div
     :class="cn(
       'flex gap-3 cursor-pointer transition-colors',
-      compact ? 'px-4 py-3 hover:bg-muted/50' : 'p-4 hover:bg-muted/30 rounded-lg',
-      !notification.is_read && 'bg-primary/5'
+      compact
+        ? dark ? 'px-4 py-3 hover:bg-slate-700' : 'px-4 py-3 hover:bg-muted/50'
+        : dark ? 'p-4 hover:bg-slate-700 rounded-lg' : 'p-4 hover:bg-muted/30 rounded-lg',
+      !notification.is_read && (dark ? 'bg-slate-700/50' : 'bg-primary/5')
     )"
     @click="emit('click')"
   >
@@ -94,7 +98,7 @@ function formatDate(dateStr: string): string {
           :class="cn(
             'font-medium truncate',
             compact ? 'text-sm' : 'text-base',
-            !notification.is_read && 'text-foreground'
+            dark ? 'text-slate-100' : (!notification.is_read && 'text-foreground')
           )"
         >
           {{ notification.title }}
@@ -108,13 +112,13 @@ function formatDate(dateStr: string): string {
       <p
         v-if="notification.body"
         :class="cn(
-          'text-muted-foreground',
-          compact ? 'text-xs line-clamp-1' : 'text-sm line-clamp-2 mt-0.5'
+          compact ? 'text-xs line-clamp-1' : 'text-sm line-clamp-2 mt-0.5',
+          dark ? 'text-slate-400' : 'text-muted-foreground'
         )"
       >
         {{ notification.body }}
       </p>
-      <p class="text-xs text-muted-foreground mt-1">
+      <p :class="['text-xs mt-1', dark ? 'text-slate-500' : 'text-muted-foreground']">
         {{ formatDate(notification.created_at) }}
       </p>
     </div>

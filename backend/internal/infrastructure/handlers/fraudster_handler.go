@@ -2,14 +2,13 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	reviewApp "github.com/udisondev/veziizi/backend/internal/application/review"
 	orgEvents "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
-	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
+	reviewDomain "github.com/udisondev/veziizi/backend/internal/domain/review"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 )
 
@@ -33,34 +32,7 @@ func NewFraudsterHandler(
 	}
 }
 
-func (h *FraudsterHandler) Handle(msg *message.Message) error {
-	var envelope eventstore.EventEnvelope
-	if err := json.Unmarshal(msg.Payload, &envelope); err != nil {
-		slog.Error("failed to unmarshal event envelope", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event envelope: %w", err)
-	}
-
-	evt, err := envelope.UnmarshalEvent()
-	if err != nil {
-		slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-		return fmt.Errorf("unmarshal event: %w", err)
-	}
-
-	return h.handleEvent(msg.Context(), evt)
-}
-
-func (h *FraudsterHandler) handleEvent(ctx context.Context, evt eventstore.Event) error {
-	switch e := evt.(type) {
-	case orgEvents.FraudsterMarked:
-		return h.onFraudsterMarked(ctx, e)
-	case orgEvents.FraudsterUnmarked:
-		return h.onFraudsterUnmarked(ctx, e)
-	}
-	// Ignore other organization events
-	return nil
-}
-
-func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.FraudsterMarked) error {
+func (h *FraudsterHandler) OnFraudsterMarked(ctx context.Context, e *orgEvents.FraudsterMarked) error {
 	orgID := e.AggregateID()
 	slog.Info("processing FraudsterMarked",
 		slog.String("org_id", orgID.String()),
@@ -93,8 +65,18 @@ func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.Fr
 	reason := fmt.Sprintf("reviewer marked as fraudster: %s", e.Reason)
 	result := h.reviewService.BatchDeactivate(ctx, reviewIDs, reason)
 
-	// Логируем ошибки если есть
+	// Терминальный статус — не failure, а идемпотентный повтор: отзыв уже
+	// деактивирован (повторная at-least-once доставка события либо
+	// конкурентный инстанс успел раньше). Домен защищает от двойного
+	// занижения рейтинга, хендлеру остаётся Ack.
+	var realFailures int
 	for i, failedID := range result.FailedIDs {
+		if errors.Is(result.Errors[i], reviewDomain.ErrReviewTerminalStatus) {
+			slog.Debug("review already deactivated, skipping",
+				slog.String("review_id", failedID.String()))
+			continue
+		}
+		realFailures++
 		slog.Error("failed to deactivate review",
 			slog.String("review_id", failedID.String()),
 			slog.String("error", result.Errors[i].Error()),
@@ -105,18 +87,18 @@ func (h *FraudsterHandler) onFraudsterMarked(ctx context.Context, e orgEvents.Fr
 		slog.String("org_id", orgID.String()),
 		slog.Int("total_found", len(reviewIDs)),
 		slog.Int("deactivated", result.SuccessCount),
-		slog.Int("failed", len(result.FailedIDs)),
+		slog.Int("failed", realFailures),
 	)
 
-	if len(result.FailedIDs) > 0 {
+	if realFailures > 0 {
 		return fmt.Errorf("failed to deactivate %d of %d reviews for fraudster %s",
-			len(result.FailedIDs), len(reviewIDs), orgID)
+			realFailures, len(reviewIDs), orgID)
 	}
 
 	return nil
 }
 
-func (h *FraudsterHandler) onFraudsterUnmarked(ctx context.Context, e orgEvents.FraudsterUnmarked) error {
+func (h *FraudsterHandler) OnFraudsterUnmarked(ctx context.Context, e *orgEvents.FraudsterUnmarked) error {
 	orgID := e.AggregateID()
 	slog.Info("processing FraudsterUnmarked",
 		slog.String("org_id", orgID.String()),

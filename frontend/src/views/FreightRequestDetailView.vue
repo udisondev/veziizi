@@ -12,14 +12,7 @@ import LeafletMap from '@/components/freight-request/shared/LeafletMap.vue'
 import EventHistory from '@/components/EventHistory.vue'
 import FreightRequestOffersTab from '@/components/freight-request/FreightRequestOffersTab.vue'
 import StarRating from '@/components/freight-request/StarRating.vue'
-import type {
-  FreightRequest,
-  Offer,
-  MakeOfferRequest,
-  Currency,
-  VatType,
-  PaymentMethod,
-} from '@/types/freightRequest'
+import type { FreightRequest, Offer, Currency } from '@/types/freightRequest'
 import {
   vehicleTypeLabels,
   vehicleSubTypeLabels,
@@ -28,28 +21,18 @@ import {
   paymentMethodLabels,
   paymentTermsLabels,
   adrClassLabels,
-  currencyOptions,
-  vatTypeOptions,
-  paymentMethodOptions,
 } from '@/types/freightRequest'
 import { freightRequestStatusMap } from '@/constants/statusMaps'
 import { formatDate, formatDateTime, formatMoney } from '@/utils/formatters'
 
 // UI Components
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Tooltip } from '@/components/ui/tooltip'
+import { AppLink } from '@/components/ui/app-link'
+import RoutePoint from '@/components/freight-request/shared/RoutePoint.vue'
+import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -59,16 +42,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
 // Shared Components
-import { DetailPageHeader, StatusBadge, LoadingSpinner, ErrorBanner, TabsDropdown, type TabItem } from '@/components/shared'
+import { DetailPageHeader, StatusBadge, LoadingSpinner, ErrorBanner, type TabItem } from '@/components/shared'
+import BottomSheet from '@/components/shared/BottomSheet.vue'
+import { TabsSlider } from '@/components/ui/tabs'
 
 // Icons
 import {
@@ -103,12 +81,38 @@ const error = ref('')
 const actionLoading = ref(false)
 
 // Tabs
-const currentTab = ref('details')
+const currentTab = ref((route.query.tab as string) || 'details')
+
+watch(() => route.query.tab, (tab) => {
+  if (tab && tab !== currentTab.value) currentTab.value = tab as string
+})
 
 // Отправляем событие для туториала при смене таба
 watch(currentTab, (newTab) => {
-  if (newTab === 'offers') emitTutorial('tab:offers')
+  if (newTab === 'offers') {
+    emitTutorial('tab:offers')
+    markOffersAsSeen()
+  }
   if (newTab === 'details') emitTutorial('tab:details')
+})
+
+// Подсветка таба "Предложения" при наличии новых офферов
+function offersSeenKey() {
+  return `offers_seen_${route.params.id}`
+}
+
+const offerSeenAt = ref<string | null>(localStorage.getItem(offersSeenKey()))
+
+function markOffersAsSeen() {
+  const ts = new Date().toISOString()
+  localStorage.setItem(offersSeenKey(), ts)
+  offerSeenAt.value = ts
+}
+
+const hasNewOffers = computed(() => {
+  if (!isOwner.value || offers.value.length === 0) return false
+  if (!offerSeenAt.value) return true
+  return offers.value.some(o => new Date(o.created_at) > new Date(offerSeenAt.value!))
 })
 
 // History loader
@@ -117,11 +121,10 @@ function loadFreightRequestHistory(limit: number, offset: number) {
   return historyApi.getFreightRequestHistory(id, { limit, offset })
 }
 
-// Check if user can view history
+// История заявки доступна всем сотрудникам организации-заказчика
 const canViewHistory = computed(() => {
   if (!freightRequest.value) return false
-  if (freightRequest.value.customer_org_id !== auth.organizationId) return false
-  return auth.role === 'owner' || auth.role === 'administrator'
+  return freightRequest.value.customer_org_id === auth.organizationId
 })
 
 const tabItems = computed((): TabItem[] => {
@@ -129,7 +132,7 @@ const tabItems = computed((): TabItem[] => {
     { value: 'details', label: 'Детали заявки', icon: FileText },
   ]
   if (visibleOffers.value.length > 0 || isOwner.value) {
-    items.push({ value: 'offers', label: 'Предложения', icon: Users, badge: offers.value.length || undefined })
+    items.push({ value: 'offers', label: 'Предложения', icon: Users, badge: offers.value.length || undefined, highlight: hasNewOffers.value })
   }
   if (canViewHistory.value) {
     items.push({ value: 'history', label: 'История', icon: Clock, separator: true })
@@ -137,9 +140,26 @@ const tabItems = computed((): TabItem[] => {
   return items
 })
 
+// Inner detail tabs
+const currentDetailTab = ref('route')
+const routeExpanded = ref(false)
+
+const detailTabItems = computed((): TabItem[] => {
+  const items: TabItem[] = [
+    { value: 'route', label: 'Маршрут', icon: MapPin },
+    { value: 'cargo', label: 'Груз', icon: Package },
+    { value: 'vehicle', label: 'Транспорт', icon: Truck },
+    { value: 'payment', label: 'Оплата', icon: CreditCard },
+  ]
+  if (freightRequest.value?.comment) {
+    items.push({ value: 'comment', label: 'Комментарий', icon: MessageSquare })
+  }
+  return items
+})
+
 // Modals
-const showMakeOfferModal = ref(false)
 const showCancelModal = ref(false)
+const showActionsSheet = ref(false)
 const cancelReason = ref('')
 
 const showRejectModal = ref(false)
@@ -171,19 +191,7 @@ const showUnselectModal = ref(false)
 const unselectOfferId = ref<string | null>(null)
 const unselectReason = ref('')
 
-// Make offer form
-const offerForm = ref<MakeOfferRequest>({
-  price: { amount: 0, currency: 'RUB' as Currency },
-  comment: '',
-  vat_type: 'included' as VatType,
-  payment_method: 'bank_transfer' as PaymentMethod,
-})
-const acceptRequestTerms = ref(false)
-
 // Computed
-const hasRequestRate = computed(() => {
-  return freightRequest.value?.payment?.price?.amount && freightRequest.value.payment.price.amount > 0
-})
 const isOwner = computed(() => {
   if (!freightRequest.value) return false
   return permissions.isFreightRequestOwner(freightRequest.value.customer_org_id)
@@ -313,33 +321,6 @@ const requestNumber = computed(() => {
   return freightRequest.value.request_number
 })
 
-// Watch для автозаполнения формы при согласии с условиями
-watch(acceptRequestTerms, (accepted) => {
-  if (!freightRequest.value) return
-
-  if (accepted && hasRequestRate.value) {
-    // Заполнить данными из заявки (amount в копейках -> конвертируем в рубли)
-    const payment = freightRequest.value.payment
-    offerForm.value.price.amount = payment.price!.amount / 100
-    offerForm.value.price.currency = payment.price!.currency
-    offerForm.value.vat_type = payment.vat_type
-    offerForm.value.payment_method = payment.method
-  } else {
-    // Сброс к значениям по умолчанию
-    offerForm.value.price.amount = 0
-    offerForm.value.price.currency = 'RUB'
-    offerForm.value.vat_type = 'included'
-    offerForm.value.payment_method = 'bank_transfer'
-  }
-})
-
-// Сброс галочки при закрытии модалки
-watch(showMakeOfferModal, (open) => {
-  if (!open) {
-    acceptRequestTerms.value = false
-  }
-})
-
 // Tutorial: emit event when completion confirm opens
 watch(showCompleteConfirm, (opened) => {
   if (opened) {
@@ -389,44 +370,25 @@ function getPointTypeLabel(point: { is_loading: boolean; is_unloading: boolean }
   return 'Точка'
 }
 
+function getPointBadgeClass(point: { is_loading: boolean; is_unloading: boolean }): string {
+  if (point.is_loading && point.is_unloading) return 'bg-accent border-primary/40 text-accent-foreground'
+  if (point.is_loading) return 'bg-accent border-primary/40 text-accent-foreground'
+  if (point.is_unloading) return 'bg-success/10 border-success/40 text-success'
+  return 'bg-muted border-border text-muted-foreground'
+}
+
 // Actions
 async function handleCancel() {
   if (!freightRequest.value) return
   actionLoading.value = true
   try {
     await freightRequestsApi.cancel(freightRequest.value.id, cancelReason.value || undefined)
-    router.push('/')
+    router.push({ path: '/requests', query: { tab: 'list' } })
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка'
   } finally {
     actionLoading.value = false
     showCancelModal.value = false
-  }
-}
-
-async function handleMakeOffer() {
-  if (!freightRequest.value) return
-  if (!offerForm.value.price.amount) {
-    error.value = 'Укажите цену'
-    return
-  }
-  actionLoading.value = true
-  try {
-    await freightRequestsApi.makeOffer(freightRequest.value.id, {
-      price: {
-        amount: Math.round(offerForm.value.price.amount * 100),
-        currency: offerForm.value.price.currency,
-      },
-      comment: offerForm.value.comment || undefined,
-      vat_type: offerForm.value.vat_type,
-      payment_method: offerForm.value.payment_method,
-    })
-    showMakeOfferModal.value = false
-    await loadData()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Ошибка'
-  } finally {
-    actionLoading.value = false
   }
 }
 
@@ -666,7 +628,7 @@ onUnmounted(() => {
 <template>
   <div class="min-h-screen bg-background">
     <!-- Header -->
-    <DetailPageHeader back-to="/" back-label="К списку заявок">
+    <DetailPageHeader :back-to="{ path: '/requests', query: { tab: 'list' } }" back-label="К списку заявок">
       <template #actions>
         <div class="flex items-center gap-2">
           <!-- Завершение заявки и отзывы -->
@@ -697,36 +659,63 @@ onUnmounted(() => {
             v-if="canMakeOffer && !myActiveOffer"
             data-tutorial="make-offer-btn"
             size="sm"
-            @click="showMakeOfferModal = true"
+            @click="router.push({ name: 'freight-request-make-offer', params: { id: freightRequest!.id } })"
           >
             Сделать предложение
           </Button>
 
-          <DropdownMenu v-if="freightRequest && (canEdit || canCancel)">
-            <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="icon">
-                <MoreVertical class="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                v-if="canEdit"
-                @click="router.push(`/freight-requests/${freightRequest.id}/edit`)"
-              >
-                <Pencil class="mr-2 h-4 w-4" />
-                Редактировать
-              </DropdownMenuItem>
-              <DropdownMenuSeparator v-if="canEdit && canCancel" />
-              <DropdownMenuItem
-                v-if="canCancel"
-                class="text-destructive focus:text-destructive"
-                @click="showCancelModal = true"
-              >
-                <XCircle class="mr-2 h-4 w-4" />
-                Отменить заявку
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <!-- Мобиле: кнопка + BottomSheet -->
+          <div v-if="freightRequest && (canEdit || canCancel)" class="md:hidden">
+            <Button variant="ghost" size="icon" type="button" @click="showActionsSheet = true">
+              <MoreVertical class="h-4 w-4" />
+            </Button>
+            <BottomSheet v-model="showActionsSheet" label="Действия">
+              <div class="flex flex-col">
+                <button
+                  v-if="canEdit"
+                  type="button"
+                  class="w-full px-4 py-3.5 text-left text-base border-b border-border flex items-center gap-3 active:bg-accent"
+                  @click="showActionsSheet = false; router.push(`/freight-requests/${freightRequest.id}/edit`)"
+                >
+                  <Pencil class="h-5 w-5 text-muted-foreground" />
+                  Редактировать
+                </button>
+                <button
+                  v-if="canCancel"
+                  type="button"
+                  class="w-full px-4 py-3.5 text-left text-base flex items-center gap-3 active:bg-destructive/10 text-destructive"
+                  @click="showActionsSheet = false; showCancelModal = true"
+                >
+                  <XCircle class="h-5 w-5" />
+                  Отменить заявку
+                </button>
+              </div>
+            </BottomSheet>
+          </div>
+
+          <!-- Планшет и десктоп: отдельные кнопки -->
+          <template v-if="freightRequest && (canEdit || canCancel)">
+            <Button
+              v-if="canEdit"
+              variant="outline"
+              size="sm"
+              class="hidden md:inline-flex"
+              @click="router.push(`/freight-requests/${freightRequest.id}/edit`)"
+            >
+              <Pencil class="mr-2 h-4 w-4" />
+              Редактировать
+            </Button>
+            <Button
+              v-if="canCancel"
+              variant="outline"
+              size="sm"
+              class="hidden md:inline-flex text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/60 hover:bg-destructive/5"
+              @click="showCancelModal = true"
+            >
+              <XCircle class="mr-2 h-4 w-4" />
+              Отменить заявку
+            </Button>
+          </template>
         </div>
       </template>
     </DetailPageHeader>
@@ -759,7 +748,7 @@ onUnmounted(() => {
         <Tabs v-model="currentTab" class="w-full">
           <!-- Tab selector dropdown -->
           <div v-if="tabItems.length > 1" class="mb-6">
-            <TabsDropdown v-model="currentTab" :items="tabItems" trigger-tutorial-id="tabs-dropdown" />
+            <TabsSlider v-model="currentTab" :items="tabItems" />
           </div>
 
           <!-- Details Tab -->
@@ -776,299 +765,299 @@ onUnmounted(() => {
                         </h1>
                         <StatusBadge :status="freightRequest.status" :status-map="freightRequestStatusMap" />
                       </div>
-                      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-2">
+                      <div class="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2 text-sm">
                         <!-- Заказчик -->
-                        <router-link
+                        <span class="text-muted-foreground whitespace-nowrap">Заказчик</span>
+                        <AppLink
                           :to="`/organizations/${freightRequest.customer_org_id}`"
-                          class="inline-flex items-center gap-1 text-primary hover:underline max-w-[200px] sm:max-w-[280px]"
+                          class="inline-flex items-center gap-1 min-w-0"
                           :title="freightRequest.customer_org_name || 'Организация'"
                         >
                           <Building2 class="h-4 w-4 shrink-0" />
                           <span class="truncate">{{ freightRequest.customer_org_name || 'Организация' }}</span>
-                        </router-link>
+                        </AppLink>
 
                         <!-- Ответственный заказчика -->
-                        <div v-if="freightRequest.customer_member_name" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
-                          <Users class="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <router-link
-                            :to="`/members/${freightRequest.customer_member_id}`"
-                            class="text-primary hover:underline truncate"
-                            :title="freightRequest.customer_member_name"
-                          >
-                            {{ freightRequest.customer_member_name }}
-                          </router-link>
-                          <Button
-                            v-if="canReassign"
-                            variant="ghost"
-                            size="sm"
-                            class="h-auto p-0.5 shrink-0"
-                            @click="goToReassign"
-                          >
-                            <Pencil class="h-3 w-3" />
-                          </Button>
-                        </div>
+                        <template v-if="freightRequest.customer_member_name">
+                          <span class="text-muted-foreground whitespace-nowrap">Ответственный</span>
+                          <div class="inline-flex items-center gap-1 min-w-0">
+                            <AppLink
+                              :to="`/members/${freightRequest.customer_member_id}`"
+                              class="inline-flex items-center gap-1 min-w-0"
+                              :title="freightRequest.customer_member_name"
+                            >
+                              <Users class="h-4 w-4 shrink-0" />
+                              <span class="truncate">{{ freightRequest.customer_member_name }}</span>
+                            </AppLink>
+                            <Tooltip v-if="canReassign" text="Переназначить ответственного" side="top">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-auto p-0.5 shrink-0"
+                                @click="goToReassign"
+                              >
+                                <Pencil class="h-3 w-3" />
+                              </Button>
+                            </Tooltip>
+                          </div>
+                        </template>
 
                         <!-- Дата создания -->
-                        <span class="inline-flex items-center gap-1">
+                        <span class="text-muted-foreground whitespace-nowrap">Создано</span>
+                        <span class="inline-flex items-center gap-1 text-muted-foreground">
                           <Clock class="h-4 w-4 shrink-0" />
                           {{ formatDateTime(freightRequest.created_at) }}
                         </span>
                       </div>
 
                       <!-- Carrier Info (когда confirmed или для перевозчика) -->
-                      <div v-if="showCarrierInfo" data-tutorial="carrier-info" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-3 pt-2 border-t border-border">
+                      <div v-if="showCarrierInfo" data-tutorial="carrier-info" class="mt-3 pt-3 border-t border-border grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2 text-sm">
                         <!-- Организация перевозчика -->
-                        <router-link
-                          v-if="freightRequest.carrier_org_id"
-                          :to="`/organizations/${freightRequest.carrier_org_id}`"
-                          class="inline-flex items-center gap-1 text-primary hover:underline max-w-[200px] sm:max-w-[280px]"
-                          :title="freightRequest.carrier_org_name || 'Организация'"
-                          data-tutorial="carrier-org-link"
-                        >
-                          <Building2 class="h-4 w-4 shrink-0" />
-                          <span class="truncate">{{ freightRequest.carrier_org_name || 'Организация' }}</span>
-                        </router-link>
+                        <template v-if="freightRequest.carrier_org_id">
+                          <span class="text-muted-foreground whitespace-nowrap">Перевозчик</span>
+                          <AppLink
+                            :to="`/organizations/${freightRequest.carrier_org_id}`"
+                            class="inline-flex items-center gap-1 min-w-0"
+                            :title="freightRequest.carrier_org_name || 'Организация'"
+                            data-tutorial="carrier-org-link"
+                          >
+                            <Building2 class="h-4 w-4 shrink-0" />
+                            <span class="truncate">{{ freightRequest.carrier_org_name || 'Организация' }}</span>
+                          </AppLink>
+                        </template>
 
                         <!-- Ответственный перевозчика -->
-                        <div v-if="freightRequest.carrier_member_id && freightRequest.carrier_member_name" class="inline-flex items-center gap-1 max-w-[200px] sm:max-w-[280px]">
-                          <Users class="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <router-link
-                            :to="`/members/${freightRequest.carrier_member_id}`"
-                            class="text-primary hover:underline truncate"
-                            :title="freightRequest.carrier_member_name"
-                            data-tutorial="carrier-member-link"
-                          >
-                            {{ freightRequest.carrier_member_name }}
-                          </router-link>
-                          <Button
-                            v-if="canReassignCarrier"
-                            variant="ghost"
-                            size="sm"
-                            class="h-auto p-0.5 shrink-0"
-                            @click="goToReassignCarrier"
-                          >
-                            <Pencil class="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <!-- Route Section -->
-            <Card>
-              <CardHeader>
-                <CardTitle class="flex items-center gap-2">
-                  <MapPin class="h-5 w-5" />
-                  Маршрут
-                </CardTitle>
-              </CardHeader>
-              <CardContent class="space-y-4">
-                <!-- Map -->
-                <LeafletMap
-                  :points="freightRequest.route.points"
-                  height="300px"
-                />
-
-                <!-- Route Points -->
-                <div class="divide-y">
-                  <div
-                    v-for="(point, index) in freightRequest.route.points"
-                    :key="index"
-                    class="py-4 first:pt-0 last:pb-0"
-                  >
-                    <div class="flex items-start gap-3">
-                      <div
-                        :class="[
-                          'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0',
-                          point.is_loading && point.is_unloading ? 'bg-gradient-to-r from-primary from-50% to-success to-50%' :
-                          point.is_loading ? 'bg-primary' :
-                          point.is_unloading ? 'bg-success' : 'bg-muted-foreground'
-                        ]"
-                      >
-                        {{ index + 1 }}
-                      </div>
-                      <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-1">
-                          <Badge variant="outline">
-                            {{ getPointTypeLabel(point) }}
-                          </Badge>
-                        </div>
-                        <p class="font-medium text-foreground break-words">{{ point.address }}</p>
-                        <p class="text-sm text-muted-foreground mt-1">
-                          {{ formatDate(point.date_from) }}<template v-if="point.date_to"> — {{ formatDate(point.date_to) }}</template>
-                          <template v-if="point.time_from">
-                            <span class="mx-1">·</span>
-                            {{ point.time_from }}<template v-if="point.time_to"> — {{ point.time_to }}</template>
-                          </template>
-                        </p>
-                        <p v-if="point.contact_name" class="text-sm text-muted-foreground">
-                          {{ point.contact_name }}<template v-if="point.contact_phone">, {{ point.contact_phone }}</template>
-                        </p>
-                        <p v-if="point.comment" class="text-sm text-muted-foreground italic mt-1 break-words">{{ point.comment }}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <!-- Cargo Section -->
-            <Card>
-              <CardHeader>
-                <CardTitle class="flex items-center gap-2">
-                  <Package class="h-5 w-5" />
-                  Груз
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <dt class="text-sm text-muted-foreground">Описание</dt>
-                    <dd class="text-foreground break-words">{{ freightRequest.cargo.description }}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-sm text-muted-foreground">Вес</dt>
-                    <dd class="text-foreground">{{ freightRequest.cargo.weight }} кг</dd>
-                  </div>
-                  <div v-if="freightRequest.cargo.volume">
-                    <dt class="text-sm text-muted-foreground">Объём</dt>
-                    <dd class="text-foreground">{{ freightRequest.cargo.volume }} м³</dd>
-                  </div>
-                  <div v-if="freightRequest.cargo.dimensions">
-                    <dt class="text-sm text-muted-foreground">Габариты (ДхШхВ)</dt>
-                    <dd class="text-foreground">
-                      {{ freightRequest.cargo.dimensions.length }} x
-                      {{ freightRequest.cargo.dimensions.width }} x
-                      {{ freightRequest.cargo.dimensions.height }} м
-                    </dd>
-                  </div>
-                  <div v-if="freightRequest.cargo.quantity">
-                    <dt class="text-sm text-muted-foreground">Количество</dt>
-                    <dd class="text-foreground">{{ freightRequest.cargo.quantity }} шт</dd>
-                  </div>
-                  <div v-if="freightRequest.cargo.adr_class && freightRequest.cargo.adr_class !== 'none'">
-                    <dt class="text-sm text-muted-foreground">ADR класс</dt>
-                    <dd class="text-foreground">{{ adrClassLabels[freightRequest.cargo.adr_class] }}</dd>
-                  </div>
-                </dl>
-              </CardContent>
-            </Card>
-
-            <!-- Vehicle Requirements Section -->
-            <Card>
-              <CardHeader>
-                <CardTitle class="flex items-center gap-2">
-                  <Truck class="h-5 w-5" />
-                  Требования к транспорту
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <dt class="text-sm text-muted-foreground">Тип транспорта</dt>
-                    <dd class="text-foreground">{{ vehicleTypeLabels[freightRequest.vehicle_requirements.vehicle_type] }}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-sm text-muted-foreground">Тип кузова</dt>
-                    <dd class="text-foreground">{{ vehicleSubTypeLabels[freightRequest.vehicle_requirements.vehicle_subtype] }}</dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.loading_types?.length">
-                    <dt class="text-sm text-muted-foreground">Типы загрузки</dt>
-                    <dd class="text-foreground">
-                      {{ freightRequest.vehicle_requirements.loading_types.map(t => loadingTypeLabels[t]).join(', ') }}
-                    </dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.capacity">
-                    <dt class="text-sm text-muted-foreground">Грузоподъёмность</dt>
-                    <dd class="text-foreground">{{ freightRequest.vehicle_requirements.capacity }} т</dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.volume">
-                    <dt class="text-sm text-muted-foreground">Объём</dt>
-                    <dd class="text-foreground">{{ freightRequest.vehicle_requirements.volume }} м³</dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.length">
-                    <dt class="text-sm text-muted-foreground">Длина</dt>
-                    <dd class="text-foreground">{{ freightRequest.vehicle_requirements.length }} м</dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.width">
-                    <dt class="text-sm text-muted-foreground">Ширина</dt>
-                    <dd class="text-foreground">{{ freightRequest.vehicle_requirements.width }} м</dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.height">
-                    <dt class="text-sm text-muted-foreground">Высота</dt>
-                    <dd class="text-foreground">{{ freightRequest.vehicle_requirements.height }} м</dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.temperature">
-                    <dt class="text-sm text-muted-foreground">Температурный режим</dt>
-                    <dd class="text-foreground">
-                      от {{ freightRequest.vehicle_requirements.temperature.min }}°C
-                      до {{ freightRequest.vehicle_requirements.temperature.max }}°C
-                    </dd>
-                  </div>
-                  <div v-if="freightRequest.vehicle_requirements.thermograph">
-                    <dt class="text-sm text-muted-foreground">Термописец</dt>
-                    <dd class="text-foreground">Да</dd>
-                  </div>
-                </dl>
-              </CardContent>
-            </Card>
-
-            <!-- Payment Section -->
-            <Card>
-              <CardHeader>
-                <CardTitle class="flex items-center gap-2">
-                  <CreditCard class="h-5 w-5" />
-                  Оплата
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <template v-if="freightRequest.payment.price && freightRequest.payment.price.amount > 0">
-                  <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <dt class="text-sm text-muted-foreground">Цена</dt>
-                      <dd class="text-xl font-semibold text-success">
-                        {{ formatPrice(freightRequest.payment.price.amount, freightRequest.payment.price.currency) }}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt class="text-sm text-muted-foreground">НДС</dt>
-                      <dd class="text-foreground">{{ vatTypeLabels[freightRequest.payment.vat_type] }}</dd>
-                    </div>
-                    <div>
-                      <dt class="text-sm text-muted-foreground">Способ оплаты</dt>
-                      <dd class="text-foreground">{{ paymentMethodLabels[freightRequest.payment.method] }}</dd>
-                    </div>
-                    <div>
-                      <dt class="text-sm text-muted-foreground">Условия оплаты</dt>
-                      <dd class="text-foreground">
-                        {{ paymentTermsLabels[freightRequest.payment.terms] }}
-                        <template v-if="freightRequest.payment.terms === 'deferred' && freightRequest.payment.deferred_days">
-                          ({{ freightRequest.payment.deferred_days }} дней)
+                        <template v-if="freightRequest.carrier_member_id && freightRequest.carrier_member_name">
+                          <span class="text-muted-foreground whitespace-nowrap">Ответственный</span>
+                          <div class="inline-flex items-center gap-1 min-w-0">
+                            <AppLink
+                              :to="`/members/${freightRequest.carrier_member_id}`"
+                              class="inline-flex items-center gap-1 min-w-0"
+                              :title="freightRequest.carrier_member_name"
+                              data-tutorial="carrier-member-link"
+                            >
+                              <Users class="h-4 w-4 shrink-0" />
+                              <span class="truncate">{{ freightRequest.carrier_member_name }}</span>
+                            </AppLink>
+                            <Tooltip v-if="canReassignCarrier" text="Переназначить ответственного" side="top">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-auto p-0.5 shrink-0"
+                                @click="goToReassignCarrier"
+                              >
+                                <Pencil class="h-3 w-3" />
+                              </Button>
+                            </Tooltip>
+                          </div>
                         </template>
-                      </dd>
+                      </div>
                     </div>
-                  </dl>
-                </template>
-                <template v-else>
-                  <p class="text-muted-foreground">Цена не указана — перевозчики предложат свою</p>
-                </template>
+
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            <!-- Comment -->
-            <Card v-if="freightRequest.comment">
-              <CardHeader>
-                <CardTitle class="flex items-center gap-2">
-                  <MessageSquare class="h-5 w-5" />
-                  Комментарий
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p class="text-foreground break-words">{{ freightRequest.comment }}</p>
+            <!-- Inner detail tabs -->
+            <Card>
+              <CardContent class="p-4 sm:p-6">
+                <Tabs v-model="currentDetailTab" class="w-full">
+                  <div class="mb-6">
+                    <TabsSlider v-model="currentDetailTab" :items="detailTabItems" />
+                  </div>
+
+                  <!-- Маршрут -->
+                  <TabsContent value="route" class="space-y-4">
+                    <LeafletMap
+                      :points="freightRequest.route.points"
+                      height="300px"
+                    />
+
+                    <div class="mt-6">
+                      <!-- Первая точка -->
+                      <RoutePoint
+                        :point="freightRequest.route.points[0]!"
+                        :index="0"
+                        :get-badge-class="getPointBadgeClass"
+                        :get-type-label="getPointTypeLabel"
+                        :format-date="formatDate"
+                      />
+
+                      <!-- Промежуточные точки (если > 2 точек) -->
+                      <template v-if="freightRequest.route.points.length > 2">
+                        <!-- Кнопка аккордеона — сама является разделителем -->
+                        <div class="relative flex items-center">
+                          <div class="flex-1 border-t border-border" />
+                          <button
+                            type="button"
+                            class="mx-3 flex items-center gap-2 px-4 py-1.5 rounded-full border border-border bg-background text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors shrink-0"
+                            @click="routeExpanded = !routeExpanded"
+                          >
+                            {{ routeExpanded ? '↑ Скрыть' : `↓ Ещё ${freightRequest.route.points.length - 2}` }}
+                          </button>
+                          <div class="flex-1 border-t border-border" />
+                        </div>
+
+                        <!-- Анимированный аккордеон через grid -->
+                        <div class="accordion-grid" :class="{ 'is-open': routeExpanded }">
+                          <div>
+                            <div
+                              v-for="(point, index) in freightRequest.route.points.slice(1, -1)"
+                              :key="index + 1"
+                            >
+                              <RoutePoint
+                                :point="point"
+                                :index="index + 1"
+                                :get-badge-class="getPointBadgeClass"
+                                :get-type-label="getPointTypeLabel"
+                                :format-date="formatDate"
+                              />
+                              <div class="border-t border-border" />
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+
+                      <!-- Разделитель перед последней точкой (только если <= 2 точек) -->
+                      <div v-if="freightRequest.route.points.length === 2" class="border-t border-border" />
+
+                      <!-- Последняя точка (только если больше одной) -->
+                      <RoutePoint
+                        v-if="freightRequest.route.points.length > 1"
+                        :point="freightRequest.route.points[freightRequest.route.points.length - 1]!"
+                        :index="freightRequest.route.points.length - 1"
+                        :get-badge-class="getPointBadgeClass"
+                        :get-type-label="getPointTypeLabel"
+                        :format-date="formatDate"
+                      />
+                    </div>
+                  </TabsContent>
+
+                  <!-- Груз -->
+                  <TabsContent value="cargo">
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <dt class="text-sm text-muted-foreground">Описание</dt>
+                        <dd class="text-foreground break-words">{{ freightRequest.cargo.description }}</dd>
+                      </div>
+                      <div>
+                        <dt class="text-sm text-muted-foreground">Вес</dt>
+                        <dd class="text-foreground">{{ freightRequest.cargo.weight }} кг</dd>
+                      </div>
+                      <div v-if="freightRequest.cargo.volume">
+                        <dt class="text-sm text-muted-foreground">Объём</dt>
+                        <dd class="text-foreground">{{ freightRequest.cargo.volume }} м³</dd>
+                      </div>
+                      <div v-if="freightRequest.cargo.dimensions">
+                        <dt class="text-sm text-muted-foreground">Габариты (ДхШхВ)</dt>
+                        <dd class="text-foreground">
+                          {{ freightRequest.cargo.dimensions.length }} x
+                          {{ freightRequest.cargo.dimensions.width }} x
+                          {{ freightRequest.cargo.dimensions.height }} м
+                        </dd>
+                      </div>
+                      <div v-if="freightRequest.cargo.quantity">
+                        <dt class="text-sm text-muted-foreground">Количество</dt>
+                        <dd class="text-foreground">{{ freightRequest.cargo.quantity }} шт</dd>
+                      </div>
+                      <div v-if="freightRequest.cargo.adr_class && freightRequest.cargo.adr_class !== 'none'">
+                        <dt class="text-sm text-muted-foreground">ADR класс</dt>
+                        <dd class="text-foreground">{{ adrClassLabels[freightRequest.cargo.adr_class] }}</dd>
+                      </div>
+                    </dl>
+                  </TabsContent>
+
+                  <!-- Требования к транспорту -->
+                  <TabsContent value="vehicle">
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <dt class="text-sm text-muted-foreground">Тип транспорта</dt>
+                        <dd class="text-foreground">{{ vehicleTypeLabels[freightRequest.vehicle_requirements.vehicle_type] }}</dd>
+                      </div>
+                      <div>
+                        <dt class="text-sm text-muted-foreground">Тип кузова</dt>
+                        <dd class="text-foreground">{{ vehicleSubTypeLabels[freightRequest.vehicle_requirements.vehicle_subtype] }}</dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.loading_types?.length">
+                        <dt class="text-sm text-muted-foreground">Типы загрузки</dt>
+                        <dd class="text-foreground">
+                          {{ freightRequest.vehicle_requirements.loading_types.map(t => loadingTypeLabels[t]).join(', ') }}
+                        </dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.capacity">
+                        <dt class="text-sm text-muted-foreground">Грузоподъёмность</dt>
+                        <dd class="text-foreground">{{ freightRequest.vehicle_requirements.capacity }} т</dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.volume">
+                        <dt class="text-sm text-muted-foreground">Объём</dt>
+                        <dd class="text-foreground">{{ freightRequest.vehicle_requirements.volume }} м³</dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.length">
+                        <dt class="text-sm text-muted-foreground">Длина</dt>
+                        <dd class="text-foreground">{{ freightRequest.vehicle_requirements.length }} м</dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.width">
+                        <dt class="text-sm text-muted-foreground">Ширина</dt>
+                        <dd class="text-foreground">{{ freightRequest.vehicle_requirements.width }} м</dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.height">
+                        <dt class="text-sm text-muted-foreground">Высота</dt>
+                        <dd class="text-foreground">{{ freightRequest.vehicle_requirements.height }} м</dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.temperature">
+                        <dt class="text-sm text-muted-foreground">Температурный режим</dt>
+                        <dd class="text-foreground">
+                          от {{ freightRequest.vehicle_requirements.temperature.min }}°C
+                          до {{ freightRequest.vehicle_requirements.temperature.max }}°C
+                        </dd>
+                      </div>
+                      <div v-if="freightRequest.vehicle_requirements.thermograph">
+                        <dt class="text-sm text-muted-foreground">Термописец</dt>
+                        <dd class="text-foreground">Да</dd>
+                      </div>
+                    </dl>
+                  </TabsContent>
+
+                  <!-- Оплата -->
+                  <TabsContent value="payment">
+                    <template v-if="freightRequest.payment.price && freightRequest.payment.price.amount > 0">
+                      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <dt class="text-sm text-muted-foreground">Цена</dt>
+                          <dd class="text-xl font-semibold text-success">
+                            {{ formatPrice(freightRequest.payment.price.amount, freightRequest.payment.price.currency) }}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt class="text-sm text-muted-foreground">НДС</dt>
+                          <dd class="text-foreground">{{ vatTypeLabels[freightRequest.payment.vat_type] }}</dd>
+                        </div>
+                        <div>
+                          <dt class="text-sm text-muted-foreground">Способ оплаты</dt>
+                          <dd class="text-foreground">{{ paymentMethodLabels[freightRequest.payment.method] }}</dd>
+                        </div>
+                        <div>
+                          <dt class="text-sm text-muted-foreground">Условия оплаты</dt>
+                          <dd class="text-foreground">
+                            {{ paymentTermsLabels[freightRequest.payment.terms] }}
+                            <template v-if="freightRequest.payment.terms === 'deferred' && freightRequest.payment.deferred_days">
+                              ({{ freightRequest.payment.deferred_days }} дней)
+                            </template>
+                          </dd>
+                        </div>
+                      </dl>
+                    </template>
+                    <template v-else>
+                      <p class="text-muted-foreground">Цена не указана — перевозчики предложат свою</p>
+                    </template>
+                  </TabsContent>
+
+                  <!-- Комментарий -->
+                  <TabsContent v-if="freightRequest.comment" value="comment">
+                    <p class="text-foreground break-words">{{ freightRequest.comment }}</p>
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1090,121 +1079,11 @@ onUnmounted(() => {
 
           <!-- History Tab -->
           <TabsContent value="history">
-            <Card>
-              <CardHeader>
-                <CardTitle>История изменений</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <EventHistory :load-fn="loadFreightRequestHistory" />
-              </CardContent>
-            </Card>
+            <EventHistory :load-fn="loadFreightRequestHistory" />
           </TabsContent>
         </Tabs>
       </div>
     </main>
-
-    <!-- Make Offer Dialog -->
-    <Dialog v-model:open="showMakeOfferModal">
-      <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Сделать предложение</DialogTitle>
-          <DialogDescription>
-            Укажите условия вашего предложения
-          </DialogDescription>
-        </DialogHeader>
-
-        <div class="space-y-4">
-          <!-- Чекбокс "Согласен с условиями" - показывается только если есть ставка -->
-          <div v-if="hasRequestRate" class="flex items-center space-x-2">
-            <Checkbox
-              id="accept-terms"
-              :checked="acceptRequestTerms"
-              @update:checked="acceptRequestTerms = $event"
-            />
-            <label
-              for="accept-terms"
-              class="text-sm font-medium leading-none cursor-pointer"
-            >
-              Согласен с условиями заказчика
-            </label>
-          </div>
-
-          <div class="space-y-2">
-            <Label>Цена *</Label>
-            <div class="flex gap-2">
-              <Input
-                v-model.number="offerForm.price.amount"
-                type="number"
-                min="0"
-                step="100"
-                placeholder="0"
-                class="flex-1"
-                :disabled="acceptRequestTerms"
-              />
-              <Select v-model="offerForm.price.currency" :disabled="acceptRequestTerms">
-                <SelectTrigger class="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div class="space-y-2">
-            <Label>НДС</Label>
-            <Select v-model="offerForm.vat_type" :disabled="acceptRequestTerms">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="opt in vatTypeOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-2">
-            <Label>Способ оплаты</Label>
-            <Select v-model="offerForm.payment_method" :disabled="acceptRequestTerms">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="opt in paymentMethodOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="space-y-2">
-            <Label>Комментарий</Label>
-            <Textarea
-              v-model="offerForm.comment"
-              rows="2"
-              placeholder="Дополнительная информация..."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" @click="showMakeOfferModal = false">
-            Отмена
-          </Button>
-          <Button
-            :disabled="!offerForm.price.amount || actionLoading"
-            @click="handleMakeOffer"
-          >
-            {{ actionLoading ? 'Отправка...' : 'Отправить' }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
 
     <!-- Cancel Dialog -->
     <Dialog v-model:open="showCancelModal">
@@ -1312,9 +1191,9 @@ onUnmounted(() => {
     <!-- Select Offer Dialog -->
     <Dialog v-model:open="showSelectModal">
       <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Выбрать предложение?</DialogTitle>
-          <DialogDescription>
+        <DialogHeader class="space-y-3">
+          <DialogTitle class="text-xl">Выбрать предложение?</DialogTitle>
+          <DialogDescription class="text-base">
             После выбора перевозчик получит уведомление и должен будет подтвердить своё участие.
             Если перевозчик подтвердит, все остальные предложения будут автоматически отклонены.
           </DialogDescription>

@@ -4,7 +4,8 @@
  * Подсказка с инструкцией для текущего шага
  */
 
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { useWindowSize, useEventListener } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { storeToRefs } from 'pinia'
@@ -22,6 +23,8 @@ const tooltipRef = ref<HTMLDivElement | null>(null)
 const position = ref({ top: 0, left: 0 })
 const placement = ref<'top' | 'bottom' | 'left' | 'right'>('bottom')
 
+const { width: winWidth, height: winHeight } = useWindowSize()
+
 // Прокручиваем к элементу если он не виден
 // НЕ прокручиваем если scrollPaused (идёт scroll к ошибке валидации)
 async function scrollToTargetIfNeeded(target: Element): Promise<void> {
@@ -34,7 +37,7 @@ async function scrollToTargetIfNeeded(target: Element): Promise<void> {
   if (isInsideFixedContainer) return
 
   const rect = target.getBoundingClientRect()
-  const viewportHeight = window.innerHeight
+  const viewportHeight = winHeight.value
 
   // Для больших элементов (больше половины viewport) не скроллим
   // Пользователь сам прокрутит к нужной части
@@ -63,8 +66,8 @@ async function updatePosition() {
   if (!targetSelector) {
     const tooltipRect = tooltip.getBoundingClientRect()
     position.value = {
-      top: Math.max(100, (window.innerHeight - tooltipRect.height) / 2),
-      left: Math.max(20, (window.innerWidth - tooltipRect.width) / 2),
+      top: Math.max(100, (winHeight.value - tooltipRect.height) / 2),
+      left: Math.max(20, (winWidth.value - tooltipRect.width) / 2),
     }
     placement.value = 'bottom' // скрываем стрелку через стили
     return
@@ -76,8 +79,8 @@ async function updatePosition() {
     // Центрируем tooltip временно, retry вызовется автоматически через 600ms
     const tooltipRect = tooltip.getBoundingClientRect()
     position.value = {
-      top: Math.max(100, (window.innerHeight - tooltipRect.height) / 2),
-      left: Math.max(20, (window.innerWidth - tooltipRect.width) / 2),
+      top: Math.max(100, (winHeight.value - tooltipRect.height) / 2),
+      left: Math.max(20, (winWidth.value - tooltipRect.width) / 2),
     }
     return
   }
@@ -97,7 +100,7 @@ async function updatePosition() {
 
   // Максимальная ширина tooltip (sm = 384px или 100vw - 24px на мобильных)
   // Используем maxTooltipWidth для расчёта позиции, т.к. CSS maxWidth гарантирует эту ширину
-  const maxTooltipWidth = Math.min(384, window.innerWidth - padding * 2)
+  const maxTooltipWidth = Math.min(384, winWidth.value - padding * 2)
   const effectiveTooltipWidth = maxTooltipWidth
 
   // Выбираем rect для позиционирования:
@@ -109,9 +112,9 @@ async function updatePosition() {
 
   // Определяем лучшую позицию
   let spaceTop = rect.top
-  let spaceBottom = window.innerHeight - rect.bottom
+  let spaceBottom = winHeight.value - rect.bottom
   const spaceLeft = rect.left
-  const spaceRight = window.innerWidth - rect.right
+  const spaceRight = winWidth.value - rect.right
 
   let preferredPlacement = currentStep.value?.tooltipPosition || 'bottom'
 
@@ -131,7 +134,7 @@ async function updatePosition() {
     // Если popup вверху — уменьшаем spaceTop
     if (analysis.primaryDirection === 'down') {
       // Popup занимает место снизу от target
-      spaceBottom = Math.max(0, window.innerHeight - analysis.combinedRect.bottom)
+      spaceBottom = Math.max(0, winHeight.value - analysis.combinedRect.bottom)
     } else if (analysis.primaryDirection === 'up') {
       // Popup занимает место сверху от target
       spaceTop = Math.max(0, analysis.combinedRect.top)
@@ -197,14 +200,14 @@ async function updatePosition() {
   }
 
   // Ограничиваем границами экрана с учётом отступа
-  const maxLeft = window.innerWidth - effectiveTooltipWidth - padding
+  const maxLeft = winWidth.value - effectiveTooltipWidth - padding
   // Если экран уже чем tooltip + отступы, прижимаем к левому краю
   if (maxLeft < padding) {
     left = padding
   } else {
     left = Math.max(padding, Math.min(left, maxLeft))
   }
-  top = Math.max(padding, Math.min(top, window.innerHeight - tooltipRect.height - bottomPadding))
+  top = Math.max(padding, Math.min(top, winHeight.value - tooltipRect.height - bottomPadding))
 
   // Дополнительная проверка: если tooltip перекрывает целевой элемент, сдвигаем
   const tooltipBottom = top + tooltipRect.height
@@ -219,7 +222,7 @@ async function updatePosition() {
   }
 
   // Финальное ограничение top после всех корректировок
-  const maxTop = window.innerHeight - tooltipRect.height - padding
+  const maxTop = winHeight.value - tooltipRect.height - padding
   if (top > maxTop) {
     top = Math.max(padding, maxTop)
   }
@@ -277,17 +280,10 @@ function cleanupPopupObserver() {
 const throttledUpdatePosition = throttle(updatePosition, SCROLL_THROTTLE_DELAY)
 
 // Обновляем позицию при скролле и ресайзе
-onMounted(() => {
-  window.addEventListener('scroll', throttledUpdatePosition, true)
-  window.addEventListener('resize', updatePosition)
-  setupPopupObserver()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('scroll', throttledUpdatePosition, true)
-  window.removeEventListener('resize', updatePosition)
-  cleanupPopupObserver()
-})
+useEventListener('scroll', throttledUpdatePosition, { capture: true })
+useEventListener('resize', updatePosition)
+setupPopupObserver()
+onUnmounted(cleanupPopupObserver)
 
 function handleContinue() {
   onboarding.nextStep()

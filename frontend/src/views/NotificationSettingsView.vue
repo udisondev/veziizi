@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 
 // Shared Components
-import { PageHeader, LoadingSpinner, BackLink } from '@/components/shared'
+import { PageHeader, LoadingSpinner, DetailPageHeader } from '@/components/shared'
 
 // Icons
 import { Bell, MessageCircle, Mail, Check, X, AlertCircle, Copy, ExternalLink, RefreshCw } from 'lucide-vue-next'
@@ -38,7 +38,11 @@ const authStore = useAuthStore()
 
 const isGeneratingCode = ref(false)
 const isDisconnecting = ref(false)
-const isSaving = ref(false)
+const savingKeys = ref(new Set<string>())
+
+function isSaving(category: string, channel: string): boolean {
+  return savingKeys.value.has(`${category}:${channel}`)
+}
 const linkCode = ref<TelegramLinkCodeResponse | null>(null)
 const countdown = ref(0)
 let countdownInterval: ReturnType<typeof setInterval> | null = null
@@ -63,12 +67,10 @@ async function toggleSetting(
   channel: 'in_app' | 'telegram' | 'email',
   value: boolean
 ) {
-  isSaving.value = true
+  const key = `${category}:${channel}`
+  savingKeys.value = new Set(savingKeys.value).add(key)
   try {
     await notificationsStore.updateCategorySetting(category, channel, value)
-    toast({
-      title: 'Настройки сохранены',
-    })
   } catch {
     toast({
       title: 'Ошибка',
@@ -76,7 +78,9 @@ async function toggleSetting(
       variant: 'destructive',
     })
   } finally {
-    isSaving.value = false
+    const next = new Set(savingKeys.value)
+    next.delete(key)
+    savingKeys.value = next
   }
 }
 
@@ -261,9 +265,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-    <BackLink to="/notifications" label="К уведомлениям" class="mb-4" />
+  <div>
+    <DetailPageHeader back-to="/notifications" back-label="К уведомлениям" />
 
+  <div class="max-w-5xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
     <PageHeader title="Настройки уведомлений" class="mb-6" />
 
     <LoadingSpinner v-if="isLoading" text="Загрузка настроек..." />
@@ -273,8 +278,8 @@ onUnmounted(() => {
       <Card class="mb-6">
         <CardHeader>
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
-              <MessageCircle class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
+              <MessageCircle class="h-5 w-5 text-accent-foreground" />
             </div>
             <div>
               <CardTitle class="text-lg">Telegram</CardTitle>
@@ -289,7 +294,7 @@ onUnmounted(() => {
           <div v-if="isTelegramConnected" class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div class="flex items-center gap-2 flex-wrap">
-                <Check class="h-5 w-5 text-green-500 shrink-0" />
+                <Check class="h-5 w-5 text-success shrink-0" />
                 <span class="font-medium">Подключён</span>
                 <Badge v-if="preferences.telegram.username" variant="secondary">
                   @{{ preferences.telegram.username }}
@@ -366,8 +371,8 @@ onUnmounted(() => {
       <Card class="mb-6">
         <CardHeader>
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
-              <Mail class="h-5 w-5 text-green-600 dark:text-green-400" />
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <Mail class="h-5 w-5 text-success" />
             </div>
             <div>
               <CardTitle class="text-lg">Email</CardTitle>
@@ -382,7 +387,7 @@ onUnmounted(() => {
           <div v-if="isEmailConnected && isEmailVerified" class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div class="flex items-center gap-2 flex-wrap">
-                <Check class="h-5 w-5 text-green-500 shrink-0" />
+                <Check class="h-5 w-5 text-success shrink-0" />
                 <span class="font-medium">Подключён</span>
                 <Badge v-if="preferences?.email.email" variant="secondary">
                   {{ preferences.email.email }}
@@ -423,7 +428,7 @@ onUnmounted(() => {
           <!-- Подключён, но не верифицирован -->
           <div v-else-if="isEmailConnected && !isEmailVerified" class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div class="flex items-center gap-2 flex-wrap text-yellow-600 dark:text-yellow-400">
+              <div class="flex items-center gap-2 flex-wrap text-warning">
                 <AlertCircle class="h-5 w-5 shrink-0" />
                 <span class="font-medium">Ожидает подтверждения</span>
                 <Badge v-if="preferences?.email.email" variant="secondary">
@@ -545,7 +550,7 @@ onUnmounted(() => {
               <label class="flex items-center gap-2 cursor-pointer">
                 <Switch
                   :checked="preferences.enabled_categories[category].in_app"
-                  :disabled="isSaving"
+                  :disabled="isSaving(category, 'in_app')"
                   @update:checked="(v: boolean) => toggleSetting(category, 'in_app', v)"
                 />
                 <span class="text-sm">В приложении</span>
@@ -555,7 +560,7 @@ onUnmounted(() => {
               <label v-if="isTelegramConnected" class="flex items-center gap-2 cursor-pointer">
                 <Switch
                   :checked="preferences.enabled_categories[category].telegram"
-                  :disabled="isSaving"
+                  :disabled="isSaving(category, 'telegram')"
                   @update:checked="(v: boolean) => toggleSetting(category, 'telegram', v)"
                 />
                 <span class="text-sm">Telegram</span>
@@ -565,7 +570,7 @@ onUnmounted(() => {
               <label v-if="isEmailConnected && isEmailVerified" class="flex items-center gap-2 cursor-pointer">
                 <Switch
                   :checked="preferences.enabled_categories[category].email"
-                  :disabled="isSaving"
+                  :disabled="isSaving(category, 'email')"
                   @update:checked="(v: boolean) => toggleSetting(category, 'email', v)"
                 />
                 <span class="text-sm">Email</span>
@@ -577,5 +582,6 @@ onUnmounted(() => {
         </CardContent>
       </Card>
     </template>
+  </div>
   </div>
 </template>

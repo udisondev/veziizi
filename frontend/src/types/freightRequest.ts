@@ -157,6 +157,12 @@ export interface VehicleRequirements {
   thermograph?: boolean // устройство фиксации температуры в пути
 }
 
+// Тип для состояния формы: vehicle_type и vehicle_subtype опциональны до выбора
+export type VehicleRequirementsForm = Omit<VehicleRequirements, 'vehicle_type' | 'vehicle_subtype'> & {
+  vehicle_type?: VehicleType
+  vehicle_subtype?: VehicleSubType
+}
+
 export interface Money {
   amount: number // в копейках/центах
   currency: Currency
@@ -248,7 +254,7 @@ export interface FreightRequestListItem {
 }
 
 // Filter types
-export type OwnershipFilter = 'all' | 'my_org' | 'my'
+export type OwnershipFilter = 'all' | 'my_org' | 'my' | 'my_as_carrier'
 
 export type Country = 'RU' | 'KZ' | 'BY'
 

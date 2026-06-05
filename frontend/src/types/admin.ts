@@ -61,6 +61,31 @@ export interface OrganizationStats {
   successful_offers: number
 }
 
+export interface DashboardStats {
+  as_customer_published: number
+  as_customer_selected: number
+  as_customer_confirmed: number
+  as_carrier_confirmed: number
+  as_carrier_partially_completed: number
+  pending_offers_count: number
+  pending_offers_today: number
+  market_published_today: number
+}
+
+export interface PendingOfferItem {
+  id: string
+  freight_request_id: string
+  request_number: number
+  carrier_org_id: string
+  carrier_org_name: string
+  origin_address: string
+  destination_address: string
+  price_amount?: number | null
+  price_currency?: string | null
+  created_at: string
+  offers_count: number
+}
+
 export interface OrganizationReview {
   id: string
   order_id: string

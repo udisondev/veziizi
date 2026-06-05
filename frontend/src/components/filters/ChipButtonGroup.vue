@@ -40,25 +40,32 @@ function isSelected(value: T): boolean {
 
 <template>
   <div>
-    <Label v-if="label" class="text-sm font-medium mb-2 block">{{ label }}</Label>
-    <div class="flex flex-wrap gap-2">
+    <Label v-if="label">{{ label }}</Label>
+    <div class="flex flex-col gap-0.5 mt-2">
       <button
         v-for="option in options"
         :key="option.value"
         type="button"
         :class="[
-          'px-3 py-1.5 rounded-md text-sm font-medium border transition-colors',
+          'px-0 py-1 text-sm font-medium text-left transition-colors w-full',
           isSelected(option.value)
-            ? 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900 dark:border-blue-400 dark:text-blue-200'
-            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300',
+            ? 'text-foreground'
+            : 'text-muted-foreground hover:text-foreground',
         ]"
         @click="toggle(option.value)"
       >
-        {{ option.label }}
+        <span class="flex items-center gap-2">
+          <span
+            class="flex-shrink-0 w-4 h-4 rounded border transition-colors flex items-center justify-center"
+            :class="isSelected(option.value) ? 'bg-primary border-primary' : 'border-input bg-background'"
+          >
+            <svg v-if="isSelected(option.value)" viewBox="0 0 10 8" class="w-2.5 h-2 text-primary-foreground" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1,4 3.5,6.5 9,1" />
+            </svg>
+          </span>
+          {{ option.label }}
+        </span>
       </button>
     </div>
-    <p v-if="!modelValue.length && emptyText" class="text-xs text-muted-foreground mt-1">
-      {{ emptyText }}
-    </p>
   </div>
 </template>

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	adminApp "github.com/udisondev/veziizi/backend/internal/application/admin"
 	frApp "github.com/udisondev/veziizi/backend/internal/application/freightrequest"
 	historyApp "github.com/udisondev/veziizi/backend/internal/application/history"
@@ -42,6 +43,10 @@ type Factory struct {
 	poolOnce sync.Once
 	poolErr  error
 
+	redisClient redis.UniversalClient
+	redisOnce   sync.Once
+	redisErr    error
+
 	txManager dbtx.TxManager
 	txOnce    sync.Once
 
@@ -51,6 +56,10 @@ type Factory struct {
 	publisher     *messaging.EventPublisher
 	publisherOnce sync.Once
 	publisherErr  error
+
+	notifBus     *messaging.NotificationBus
+	notifBusOnce sync.Once
+	notifBusErr  error
 
 	fileStorage     filestorage.FileStorage
 	fileStorageOnce sync.Once
@@ -123,6 +132,12 @@ type Factory struct {
 	deliveryLogProjection *projections.NotificationDeliveryLogProjection
 	deliveryLogOnce       sync.Once
 
+	notificationDedupProjection *projections.NotificationDedupProjection
+	notificationDedupOnce       sync.Once
+
+	projectionEventDedup     *projections.ProjectionEventDedupProjection
+	projectionEventDedupOnce sync.Once
+
 	telegramLinkProjection *projections.TelegramLinkProjection
 	telegramLinkOnce       sync.Once
 
@@ -145,6 +160,21 @@ type Factory struct {
 	// Проекция токенов верификации email
 	emailVerificationProjection *projections.EmailVerificationProjection
 	emailVerificationOnce       sync.Once
+
+	// Проекции автопарка
+	vehiclesProjection *projections.VehiclesProjection
+	vehiclesProjOnce   sync.Once
+
+	pendingVehiclesProjection *projections.PendingVehiclesProjection
+	pendingVehiclesProjOnce   sync.Once
+
+	// Лог приглашений перевозчиков на заявку (CarrierInvited)
+	freightInvitesProjection *projections.FreightInvitesProjection
+	freightInvitesProjOnce   sync.Once
+
+	// История просмотров заявок (per-member)
+	freightRequestViewsProjection *projections.FreightRequestViewsProjection
+	freightRequestViewsProjOnce   sync.Once
 
 	// Analyzers (lazy)
 	reviewAnalyzer *reviewApp.Analyzer
@@ -188,6 +218,14 @@ func (f *Factory) Close() error {
 	if f.publisher != nil {
 		if err := f.publisher.Close(); err != nil {
 			slog.Error("failed to close publisher", slog.String("error", err.Error()))
+			errs = append(errs, err)
+		}
+	}
+
+	// Close redis client if created
+	if f.redisClient != nil {
+		if err := f.redisClient.Close(); err != nil {
+			slog.Error("failed to close redis client", slog.String("error", err.Error()))
 			errs = append(errs, err)
 		}
 	}
@@ -241,6 +279,41 @@ func (f *Factory) MustPool() *pgxpool.Pool {
 	return pool
 }
 
+// RedisClient возвращает go-redis клиент (lazily created). Используется
+// воркерами для подписки на Redis-стримы и forwarder'ом для публикации.
+func (f *Factory) RedisClient() (redis.UniversalClient, error) {
+	f.redisOnce.Do(func() {
+		client, err := messaging.NewRedisClient(f.cfg.Redis)
+		if err != nil {
+			f.redisErr = fmt.Errorf("create redis client: %w", err)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := client.Ping(ctx).Err(); err != nil {
+			if cerr := client.Close(); cerr != nil {
+				slog.Error("failed to close redis client", slog.String("error", cerr.Error()))
+			}
+			f.redisErr = fmt.Errorf("ping redis: %w", err)
+			return
+		}
+
+		f.redisClient = client
+		slog.Info("connected to redis")
+	})
+	return f.redisClient, f.redisErr
+}
+
+// MustRedisClient returns RedisClient or panics on error
+func (f *Factory) MustRedisClient() redis.UniversalClient {
+	client, err := f.RedisClient()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get redis client: %v", err))
+	}
+	return client
+}
+
 // DB returns the transaction manager (lazily created)
 func (f *Factory) DB() dbtx.TxManager {
 	f.txOnce.Do(func() {
@@ -278,6 +351,32 @@ func (f *Factory) MustPublisher() *messaging.EventPublisher {
 		panic(fmt.Sprintf("failed to get publisher: %v", err))
 	}
 	return pub
+}
+
+// NotificationBus возвращает CQRS-шину для команд на отправку уведомлений
+// (Telegram/Email). Команды идут через Postgres outbox (forwarder-publisher):
+// при публикации внутри tx (dedupGuard в dispatcher'е) команда коммитится
+// атомарно с обработкой события, дальше forwarder доставляет её в Redis-стрим
+// notification.telegram / notification.email.
+func (f *Factory) NotificationBus() (*messaging.NotificationBus, error) {
+	f.notifBusOnce.Do(func() {
+		wmLogger := watermill.NewSlogLogger(slog.Default())
+		bus, err := messaging.NewNotificationBus(f.MustPublisher().ForwarderPublisher(), wmLogger)
+		if err != nil {
+			f.notifBusErr = fmt.Errorf("create notification bus: %w", err)
+			return
+		}
+		f.notifBus = bus
+	})
+	return f.notifBus, f.notifBusErr
+}
+
+func (f *Factory) MustNotificationBus() *messaging.NotificationBus {
+	bus, err := f.NotificationBus()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get notification bus: %v", err))
+	}
+	return bus
 }
 
 // FileStorage returns file storage (lazily created)
@@ -331,7 +430,7 @@ func (f *Factory) AdminService() *adminApp.Service {
 func (f *Factory) FreightRequestService() *frApp.Service {
 	f.frOnce.Do(func() {
 		memberChecker := adapters.NewMemberCheckerAdapter(f.OrganizationService())
-		f.frService = frApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.SequenceGenerator(), memberChecker)
+		f.frService = frApp.NewService(f.DB(), f.EventStore(), f.MustPublisher(), f.SequenceGenerator(), memberChecker, f.VehiclesProjection(), f.FreightInvitesProjection())
 	})
 	return f.frService
 }
@@ -362,7 +461,7 @@ func (f *Factory) NotificationService() *notifApp.Service {
 			f.InAppNotificationsProjection(),
 			f.TelegramLinkProjection(),
 			f.EmailVerificationProjection(),
-			f.MustPublisher().RawPublisher(),
+			f.MustNotificationBus(),
 			f.cfg,
 		)
 	})
@@ -410,6 +509,34 @@ func (f *Factory) PendingOrganizationsProjection() *projections.PendingOrganizat
 	return f.pendingOrgsProjection
 }
 
+func (f *Factory) VehiclesProjection() *projections.VehiclesProjection {
+	f.vehiclesProjOnce.Do(func() {
+		f.vehiclesProjection = projections.NewVehiclesProjection(f.DB())
+	})
+	return f.vehiclesProjection
+}
+
+func (f *Factory) PendingVehiclesProjection() *projections.PendingVehiclesProjection {
+	f.pendingVehiclesProjOnce.Do(func() {
+		f.pendingVehiclesProjection = projections.NewPendingVehiclesProjection(f.DB())
+	})
+	return f.pendingVehiclesProjection
+}
+
+func (f *Factory) FreightInvitesProjection() *projections.FreightInvitesProjection {
+	f.freightInvitesProjOnce.Do(func() {
+		f.freightInvitesProjection = projections.NewFreightInvitesProjection(f.DB())
+	})
+	return f.freightInvitesProjection
+}
+
+func (f *Factory) FreightRequestViewsProjection() *projections.FreightRequestViewsProjection {
+	f.freightRequestViewsProjOnce.Do(func() {
+		f.freightRequestViewsProjection = projections.NewFreightRequestViewsProjection(f.DB())
+	})
+	return f.freightRequestViewsProjection
+}
+
 func (f *Factory) FreightRequestsProjection() *projections.FreightRequestsProjection {
 	f.frProjOnce.Do(func() {
 		f.frProjection = projections.NewFreightRequestsProjection(f.DB())
@@ -440,7 +567,11 @@ func (f *Factory) ReviewsProjection() *projections.ReviewsProjection {
 
 func (f *Factory) SessionFraudProjection() *projections.SessionFraudProjection {
 	f.sessionFraudOnce.Do(func() {
-		f.sessionFraudProjection = projections.NewSessionFraudProjection(f.DB())
+		// Use per-instance thresholds seeded from the global default. This
+		// keeps parallel suites isolated: each Factory has its own pointer,
+		// tests can override fields without racing with other suites.
+		t := projections.SessionFraudThresholds
+		f.sessionFraudProjection = projections.NewSessionFraudProjectionWithThresholds(f.DB(), &t)
 	})
 	return f.sessionFraudProjection
 }
@@ -478,6 +609,20 @@ func (f *Factory) DeliveryLogProjection() *projections.NotificationDeliveryLogPr
 		f.deliveryLogProjection = projections.NewNotificationDeliveryLogProjection(f.DB())
 	})
 	return f.deliveryLogProjection
+}
+
+func (f *Factory) NotificationDedupProjection() *projections.NotificationDedupProjection {
+	f.notificationDedupOnce.Do(func() {
+		f.notificationDedupProjection = projections.NewNotificationDedupProjection(f.DB())
+	})
+	return f.notificationDedupProjection
+}
+
+func (f *Factory) ProjectionEventDedupProjection() *projections.ProjectionEventDedupProjection {
+	f.projectionEventDedupOnce.Do(func() {
+		f.projectionEventDedup = projections.NewProjectionEventDedupProjection(f.DB())
+	})
+	return f.projectionEventDedup
 }
 
 func (f *Factory) TelegramLinkProjection() *projections.TelegramLinkProjection {
@@ -590,6 +735,7 @@ func (f *Factory) NotificationRulesRegistry() *rules.Registry {
 		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCreatedRule(deps, subscriptionMatcher))
 		f.notificationRulesRegistry.Register(frRules.NewFreightRequestCompletedRule(deps))
 		f.notificationRulesRegistry.Register(frRules.NewCancelledAfterConfirmedRule(deps))
+		f.notificationRulesRegistry.Register(frRules.NewCarrierInvitedRule(deps))
 	})
 	return f.notificationRulesRegistry
 }

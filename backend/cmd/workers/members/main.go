@@ -1,9 +1,11 @@
 package main
 
 import (
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+
 	_ "github.com/udisondev/veziizi/backend/internal/domain/organization/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -11,11 +13,12 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "members",
-		Topic:         "organization.events",
+		Topic:         messaging.TopicOrganizationEvents,
 		ConsumerGroup: "members_projection",
 		LogFile:       "members-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewMembersHandler(f.DB()).Handle
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewMembersHandler(f.DB())
+			return ep.AddHandlersGroup("members", handlers.MembersGroupHandlers(h)...)
 		},
 	})
 }

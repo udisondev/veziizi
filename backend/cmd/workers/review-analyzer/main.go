@@ -1,11 +1,11 @@
 package main
 
 import (
-	// Event registration - CRITICAL for deserialization
-	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 
-	"github.com/ThreeDotsLabs/watermill/message"
+	_ "github.com/udisondev/veziizi/backend/internal/domain/review/events"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/handlers"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	"github.com/udisondev/veziizi/backend/internal/pkg/factory"
 	"github.com/udisondev/veziizi/backend/internal/pkg/worker"
 )
@@ -13,14 +13,12 @@ import (
 func main() {
 	worker.Run(worker.Config{
 		Name:          "review-analyzer",
-		Topic:         "review.events",
+		Topic:         messaging.TopicReviewEvents,
 		ConsumerGroup: "review_analyzer",
 		LogFile:       "review-analyzer-worker.log",
-		Handler: func(f *factory.Factory) message.NoPublishHandlerFunc {
-			return handlers.NewReviewAnalyzerHandler(
-				f.ReviewService(),
-				f.ReviewAnalyzer(),
-			).Handle
+		Setup: func(f *factory.Factory, ep *cqrs.EventGroupProcessor) error {
+			h := handlers.NewReviewAnalyzerHandler(f.ReviewService(), f.ReviewAnalyzer())
+			return ep.AddHandlersGroup("review-analyzer", handlers.ReviewAnalyzerGroupHandlers(h)...)
 		},
 	})
 }

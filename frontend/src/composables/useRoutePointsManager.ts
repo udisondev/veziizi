@@ -136,7 +136,7 @@ export function useRoutePointsManager(): UseRoutePointsManagerReturn {
   }
 
   function reorderRoutePoints(newOrder: RoutePoint[]): void {
-    routePoints.value = newOrder
+    routePoints.value = [...newOrder]
     ensureRouteConstraints()
   }
 
