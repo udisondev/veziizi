@@ -74,3 +74,9 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	}
 	return w.ResponseWriter.Write(b)
 }
+
+// Unwrap открывает вложенный ResponseWriter для http.ResponseController —
+// без него Flush/SetWriteDeadline в SSE-хендлере не достучатся до оригинала.
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}

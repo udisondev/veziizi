@@ -33,6 +33,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/sse"
 	httpServer "github.com/udisondev/veziizi/backend/internal/interfaces/http"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/middleware"
@@ -63,6 +64,9 @@ type Suite struct {
 	wg                sync.WaitGroup
 	postgresContainer *PostgresContainer
 	eventRouter       *message.Router
+	// SSE-шлюз; владеет собственным redis-клиентом и lifecycle'ом tailer'а
+	// (см. sse.Gateway).
+	sseGateway *sse.Gateway
 	// consumerGroups: topic → e2e consumer group'ы, зарегистрированные на нём.
 	// Используется Sync() для ожидания опустошения стримов.
 	consumerGroups map[string][]string
@@ -480,6 +484,16 @@ func (s *Suite) startServer() {
 	adminSessionManager := session.NewAdminManager(s.Config)
 	adminRepository := adminRepo.NewRepository(s.Factory.DB())
 
+	// SSE-шлюз — тот же конструктор, что и cmd/api/main.go.
+	sseHub := s.Factory.SSEHub()
+	sseGateway, err := sse.NewGateway(s.Config, sseHub, s.Factory.FreightRequestsProjection(), s.Factory.SupportTicketsProjection())
+	if err != nil {
+		slog.Error("failed to create sse gateway", slog.String("error", err.Error()))
+		return
+	}
+	s.sseGateway = sseGateway
+	sseGateway.Start(s.ctx)
+
 	server := httpServer.NewServer(s.Config)
 
 	// Health endpoints — без auth/CSRF/rate limiter
@@ -524,6 +538,9 @@ func (s *Suite) startServer() {
 
 		notificationHandler := handlers.NewNotificationHandler(s.Factory.NotificationService(), sessionManager, s.Config)
 		notificationHandler.RegisterRoutes(r)
+
+		eventsHandler := handlers.NewEventsHandler(sseHub, sessionManager, s.Config)
+		eventsHandler.RegisterRoutes(r)
 
 		subscriptionHandler := handlers.NewSubscriptionsHandler(s.Factory.FreightSubscriptionsProjection(), s.Factory.GeoProjection(), sessionManager)
 		subscriptionHandler.RegisterRoutes(r)
@@ -584,6 +601,10 @@ func (s *Suite) waitForServer() error {
 
 // Shutdown stops the test server and cleans up resources.
 func (s *Suite) Shutdown() {
+	// SSE первым: хаб отпускает живые стрим-хендлеры до закрытия listener'а.
+	if s.sseGateway != nil {
+		s.sseGateway.Stop()
+	}
 	if s.eventRouter != nil {
 		if err := s.eventRouter.Close(); err != nil {
 			slog.Error("failed to close event router", slog.String("error", err.Error()))

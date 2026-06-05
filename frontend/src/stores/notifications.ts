@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { notificationsApi } from '@/api/notifications'
+import { eventStream } from '@/services/eventStream'
 import type {
   Notification,
   NotificationPreferences,
@@ -79,12 +80,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
   async function fetchRecentNotifications(): Promise<void> {
     try {
       const recent = await notificationsApi.list({ limit: 5 })
-      // Merge с существующими, сохраняя уникальность
+      // Merge: уже загруженные обновляем на месте (is_read мог измениться
+      // в другой вкладке/устройстве), новые — в начало
+      const byId = new Map(recent.map(n => [n.id, n]))
       const existingIds = new Set(notifications.value.map(n => n.id))
-      const newNotifications = recent.filter(n => !existingIds.has(n.id))
-      if (newNotifications.length > 0) {
-        notifications.value = [...newNotifications, ...notifications.value]
-      }
+      notifications.value = [
+        ...recent.filter(n => !existingIds.has(n.id)),
+        ...notifications.value.map(n => byId.get(n.id) ?? n),
+      ]
     } catch (e) {
       logger.error('Failed to fetch recent notifications', e)
     }
@@ -246,9 +249,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
   // ===============================
   let visibilityHandler: (() => void) | null = null
 
-  function doPollingTick(): void {
+  function doPollingTick(force = false): void {
     // Не полим если вкладка неактивна
     if (document.hidden) return
+    // SSE живо (открыто И heartbeat'ы идут) — обновления приходят пушем,
+    // polling простаивает как fallback. Проверяем isHealthy, а не isConnected:
+    // тихо умерший сокет держит isConnected=true, пока браузер не заметит.
+    // force=true (возврат на вкладку) рефетчит всегда — дешёвая страховка.
+    if (!force && eventStream.isHealthy()) return
     fetchUnreadCount()
     fetchRecentNotifications()
   }
@@ -264,8 +272,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
     // Подписываемся на изменение видимости вкладки
     visibilityHandler = () => {
       if (!document.hidden) {
-        // Вкладка стала видимой — сразу обновляем
-        doPollingTick()
+        // Вкладка стала видимой — обновляем безусловно (force): после сна
+        // ноутбука SSE может быть «тихо мёртвым», полагаться на него нельзя
+        doPollingTick(true)
       }
     }
     document.addEventListener('visibilitychange', visibilityHandler)
@@ -283,6 +292,26 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   // ===============================
+  // SSE (push-to-refetch)
+  // ===============================
+  function refetch(): void {
+    fetchUnreadCount()
+    fetchRecentNotifications()
+  }
+
+  function onNotificationEvent(): void {
+    refetch()
+  }
+
+  function onUnreadEvent(): void {
+    // Read-события другой вкладки/устройства — пересчитываем счётчик и
+    // обновляем is_read уже загруженных элементов (иначе badge=0, а
+    // дропдаун продолжит рисовать их непрочитанными)
+    fetchUnreadCount()
+    fetchRecentNotifications()
+  }
+
+  // ===============================
   // Lifecycle
   // ===============================
   async function initialize(): Promise<void> {
@@ -290,10 +319,21 @@ export const useNotificationsStore = defineStore('notifications', () => {
       fetchUnreadCount(),
       fetchRecentNotifications(),
     ])
+    // SSE — основной канал; refetch при каждом (пере)подключении закрывает
+    // пропуски между соединениями.
+    eventStream.on('notification', onNotificationEvent)
+    eventStream.on('unread', onUnreadEvent)
+    eventStream.onConnected(refetch)
+    eventStream.connect()
+    // Polling остаётся fallback'ом: тики пропускаются, пока SSE подключён
     startPolling()
   }
 
   function cleanup(): void {
+    eventStream.off('notification', onNotificationEvent)
+    eventStream.off('unread', onUnreadEvent)
+    eventStream.offConnected(refetch)
+    eventStream.disconnect()
     stopPolling()
     notifications.value = []
     unreadCount.value = 0

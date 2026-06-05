@@ -137,6 +137,15 @@ APP_ENV=development                # development | production
 - DLQ: PoisonQueue middleware публикует в Redis-стрим `deadletter` (без trim'а, свой `WORKER_DEADLETTER_MAXLEN`); разбор — `cmd/tools/dlq-redrive` после фикса причины
 - Метрики forwarder'а: `veziizi_forwarder_outbox_lag`, `veziizi_deadletter_depth`, `veziizi_redis_stream_group_lag/pending{stream,group}` — лаг группы ~ MAXLEN означает, что trim начнёт терять непрочитанные события
 
+**SSE Gateway** (`backend/internal/infrastructure/sse/` + `interfaces/http/handlers/events.go`):
+- `GET /api/v1/events/stream` — один EventSource на приложение; API-процесс tail-читает Redis-стримы (notification/freightrequest/support) через XREAD БЕЗ consumer group (broadcast: каждый инстанс видит всё; стартовый ID резолвится XINFO, не `$` — иначе race между BLOCK-таймаутами)
+- Wiring ТОЛЬКО через `sse.NewGateway(cfg, hub, ...)` + `Start/Stop` — единый конструктор для cmd/api/main.go и e2e suite. Gateway владеет СОБСТВЕННЫМ redis-клиентом: делить с watermill-подписчиками нельзя — их `Subscriber.Close()` закрывает клиент целиком и дедлочится на блокирующем XREAD. Таймаут XREAD — `SSE_TAIL_BLOCK` (не `REDIS_BLOCK_TIME` — тот для воркеров)
+- Семантика push-to-refetch: клиенту уходит «пинок» `{entity_id, event_type}`, данные он перечитывает обычными GET; пропуски закрывает refetch при (пере)подключении (`eventStream.onConnected`). Polling в `stores/notifications.ts` остался fallback'ом: тики пропускаются по `isHealthy()` (открыто И heartbeat'ы свежи), рефетч по visibilitychange — безусловный. Heartbeat — именованное `event: ping` (не SSE-комментарий!): по нему клиентский watchdog детектит «тихо умершее» соединение и пересоздаёт EventSource
+- Hub (member/org-роутинг): медленный клиент (переполнение буфера) отключается — реконнект+refetch; на shutdown СНАЧАЛА `hub.Shutdown()`, потом `server.Shutdown()` (иначе виснет на живых стримах)
+- In-app уведомления существуют в стриме только потому, что `NotificationService.CreateInApp/MarkAsRead/MarkAllAsRead` явно публикуют `InAppCreated`/`InAppBatchRead` (атомарно через tx-aware outbox); уведомления не event-sourced
+- SSE-хендлер требует `http.NewResponseController` (SetWriteDeadline(0) — обход WriteTimeout 15s) — обёртки ResponseWriter в middleware обязаны иметь `Unwrap()`; nginx location `/api/v1/events/stream` с `proxy_buffering off`
+- Frontend: `frontend/src/services/eventStream.ts` (singleton, `on/off/onConnected/isConnected`)
+
 **Handler Resilience Patterns** (`backend/internal/infrastructure/handlers/`):
 - `dedupGuard` (dedup.go) — tx + резерв `(projection_name, event_id)` в `projection_event_dedup`; повторная доставка не применяется дважды. Используют: reviews-projection, notification-dispatcher, support-admin-notifier. ВАЖНО: внутри dedupGuard ошибки обязаны пропагироваться (rollback снимает резерв → retry); проглоченная ошибка = закоммиченный резерв = потерянный эффект навсегда
 - rebuild-from-aggregate (freight-requests, organizations) — проекция = f(aggregate state): перечитать агрегат из event store (`LoadWithSnapshot` + `NewFromStore`), полный UPSERT с version-guard (`projections.VersionGuardUpsertSuffix`)

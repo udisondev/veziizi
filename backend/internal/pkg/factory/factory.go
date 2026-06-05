@@ -28,6 +28,7 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/filestorage"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/sequence"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/sse"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
@@ -60,6 +61,9 @@ type Factory struct {
 	notifBus     *messaging.NotificationBus
 	notifBusOnce sync.Once
 	notifBusErr  error
+
+	sseHub     *sse.Hub
+	sseHubOnce sync.Once
 
 	fileStorage     filestorage.FileStorage
 	fileStorageOnce sync.Once
@@ -379,6 +383,15 @@ func (f *Factory) MustNotificationBus() *messaging.NotificationBus {
 	return bus
 }
 
+// SSEHub возвращает реестр SSE-соединений API (lazily created). Используется
+// HTTP-хендлером /api/v1/events/stream и sse.Router'ом.
+func (f *Factory) SSEHub() *sse.Hub {
+	f.sseHubOnce.Do(func() {
+		f.sseHub = sse.NewHub(f.cfg.SSE.MaxConnsPerMember, f.cfg.SSE.MaxConnsTotal)
+	})
+	return f.sseHub
+}
+
 // FileStorage returns file storage (lazily created)
 func (f *Factory) FileStorage() filestorage.FileStorage {
 	f.fileStorageOnce.Do(func() {
@@ -462,6 +475,7 @@ func (f *Factory) NotificationService() *notifApp.Service {
 			f.TelegramLinkProjection(),
 			f.EmailVerificationProjection(),
 			f.MustNotificationBus(),
+			f.MustPublisher(),
 			f.cfg,
 		)
 	})

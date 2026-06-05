@@ -19,6 +19,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	adminRepo "github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/admin"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/sse"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/handlers"
 	"github.com/udisondev/veziizi/backend/internal/interfaces/http/middleware"
@@ -99,6 +100,16 @@ func main() {
 	// HTTP server and handlers
 	server := http.NewServer(cfg)
 
+	// SSE-шлюз: hub держит соединения браузеров, tailer хвостом читает
+	// Redis-стримы (XREAD без consumer group) и роутит «пинки» получателям.
+	sseHub := f.SSEHub()
+	sseGateway, err := sse.NewGateway(cfg, sseHub, f.FreightRequestsProjection(), f.SupportTicketsProjection())
+	if err != nil {
+		slog.Error("failed to create sse gateway", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	sseGateway.Start(context.Background())
+
 	// Metrics server (Prometheus + pprof) на отдельном порту
 	if cfg.Metrics.Enabled {
 		metricsSrv := metrics.NewServer(cfg.Metrics.Addr)
@@ -173,6 +184,10 @@ func main() {
 		if cfg.Telegram.BotUsername != "" {
 			slog.Info("telegram notifications enabled", slog.String("bot", cfg.Telegram.BotUsername))
 		}
+
+		// SSE-стрим пуш-событий
+		eventsHandler := handlers.NewEventsHandler(sseHub, sessionManager, cfg)
+		eventsHandler.RegisterRoutes(r)
 
 		// Subscriptions handler (подписки на заявки)
 		subscriptionsHandler := handlers.NewSubscriptionsHandler(
@@ -252,6 +267,10 @@ func main() {
 	<-ctx.Done()
 
 	slog.Info("shutting down...")
+
+	// SSE первым: иначе server.Shutdown будет висеть на живых SSE-соединениях
+	// до конца таймаута.
+	sseGateway.Stop()
 
 	// Stop rate limiter cleanup goroutine
 	middleware.StopRateLimiterCleanup()

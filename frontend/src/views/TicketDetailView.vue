@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getTicket, addMessage, reopenTicket, type TicketDetail } from '@/api/support'
 import { getErrorMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
+import { eventStream, type StreamEvent } from '@/services/eventStream'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -115,8 +116,37 @@ function isMyMessage(message: { sender_type: string; sender_id: string }): boole
   return message.sender_type === 'user' && message.sender_id === auth.memberId
 }
 
+// SSE: ответ поддержки/закрытие тикета — фоновая перезагрузка без reload страницы.
+// Debounce схлопывает шторм пинков (несколько сообщений подряд) в один рефетч.
+let refreshTimer: number | null = null
+
+async function refreshTicket() {
+  try {
+    ticket.value = await getTicket(ticketId.value)
+    await nextTick()
+    scrollToBottom()
+  } catch {
+    // фоновый рефетч — не показываем ошибку
+  }
+}
+
+function handleTicketEvent(e: StreamEvent) {
+  if (e.entity_id !== ticketId.value) return
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+  refreshTimer = window.setTimeout(() => {
+    refreshTimer = null
+    refreshTicket()
+  }, 300)
+}
+
 onMounted(() => {
   loadTicket()
+  eventStream.on('support_ticket', handleTicketEvent)
+})
+
+onUnmounted(() => {
+  eventStream.off('support_ticket', handleTicketEvent)
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
 })
 </script>
 
