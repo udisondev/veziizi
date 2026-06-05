@@ -94,6 +94,15 @@ func testConfigWithDSN(databaseURL, redisURL string) *config.Config {
 			ReviewActivatorBatchSize:   100,
 			RateLimiterCleanupInterval: 10 * time.Minute,
 		},
+		SSE: config.SSEConfig{
+			MaxConnsPerMember: 8,
+			MaxConnsTotal:     100,
+			// Быстрый heartbeat: тестовый SSE-клиент по первому `event: ping`
+			// понимает, что стрим открыт, не ожидая продовых 25 секунд.
+			HeartbeatInterval: 100 * time.Millisecond,
+			// Короткий BLOCK — быстрый выход tailer-горутин на Shutdown suite.
+			TailBlock: 50 * time.Millisecond,
+		},
 		Fraud: config.FraudConfig{
 			// Session/request limits (irrelevant for review fraud tests, but keep
 			// values aligned with config defaults so tests don't hit unexpected gates).

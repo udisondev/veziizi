@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { freightRequestsApi } from '@/api/freightRequests'
 import { historyApi } from '@/api/history'
+import { eventStream, type StreamEvent } from '@/services/eventStream'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissions } from '@/composables/usePermissions'
 import { useTutorialEvent } from '@/composables/useTutorialEvent'
@@ -359,6 +360,40 @@ async function loadData() {
   }
 }
 
+// Фоновое обновление по SSE-пинку: без isLoading-спиннера, ошибки молча
+// (следующий пинок или ручной reload перезагрузит)
+async function refreshData() {
+  try {
+    const id = route.params.id as string
+    const [fr, offersList] = await Promise.all([
+      freightRequestsApi.get(id),
+      freightRequestsApi.listOffers(id),
+    ])
+    freightRequest.value = fr
+    offers.value = offersList
+  } catch {
+    // фоновый рефетч — не показываем ошибку
+  }
+}
+
+// Debounce: шторм пинков (несколько offer.* подряд, каскад завершения)
+// схлопывается в один рефетч
+let refreshTimer: number | null = null
+
+function scheduleRefresh() {
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+  refreshTimer = window.setTimeout(() => {
+    refreshTimer = null
+    refreshData()
+  }, 300)
+}
+
+function handleFreightRequestEvent(e: StreamEvent) {
+  if (e.entity_id === route.params.id) {
+    scheduleRefresh()
+  }
+}
+
 function formatPrice(amount: number, currency: Currency): string {
   return formatMoney({ amount, currency })
 }
@@ -617,11 +652,15 @@ onMounted(() => {
   // Подписываемся на события из туториала
   tutorialBus.on('tab:offers', handleTutorialTabSwitch)
   tutorialBus.on('offer:confirmed', handleAutoConfirm)
+  // SSE: изменения заявки/офферов второй стороной — фоновый рефетч
+  eventStream.on('freight_request', handleFreightRequestEvent)
 })
 
 onUnmounted(() => {
   tutorialBus.off('tab:offers', handleTutorialTabSwitch)
   tutorialBus.off('offer:confirmed', handleAutoConfirm)
+  eventStream.off('freight_request', handleFreightRequestEvent)
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
 })
 </script>
 

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { notificationsApi } from '@/api/notifications'
+import { eventStream } from '@/services/eventStream'
 import type {
   Notification,
   NotificationPreferences,
@@ -246,9 +247,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
   // ===============================
   let visibilityHandler: (() => void) | null = null
 
-  function doPollingTick(): void {
+  function doPollingTick(force = false): void {
     // Не полим если вкладка неактивна
     if (document.hidden) return
+    // SSE живо (открыто И heartbeat'ы идут) — обновления приходят пушем,
+    // polling простаивает как fallback. Проверяем isHealthy, а не isConnected:
+    // тихо умерший сокет держит isConnected=true, пока браузер не заметит.
+    // force=true (возврат на вкладку) рефетчит всегда — дешёвая страховка.
+    if (!force && eventStream.isHealthy()) return
     fetchUnreadCount()
     fetchRecentNotifications()
   }
@@ -264,8 +270,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
     // Подписываемся на изменение видимости вкладки
     visibilityHandler = () => {
       if (!document.hidden) {
-        // Вкладка стала видимой — сразу обновляем
-        doPollingTick()
+        // Вкладка стала видимой — обновляем безусловно (force): после сна
+        // ноутбука SSE может быть «тихо мёртвым», полагаться на него нельзя
+        doPollingTick(true)
       }
     }
     document.addEventListener('visibilitychange', visibilityHandler)
@@ -283,6 +290,23 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   // ===============================
+  // SSE (push-to-refetch)
+  // ===============================
+  function refetch(): void {
+    fetchUnreadCount()
+    fetchRecentNotifications()
+  }
+
+  function onNotificationEvent(): void {
+    refetch()
+  }
+
+  function onUnreadEvent(): void {
+    // Read-события другой вкладки/устройства — пересчитываем счётчик
+    fetchUnreadCount()
+  }
+
+  // ===============================
   // Lifecycle
   // ===============================
   async function initialize(): Promise<void> {
@@ -290,10 +314,21 @@ export const useNotificationsStore = defineStore('notifications', () => {
       fetchUnreadCount(),
       fetchRecentNotifications(),
     ])
+    // SSE — основной канал; refetch при каждом (пере)подключении закрывает
+    // пропуски между соединениями.
+    eventStream.on('notification', onNotificationEvent)
+    eventStream.on('unread', onUnreadEvent)
+    eventStream.onConnected(refetch)
+    eventStream.connect()
+    // Polling остаётся fallback'ом: тики пропускаются, пока SSE подключён
     startPolling()
   }
 
   function cleanup(): void {
+    eventStream.off('notification', onNotificationEvent)
+    eventStream.off('unread', onUnreadEvent)
+    eventStream.offConnected(refetch)
+    eventStream.disconnect()
     stopPolling()
     notifications.value = []
     unreadCount.value = 0

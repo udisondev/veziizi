@@ -24,6 +24,26 @@ type Config struct {
 	Security  SecurityConfig
 	Worker    WorkerConfig
 	Fraud     FraudConfig
+	SSE       SSEConfig
+}
+
+// SSEConfig — настройки SSE-шлюза API (GET /api/v1/events/stream): пуш-«пинки»
+// о доменных событиях подключённым браузерам. API tail-читает Redis-стримы
+// (XREAD без consumer group), поэтому на forwarder и воркеры не влияет.
+type SSEConfig struct {
+	// MaxConnsPerMember — лимит одновременных SSE-соединений одного member'а
+	// (вкладки/устройства).
+	MaxConnsPerMember int `env:"SSE_MAX_CONNS_PER_MEMBER" envDefault:"8"`
+	// MaxConnsTotal — общий лимит SSE-соединений инстанса API.
+	MaxConnsTotal int `env:"SSE_MAX_CONNS_TOTAL" envDefault:"4096"`
+	// HeartbeatInterval — период keep-alive события `event: ping` (держит
+	// соединение живым сквозь прокси и даёт клиенту сигнал живости — по нему
+	// фронт детектит «тихо умершее» соединение).
+	HeartbeatInterval time.Duration `env:"SSE_HEARTBEAT_INTERVAL" envDefault:"25s"`
+	// TailBlock — таймаут XREAD BLOCK tailer'а: верхняя граница задержки
+	// доставки пинка и выхода tailer-горутины при остановке. Намеренно НЕ
+	// переиспользует REDIS_BLOCK_TIME — тот тюнится под consumer-group воркеров.
+	TailBlock time.Duration `env:"SSE_TAIL_BLOCK" envDefault:"1s"`
 }
 
 type MetricsConfig struct {

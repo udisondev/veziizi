@@ -8,8 +8,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/udisondev/veziizi/backend/internal/domain/notification/events"
 	"github.com/udisondev/veziizi/backend/internal/domain/notification/values"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/messaging"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/persistence/eventstore"
 	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
@@ -31,6 +33,7 @@ type Service struct {
 	telegramLink      *projections.TelegramLinkProjection
 	emailVerification *projections.EmailVerificationProjection
 	notifBus          *messaging.NotificationBus
+	publisher         *messaging.EventPublisher
 	cfg               *config.Config
 }
 
@@ -42,6 +45,7 @@ func NewService(
 	telegramLink *projections.TelegramLinkProjection,
 	emailVerification *projections.EmailVerificationProjection,
 	notifBus *messaging.NotificationBus,
+	publisher *messaging.EventPublisher,
 	cfg *config.Config,
 ) *Service {
 	return &Service{
@@ -51,6 +55,7 @@ func NewService(
 		telegramLink:      telegramLink,
 		emailVerification: emailVerification,
 		notifBus:          notifBus,
+		publisher:         publisher,
 		cfg:               cfg,
 	}
 }
@@ -253,16 +258,36 @@ type MarkAsReadInput struct {
 
 // MarkAsRead помечает уведомления как прочитанные
 func (s *Service) MarkAsRead(ctx context.Context, memberID uuid.UUID, input MarkAsReadInput) error {
-	if err := s.inapp.MarkAsRead(ctx, memberID, input.NotificationIDs); err != nil {
-		return fmt.Errorf("mark as read: %w", err)
-	}
-	return nil
+	return s.db.InTx(ctx, func(ctx context.Context) error {
+		if err := s.inapp.MarkAsRead(ctx, memberID, input.NotificationIDs); err != nil {
+			return fmt.Errorf("mark as read: %w", err)
+		}
+		return s.publishBatchRead(ctx, memberID, input.NotificationIDs)
+	})
 }
 
 // MarkAllAsRead помечает все уведомления как прочитанные
 func (s *Service) MarkAllAsRead(ctx context.Context, memberID uuid.UUID) error {
-	if err := s.inapp.MarkAllAsRead(ctx, memberID); err != nil {
-		return fmt.Errorf("mark all as read: %w", err)
+	return s.db.InTx(ctx, func(ctx context.Context) error {
+		if err := s.inapp.MarkAllAsRead(ctx, memberID); err != nil {
+			return fmt.Errorf("mark all as read: %w", err)
+		}
+		return s.publishBatchRead(ctx, memberID, nil)
+	})
+}
+
+// publishBatchRead публикует InAppBatchRead (пустой список = все) — SSE-шлюз
+// по нему синхронизирует unread-счётчик в других вкладках member'а. Уведомления
+// не event-sourced (живут только в проекции), поэтому событие уходит лишь в
+// outbox; AggregateID = memberID — «лента уведомлений member'а».
+func (s *Service) publishBatchRead(ctx context.Context, memberID uuid.UUID, ids []uuid.UUID) error {
+	ev := events.InAppBatchRead{
+		BaseEvent:       eventstore.NewBaseEvent(memberID, events.AggregateType, 1),
+		MemberID:        memberID,
+		NotificationIDs: ids,
+	}
+	if err := s.publisher.Publish(ctx, ev); err != nil {
+		return fmt.Errorf("publish %s: %w", events.TypeInAppBatchRead, err)
 	}
 	return nil
 }
@@ -299,6 +324,25 @@ func (s *Service) CreateInApp(ctx context.Context, input CreateNotificationInput
 
 	if err := s.inapp.Insert(ctx, projInput); err != nil {
 		return fmt.Errorf("create notification: %w", err)
+	}
+
+	// Событие для SSE-шлюза. Вызов идёт внутри dedupGuard-tx диспетчера —
+	// tx-aware publisher положит его в outbox атомарно с Insert; ошибку
+	// обязаны пропагировать (rollback снимет dedup-резерв → retry).
+	ev := events.InAppCreated{
+		BaseEvent:        eventstore.NewBaseEvent(projInput.ID, events.AggregateType, 1),
+		NotificationID:   projInput.ID,
+		MemberID:         input.MemberID,
+		OrganizationID:   input.OrganizationID,
+		NotificationType: input.NotificationType,
+		Title:            input.Title,
+		Body:             input.Body,
+		Link:             input.Link,
+		EntityType:       input.EntityType,
+		EntityID:         input.EntityID,
+	}
+	if err := s.publisher.Publish(ctx, ev); err != nil {
+		return fmt.Errorf("publish %s: %w", events.TypeInAppCreated, err)
 	}
 
 	return nil
