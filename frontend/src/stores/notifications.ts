@@ -80,12 +80,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
   async function fetchRecentNotifications(): Promise<void> {
     try {
       const recent = await notificationsApi.list({ limit: 5 })
-      // Merge с существующими, сохраняя уникальность
+      // Merge: уже загруженные обновляем на месте (is_read мог измениться
+      // в другой вкладке/устройстве), новые — в начало
+      const byId = new Map(recent.map(n => [n.id, n]))
       const existingIds = new Set(notifications.value.map(n => n.id))
-      const newNotifications = recent.filter(n => !existingIds.has(n.id))
-      if (newNotifications.length > 0) {
-        notifications.value = [...newNotifications, ...notifications.value]
-      }
+      notifications.value = [
+        ...recent.filter(n => !existingIds.has(n.id)),
+        ...notifications.value.map(n => byId.get(n.id) ?? n),
+      ]
     } catch (e) {
       logger.error('Failed to fetch recent notifications', e)
     }
@@ -302,8 +304,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   function onUnreadEvent(): void {
-    // Read-события другой вкладки/устройства — пересчитываем счётчик
+    // Read-события другой вкладки/устройства — пересчитываем счётчик и
+    // обновляем is_read уже загруженных элементов (иначе badge=0, а
+    // дропдаун продолжит рисовать их непрочитанными)
     fetchUnreadCount()
+    fetchRecentNotifications()
   }
 
   // ===============================

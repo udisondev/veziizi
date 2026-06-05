@@ -12,6 +12,10 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/config"
 )
 
+// defaultHeartbeat — fallback при незаданном/нулевом SSE_HEARTBEAT_INTERVAL,
+// совпадает с envDefault конфига.
+const defaultHeartbeat = 25 * time.Second
+
 // EventsHandler — SSE-стрим пуш-«пинков» о доменных событиях. Один стрим на
 // приложение: фронт держит единственный EventSource и раздаёт события
 // подписчикам по полю event (см. frontend/src/services/eventStream.ts).
@@ -22,10 +26,16 @@ type EventsHandler struct {
 }
 
 func NewEventsHandler(hub *sse.Hub, sessionManager *session.Manager, cfg *config.Config) *EventsHandler {
+	heartbeat := cfg.SSE.HeartbeatInterval
+	// Guard как у tailer'а (block <= 0): иначе SSE_HEARTBEAT_INTERVAL=0
+	// уронит time.NewTicker паникой на первом же подключении.
+	if heartbeat <= 0 {
+		heartbeat = defaultHeartbeat
+	}
 	return &EventsHandler{
 		hub:       hub,
 		session:   sessionManager,
-		heartbeat: cfg.SSE.HeartbeatInterval,
+		heartbeat: heartbeat,
 	}
 }
 
