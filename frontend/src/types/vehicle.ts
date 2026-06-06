@@ -2,7 +2,7 @@ import type { VehicleType, VehicleSubType, LoadingType } from './freightRequest'
 
 export type { VehicleType, VehicleSubType, LoadingType }
 
-export type VehicleStatus = 'pending' | 'verified' | 'rejected' | 'archived'
+export type VehicleStatus = 'unconfirmed' | 'pending' | 'verified' | 'rejected' | 'archived'
 
 export interface VehicleTemperature {
   min: number
@@ -66,6 +66,8 @@ export interface VehicleListItem {
   requires_adr: boolean
   temperature?: VehicleTemperature
   thermograph: boolean
+  // Публичный флаг подтверждения — статус модерации наружу не отдаётся
+  verified: boolean
 }
 
 export interface VehicleListParams {
@@ -78,6 +80,7 @@ export interface VehicleListParams {
   requires_adr?: boolean
   thermograph?: boolean
   org_name?: string
+  org_id?: string
   limit?: number
   cursor?: string
 }

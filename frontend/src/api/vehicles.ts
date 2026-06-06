@@ -14,6 +14,7 @@ export const vehiclesApi = {
     if (params?.requires_adr) p.set('requires_adr', 'true')
     if (params?.thermograph) p.set('thermograph', 'true')
     if (params?.org_name) p.set('org_name', params.org_name)
+    if (params?.org_id) p.set('org_id', params.org_id)
     if (params?.limit) p.set('limit', params.limit.toString())
     if (params?.cursor) p.set('cursor', params.cursor)
     const query = p.toString()
@@ -40,5 +41,10 @@ export const vehiclesApi = {
 
   async remove(organizationId: string, vehicleId: string): Promise<void> {
     await api.delete(`/organizations/${organizationId}/vehicles/${vehicleId}`)
+  },
+
+  // Отправить транспорт на модерацию (unconfirmed|rejected → pending)
+  async submit(organizationId: string, vehicleId: string): Promise<void> {
+    await api.post(`/organizations/${organizationId}/vehicles/${vehicleId}/submit`)
   },
 }

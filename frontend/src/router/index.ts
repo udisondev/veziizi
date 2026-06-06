@@ -268,6 +268,13 @@ const router = createRouter({
       beforeEnter: adminGuard,
     },
     {
+      path: '/admin/vehicles',
+      name: 'admin-vehicles',
+      component: () => import('@/views/admin/AdminVehiclesView.vue'),
+      meta: { admin: true, title: 'Транспорт на модерации' },
+      beforeEnter: adminGuard,
+    },
+    {
       path: '/admin/fraudsters',
       name: 'admin-fraudsters',
       component: () => import('@/views/admin/AdminFraudstersView.vue'),

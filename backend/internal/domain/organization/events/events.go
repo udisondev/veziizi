@@ -11,28 +11,29 @@ const AggregateType = "organization"
 
 // Event type constants
 const (
-	TypeOrganizationCreated   = "organization.created"
-	TypeOrganizationApproved  = "organization.approved"
-	TypeOrganizationRejected  = "organization.rejected"
-	TypeOrganizationSuspended = "organization.suspended"
-	TypeOrganizationUpdated   = "organization.updated"
-	TypeMemberAdded           = "member.added"
-	TypeMemberRemoved         = "member.removed"
-	TypeMemberRoleChanged     = "member.role_changed"
-	TypeMemberBlocked         = "member.blocked"
-	TypeMemberUnblocked       = "member.unblocked"
-	TypeMemberInfoUpdated     = "member.info_updated"
-	TypeInvitationCreated     = "invitation.created"
-	TypeInvitationAccepted    = "invitation.accepted"
-	TypeInvitationExpired     = "invitation.expired"
-	TypeInvitationCancelled   = "invitation.cancelled"
-	TypeFraudsterMarked       = "fraudster.marked"
-	TypeFraudsterUnmarked     = "fraudster.unmarked"
-	TypeVehicleAdded          = "vehicle.added"
-	TypeVehicleUpdated        = "vehicle.updated"
-	TypeVehicleVerified       = "vehicle.verified"
-	TypeVehicleRejected       = "vehicle.rejected"
-	TypeVehicleArchived       = "vehicle.archived"
+	TypeOrganizationCreated             = "organization.created"
+	TypeOrganizationApproved            = "organization.approved"
+	TypeOrganizationRejected            = "organization.rejected"
+	TypeOrganizationSuspended           = "organization.suspended"
+	TypeOrganizationUpdated             = "organization.updated"
+	TypeMemberAdded                     = "member.added"
+	TypeMemberRemoved                   = "member.removed"
+	TypeMemberRoleChanged               = "member.role_changed"
+	TypeMemberBlocked                   = "member.blocked"
+	TypeMemberUnblocked                 = "member.unblocked"
+	TypeMemberInfoUpdated               = "member.info_updated"
+	TypeInvitationCreated               = "invitation.created"
+	TypeInvitationAccepted              = "invitation.accepted"
+	TypeInvitationExpired               = "invitation.expired"
+	TypeInvitationCancelled             = "invitation.cancelled"
+	TypeFraudsterMarked                 = "fraudster.marked"
+	TypeFraudsterUnmarked               = "fraudster.unmarked"
+	TypeVehicleAdded                    = "vehicle.added"
+	TypeVehicleUpdated                  = "vehicle.updated"
+	TypeVehicleVerified                 = "vehicle.verified"
+	TypeVehicleRejected                 = "vehicle.rejected"
+	TypeVehicleArchived                 = "vehicle.archived"
+	TypeVehicleSubmittedForVerification = "vehicle.verification_requested"
 )
 
 func init() {
@@ -58,6 +59,7 @@ func init() {
 	eventstore.RegisterEventType[VehicleVerified](TypeVehicleVerified)
 	eventstore.RegisterEventType[VehicleRejected](TypeVehicleRejected)
 	eventstore.RegisterEventType[VehicleArchived](TypeVehicleArchived)
+	eventstore.RegisterEventType[VehicleSubmittedForVerification](TypeVehicleSubmittedForVerification)
 }
 
 // OrganizationCreated is emitted when organization is registered
@@ -271,7 +273,8 @@ type VehicleAdded struct {
 
 func (e VehicleAdded) EventType() string { return TypeVehicleAdded }
 
-// VehicleUpdated is emitted when a member updates a vehicle. Resets status to pending.
+// VehicleUpdated is emitted when a member updates a vehicle. Resets status to
+// unconfirmed — verification is voided and the owner must re-submit.
 type VehicleUpdated struct {
 	eventstore.BaseEvent
 	VehicleID uuid.UUID           `json:"vehicle_id"`
@@ -308,3 +311,15 @@ type VehicleArchived struct {
 }
 
 func (e VehicleArchived) EventType() string { return TypeVehicleArchived }
+
+// VehicleSubmittedForVerification is emitted when the owner sends an
+// unconfirmed (or rejected) vehicle to admin moderation.
+type VehicleSubmittedForVerification struct {
+	eventstore.BaseEvent
+	VehicleID   uuid.UUID `json:"vehicle_id"`
+	SubmittedBy uuid.UUID `json:"submitted_by"` // member ID
+}
+
+func (e VehicleSubmittedForVerification) EventType() string {
+	return TypeVehicleSubmittedForVerification
+}

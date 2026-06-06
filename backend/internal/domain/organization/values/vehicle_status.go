@@ -3,8 +3,10 @@
 package values
 
 // VehicleStatus represents vehicle moderation lifecycle status
-// ENUM(pending, verified, rejected, archived)
+// ENUM(unconfirmed, pending, verified, rejected, archived)
 type VehicleStatus string
+
+func (s VehicleStatus) IsUnconfirmed() bool { return s == VehicleStatusUnconfirmed }
 
 func (s VehicleStatus) IsPending() bool  { return s == VehicleStatusPending }
 func (s VehicleStatus) IsVerified() bool { return s == VehicleStatusVerified }

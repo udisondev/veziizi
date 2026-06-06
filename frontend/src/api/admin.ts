@@ -9,6 +9,8 @@ import type {
   PendingReview,
   ApproveReviewRequest,
   RejectReviewRequest,
+  PendingVehicle,
+  RejectVehicleRequest,
   FraudstersResponse,
   MarkFraudsterRequest,
   UnmarkFraudsterRequest,
@@ -66,6 +68,20 @@ export const adminApi = {
 
   rejectReview(id: string, data: RejectReviewRequest): Promise<void> {
     return api.post(`/admin/reviews/${id}/reject`, data)
+  },
+
+  // Vehicles moderation
+  async getPendingVehicles(): Promise<PendingVehicle[]> {
+    const result = await api.get<{ items: PendingVehicle[] } | null>('/admin/vehicles/pending')
+    return result?.items ?? []
+  },
+
+  verifyVehicle(orgId: string, vehicleId: string): Promise<void> {
+    return api.post(`/admin/organizations/${orgId}/vehicles/${vehicleId}/verify`)
+  },
+
+  rejectVehicle(orgId: string, vehicleId: string, data: RejectVehicleRequest): Promise<void> {
+    return api.post(`/admin/organizations/${orgId}/vehicles/${vehicleId}/reject`, data)
   },
 
   // Fraudsters management

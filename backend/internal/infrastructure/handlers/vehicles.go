@@ -150,6 +150,10 @@ func (h *VehiclesHandler) OnUpdated(ctx context.Context, e *events.VehicleUpdate
 	return h.rebuild(ctx, e.AggregateID(), e.VehicleID)
 }
 
+func (h *VehiclesHandler) OnSubmitted(ctx context.Context, e *events.VehicleSubmittedForVerification) error {
+	return h.rebuild(ctx, e.AggregateID(), e.VehicleID)
+}
+
 func (h *VehiclesHandler) OnVerified(ctx context.Context, e *events.VehicleVerified) error {
 	return h.rebuild(ctx, e.AggregateID(), e.VehicleID)
 }

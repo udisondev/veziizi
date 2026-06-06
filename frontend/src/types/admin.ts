@@ -137,6 +137,22 @@ export interface RejectReviewRequest {
   reason: string
 }
 
+// Vehicle moderation types
+export interface PendingVehicle {
+  id: string
+  org_id: string
+  registration_number: string
+  brand?: string
+  model?: string
+  vehicle_type: string
+  vehicle_subtype: string
+  submitted_at: string
+}
+
+export interface RejectVehicleRequest {
+  reason: string
+}
+
 // Fraudster types
 export interface Fraudster {
   org_id: string

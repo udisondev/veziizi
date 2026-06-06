@@ -57,6 +57,7 @@ func VehiclesGroupHandlers(h *VehiclesHandler) []cqrs.GroupEventHandler {
 	return []cqrs.GroupEventHandler{
 		cqrs.NewGroupEventHandler(h.OnAdded),
 		cqrs.NewGroupEventHandler(h.OnUpdated),
+		cqrs.NewGroupEventHandler(h.OnSubmitted),
 		cqrs.NewGroupEventHandler(h.OnVerified),
 		cqrs.NewGroupEventHandler(h.OnRejected),
 		cqrs.NewGroupEventHandler(h.OnArchived),
