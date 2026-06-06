@@ -206,6 +206,7 @@ function buildIncomingParams(): IncomingOfferListParams {
 }
 
 async function loadItems() {
+  hasUpdates.value = false
   isLoading.value = true
   error.value = null
   cursor.value = undefined

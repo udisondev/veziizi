@@ -9,6 +9,7 @@ import { usePermissions } from '@/composables/usePermissions'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
+import { eventStream } from '@/services/eventStream'
 import type { FreightRequestListItem } from '@/types/freightRequest'
 import {
   vehicleTypeLabels,
@@ -30,7 +31,8 @@ import {
 } from '@/components/shared'
 import { FreightFiltersForm } from '@/components/filters'
 import { Tooltip } from '@/components/ui/tooltip'
-import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer, X, ArrowDownWideNarrow, CalendarClock, Users } from 'lucide-vue-next'
+import SelectField from '@/components/ui/select-field/SelectField.vue'
+import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer, X, ArrowDownWideNarrow, CalendarClock, Users, ArrowDownNarrowWide } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 type SortBy = 'created_at_desc' | 'expires_at_asc' | 'price_desc' | 'weight_desc' | 'loading_date_asc' | 'offers_count_asc'
@@ -45,6 +47,8 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'loading_date_asc', label: 'Дата загрузки', icon: CalendarClock },
   { value: 'offers_count_asc', label: 'Меньше офферов', icon: Users },
 ]
+
+const SORT_SELECT_OPTIONS = SORT_OPTIONS.map(({ value, label }) => ({ value, label }))
 
 const PAGE_SIZE = 20
 
@@ -66,6 +70,7 @@ const isLoading = ref(false)
 const isLoadingMore = ref(false)
 const error = ref<string | null>(null)
 const mobileFiltersOpen = ref(false)
+const hasUpdates = ref(false)
 
 const {
   ownershipFilter,
@@ -130,6 +135,7 @@ function buildParams(): FreightRequestListParams {
 }
 
 async function loadItems() {
+  hasUpdates.value = false
   isLoading.value = true
   error.value = null
   filtersStore.resetPagination()
@@ -260,12 +266,27 @@ watch(
   { deep: true }
 )
 
+function handleFreightRequestEvent() {
+  if (items.value.length > 0) hasUpdates.value = true
+}
+
+async function applyUpdates() {
+  hasUpdates.value = false
+  await loadItems()
+  await nextTick()
+  resetInfiniteScroll()
+}
+
 onUnmounted(() => {
   if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+  eventStream.off('freight_request', handleFreightRequestEvent)
+  eventStream.offConnected(handleFreightRequestEvent)
 })
 
 onMounted(() => {
   loadItems()
+  eventStream.on('freight_request', handleFreightRequestEvent)
+  eventStream.onConnected(handleFreightRequestEvent)
 })
 </script>
 
@@ -372,9 +393,9 @@ onMounted(() => {
       <!-- List -->
       <div>
         <!-- Sort bar: скрываем во время загрузки и при ошибке -->
-        <div v-if="!isLoading && !error" class="flex gap-1 mb-4 pb-4 border-b">
+        <div v-if="!isLoading && !error" class="mb-4 pb-4 border-b">
           <!-- Desktop: иконки + тултипы -->
-          <template v-if="!isBelowLg">
+          <div v-if="!isBelowLg" class="flex gap-1">
             <Tooltip v-for="opt in SORT_OPTIONS" :key="opt.value" :text="opt.label" side="top">
               <button
                 type="button"
@@ -385,20 +406,24 @@ onMounted(() => {
                 <component :is="opt.icon" class="h-3.5 w-3.5" />
               </button>
             </Tooltip>
-          </template>
-          <!-- Mobile: текстовые кнопки -->
-          <template v-else>
-            <button
-              v-for="opt in SORT_OPTIONS"
-              :key="opt.value"
-              type="button"
-              class="rounded-md border px-2 py-1 text-xs font-medium transition-colors"
-              :class="sortBy === opt.value ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
-              @click="sortBy = opt.value as SortBy"
-            >
-              {{ opt.label }}
-            </button>
-          </template>
+          </div>
+          <!-- Mobile/tablet: селект -->
+          <SelectField
+            v-else
+            v-model="sortBy"
+            :options="SORT_SELECT_OPTIONS"
+            :icon="ArrowDownNarrowWide"
+            sheet-label="Сортировка"
+          />
+        </div>
+
+        <!-- SSE: баннер новых данных -->
+        <div
+          v-if="hasUpdates && !isLoading"
+          class="mb-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
+        >
+          <span class="text-foreground">Список обновился — есть новые данные</span>
+          <Button size="sm" variant="outline" @click="applyUpdates">Обновить</Button>
         </div>
 
         <LoadingSpinner v-if="isLoading" text="Загрузка заявок..." />

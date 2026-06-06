@@ -312,10 +312,13 @@ onUnmounted(() => {
           :class="pipelineGridClass"
         >
           <button
-            v-for="stage in pipelineStages"
+            v-for="(stage, index) in pipelineStages"
             :key="stage.label"
             class="bg-card px-2 py-3 sm:px-3 sm:py-2.5 flex flex-col items-center gap-0.5 transition-colors"
-            :class="stage.value > 0 ? 'hover:bg-muted/60 cursor-pointer' : 'cursor-default'"
+            :class="[
+              stage.value > 0 ? 'hover:bg-muted/60 cursor-pointer' : 'cursor-default',
+              index === pipelineStages.length - 1 && pipelineStages.length % 2 !== 0 ? 'col-span-2 sm:col-span-1' : '',
+            ]"
             :disabled="stage.value === 0"
             @click.stop="stage.value > 0 && goToListFiltered(stage.statuses, stage.ownership)"
           >
