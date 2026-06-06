@@ -29,6 +29,7 @@ import { formatDateShort } from '@/utils/formatters'
 import { logger } from '@/utils/logger'
 import { useNotificationsStore } from '@/stores/notifications'
 import { getCategoryByType } from '@/types/notification'
+import { eventStream } from '@/services/eventStream'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -171,6 +172,7 @@ const isLoadingMore = ref(false)
 const error = ref<string | null>(null)
 const cursor = ref<string | undefined>()
 const hasMore = ref(false)
+const hasUpdates = ref(false)
 
 const isEmpty = computed(() =>
   !isLoading.value && (direction.value === 'outgoing' ? outItems.value.length === 0 : inItems.value.length === 0)
@@ -416,7 +418,22 @@ watch(
   { deep: true }
 )
 
-onUnmounted(() => { if (debounceTimer) clearTimeout(debounceTimer) })
+function handleFreightRequestEvent() {
+  if (itemsCount.value > 0) hasUpdates.value = true
+}
+
+async function applyUpdates() {
+  hasUpdates.value = false
+  await loadItems()
+  await nextTick()
+  resetInfiniteScroll()
+}
+
+onUnmounted(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  eventStream.off('freight_request', handleFreightRequestEvent)
+  eventStream.offConnected(handleFreightRequestEvent)
+})
 
 const notificationsStore = useNotificationsStore()
 const lastOfferNotificationId = computed(() =>
@@ -426,7 +443,11 @@ watch(lastOfferNotificationId, (newId, oldId) => {
   if (newId && newId !== oldId) loadItems()
 })
 
-onMounted(() => { loadItems() })
+onMounted(() => {
+  loadItems()
+  eventStream.on('freight_request', handleFreightRequestEvent)
+  eventStream.onConnected(handleFreightRequestEvent)
+})
 </script>
 
 <template>
@@ -601,6 +622,15 @@ onMounted(() => { loadItems() })
             {{ actionError }}
           </div>
           <Button variant="ghost" size="sm" @click="actionError = null">Закрыть</Button>
+        </div>
+
+        <!-- SSE: баннер новых данных -->
+        <div
+          v-if="hasUpdates && !isLoading"
+          class="mb-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
+        >
+          <span class="text-foreground">Список обновился — есть новые данные</span>
+          <Button size="sm" variant="outline" @click="applyUpdates">Обновить</Button>
         </div>
 
         <LoadingSpinner v-if="isLoading" text="Загрузка предложений..." />
