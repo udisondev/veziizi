@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFreightFiltersStore } from '@/stores/freightFilters'
@@ -19,6 +19,7 @@ import { LoadingSpinner } from '@/components/shared'
 import StarRating from '@/components/freight-request/StarRating.vue'
 import { getMyTickets, type TicketListItem } from '@/api/support'
 import { ChevronRight, TrendingUp, Star, Headset, HandCoins, Bell, Clock } from 'lucide-vue-next'
+import { eventStream } from '@/services/eventStream'
 
 const emit = defineEmits<{
   'go-to-new': []
@@ -246,9 +247,29 @@ async function loadSubscriptions() {
   }
 }
 
+let refreshTimer: number | null = null
+
+function scheduleRefresh() {
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+  refreshTimer = window.setTimeout(() => {
+    refreshTimer = null
+    loadData()
+  }, 300)
+}
+
 onMounted(() => {
   loadData()
   loadSubscriptions()
+  eventStream.on('freight_request', scheduleRefresh)
+  eventStream.on('support_ticket', scheduleRefresh)
+  eventStream.onConnected(loadData)
+})
+
+onUnmounted(() => {
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+  eventStream.off('freight_request', scheduleRefresh)
+  eventStream.off('support_ticket', scheduleRefresh)
+  eventStream.offConnected(loadData)
 })
 </script>
 
