@@ -154,10 +154,12 @@ func (p *InAppNotificationsProjection) Insert(ctx context.Context, input CreateN
 	return nil
 }
 
-// MarkAsRead помечает уведомления как прочитанные
-func (p *InAppNotificationsProjection) MarkAsRead(ctx context.Context, memberID uuid.UUID, ids []uuid.UUID) error {
+// MarkAsRead помечает уведомления как прочитанные. Возвращает число реально
+// переведённых строк (is_read false → true) — 0 означает «состояние не
+// изменилось», и cross-tab пинок InAppBatchRead публиковать не нужно.
+func (p *InAppNotificationsProjection) MarkAsRead(ctx context.Context, memberID uuid.UUID, ids []uuid.UUID) (int64, error) {
 	if len(ids) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	query, args, err := p.psql.
@@ -167,18 +169,20 @@ func (p *InAppNotificationsProjection) MarkAsRead(ctx context.Context, memberID 
 		Where(squirrel.Eq{"member_id": memberID, "id": ids, "is_read": false}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
+		return 0, fmt.Errorf("failed to build update query: %w", err)
 	}
 
-	if _, err := p.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("failed to mark as read: %w", err)
+	tag, err := p.db.Exec(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to mark as read: %w", err)
 	}
 
-	return nil
+	return tag.RowsAffected(), nil
 }
 
-// MarkAllAsRead помечает все уведомления member как прочитанные
-func (p *InAppNotificationsProjection) MarkAllAsRead(ctx context.Context, memberID uuid.UUID) error {
+// MarkAllAsRead помечает все уведомления member как прочитанные. Возвращает
+// число реально переведённых строк (см. MarkAsRead).
+func (p *InAppNotificationsProjection) MarkAllAsRead(ctx context.Context, memberID uuid.UUID) (int64, error) {
 	query, args, err := p.psql.
 		Update("inapp_notifications").
 		Set("is_read", true).
@@ -186,14 +190,15 @@ func (p *InAppNotificationsProjection) MarkAllAsRead(ctx context.Context, member
 		Where(squirrel.Eq{"member_id": memberID, "is_read": false}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
+		return 0, fmt.Errorf("failed to build update query: %w", err)
 	}
 
-	if _, err := p.db.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("failed to mark all as read: %w", err)
+	tag, err := p.db.Exec(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to mark all as read: %w", err)
 	}
 
-	return nil
+	return tag.RowsAffected(), nil
 }
 
 // GetByID возвращает уведомление по ID

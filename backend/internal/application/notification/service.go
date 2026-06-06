@@ -259,8 +259,14 @@ type MarkAsReadInput struct {
 // MarkAsRead помечает уведомления как прочитанные
 func (s *Service) MarkAsRead(ctx context.Context, memberID uuid.UUID, input MarkAsReadInput) error {
 	return s.db.InTx(ctx, func(ctx context.Context) error {
-		if err := s.inapp.MarkAsRead(ctx, memberID, input.NotificationIDs); err != nil {
+		n, err := s.inapp.MarkAsRead(ctx, memberID, input.NotificationIDs)
+		if err != nil {
 			return fmt.Errorf("mark as read: %w", err)
+		}
+		// 0 строк = состояние не менялось (уже прочитано) — пинок другим
+		// вкладкам не нужен: его уже отправил тот вызов, который перевёл строки.
+		if n == 0 {
+			return nil
 		}
 		return s.publishBatchRead(ctx, memberID, input.NotificationIDs)
 	})
@@ -269,8 +275,12 @@ func (s *Service) MarkAsRead(ctx context.Context, memberID uuid.UUID, input Mark
 // MarkAllAsRead помечает все уведомления как прочитанные
 func (s *Service) MarkAllAsRead(ctx context.Context, memberID uuid.UUID) error {
 	return s.db.InTx(ctx, func(ctx context.Context) error {
-		if err := s.inapp.MarkAllAsRead(ctx, memberID); err != nil {
+		n, err := s.inapp.MarkAllAsRead(ctx, memberID)
+		if err != nil {
 			return fmt.Errorf("mark all as read: %w", err)
+		}
+		if n == 0 {
+			return nil
 		}
 		return s.publishBatchRead(ctx, memberID, nil)
 	})

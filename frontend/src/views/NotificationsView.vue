@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
+import { eventStream } from '@/services/eventStream'
 import type { Notification, NotificationCategory } from '@/types/notification'
 import { categoryLabels, allCategories, getNotificationLink } from '@/types/notification'
 
@@ -62,12 +63,26 @@ const hasActiveFilters = computed(() =>
   readFilter.value !== 'all' || categoryFilter.value !== 'all'
 )
 
-async function loadNotifications() {
+async function loadNotifications(opts?: { silent?: boolean }) {
   await notificationsStore.fetchNotifications({
     category: categoryFilter.value !== 'all' ? categoryFilter.value : undefined,
     is_read: readFilter.value === 'unread' ? false :
              readFilter.value === 'read' ? true : undefined,
-  })
+  }, opts)
+}
+
+// SSE: store по пинку обновляет только 5 свежих уведомлений (merge в
+// fetchRecentNotifications) — открытый полный список (до 50) без собственного
+// рефетча оставался бы с устаревшим is_read после read-all в другой вкладке.
+// Debounce схлопывает шторм пинков в один фоновый рефетч.
+let refreshTimer: number | null = null
+
+function handleNotificationStreamEvent() {
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+  refreshTimer = window.setTimeout(() => {
+    refreshTimer = null
+    loadNotifications({ silent: true })
+  }, 300)
 }
 
 function handleNotificationClick(notification: Notification) {
@@ -91,6 +106,14 @@ watch([readFilter, categoryFilter], () => {
 
 onMounted(() => {
   loadNotifications()
+  eventStream.on('notification', handleNotificationStreamEvent)
+  eventStream.on('unread', handleNotificationStreamEvent)
+})
+
+onUnmounted(() => {
+  eventStream.off('notification', handleNotificationStreamEvent)
+  eventStream.off('unread', handleNotificationStreamEvent)
+  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
 })
 </script>
 
