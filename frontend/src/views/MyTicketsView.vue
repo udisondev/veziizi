@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyTickets, type TicketListItem } from '@/api/support'
+import { eventStream } from '@/services/eventStream'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -66,8 +67,23 @@ function formatDate(dateStr: string): string {
   })
 }
 
+async function backgroundRefresh() {
+  try {
+    tickets.value = await getMyTickets({ limit: 50 })
+  } catch {
+    // фоновый рефетч — не показываем ошибку
+  }
+}
+
 onMounted(() => {
   loadTickets()
+  eventStream.on('support_ticket', backgroundRefresh)
+  eventStream.onConnected(backgroundRefresh)
+})
+
+onUnmounted(() => {
+  eventStream.off('support_ticket', backgroundRefresh)
+  eventStream.offConnected(backgroundRefresh)
 })
 </script>
 
