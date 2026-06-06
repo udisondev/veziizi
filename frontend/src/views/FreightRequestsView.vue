@@ -8,6 +8,7 @@ import { useFreightFiltersStore, buildRouteParams } from '@/stores/freightFilter
 import { usePermissions } from '@/composables/usePermissions'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
+import { eventStream } from '@/services/eventStream'
 import type {
   FreightRequestListItem,
 } from '@/types/freightRequest'
@@ -55,6 +56,7 @@ const isLoading = ref(false)
 const isLoadingMore = ref(false)
 const error = ref<string | null>(null)
 const mobileFiltersOpen = ref(false)
+const hasUpdates = ref(false)
 
 // Get reactive refs from store
 const {
@@ -285,14 +287,29 @@ watch(
   { deep: true }
 )
 
+function handleFreightRequestEvent() {
+  if (items.value.length > 0) hasUpdates.value = true
+}
+
+async function applyUpdates() {
+  hasUpdates.value = false
+  await loadItems()
+  await nextTick()
+  resetInfiniteScroll()
+}
+
 onUnmounted(() => {
   if (filterDebounceTimer) {
     clearTimeout(filterDebounceTimer)
   }
+  eventStream.off('freight_request', handleFreightRequestEvent)
+  eventStream.offConnected(handleFreightRequestEvent)
 })
 
 onMounted(() => {
   loadItems()
+  eventStream.on('freight_request', handleFreightRequestEvent)
+  eventStream.onConnected(handleFreightRequestEvent)
 })
 </script>
 
@@ -397,6 +414,15 @@ onMounted(() => {
 
       <!-- List column -->
       <div>
+        <!-- SSE: баннер новых данных -->
+        <div
+          v-if="hasUpdates && !isLoading"
+          class="mb-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
+        >
+          <span class="text-foreground">Список обновился — есть новые данные</span>
+          <Button size="sm" variant="outline" @click="applyUpdates">Обновить</Button>
+        </div>
+
         <!-- Loading -->
         <LoadingSpinner v-if="isLoading" text="Загрузка заявок..." />
 
