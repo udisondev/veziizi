@@ -18,6 +18,19 @@ import {
 const route = useRoute()
 const auth = useAuthStore()
 
+// Списочные вью, чьё состояние (подгруженные элементы, скролл) сохраняется
+// при возврате «Назад». Матчится по defineOptions({ name }) внутри вью.
+const KEEP_ALIVE_VIEWS = [
+  'FreightRequestsMainView',
+  'FleetView',
+  'TransportView',
+  'NotificationsView',
+  'MyOffersView',
+  'FreightSubscriptionsView',
+  'MembersView',
+  'MyTicketsView',
+]
+
 const showHeader = computed(() => {
   // Don't show header on public pages and admin pages
   if (route.meta.public || route.meta.admin) return false
@@ -55,7 +68,12 @@ onMounted(async () => {
     <div :class="{ 'pt-24': showBanner }">
       <AppHeader v-if="showHeader" />
       <AuthHeader v-else-if="showAuthHeader" />
-      <RouterView :key="route.path" />
+      <!-- :key на keep-alive сбрасывает кэш при смене пользователя -->
+      <RouterView v-slot="{ Component }">
+        <KeepAlive :key="auth.memberId ?? 'anon'" :include="KEEP_ALIVE_VIEWS" :max="10">
+          <component :is="Component" :key="route.path" />
+        </KeepAlive>
+      </RouterView>
     </div>
 
     <DevUserSwitcher v-if="isDevMode" />

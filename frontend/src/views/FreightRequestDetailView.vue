@@ -88,13 +88,18 @@ watch(() => route.query.tab, (tab) => {
   if (tab && tab !== currentTab.value) currentTab.value = tab as string
 })
 
-// Отправляем событие для туториала при смене таба
+// Отправляем событие для туториала при смене таба.
+// Также синхронизируем таб в query (replace — без новой записи в истории),
+// чтобы «Назад» с других страниц возвращал на тот же таб
 watch(currentTab, (newTab) => {
   if (newTab === 'offers') {
     emitTutorial('tab:offers')
     markOffersAsSeen()
   }
   if (newTab === 'details') emitTutorial('tab:details')
+  if (route.query.tab !== newTab) {
+    router.replace({ query: { ...route.query, tab: newTab } })
+  }
 })
 
 // Подсветка таба "Предложения" при наличии новых офферов

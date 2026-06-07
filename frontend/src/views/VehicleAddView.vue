@@ -139,7 +139,8 @@ async function handleSubmit() {
   formError.value = null
   try {
     await vehiclesApi.create(auth.organizationId, formToRequest(form.value))
-    router.push({ name: 'fleet' })
+    // replace: «Назад» не должен возвращать на отправленную форму
+    router.replace({ name: 'fleet' })
   } catch (e) {
     logger.error('Failed to create vehicle', e)
     formError.value = getErrorMessage(e)

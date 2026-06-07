@@ -20,6 +20,8 @@ const WIZARD_HINTS = [
   'Проверьте данные перед публикацией. После публикации заявку увидят перевозчики.',
 ]
 
+defineOptions({ name: 'FreightRequestsMainView' })
+
 const route = useRoute()
 const router = useRouter()
 const { canCreateFreightRequest } = usePermissions()
@@ -45,13 +47,18 @@ function handleTabClick(tab: TabValue) {
   if (tab === 'list') filtersStore.resetFilters()
 }
 
+// Вью кэшируется через keep-alive (App.vue): в деактивированном состоянии
+// глобальный route указывает на ЧУЖУЮ страницу — без guard'а watchers
+// перепишут её query (например, ?tab=offers на detail-странице).
 watch(activeTab, (tab) => {
+  if (route.name !== 'freight-requests') return
   router.replace({ query: { ...route.query, tab } })
 })
 
 watch(
   () => route.query.tab,
   (tab) => {
+    if (route.name !== 'freight-requests') return
     const parsed = parseTab(tab)
     if (parsed !== activeTab.value) activeTab.value = parsed
   }

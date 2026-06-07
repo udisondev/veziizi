@@ -101,7 +101,8 @@ async function handleSubmit() {
       created_at: new Date().toISOString(),
     })
     emitTutorial('freightRequest:created', { id: 'sandbox-request' })
-    router.push('/requests')
+    // replace: «Назад» не должен возвращать на отправленную форму
+    router.replace('/requests')
     return
   }
 
@@ -109,12 +110,13 @@ async function handleSubmit() {
   apiError.value = ''
 
   try {
+    // replace: «Назад» не должен возвращать на отправленную форму
     if (props.editMode && props.freightRequestId) {
       await freightRequestsApi.update(props.freightRequestId, form.requestData.value)
-      router.push(`/freight-requests/${props.freightRequestId}`)
+      router.replace(`/freight-requests/${props.freightRequestId}`)
     } else {
       const result = await freightRequestsApi.create(form.requestData.value)
-      router.push(`/freight-requests/${result.id}`)
+      router.replace(`/freight-requests/${result.id}`)
     }
   } catch (e) {
     apiError.value = e instanceof Error ? e.message : (props.editMode ? 'Ошибка сохранения' : 'Ошибка создания заявки')

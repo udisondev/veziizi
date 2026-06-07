@@ -15,6 +15,8 @@ import { PageHeader } from '@/components/shared'
 // Icons
 import { Plus, Clock, MessageSquare, ChevronRight } from 'lucide-vue-next'
 
+defineOptions({ name: 'MyTicketsView' })
+
 const router = useRouter()
 
 const tickets = ref<TicketListItem[]>([])

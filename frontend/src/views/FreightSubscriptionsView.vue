@@ -21,6 +21,8 @@ import SubscriptionCard from '@/components/subscriptions/SubscriptionCard.vue'
 // Icons
 import { Plus, Bell, Info } from 'lucide-vue-next'
 
+defineOptions({ name: 'FreightSubscriptionsView' })
+
 const router = useRouter()
 const store = useSubscriptionsStore()
 const { subscriptions, isLoading, canCreateMore, subscriptionsCount, activeCount } = storeToRefs(store)

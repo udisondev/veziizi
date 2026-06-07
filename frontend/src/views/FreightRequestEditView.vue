@@ -35,7 +35,8 @@ async function loadFreightRequest() {
 
     // Проверяем права на редактирование
     if (!permissions.canEditFreightRequest(fr.customer_org_id, fr.customer_member_id)) {
-      router.push(`/freight-requests/${id}`)
+      // replace: редирект не должен оставлять страницу редактирования в истории
+      router.replace(`/freight-requests/${id}`)
       return
     }
 

@@ -85,7 +85,8 @@ async function handleSubmit() {
       vat_type: form.value.vat_type,
       payment_method: form.value.payment_method,
     })
-    router.push({ name: 'freight-request-detail', params: { id: freightRequestId } })
+    // replace: «Назад» не должен возвращать на отправленную форму
+    router.replace({ name: 'freight-request-detail', params: { id: freightRequestId } })
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка отправки предложения'
   } finally {

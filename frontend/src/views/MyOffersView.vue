@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Component } from 'vue'
 import { useAuthStore } from '@/stores/auth'
@@ -70,6 +70,8 @@ import {
 } from 'lucide-vue-next'
 
 const PAGE_SIZE = 20
+
+defineOptions({ name: 'MyOffersView' })
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -418,11 +420,22 @@ watch(
 
 onUnmounted(() => { if (debounceTimer) clearTimeout(debounceTimer) })
 
+// Вью кэшируется через keep-alive (App.vue): пока она деактивирована, внешние
+// триггеры (уведомления из стора) не должны перезагружать список — иначе
+// потеряются подгруженные страницы и позиция скролла.
+const isViewActive = ref(true)
+onActivated(() => { isViewActive.value = true })
+onDeactivated(() => {
+  isViewActive.value = false
+  if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+})
+
 const notificationsStore = useNotificationsStore()
 const lastOfferNotificationId = computed(() =>
   notificationsStore.notifications.find(n => getCategoryByType(n.notification_type) === 'offers')?.id ?? null
 )
 watch(lastOfferNotificationId, (newId, oldId) => {
+  if (!isViewActive.value) return
   if (newId && newId !== oldId) loadItems()
 })
 

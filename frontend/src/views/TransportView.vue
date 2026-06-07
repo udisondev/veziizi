@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onDeactivated, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { vehiclesApi } from '@/api/vehicles'
@@ -37,6 +37,8 @@ import {
 } from 'lucide-vue-next'
 
 const PAGE_SIZE = 20
+
+defineOptions({ name: 'TransportView' })
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -189,6 +191,11 @@ watch(
 )
 
 onUnmounted(() => { if (debounceTimer) clearTimeout(debounceTimer) })
+// Вью кэшируется через keep-alive (App.vue) — при деактивации unmounted не
+// вызывается, поэтому таймер чистим и здесь
+onDeactivated(() => {
+  if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+})
 onMounted(() => { loadItems() })
 </script>
 

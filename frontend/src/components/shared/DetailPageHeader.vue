@@ -11,7 +11,7 @@ withDefaults(
   }>(),
   {
     backLabel: 'Назад',
-    useHistory: false,
+    useHistory: true,
   }
 )
 </script>

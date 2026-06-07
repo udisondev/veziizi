@@ -49,6 +49,8 @@ import {
 // Icons
 import { Users, UserPlus, History } from 'lucide-vue-next'
 
+defineOptions({ name: 'MembersView' })
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()

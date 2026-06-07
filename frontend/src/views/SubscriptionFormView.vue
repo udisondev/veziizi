@@ -155,7 +155,8 @@ async function handleSubmit() {
       return
     }
 
-    router.push({ name: 'freight-subscriptions' })
+    // replace: «Назад» не должен возвращать на отправленную форму
+    router.replace({ name: 'freight-subscriptions' })
   } finally {
     isSaving.value = false
   }
@@ -174,11 +175,12 @@ onMounted(async () => {
         loadSubscription(sub)
       } else {
         toast({ title: 'Подписка не найдена', variant: 'destructive' })
-        router.push({ name: 'freight-subscriptions' })
+        // replace: редирект не должен оставлять несуществующую страницу в истории
+        router.replace({ name: 'freight-subscriptions' })
       }
     } catch {
       toast({ title: 'Ошибка загрузки подписки', variant: 'destructive' })
-      router.push({ name: 'freight-subscriptions' })
+      router.replace({ name: 'freight-subscriptions' })
     } finally {
       isLoadingSubscription.value = false
     }

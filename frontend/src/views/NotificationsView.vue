@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onActivated, onDeactivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '@/stores/notifications'
 import { eventStream } from '@/services/eventStream'
@@ -25,6 +25,8 @@ import NotificationItem from '@/components/notifications/NotificationItem.vue'
 
 // Icons
 import { Bell, Settings } from 'lucide-vue-next'
+
+defineOptions({ name: 'NotificationsView' })
 
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
@@ -104,16 +106,26 @@ watch([readFilter, categoryFilter], () => {
   loadNotifications()
 })
 
-onMounted(() => {
-  loadNotifications()
+// Вью кэшируется через keep-alive (App.vue): activated/deactivated вместо
+// mounted/unmounted — SSE-слушатели активны только пока вью на экране.
+let hasLoadedOnce = false
+
+onActivated(() => {
+  // Первая активация = mount: обычная загрузка; повторная — тихий catch-up
+  // (пока вью была деактивирована, SSE-пинки не слушались)
+  loadNotifications({ silent: hasLoadedOnce })
+  hasLoadedOnce = true
   eventStream.on('notification', handleNotificationStreamEvent)
   eventStream.on('unread', handleNotificationStreamEvent)
 })
 
-onUnmounted(() => {
+onDeactivated(() => {
   eventStream.off('notification', handleNotificationStreamEvent)
   eventStream.off('unread', handleNotificationStreamEvent)
-  if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+  if (refreshTimer !== null) {
+    window.clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
 })
 </script>
 

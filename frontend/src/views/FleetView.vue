@@ -20,6 +20,8 @@ import { useToast } from '@/components/ui/toast/use-toast'
 import { logger } from '@/utils/logger'
 import { Truck, Plus, Trash2, AlertCircle, ChevronRight, BadgeCheck } from 'lucide-vue-next'
 
+defineOptions({ name: 'FleetView' })
+
 const router = useRouter()
 const auth = useAuthStore()
 const { toast } = useToast()

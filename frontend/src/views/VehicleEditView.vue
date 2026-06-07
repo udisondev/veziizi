@@ -169,7 +169,8 @@ async function handleSubmit() {
   formError.value = null
   try {
     await vehiclesApi.update(auth.organizationId, vehicle.value.id, formToRequest(form.value))
-    router.push({ name: 'fleet' })
+    // replace: «Назад» не должен возвращать на отправленную форму
+    router.replace({ name: 'fleet' })
   } catch (e) {
     logger.error('Failed to update vehicle', e)
     formError.value = getErrorMessage(e)
@@ -189,7 +190,8 @@ onMounted(async () => {
     loadVehicle(v)
   } catch {
     toast({ title: 'Транспортное средство не найдено', variant: 'destructive' })
-    router.push({ name: 'fleet' })
+    // replace: редирект не должен оставлять несуществующую страницу в истории
+    router.replace({ name: 'fleet' })
   } finally {
     isLoading.value = false
   }

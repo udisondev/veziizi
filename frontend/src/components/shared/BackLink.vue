@@ -14,7 +14,7 @@ const props = withDefaults(
   }>(),
   {
     label: 'Назад',
-    useHistory: false,
+    useHistory: true,
   }
 )
 
@@ -29,7 +29,8 @@ const classes = computed(() =>
 
 function goBack() {
   // Проверяем есть ли предыдущая страница в истории Vue Router
-  const hasPreviousPage = window.history.state?.back !== null
+  // (!= null покрывает и null, и undefined — когда state ещё не инициализирован)
+  const hasPreviousPage = window.history.state?.back != null
   if (hasPreviousPage) {
     router.back()
   } else {
