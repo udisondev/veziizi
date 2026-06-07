@@ -7,6 +7,7 @@ export type NotificationType =
   | 'offer_confirmed'
   | 'offer_declined'
   | 'offer_withdrawn'
+  | 'freight_invitation'
   | 'freight_completed'
   | 'freight_cancelled'
   | 'review_received'
@@ -96,6 +97,7 @@ export const notificationTypeLabels: Record<NotificationType, string> = {
   offer_confirmed: 'Перевозка подтверждена',
   offer_declined: 'Предложение отклонено перевозчиком',
   offer_withdrawn: 'Предложение отозвано',
+  freight_invitation: 'Вам предложили заявку',
   freight_completed: 'Перевозка завершена',
   freight_cancelled: 'Перевозка отменена',
   review_received: 'Новый отзыв',
@@ -133,6 +135,7 @@ export function getCategoryByType(type: NotificationType): NotificationCategory 
     case 'offer_confirmed':
     case 'offer_declined':
     case 'offer_withdrawn':
+    case 'freight_invitation':
       return 'offers'
     case 'review_received':
       return 'reviews'

@@ -125,7 +125,22 @@ services:
     environment:
       <<: *dev-env
 
+  worker-support-tickets-notifier:
+    profiles: [docker-dev]
+    environment:
+      <<: *dev-env
+
+  worker-vehicles:
+    profiles: [docker-dev]
+    environment:
+      <<: *dev-env
+
   worker-rate-limiter-cleanup:
+    profiles: [docker-dev]
+    environment:
+      <<: *dev-env
+
+  worker-dedup-cleanup:
     profiles: [docker-dev]
     environment:
       <<: *dev-env

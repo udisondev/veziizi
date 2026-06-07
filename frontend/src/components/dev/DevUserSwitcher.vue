@@ -40,11 +40,13 @@ async function switchUser(user: DevUser) {
   isSwitching.value = true
   try {
     await devApi.switchUser(user.id)
-    await auth.fetchMe()
-    isOpen.value = false
+    // Полная перезагрузка: сторы, привязанные к пользователю (уведомления +
+    // их SSE-подписка, инициализируемые только в NotificationBell.onMounted),
+    // иначе остаются от прежнего пользователя — колокольчик показывает чужой/
+    // устаревший список, а SSE-стрим роутится на старого участника.
+    window.location.reload()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка переключения'
-  } finally {
     isSwitching.value = false
   }
 }

@@ -2,6 +2,7 @@ import { api } from './client'
 import type {
   CreateFreightRequestRequest,
   CreateFreightRequestResponse,
+  FreightInvite,
   FreightRequest,
   FreightRequestListItem,
   Offer,
@@ -139,6 +140,16 @@ export const freightRequestsApi = {
 
   unselectOffer(frId: string, offerId: string, reason?: string): Promise<void> {
     return api.post(`/freight-requests/${frId}/offers/${offerId}/unselect`, reason ? { reason } : undefined)
+  },
+
+  // Invites (предложение заявки владельцу транспорта)
+  inviteCarrier(frId: string, vehicleId: string): Promise<void> {
+    return api.post(`/freight-requests/${frId}/invite-carrier`, { vehicle_id: vehicleId })
+  },
+
+  async listInvites(frId: string): Promise<FreightInvite[]> {
+    const result = await api.get<{ items: FreightInvite[] } | null>(`/freight-requests/${frId}/invites`)
+    return result?.items ?? []
   },
 
   reassign(frId: string, newMemberId: string): Promise<void> {

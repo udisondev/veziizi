@@ -253,6 +253,15 @@ export interface FreightRequestListItem {
   customer_member_id?: string
 }
 
+// Приглашение перевозчика на заявку (лог invite-carrier)
+export interface FreightInvite {
+  id: string
+  carrier_org_id: string
+  vehicle_id: string
+  invited_by: string
+  invited_at: string
+}
+
 // Filter types
 export type OwnershipFilter = 'all' | 'my_org' | 'my' | 'my_as_carrier'
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { vehiclesApi } from '@/api/vehicles'
 import type { VehicleListItem } from '@/types/vehicle'
 import {
@@ -22,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { LoadingSpinner, EmptyState, ErrorBanner, VehicleVerifiedBadge } from '@/components/shared'
 import { RangeInput, ChipButtonGroup } from '@/components/filters'
 import { MultiSelectField } from '@/components/ui/multi-select'
+import InviteFreightDialog from '@/components/transport/InviteFreightDialog.vue'
 import {
   SlidersHorizontal,
   Weight,
@@ -31,11 +33,22 @@ import {
   Thermometer,
   Shield,
   CheckSquare,
+  Send,
 } from 'lucide-vue-next'
 
 const PAGE_SIZE = 20
 
 const router = useRouter()
+const auth = useAuthStore()
+
+// Предложение заявки владельцу транспорта
+const inviteDialogOpen = ref(false)
+const inviteVehicle = ref<VehicleListItem | null>(null)
+
+function openInviteDialog(item: VehicleListItem) {
+  inviteVehicle.value = item
+  inviteDialogOpen.value = true
+}
 
 // Фильтры
 const vehicleSubTypes = ref<VehicleSubType[]>([])
@@ -346,6 +359,17 @@ onMounted(() => { loadItems() })
                 </span>
                 <Badge v-if="item.requires_adr" variant="destructive" class="text-xs">ADR</Badge>
                 <Badge v-if="item.thermograph" variant="secondary" class="text-xs">Термописец</Badge>
+
+                <Button
+                  v-if="item.verified && item.org_id !== auth.organizationId"
+                  size="sm"
+                  variant="outline"
+                  class="ml-auto shrink-0"
+                  @click.stop="openInviteDialog(item)"
+                >
+                  <Send class="h-3.5 w-3.5 mr-1.5" />
+                  Предложить заявку
+                </Button>
               </div>
 
             </CardContent>
@@ -364,5 +388,7 @@ onMounted(() => { loadItems() })
       </div>
 
     </div>
+
+    <InviteFreightDialog v-model:open="inviteDialogOpen" :vehicle="inviteVehicle" />
   </div>
 </template>
