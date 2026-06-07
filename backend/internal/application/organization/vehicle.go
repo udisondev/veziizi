@@ -148,6 +148,26 @@ func (s *Service) ArchiveVehicle(ctx context.Context, input ArchiveVehicleInput)
 	})
 }
 
+type SubmitVehicleInput struct {
+	OrganizationID uuid.UUID
+	ActorID        uuid.UUID
+	VehicleID      uuid.UUID
+}
+
+// SubmitVehicle отправляет транспорт на модерацию по запросу владельца.
+func (s *Service) SubmitVehicle(ctx context.Context, input SubmitVehicleInput) error {
+	return s.db.InTx(ctx, func(ctx context.Context) error {
+		org, err := s.Get(ctx, input.OrganizationID)
+		if err != nil {
+			return err
+		}
+		if err := org.SubmitVehicleForVerification(input.ActorID, input.VehicleID); err != nil {
+			return err
+		}
+		return s.saveAndPublish(ctx, org)
+	})
+}
+
 // VehicleAggregateOps хелперы для admin service: они достают агрегат и применяют команду.
 // Не пересоздаём admin-логику отдельно: admin service использует Organization service
 // для управления автопарком.

@@ -797,6 +797,36 @@ func (o *Organization) ArchiveVehicle(actorID, vehicleID uuid.UUID) error {
 	return nil
 }
 
+// SubmitVehicleForVerification sends an unconfirmed (or rejected) vehicle to
+// admin moderation on behalf of the owner.
+func (o *Organization) SubmitVehicleForVerification(actorID, vehicleID uuid.UUID) error {
+	if o.status != values.OrganizationStatusActive {
+		return fmt.Errorf("submit vehicle in org %s: %w", o.ID(), ErrOrganizationNotActive)
+	}
+	actor, ok := o.members[actorID]
+	if !ok {
+		return fmt.Errorf("submit vehicle in org %s by member %s: %w", o.ID(), actorID, ErrMemberNotFound)
+	}
+	if !actor.CanManageVehicles() {
+		return fmt.Errorf("submit vehicle in org %s by member %s: %w", o.ID(), actorID, ErrInsufficientPermissions)
+	}
+	vehicle, ok := o.vehicles[vehicleID]
+	if !ok {
+		return fmt.Errorf("submit vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotFound)
+	}
+	status := vehicle.Status()
+	if !status.IsUnconfirmed() && !status.IsRejected() {
+		return fmt.Errorf("submit vehicle %s in org %s: %w", vehicleID, o.ID(), ErrVehicleNotSubmittable)
+	}
+
+	o.Apply(events.VehicleSubmittedForVerification{
+		BaseEvent:   eventstore.NewBaseEvent(o.ID(), events.AggregateType, o.Version()+1),
+		VehicleID:   vehicleID,
+		SubmittedBy: actorID,
+	})
+	return nil
+}
+
 // VerifyVehicle is invoked by admin flow. It does not check member permissions.
 func (o *Organization) VerifyVehicle(adminID, vehicleID uuid.UUID) error {
 	vehicle, ok := o.vehicles[vehicleID]
@@ -971,7 +1001,12 @@ func (o *Organization) apply(evt eventstore.Event) {
 
 	case events.VehicleUpdated:
 		if v, ok := o.vehicles[e.VehicleID]; ok {
-			v.MarkPending(payloadToSpecs(e.Specs), e.OccurredAt())
+			v.MarkUnconfirmed(payloadToSpecs(e.Specs), e.OccurredAt())
+		}
+
+	case events.VehicleSubmittedForVerification:
+		if v, ok := o.vehicles[e.VehicleID]; ok {
+			v.SubmitForVerification(e.OccurredAt())
 		}
 
 	case events.VehicleVerified:

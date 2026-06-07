@@ -3,14 +3,18 @@ import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAdminStore } from '@/stores/admin'
 import { adminApi } from '@/api/admin'
-import type { PendingReview } from '@/types/admin'
+import type { PendingVehicle } from '@/types/admin'
+import {
+  vehicleTypeLabels,
+  vehicleSubTypeLabels,
+  type VehicleType,
+  type VehicleSubType,
+} from '@/types/freightRequest'
 
 // UI Components
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
@@ -42,19 +46,16 @@ const router = useRouter()
 const route = useRoute()
 const admin = useAdminStore()
 
-const reviews = ref<PendingReview[]>([])
-const total = ref(0)
+const vehicles = ref<PendingVehicle[]>([])
 const isLoading = ref(true)
 const error = ref('')
 
 // Modal state
-const showApproveModal = ref(false)
 const showRejectModal = ref(false)
-const selectedReview = ref<PendingReview | null>(null)
-const approveWeight = ref(1.0)
-const approveNote = ref('')
+const selectedVehicle = ref<PendingVehicle | null>(null)
 const rejectReason = ref('')
 const isSubmitting = ref(false)
+const verifyingId = ref<string | null>(null)
 
 const navItems = [
   { to: '/admin/organizations', label: 'Организации', icon: Building2 },
@@ -65,32 +66,15 @@ const navItems = [
   { to: '/admin/email-templates', label: 'Email шаблоны', icon: Mail },
 ]
 
-const severityVariants: Record<string, 'default' | 'warning' | 'destructive'> = {
-  low: 'warning',
-  medium: 'warning',
-  high: 'destructive',
-}
-
-const signalTypeLabels: Record<string, string> = {
-  mutual_reviews: 'Взаимные отзывы',
-  fast_completion: 'Быстрое завершение',
-  perfect_ratings: 'Только 5 звёзд',
-  new_org_burst: 'Бурный рост отзывов',
-  same_ip: 'Совпадение IP',
-  same_fingerprint: 'Совпадение устройств',
-}
-
 onMounted(async () => {
-  await loadReviews()
+  await loadVehicles()
 })
 
-async function loadReviews() {
+async function loadVehicles() {
   isLoading.value = true
   error.value = ''
   try {
-    const response = await adminApi.getPendingReviews()
-    reviews.value = response.reviews
-    total.value = response.total
+    vehicles.value = await adminApi.getPendingVehicles()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка загрузки'
   } finally {
@@ -108,56 +92,45 @@ function formatDate(dateStr: string): string {
   })
 }
 
-function formatCurrency(amount: number, currency: string): string {
-  const symbols: Record<string, string> = { RUB: '₽', USD: '$', EUR: '€' }
-  return `${(amount / 100).toLocaleString('ru-RU')} ${symbols[currency] || currency}`
+function formatVehicle(vehicle: PendingVehicle): string {
+  const type = vehicleTypeLabels[vehicle.vehicle_type as VehicleType] ?? vehicle.vehicle_type
+  const subtype = vehicleSubTypeLabels[vehicle.vehicle_subtype as VehicleSubType] ?? vehicle.vehicle_subtype
+  return `${type} · ${subtype}`
 }
 
-function openApproveModal(review: PendingReview) {
-  selectedReview.value = review
-  approveWeight.value = review.raw_weight
-  approveNote.value = ''
-  showApproveModal.value = true
+async function submitVerify(vehicle: PendingVehicle) {
+  if (verifyingId.value) return
+  verifyingId.value = vehicle.id
+  try {
+    await adminApi.verifyVehicle(vehicle.org_id, vehicle.id)
+    await loadVehicles()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Ошибка подтверждения'
+  } finally {
+    verifyingId.value = null
+  }
 }
 
-function openRejectModal(review: PendingReview) {
-  selectedReview.value = review
+function openRejectModal(vehicle: PendingVehicle) {
+  selectedVehicle.value = vehicle
   rejectReason.value = ''
   showRejectModal.value = true
 }
 
 function closeModals() {
-  showApproveModal.value = false
   showRejectModal.value = false
-  selectedReview.value = null
-}
-
-async function submitApprove() {
-  if (!selectedReview.value) return
-  isSubmitting.value = true
-  try {
-    await adminApi.approveReview(selectedReview.value.id, {
-      final_weight: approveWeight.value,
-      note: approveNote.value || undefined,
-    })
-    closeModals()
-    await loadReviews()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Ошибка одобрения'
-  } finally {
-    isSubmitting.value = false
-  }
+  selectedVehicle.value = null
 }
 
 async function submitReject() {
-  if (!selectedReview.value || !rejectReason.value.trim()) return
+  if (!selectedVehicle.value || !rejectReason.value.trim()) return
   isSubmitting.value = true
   try {
-    await adminApi.rejectReview(selectedReview.value.id, {
+    await adminApi.rejectVehicle(selectedVehicle.value.org_id, selectedVehicle.value.id, {
       reason: rejectReason.value.trim(),
     })
     closeModals()
-    await loadReviews()
+    await loadVehicles()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка отклонения'
   } finally {
@@ -221,14 +194,14 @@ function isActive(path: string): boolean {
       <!-- Page Header -->
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h2 class="text-2xl font-bold text-white">Отзывы на модерации</h2>
-          <p class="text-sm text-slate-400 mt-1">Всего: {{ total }}</p>
+          <h2 class="text-2xl font-bold text-white">Транспорт на модерации</h2>
+          <p class="text-sm text-slate-400 mt-1">Всего: {{ vehicles.length }}</p>
         </div>
         <Button
           variant="outline"
           class="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
           :disabled="isLoading"
-          @click="loadReviews"
+          @click="loadVehicles"
         >
           <RefreshCcw class="h-4 w-4 mr-2" :class="{ 'animate-spin': isLoading }" />
           Обновить
@@ -239,7 +212,7 @@ function isActive(path: string): boolean {
       <ErrorBanner
         v-if="error"
         :message="error"
-        @retry="loadReviews"
+        @retry="loadVehicles"
         class="mb-6"
       />
 
@@ -249,52 +222,39 @@ function isActive(path: string): boolean {
       </div>
 
       <!-- Empty -->
-      <Card v-else-if="reviews.length === 0" class="bg-slate-800 border-slate-700">
+      <Card v-else-if="vehicles.length === 0" class="bg-slate-800 border-slate-700">
         <CardContent class="py-12 text-center">
           <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-700 mb-4">
-            <Star class="h-8 w-8 text-slate-400" />
+            <Truck class="h-8 w-8 text-slate-400" />
           </div>
-          <h3 class="text-lg font-medium text-white mb-2">Нет отзывов на модерации</h3>
-          <p class="text-slate-400">Все отзывы обработаны</p>
+          <h3 class="text-lg font-medium text-white mb-2">Нет транспорта на модерации</h3>
+          <p class="text-slate-400">Все заявки обработаны</p>
         </CardContent>
       </Card>
 
       <!-- List -->
       <div v-else class="space-y-4">
         <Card
-          v-for="review in reviews"
-          :key="review.id"
+          v-for="vehicle in vehicles"
+          :key="vehicle.id"
           class="bg-slate-800 border-slate-700"
         >
           <CardContent class="p-6">
-            <div class="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 mb-4">
+            <div class="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
               <div>
-                <!-- Rating -->
-                <div class="flex items-center gap-3 mb-2">
-                  <div class="flex text-yellow-400">
-                    <Star
-                      v-for="i in 5"
-                      :key="i"
-                      class="h-5 w-5"
-                      :class="i <= review.rating ? 'fill-current' : 'fill-none'"
-                    />
-                  </div>
-                  <span class="text-white font-medium">{{ review.rating }}/5</span>
-                  <Badge variant="secondary" class="bg-slate-700 text-slate-300">
-                    Fraud: {{ (review.fraud_score * 100).toFixed(0) }}%
-                  </Badge>
+                <!-- Тип + гос. номер -->
+                <div class="flex items-center gap-3 mb-2 flex-wrap">
+                  <Truck class="h-5 w-5 text-slate-400 shrink-0" />
+                  <span class="text-white font-medium">{{ formatVehicle(vehicle) }}</span>
+                  <span class="font-mono font-semibold text-indigo-400">{{ vehicle.registration_number }}</span>
                 </div>
-
-                <!-- Comment -->
-                <p v-if="review.comment" class="text-slate-300 mb-3 break-words">
-                  {{ review.comment }}
-                </p>
 
                 <!-- Meta -->
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
-                  <span>Сумма: {{ formatCurrency(review.order_amount, review.order_currency) }}</span>
-                  <span>Вес: {{ review.raw_weight.toFixed(2) }}</span>
-                  <span>{{ formatDate(review.created_at) }}</span>
+                  <span v-if="vehicle.brand || vehicle.model">
+                    {{ [vehicle.brand, vehicle.model].filter(Boolean).join(' ') }}
+                  </span>
+                  <span>Отправлен: {{ formatDate(vehicle.submitted_at) }}</span>
                 </div>
               </div>
 
@@ -303,15 +263,16 @@ function isActive(path: string): boolean {
                 <Button
                   size="sm"
                   class="bg-green-600 hover:bg-green-500 text-white"
-                  @click="openApproveModal(review)"
+                  :disabled="verifyingId === vehicle.id"
+                  @click="submitVerify(vehicle)"
                 >
                   <Check class="h-4 w-4 mr-1" />
-                  Одобрить
+                  {{ verifyingId === vehicle.id ? 'Подтверждение...' : 'Подтвердить' }}
                 </Button>
                 <Button
                   size="sm"
                   variant="destructive"
-                  @click="openRejectModal(review)"
+                  @click="openRejectModal(vehicle)"
                 >
                   <X class="h-4 w-4 mr-1" />
                   Отклонить
@@ -319,93 +280,24 @@ function isActive(path: string): boolean {
               </div>
             </div>
 
-            <!-- Fraud Signals -->
-            <div v-if="review.fraud_signals.length > 0" class="mt-4 pt-4 border-t border-slate-700">
-              <p class="text-sm text-slate-400 mb-2">Обнаруженные сигналы:</p>
-              <div class="flex flex-wrap gap-2">
-                <Badge
-                  v-for="(signal, idx) in review.fraud_signals"
-                  :key="idx"
-                  :variant="severityVariants[signal.severity]"
-                >
-                  {{ signalTypeLabels[signal.type] || signal.type }}
-                </Badge>
-              </div>
-            </div>
-
             <!-- IDs -->
             <div class="mt-4 pt-4 border-t border-slate-700 text-xs text-slate-600 font-mono">
-              Review: {{ review.id.slice(0, 8) }}...
+              Vehicle: {{ vehicle.id.slice(0, 8) }}... · Org: {{ vehicle.org_id.slice(0, 8) }}...
             </div>
           </CardContent>
         </Card>
       </div>
     </main>
 
-    <!-- Approve Modal -->
-    <Dialog v-model:open="showApproveModal">
-      <DialogContent class="bg-slate-800 border-slate-700 text-white sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle class="text-white">Одобрить отзыв</DialogTitle>
-          <DialogDescription class="text-slate-400">
-            Установите итоговый вес отзыва
-          </DialogDescription>
-        </DialogHeader>
-
-        <div class="space-y-4">
-          <div class="space-y-2">
-            <Label class="text-slate-200">Итоговый вес</Label>
-            <Input
-              v-model.number="approveWeight"
-              type="number"
-              min="0"
-              max="1"
-              step="0.1"
-              class="bg-slate-700 border-slate-600 text-white"
-            />
-            <p class="text-xs text-slate-500">
-              От 0 до 1. Исходный вес: {{ selectedReview?.raw_weight.toFixed(2) }}
-            </p>
-          </div>
-
-          <div class="space-y-2">
-            <Label class="text-slate-200">Примечание (необязательно)</Label>
-            <Textarea
-              v-model="approveNote"
-              rows="2"
-              class="bg-slate-700 border-slate-600 text-white resize-none"
-              placeholder="Причина изменения веса..."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            class="text-slate-400 hover:text-white"
-            :disabled="isSubmitting"
-            @click="closeModals"
-          >
-            Отмена
-          </Button>
-          <Button
-            class="bg-green-600 hover:bg-green-500 text-white"
-            :disabled="isSubmitting"
-            @click="submitApprove"
-          >
-            {{ isSubmitting ? 'Сохранение...' : 'Одобрить' }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
     <!-- Reject Modal -->
     <Dialog v-model:open="showRejectModal">
       <DialogContent class="bg-slate-800 border-slate-700 text-white sm:max-w-md">
         <DialogHeader>
-          <DialogTitle class="text-white">Отклонить отзыв</DialogTitle>
+          <DialogTitle class="text-white">Отклонить транспорт</DialogTitle>
           <DialogDescription class="text-slate-400">
-            Укажите причину отклонения
+            <template v-if="selectedVehicle">
+              {{ formatVehicle(selectedVehicle) }} · {{ selectedVehicle.registration_number }}
+            </template>
           </DialogDescription>
         </DialogHeader>
 

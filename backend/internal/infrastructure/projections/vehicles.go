@@ -73,6 +73,17 @@ func WithVehicleStatus(status string) VehicleFilterOption {
 	}
 }
 
+// WithVehiclePubliclyVisible ограничивает выборку публично видимым транспортом:
+// всё кроме archived и rejected — отклонённую модерацией машину нельзя
+// рекламировать в маркетплейсе (владелец видит её в Автопарке, правит и
+// переотправляет). Статус модерации наружу не раскрывается — публичные
+// эндпоинты маппят его в флаг verified.
+func WithVehiclePubliclyVisible() VehicleFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.NotEq{"v.status": []string{"archived", "rejected"}})
+	}
+}
+
 func WithVehicleStatuses(statuses []string) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		if len(statuses) == 0 {

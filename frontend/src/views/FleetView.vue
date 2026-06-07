@@ -3,21 +3,22 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { vehiclesApi } from '@/api/vehicles'
-import type { Vehicle, VehicleStatus } from '@/types/vehicle'
+import type { Vehicle } from '@/types/vehicle'
 import {
   vehicleTypeLabels,
   vehicleSubTypeLabels,
 } from '@/types/freightRequest'
+import { vehicleStatusMap } from '@/constants/statusMaps'
 
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
-import { LoadingSpinner } from '@/components/shared'
+import { LoadingSpinner, StatusBadge } from '@/components/shared'
 import { useToast } from '@/components/ui/toast/use-toast'
 import { logger } from '@/utils/logger'
-import { Truck, Plus, Trash2, AlertCircle, ChevronRight } from 'lucide-vue-next'
+import { Truck, Plus, Trash2, AlertCircle, ChevronRight, BadgeCheck } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -60,11 +61,25 @@ async function confirmDelete() {
   }
 }
 
-const statusConfig: Record<VehicleStatus, { label: string; class: string }> = {
-  pending:  { label: 'На модерации', class: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' },
-  verified: { label: 'Проверен',     class: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' },
-  rejected: { label: 'Отклонён',     class: 'bg-destructive/10 text-destructive' },
-  archived: { label: 'Архив',        class: 'bg-muted text-muted-foreground' },
+const submittingId = ref<string | null>(null)
+
+// Отправить ТС на модерацию (unconfirmed|rejected → pending)
+async function submitVehicle(vehicle: Vehicle) {
+  if (!auth.organizationId || submittingId.value) return
+  submittingId.value = vehicle.id
+  try {
+    await vehiclesApi.submit(auth.organizationId, vehicle.id)
+    await loadVehicles()
+  } catch (e) {
+    logger.error('Failed to submit vehicle for verification', e)
+    toast({ title: 'Не удалось отправить транспорт на подтверждение', variant: 'destructive' })
+  } finally {
+    submittingId.value = null
+  }
+}
+
+function canSubmit(vehicle: Vehicle) {
+  return vehicle.status === 'unconfirmed' || vehicle.status === 'rejected'
 }
 
 function formatCapacity(val?: number) {
@@ -126,10 +141,7 @@ function formatCapacity(val?: number) {
               <span v-if="vehicle.brand || vehicle.model" class="text-sm text-muted-foreground">
                 {{ [vehicle.brand, vehicle.model].filter(Boolean).join(' ') }}
               </span>
-              <span
-                class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full shrink-0"
-                :class="statusConfig[vehicle.status].class"
-              >{{ statusConfig[vehicle.status].label }}</span>
+              <StatusBadge :status="vehicle.status" :status-map="vehicleStatusMap" class="shrink-0" />
             </div>
 
             <!-- Строка 2: тип, кузов, характеристики -->
@@ -164,6 +176,18 @@ function formatCapacity(val?: number) {
               <span>{{ vehicle.rejection_reason }}</span>
             </div>
           </div>
+
+          <Button
+            v-if="canSubmit(vehicle)"
+            size="sm"
+            variant="outline"
+            class="shrink-0"
+            :disabled="submittingId === vehicle.id"
+            @click.stop="submitVehicle(vehicle)"
+          >
+            <BadgeCheck class="h-4 w-4 mr-1.5" />
+            {{ submittingId === vehicle.id ? 'Отправка...' : 'Подтвердить' }}
+          </Button>
 
           <Button
             variant="ghost"

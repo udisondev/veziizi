@@ -19,7 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LoadingSpinner, EmptyState, ErrorBanner } from '@/components/shared'
+import { LoadingSpinner, EmptyState, ErrorBanner, VehicleVerifiedBadge } from '@/components/shared'
 import { RangeInput, ChipButtonGroup } from '@/components/filters'
 import { MultiSelectField } from '@/components/ui/multi-select'
 import {
@@ -307,6 +307,7 @@ onMounted(() => { loadItems() })
                 <div class="flex items-center gap-2 flex-wrap">
                   <Truck class="h-4 w-4 text-muted-foreground shrink-0" />
                   <span class="text-sm font-medium">{{ formatVehicle(item) }}</span>
+                  <VehicleVerifiedBadge :verified="item.verified" />
                 </div>
                 <span class="font-mono text-sm font-semibold shrink-0">{{ item.registration_number }}</span>
               </div>

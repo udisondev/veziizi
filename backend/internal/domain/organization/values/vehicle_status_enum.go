@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	// VehicleStatusUnconfirmed is a VehicleStatus of type unconfirmed.
+	VehicleStatusUnconfirmed VehicleStatus = "unconfirmed"
 	// VehicleStatusPending is a VehicleStatus of type pending.
 	VehicleStatusPending VehicleStatus = "pending"
 	// VehicleStatusVerified is a VehicleStatus of type verified.
@@ -26,6 +28,7 @@ const (
 var ErrInvalidVehicleStatus = fmt.Errorf("not a valid VehicleStatus, try [%s]", strings.Join(_VehicleStatusNames, ", "))
 
 var _VehicleStatusNames = []string{
+	string(VehicleStatusUnconfirmed),
 	string(VehicleStatusPending),
 	string(VehicleStatusVerified),
 	string(VehicleStatusRejected),
@@ -52,10 +55,11 @@ func (x VehicleStatus) IsValid() bool {
 }
 
 var _VehicleStatusValue = map[string]VehicleStatus{
-	"pending":  VehicleStatusPending,
-	"verified": VehicleStatusVerified,
-	"rejected": VehicleStatusRejected,
-	"archived": VehicleStatusArchived,
+	"unconfirmed": VehicleStatusUnconfirmed,
+	"pending":     VehicleStatusPending,
+	"verified":    VehicleStatusVerified,
+	"rejected":    VehicleStatusRejected,
+	"archived":    VehicleStatusArchived,
 }
 
 // ParseVehicleStatus attempts to convert a string to a VehicleStatus.
@@ -87,6 +91,8 @@ func (x *VehicleStatus) UnmarshalText(text []byte) error {
 
 // AppendText appends the textual representation of itself to the end of b
 // (allocating a larger slice if necessary) and returns the updated slice.
+//
+// Implementations must not retain b, nor mutate any bytes within b[:len(b)].
 func (x *VehicleStatus) AppendText(b []byte) ([]byte, error) {
 	return append(b, x.String()...), nil
 }
@@ -94,12 +100,14 @@ func (x *VehicleStatus) AppendText(b []byte) ([]byte, error) {
 var errVehicleStatusNilPtr = errors.New("value pointer is nil") // one per type for package clashes
 
 // Scan implements the Scanner interface.
-func (x *VehicleStatus) Scan(value any) (err error) {
+func (x *VehicleStatus) Scan(value interface{}) (err error) {
 	if value == nil {
 		*x = VehicleStatus("")
 		return
 	}
 
+	// A wider range of scannable types.
+	// driver.Value values at the top of the list for expediency
 	switch v := value.(type) {
 	case string:
 		*x, err = ParseVehicleStatus(v)

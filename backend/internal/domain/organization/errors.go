@@ -30,4 +30,5 @@ var (
 	ErrVehicleAlreadyExists        = errors.New("vehicle with this registration number already exists in the fleet")
 	ErrVehicleArchived             = errors.New("vehicle is archived")
 	ErrVehicleNotPending           = errors.New("vehicle is not pending moderation")
+	ErrVehicleNotSubmittable       = errors.New("vehicle cannot be submitted for verification in its current status")
 )

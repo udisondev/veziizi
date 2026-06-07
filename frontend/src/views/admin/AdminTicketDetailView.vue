@@ -36,6 +36,7 @@ import {
   Clock,
   User,
   Mail,
+  Truck,
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -62,6 +63,7 @@ const messagesContainer = ref<HTMLElement | null>(null)
 
 const navItems = [
   { to: '/admin/organizations', label: 'Организации', icon: Building2 },
+  { to: '/admin/vehicles', label: 'Транспорт', icon: Truck },
   { to: '/admin/reviews', label: 'Отзывы', icon: Star },
   { to: '/admin/fraudsters', label: 'Накрутчики', icon: AlertTriangle },
   { to: '/admin/support', label: 'Поддержка', icon: Headphones },

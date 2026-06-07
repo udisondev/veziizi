@@ -54,6 +54,7 @@ func (h *VehicleHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/api/v1/organizations/{id}/vehicles", h.Add)
 	r.Patch("/api/v1/organizations/{id}/vehicles/{vid}", h.Update)
 	r.Delete("/api/v1/organizations/{id}/vehicles/{vid}", h.Archive)
+	r.Post("/api/v1/organizations/{id}/vehicles/{vid}/submit", h.Submit)
 	r.Get("/api/v1/organizations/{id}/vehicles", h.ListByOrganization)
 
 	// Public marketplace
@@ -116,10 +117,14 @@ type VehicleResponse struct {
 	RequiresADR        bool                   `json:"requires_adr"`
 	Temperature        *transport.Temperature `json:"temperature,omitempty"`
 	Thermograph        bool                   `json:"thermograph"`
-	Status             string                 `json:"status"`
-	RejectionReason    *string                `json:"rejection_reason,omitempty"`
-	CreatedAt          time.Time              `json:"created_at"`
-	UpdatedAt          time.Time              `json:"updated_at"`
+	// Verified — публичный флаг подтверждения (status == verified).
+	Verified bool `json:"verified"`
+	// Status и RejectionReason отдаются только членам владеющей организации;
+	// в публичных ответах пустые (см. mapVehicleToPublicResponse).
+	Status          string    `json:"status,omitempty"`
+	RejectionReason *string   `json:"rejection_reason,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 func mapVehicleToResponse(v projections.VehicleListItem) VehicleResponse {
@@ -140,6 +145,7 @@ func mapVehicleToResponse(v projections.VehicleListItem) VehicleResponse {
 		Height:             v.Height,
 		RequiresADR:        v.RequiresADR,
 		Thermograph:        v.Thermograph,
+		Verified:           v.Status == orgValues.VehicleStatusVerified.String(),
 		Status:             v.Status,
 		RejectionReason:    v.RejectionReason,
 		CreatedAt:          v.CreatedAt,
@@ -148,6 +154,16 @@ func mapVehicleToResponse(v projections.VehicleListItem) VehicleResponse {
 	if v.HasTemperature && v.TempMin != nil && v.TempMax != nil {
 		resp.Temperature = &transport.Temperature{Min: *v.TempMin, Max: *v.TempMax}
 	}
+	return resp
+}
+
+// mapVehicleToPublicResponse — ответ для пользователей вне владеющей организации:
+// статус модерации и причина отклонения не раскрываются, наружу уходит только
+// флаг verified.
+func mapVehicleToPublicResponse(v projections.VehicleListItem) VehicleResponse {
+	resp := mapVehicleToResponse(v)
+	resp.Status = ""
+	resp.RejectionReason = nil
 	return resp
 }
 
@@ -259,8 +275,45 @@ func (h *VehicleHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListByOrganization returns vehicles of the given organization including pending/rejected
-// when called by a member of that organization. Non-members see only verified.
+// Submit отправляет транспорт на модерацию по запросу владельца
+// (unconfirmed|rejected → pending).
+func (h *VehicleHandler) Submit(w http.ResponseWriter, r *http.Request) {
+	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization id")
+		return
+	}
+	vid, err := uuid.Parse(chi.URLParam(r, "vid"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid vehicle id")
+		return
+	}
+	actorID, ok := h.session.GetMemberID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	sessionOrg, ok := h.session.GetOrganizationID(r)
+	if !ok || sessionOrg != orgID {
+		writeError(w, http.StatusForbidden, "access denied")
+		return
+	}
+
+	if err := h.service.SubmitVehicle(r.Context(), organization.SubmitVehicleInput{
+		OrganizationID: orgID,
+		ActorID:        actorID,
+		VehicleID:      vid,
+	}); err != nil {
+		writeVehicleDomainError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListByOrganization returns vehicles of the given organization including moderation
+// statuses when called by a member of that organization. Non-members see only
+// publicly visible vehicles (no archived/rejected) through the public DTO
+// (no status/rejection_reason).
 func (h *VehicleHandler) ListByOrganization(w http.ResponseWriter, r *http.Request) {
 	orgID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -275,12 +328,13 @@ func (h *VehicleHandler) ListByOrganization(w http.ResponseWriter, r *http.Reque
 	opts := []projections.VehicleFilterOption{projections.WithVehicleOrgID(orgID)}
 	if isMember {
 		opts = append(opts, projections.WithVehicleStatuses([]string{
+			orgValues.VehicleStatusUnconfirmed.String(),
 			orgValues.VehicleStatusPending.String(),
 			orgValues.VehicleStatusVerified.String(),
 			orgValues.VehicleStatusRejected.String(),
 		}))
 	} else {
-		opts = append(opts, projections.WithVehicleStatus(orgValues.VehicleStatusVerified.String()))
+		opts = append(opts, projections.WithVehiclePubliclyVisible())
 	}
 
 	items, err := h.projection.List(r.Context(), opts...)
@@ -290,12 +344,18 @@ func (h *VehicleHandler) ListByOrganization(w http.ResponseWriter, r *http.Reque
 	}
 	resp := make([]VehicleResponse, 0, len(items))
 	for _, v := range items {
-		resp = append(resp, mapVehicleToResponse(v))
+		if isMember {
+			resp = append(resp, mapVehicleToResponse(v))
+		} else {
+			resp = append(resp, mapVehicleToPublicResponse(v))
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": resp})
 }
 
-// List returns the platform-wide fleet (verified only by default).
+// List returns the platform-wide fleet: publicly visible vehicles (no
+// archived/rejected) through the public DTO (moderation status is reduced to
+// the verified flag).
 func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.session.GetMemberID(r); !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -304,7 +364,7 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	opts := []projections.VehicleFilterOption{
-		projections.WithVehicleStatus(orgValues.VehicleStatusVerified.String()),
+		projections.WithVehiclePubliclyVisible(),
 	}
 
 	if v := q.Get("vehicle_type"); v != "" {
@@ -402,7 +462,7 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]VehicleResponse, 0, len(items))
 	for _, v := range items {
-		resp = append(resp, mapVehicleToResponse(v))
+		resp = append(resp, mapVehicleToPublicResponse(v))
 	}
 	writeJSON(w, http.StatusOK, VehicleListResponse{Items: resp, NextCursor: nextCursor, HasMore: hasMore})
 }
@@ -427,17 +487,21 @@ func (h *VehicleHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Non-verified vehicles (pending/rejected/archived) are visible only to
-	// members of the owning organization. Other authenticated users see 404 —
-	// otherwise we'd leak moderation status and rejection_reason.
-	if item.Status != orgValues.VehicleStatusVerified.String() {
-		sessionOrg, ok := h.session.GetOrganizationID(r)
-		if !ok || sessionOrg != item.OrgID {
-			writeError(w, http.StatusNotFound, "vehicle not found")
-			return
-		}
+	// Члены владеющей организации видят полный ответ (status, rejection_reason).
+	// Остальным — публичный DTO без статуса модерации; archived и rejected для
+	// них 404 (зеркало WithVehiclePubliclyVisible — иначе скрытая из списков
+	// машина остаётся доступной по прямому ID).
+	sessionOrg, isMember := h.session.GetOrganizationID(r)
+	if isMember && sessionOrg == item.OrgID {
+		writeJSON(w, http.StatusOK, mapVehicleToResponse(*item))
+		return
 	}
-	writeJSON(w, http.StatusOK, mapVehicleToResponse(*item))
+	if item.Status == orgValues.VehicleStatusArchived.String() ||
+		item.Status == orgValues.VehicleStatusRejected.String() {
+		writeError(w, http.StatusNotFound, "vehicle not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapVehicleToPublicResponse(*item))
 }
 
 func writeVehicleDomainError(w http.ResponseWriter, err error) {
@@ -458,6 +522,8 @@ func writeVehicleDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "vehicle is archived")
 	case errors.Is(err, orgDomain.ErrVehicleNotPending):
 		writeError(w, http.StatusConflict, "vehicle is not pending moderation")
+	case errors.Is(err, orgDomain.ErrVehicleNotSubmittable):
+		writeError(w, http.StatusConflict, "vehicle cannot be submitted for verification")
 	default:
 		// Validation errors from VehicleSpecsInput include user-supplied
 		// values ("invalid vehicle_type: <raw>"). Keep the raw value in slog

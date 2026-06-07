@@ -9,7 +9,7 @@ import (
 )
 
 // VehicleSpecs holds all moderation-sensitive attributes of a vehicle.
-// Any change to these fields resets the vehicle to pending status.
+// Any change to these fields resets the vehicle to unconfirmed status.
 type VehicleSpecs struct {
 	RegistrationNumber string
 	Brand              string
@@ -40,7 +40,7 @@ func NewVehicle(id uuid.UUID, specs VehicleSpecs, createdAt time.Time) Vehicle {
 	return Vehicle{
 		id:        id,
 		specs:     specs,
-		status:    values.VehicleStatusPending,
+		status:    values.VehicleStatusUnconfirmed,
 		createdAt: createdAt,
 		updatedAt: createdAt,
 	}
@@ -74,9 +74,18 @@ func (v Vehicle) IsActive() bool   { return v.status.IsActive() }
 func (v Vehicle) IsVerified() bool { return v.status.IsVerified() }
 func (v Vehicle) IsArchived() bool { return v.status.IsArchived() }
 
-// MarkPending puts the vehicle back to pending after a user edit.
-func (v *Vehicle) MarkPending(specs VehicleSpecs, at time.Time) {
+// MarkUnconfirmed resets the vehicle to unconfirmed after a user edit:
+// any spec change voids prior verification, the owner re-submits manually.
+func (v *Vehicle) MarkUnconfirmed(specs VehicleSpecs, at time.Time) {
 	v.specs = specs
+	v.status = values.VehicleStatusUnconfirmed
+	v.rejectionReason = ""
+	v.updatedAt = at
+}
+
+// SubmitForVerification sends the vehicle to admin moderation.
+// Status preconditions are checked by the aggregate command.
+func (v *Vehicle) SubmitForVerification(at time.Time) {
 	v.status = values.VehicleStatusPending
 	v.rejectionReason = ""
 	v.updatedAt = at

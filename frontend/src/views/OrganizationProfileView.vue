@@ -2,16 +2,20 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { organizationsApi } from '@/api/organizations'
+import { vehiclesApi } from '@/api/vehicles'
 import type { OrganizationDetail, OrganizationRating, OrganizationReview, OrganizationStats } from '@/types/admin'
+import type { VehicleListItem } from '@/types/vehicle'
+import { vehicleTypeLabels, vehicleSubTypeLabels } from '@/types/freightRequest'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { logger } from '@/utils/logger'
 
 // UI Components
 import { Card, CardContent } from '@/components/ui/card'
 import { AppLink } from '@/components/ui/app-link'
+import { Truck } from 'lucide-vue-next'
 
 // Shared Components
-import { DetailPageHeader, LoadingSpinner, ErrorBanner } from '@/components/shared'
+import { DetailPageHeader, LoadingSpinner, ErrorBanner, VehicleVerifiedBadge } from '@/components/shared'
 
 const route = useRoute()
 
@@ -19,6 +23,7 @@ const organization = ref<OrganizationDetail | null>(null)
 const rating = ref<OrganizationRating | null>(null)
 const stats = ref<OrganizationStats | null>(null)
 const reviews = ref<OrganizationReview[]>([])
+const orgVehicles = ref<VehicleListItem[]>([])
 const reviewsCursor = ref<string | undefined>(undefined)
 const reviewsHasMore = ref(false)
 const isLoading = ref(true)
@@ -63,6 +68,7 @@ async function loadData() {
   reviews.value = []
   reviewsCursor.value = undefined
   reviewsHasMore.value = false
+  orgVehicles.value = []
 
   try {
     const id = route.params.id as string
@@ -75,6 +81,9 @@ async function loadData() {
     rating.value = ratingData
 
     organizationsApi.getStats(id).then(s => { stats.value = s }).catch(() => {})
+    vehiclesApi.listAll({ org_id: id, limit: 20 })
+      .then(v => { orgVehicles.value = v.items ?? [] })
+      .catch(e => { logger.error('Failed to load organization vehicles', e) })
     reviews.value = reviewsData.items ?? []
     reviewsCursor.value = reviewsData.next_cursor
     reviewsHasMore.value = reviewsData.has_more
@@ -235,6 +244,46 @@ watch(() => route.params.id, () => {
             </dl>
           </CardContent>
         </Card>
+
+        <!-- Vehicles -->
+        <div v-if="orgVehicles.length > 0">
+          <h2 class="text-lg font-semibold text-foreground mb-4">
+            Транспорт
+            <span class="text-muted-foreground font-normal">({{ orgVehicles.length }})</span>
+          </h2>
+
+          <div class="space-y-3">
+            <div
+              v-for="vehicle in orgVehicles"
+              :key="vehicle.id"
+              class="bg-card border border-border rounded-lg p-4 shadow-sm"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex items-center gap-2 flex-wrap min-w-0">
+                  <Truck class="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span class="text-sm font-medium">
+                    {{ vehicleTypeLabels[vehicle.vehicle_type] }} · {{ vehicleSubTypeLabels[vehicle.vehicle_subtype] }}
+                  </span>
+                  <VehicleVerifiedBadge :verified="vehicle.verified" />
+                </div>
+                <span class="font-mono text-sm font-semibold shrink-0">{{ vehicle.registration_number }}</span>
+              </div>
+              <div class="flex items-center gap-1.5 text-sm text-muted-foreground mt-1.5 flex-wrap">
+                <span v-if="vehicle.brand || vehicle.model">
+                  {{ [vehicle.brand, vehicle.model].filter(Boolean).join(' ') }}
+                </span>
+                <template v-if="vehicle.capacity">
+                  <span v-if="vehicle.brand || vehicle.model">·</span>
+                  <span>{{ vehicle.capacity.toLocaleString('ru-RU') }} т</span>
+                </template>
+                <template v-if="vehicle.volume">
+                  <span>·</span>
+                  <span>{{ vehicle.volume }} м³</span>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Reviews -->
         <div>

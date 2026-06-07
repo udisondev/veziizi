@@ -61,19 +61,30 @@ export const useNotificationsStore = defineStore('notifications', () => {
   // ===============================
   // Actions: Notifications
   // ===============================
-  async function fetchNotifications(filters?: NotificationFilters): Promise<void> {
-    isLoading.value = true
-    error.value = null
+  async function fetchNotifications(
+    filters?: NotificationFilters,
+    opts?: { silent?: boolean },
+  ): Promise<void> {
+    // silent — фоновый рефетч (SSE-пинок): не дёргаем isLoading/error,
+    // чтобы открытый список не мигал спиннером и баннером ошибки.
+    if (!opts?.silent) {
+      isLoading.value = true
+      error.value = null
+    }
     try {
       notifications.value = await notificationsApi.list({
         ...filters,
         limit: filters?.limit ?? 50,
       })
     } catch (e) {
-      error.value = 'Не удалось загрузить уведомления'
+      if (!opts?.silent) {
+        error.value = 'Не удалось загрузить уведомления'
+      }
       logger.error('Failed to fetch notifications', e)
     } finally {
-      isLoading.value = false
+      if (!opts?.silent) {
+        isLoading.value = false
+      }
     }
   }
 

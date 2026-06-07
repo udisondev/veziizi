@@ -209,6 +209,16 @@ func (s *SSESuite) TestSSE002_OfferMadePushesEvents() {
 // TestSSE003_MarkAllReadPushesUnread: read-all публикует InAppBatchRead, и
 // другие вкладки member'а получают unread-пинок для пересчёта счётчика.
 func (s *SSESuite) TestSSE003_MarkAllReadPushesUnread() {
+	// Самодостаточность: InAppBatchRead публикуется только если read-all реально
+	// перевёл строки (0 затронутых = пинок не нужен), поэтому непрочитанное
+	// уведомление генерируем сами (оффер → notification-dispatcher → InAppCreated),
+	// не полагаясь на side-effect TestSSE002 и лексикографический порядок методов.
+	fr := fixtures.NewFreightRequest(s.T(), s.ctx.Customer.Client).Create()
+	s.ts.Sync()
+	fixtures.NewOffer(s.T(), s.ctx.Carrier.Client, fr.ID).Create()
+	// Дожидаемся, пока dispatcher запишет inapp-уведомление заказчику.
+	s.ts.Sync()
+
 	stream := s.openStream(s.ctx.Customer.Client)
 
 	resp, err := s.ctx.Customer.Client.MarkAllNotificationsRead()

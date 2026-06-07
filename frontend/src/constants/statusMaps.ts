@@ -10,6 +10,7 @@ import type {
 import type { MemberStatus } from '@/types/member'
 import type { InvitationStatus } from '@/types/invitation'
 import type { OrganizationStatus } from '@/types/api'
+import type { VehicleStatus } from '@/types/vehicle'
 
 // ============================================================================
 // Тип для variant в StatusBadge
@@ -99,6 +100,18 @@ export const reviewStatusMap: Record<string, StatusMapEntry> = {
   active: { label: 'Активен', variant: 'success' },
   rejected: { label: 'Отклонён', variant: 'destructive' },
   deactivated: { label: 'Деактивирован', variant: 'secondary' },
+}
+
+// ============================================================================
+// Vehicle Status Map (для владельца в Автопарке)
+// ============================================================================
+
+export const vehicleStatusMap: Record<VehicleStatus, StatusMapEntry> = {
+  unconfirmed: { label: 'Не подтвержден', variant: 'secondary' },
+  pending: { label: 'На модерации', variant: 'warning' },
+  verified: { label: 'Подтвержден', variant: 'success' },
+  rejected: { label: 'Отклонён', variant: 'destructive' },
+  archived: { label: 'Архив', variant: 'secondary' },
 }
 
 // ============================================================================
