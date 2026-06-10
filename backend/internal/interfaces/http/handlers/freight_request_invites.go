@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/udisondev/veziizi/backend/internal/application/freightrequest"
 	freightrequestDomain "github.com/udisondev/veziizi/backend/internal/domain/freightrequest"
+	"github.com/udisondev/veziizi/backend/internal/infrastructure/projections"
+	"github.com/udisondev/veziizi/backend/internal/pkg/httputil"
 )
 
 type InviteCarrierRequest struct {
@@ -113,6 +116,74 @@ func (h *FreightRequestHandler) ListInvites(w http.ResponseWriter, r *http.Reque
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": resp})
+}
+
+// CarrierInvitationsResponse — ответ списка входящих инвайтов с cursor-based пагинацией.
+type CarrierInvitationsResponse struct {
+	Items      []projections.CarrierInviteItem `json:"items"`
+	NextCursor *string                         `json:"next_cursor,omitempty"`
+	HasMore    bool                            `json:"has_more"`
+}
+
+// ListCarrierInvitations returns incoming invitations for the current carrier organization.
+func (h *FreightRequestHandler) ListCarrierInvitations(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.session.GetMemberID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orgID, ok := h.session.GetOrganizationID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	q := r.URL.Query()
+	limit := 20
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+
+	var cursor *projections.InviteCursor
+	if cursorStr := q.Get("cursor"); cursorStr != "" {
+		decoded, err := httputil.DecodeCursor[projections.InviteCursor](cursorStr)
+		if err != nil {
+			slog.Warn("invalid carrier invitations cursor", slog.String("error", err.Error()))
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		cursor = decoded
+	}
+
+	items, err := h.invitesProjection.ListByCarrierOrg(r.Context(), orgID, cursor, limit+1)
+	if err != nil {
+		slog.Error("list carrier invitations failed", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list invitations")
+		return
+	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		encoded, err := httputil.EncodeCursor(projections.InviteCursor{
+			InvitedAt: last.InvitedAt,
+			ID:        last.ID,
+		})
+		if err != nil {
+			slog.Error("failed to encode invite cursor", slog.String("error", err.Error()))
+			hasMore = false
+		} else {
+			nextCursor = &encoded
+		}
+	}
+
+	writeJSON(w, http.StatusOK, CarrierInvitationsResponse{Items: items, NextCursor: nextCursor, HasMore: hasMore})
 }
 
 func writeInviteCarrierError(w http.ResponseWriter, err error) {

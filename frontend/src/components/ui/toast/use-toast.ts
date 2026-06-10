@@ -10,6 +10,7 @@ export type ToasterToast = {
   description?: string
   action?: Component
   variant?: 'default' | 'destructive' | 'success'
+  duration?: number
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }

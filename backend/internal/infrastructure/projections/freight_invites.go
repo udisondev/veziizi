@@ -11,6 +11,29 @@ import (
 	"github.com/udisondev/veziizi/backend/internal/pkg/dbtx"
 )
 
+// CarrierInviteItem — элемент входящего инвайта для перевозчика с деталями заявки.
+type CarrierInviteItem struct {
+	ID                   uuid.UUID `db:"id"                    json:"id"`
+	FreightRequestID     uuid.UUID `db:"freight_request_id"    json:"freight_request_id"`
+	RequestNumber        int64     `db:"request_number"        json:"request_number"`
+	OriginAddress        *string   `db:"origin_address"        json:"origin_address,omitempty"`
+	DestinationAddress   *string   `db:"destination_address"   json:"destination_address,omitempty"`
+	CustomerOrgName      *string   `db:"customer_org_name"     json:"customer_org_name,omitempty"`
+	FreightStatus        string    `db:"freight_status"        json:"freight_status"`
+	VehicleID            uuid.UUID `db:"vehicle_id"            json:"vehicle_id"`
+	VehicleRegistration  *string   `db:"vehicle_registration"  json:"vehicle_registration,omitempty"`
+	VehicleBrand         *string   `db:"vehicle_brand"         json:"vehicle_brand,omitempty"`
+	VehicleModel         *string   `db:"vehicle_model"         json:"vehicle_model,omitempty"`
+	InvitedBy            uuid.UUID `db:"invited_by"            json:"invited_by"`
+	InvitedAt            time.Time `db:"invited_at"            json:"invited_at"`
+}
+
+// InviteCursor используется для keyset pagination по (invited_at DESC, id ASC).
+type InviteCursor struct {
+	InvitedAt time.Time `json:"invited_at"`
+	ID        uuid.UUID `json:"id"`
+}
+
 type FreightInvitesProjection struct {
 	db   dbtx.TxManager
 	psql squirrel.StatementBuilderType
@@ -93,6 +116,50 @@ func (p *FreightInvitesProjection) CountByFreight(ctx context.Context, freightRe
 		return 0, fmt.Errorf("count invites: %w", err)
 	}
 	return count, nil
+}
+
+// ListByCarrierOrg returns incoming invitations for a carrier organization,
+// joined with freight request details, ordered by invited_at DESC.
+func (p *FreightInvitesProjection) ListByCarrierOrg(ctx context.Context, carrierOrgID uuid.UUID, cursor *InviteCursor, limit int) ([]CarrierInviteItem, error) {
+	builder := p.psql.
+		Select(
+			"il.id", "il.freight_request_id", "fr.request_number",
+			"fr.origin_address", "fr.destination_address", "fr.customer_org_name",
+			"fr.status AS freight_status",
+			"il.vehicle_id",
+			"v.registration_number AS vehicle_registration",
+			"v.brand AS vehicle_brand",
+			"v.model AS vehicle_model",
+			"il.invited_by", "il.invited_at",
+		).
+		From("freight_request_invites_log il").
+		Join("freight_requests_lookup fr ON fr.id = il.freight_request_id").
+		LeftJoin("vehicles_lookup v ON v.id = il.vehicle_id").
+		Where(squirrel.Eq{"il.carrier_org_id": carrierOrgID}).
+		OrderBy("il.invited_at DESC", "il.id ASC").
+		Limit(uint64(limit))
+
+	if cursor != nil {
+		builder = builder.Where(
+			squirrel.Or{
+				squirrel.Lt{"il.invited_at": cursor.InvitedAt},
+				squirrel.And{
+					squirrel.Eq{"il.invited_at": cursor.InvitedAt},
+					squirrel.Gt{"il.id": cursor.ID},
+				},
+			},
+		)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build list by carrier org: %w", err)
+	}
+	var rows []CarrierInviteItem
+	if err := pgxscan.Select(ctx, p.db, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("list carrier invitations: %w", err)
+	}
+	return rows, nil
 }
 
 // ListByFreight returns who the customer has already pinged on this freight request.

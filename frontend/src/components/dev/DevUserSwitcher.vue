@@ -40,6 +40,7 @@ async function switchUser(user: DevUser) {
   isSwitching.value = true
   try {
     await devApi.switchUser(user.id)
+    onboarding.resetProgress()
     await auth.fetchMe()
     isOpen.value = false
   } catch (e) {

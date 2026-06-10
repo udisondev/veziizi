@@ -206,9 +206,8 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
             @update:model-value="emit('update:orgINN', $event as string)"
           />
         </div>
-        <div v-if="showRequestNumber" class="space-y-1.5 pb-2">
-          <Label class="text-sm font-semibold px-1">Номер заявки</Label>
-          <Input :model-value="requestNumber ?? ''" type="number" min="0" placeholder="Поиск по номеру" @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)" />
+        <div v-if="showRequestNumber" class="pb-2">
+          <Input :model-value="requestNumber ?? ''" type="number" min="0" placeholder="Поиск по номеру заявки" @update:model-value="emit('update:requestNumber', $event ? Number($event) : null)" />
         </div>
         <div v-if="showStatuses" class="space-y-1.5 pb-3">
           <Label class="text-sm font-semibold px-1">Статус заявки</Label>

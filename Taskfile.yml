@@ -381,6 +381,11 @@ tasks:
     cmds:
       - go run ./backend/cmd/tools/seed-scenario
 
+  seed:ui-carrier:
+    desc: Create second carrier org for UI testing (ui5.owner@test.local / test123, verified vehicles)
+    cmds:
+      - go run ./backend/cmd/tools/seed-ui-carrier
+
   resend:telegram:
     desc: Resend failed telegram notifications
     cmds:

@@ -67,6 +67,12 @@ func WithVehicleOrgID(id uuid.UUID) VehicleFilterOption {
 	}
 }
 
+func WithExcludeOrgID(id uuid.UUID) VehicleFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.NotEq{"v.org_id": id})
+	}
+}
+
 func WithVehicleStatus(status string) VehicleFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where(squirrel.Eq{"v.status": status})

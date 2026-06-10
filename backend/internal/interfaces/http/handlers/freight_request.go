@@ -240,6 +240,7 @@ func (h *FreightRequestHandler) RegisterRoutes(r chi.Router) {
 	// Carrier invitations (customer pings a carrier about an active freight request)
 	r.Post("/api/v1/freight-requests/{id}/invite-carrier", h.InviteCarrier)
 	r.Get("/api/v1/freight-requests/{id}/invites", h.ListInvites)
+	r.Get("/api/v1/carrier-invitations", h.ListCarrierInvitations)
 	// View history (per-member)
 	r.Get("/api/v1/freight-requests/viewed/list", h.ListViewed)
 }
@@ -906,7 +907,7 @@ func (h *FreightRequestHandler) ListIncomingOffers(w http.ResponseWriter, r *htt
 	}
 	if v := q.Get("member_id"); v != "" {
 		if id, err := uuid.Parse(v); err == nil {
-			opts = append(opts, projections.WithIncomingCarrierMemberID(id))
+			opts = append(opts, projections.WithIncomingCustomerMemberID(id))
 		}
 	}
 	if v := q.Get("freight_request_number"); v != "" {

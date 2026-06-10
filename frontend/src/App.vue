@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
-import { useBreakpoint } from '@/composables/useBreakpoint'
-import { useLlamaPreference } from '@/composables/useLlamaPreference'
 import { RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppHeader from '@/components/ui/AppHeader.vue'
@@ -16,12 +14,9 @@ import {
   FirstLoginHint,
   SandboxIndicator,
 } from '@/components/tutorial'
-import LlamaWalker from '@/components/shared/LlamaWalker.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
-const { isMobile } = useBreakpoint()
-const { enabled: llamaEnabled } = useLlamaPreference()
 
 const showHeader = computed(() => {
   // Don't show header on public pages and admin pages
@@ -63,7 +58,6 @@ onMounted(async () => {
       <RouterView :key="route.path" />
     </div>
 
-    <LlamaWalker v-if="!isMobile && llamaEnabled" @close="llamaEnabled = false" />
     <DevUserSwitcher v-if="isDevMode" />
     <Toaster />
 

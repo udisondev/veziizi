@@ -18,7 +18,7 @@ export const toastVariants = cva(
         default: 'border bg-background text-foreground',
         destructive:
           'destructive group border-destructive bg-destructive text-destructive-foreground',
-        success: 'border-green-500 bg-green-50 text-green-900 dark:bg-green-950 dark:text-green-100',
+        success: '[background:color-mix(in_oklab,var(--color-emerald-500)_20%,transparent)] border-emerald-500/40 text-emerald-900 dark:text-emerald-100',
       },
     },
     defaultVariants: {

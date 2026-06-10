@@ -40,5 +40,6 @@ const classes = computed(() =>
     <Button v-if="actionLabel" @click="emit('action')">
       {{ actionLabel }}
     </Button>
+    <slot name="actions" />
   </div>
 </template>

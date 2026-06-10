@@ -18,6 +18,7 @@ const { toasts } = useToast()
       v-for="toast in toasts"
       :key="toast.id"
       :variant="toast.variant"
+      :duration="toast.duration"
       :open="toast.open"
       @update:open="toast.onOpenChange"
     >

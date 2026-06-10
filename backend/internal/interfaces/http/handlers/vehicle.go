@@ -414,6 +414,11 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 			opts = append(opts, projections.WithVehicleOrgID(id))
 		}
 	}
+	if v := q.Get("exclude_org_id"); v != "" {
+		if id, err := uuid.Parse(v); err == nil {
+			opts = append(opts, projections.WithExcludeOrgID(id))
+		}
+	}
 
 	// Cursor-based pagination
 	if cursorStr := q.Get("cursor"); cursorStr != "" {

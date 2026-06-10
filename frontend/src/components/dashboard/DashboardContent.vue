@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFreightFiltersStore } from '@/stores/freightFilters'
 import { freightRequestsApi } from '@/api/freightRequests'
+import type { CarrierInviteItem } from '@/types/freightRequest'
 import { subscriptionToParams, useSubscriptionNavigation } from '@/composables/useSubscriptionNavigation'
 import { offersApi, type MyOfferListItem } from '@/api/offers'
 import { organizationsApi } from '@/api/organizations'
@@ -18,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/shared'
 import StarRating from '@/components/freight-request/StarRating.vue'
 import { getMyTickets, type TicketListItem } from '@/api/support'
-import { ChevronRight, TrendingUp, Star, Headset, HandCoins, Bell, Clock } from 'lucide-vue-next'
+import { ChevronRight, TrendingUp, Star, Headset, HandCoins, Bell, Clock, Truck } from 'lucide-vue-next'
 import { eventStream } from '@/services/eventStream'
 
 const emit = defineEmits<{
@@ -45,6 +46,30 @@ const myActiveRequests = ref<FreightRequestListItem[]>([])
 const pendingOffersOnMyRequests = ref<PendingOfferItem[]>([])
 const openTickets = ref<TicketListItem[]>([])
 const subscriptionMatches = ref<{ sub: FreightSubscription; items: FreightRequestListItem[] }[]>([])
+const incomingInvitations = ref<CarrierInviteItem[]>([])
+
+const INVITATIONS_SEEN_KEY = 'carrier_invitations_seen_ids'
+
+function getSeenInvitationIds(): Set<string> {
+  try {
+    const v = localStorage.getItem(INVITATIONS_SEEN_KEY)
+    return v ? new Set(JSON.parse(v) as string[]) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function markInvitationSeen(id: string) {
+  try {
+    const seen = getSeenInvitationIds()
+    seen.add(id)
+    // Ограничиваем размер — оставляем последние 500
+    const arr = Array.from(seen).slice(-500)
+    localStorage.setItem(INVITATIONS_SEEN_KEY, JSON.stringify(arr))
+  } catch {
+    // localStorage может быть недоступен (квота, приватный режим)
+  }
+}
 
 const isLoadingStats = ref(false)
 const isLoadingAttention = ref(false)
@@ -154,7 +179,7 @@ async function loadData() {
   isLoadingStats.value = true
   isLoadingAttention.value = true
   try {
-    const [statsRes, dashboardRes, ratingRes, selectedOffersRes, myActiveRes, pendingOffersRes, ticketsRes] = await Promise.allSettled([
+    const [statsRes, dashboardRes, ratingRes, selectedOffersRes, myActiveRes, pendingOffersRes, ticketsRes, invitationsRes] = await Promise.allSettled([
       organizationsApi.getStats(orgID),
       organizationsApi.getDashboardStats(orgID),
       organizationsApi.getRating(orgID),
@@ -166,6 +191,7 @@ async function loadData() {
       ),
       organizationsApi.getPendingOffers(orgID, 50, isEmployee ? memberId : undefined),
       getMyTickets({ status: 'open' }),
+      freightRequestsApi.listCarrierInvitations({ limit: 10 }),
     ])
     orgStats.value = fulfilled('stats', statsRes)
     dashboardStats.value = fulfilled('dashboard-stats', dashboardRes)
@@ -174,6 +200,9 @@ async function loadData() {
     myActiveRequests.value = fulfilled('my-active', myActiveRes)?.items ?? []
     pendingOffersOnMyRequests.value = fulfilled('pending-offers', pendingOffersRes) ?? []
     openTickets.value = fulfilled('tickets', ticketsRes) ?? []
+    const allInvitations = fulfilled('invitations', invitationsRes)?.items ?? []
+    const seenIds = getSeenInvitationIds()
+    incomingInvitations.value = allInvitations.filter(inv => !seenIds.has(inv.id))
   } finally {
     isLoadingStats.value = false
     isLoadingAttention.value = false
@@ -449,6 +478,57 @@ onUnmounted(() => {
                 </div>
               </div>
               <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Входящие приглашения на перевозку -->
+        <div v-if="incomingInvitations.length > 0" class="rounded-lg border bg-card overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b">
+            <div class="flex items-center gap-2.5">
+              <Truck class="h-4 w-4 text-muted-foreground shrink-0" />
+              <h2 class="text-sm font-semibold text-foreground">Входящие приглашения</h2>
+              <span class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{{ incomingInvitations.length }}</span>
+            </div>
+            <button
+              class="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+              @click="router.push('/my-offers?tab=invitations')"
+            >
+              Все <ChevronRight class="h-4 w-4" />
+            </button>
+          </div>
+          <div>
+            <div
+              v-for="(inv, index) in incomingInvitations"
+              :key="inv.id"
+              class="flex items-start gap-3 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition-colors"
+              :class="index < incomingInvitations.length - 1 ? 'border-b' : ''"
+              @click="markInvitationSeen(inv.id); router.push(`/freight-requests/${inv.freight_request_id}`)"
+            >
+              <div class="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5 text-sm flex-wrap">
+                  <span class="text-xs text-muted-foreground shrink-0">#{{ inv.request_number }}</span>
+                  <span class="font-medium text-foreground truncate">
+                    {{ inv.origin_address || '—' }} → {{ inv.destination_address || '—' }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5 flex-wrap">
+                  <Truck class="h-3 w-3 shrink-0" />
+                  <span class="font-medium text-foreground">
+                    {{ [inv.vehicle_brand, inv.vehicle_model].filter(Boolean).join(' ') || 'Транспорт' }}
+                  </span>
+                  <template v-if="inv.vehicle_registration">
+                    <span>·</span>
+                    <span class="font-mono">{{ inv.vehicle_registration }}</span>
+                  </template>
+                  <template v-if="inv.customer_org_name">
+                    <span>·</span>
+                    <span>{{ inv.customer_org_name }}</span>
+                  </template>
+                </div>
+              </div>
+              <ChevronRight class="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
             </div>
           </div>
         </div>

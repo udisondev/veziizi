@@ -56,6 +56,7 @@ type FreightRequestFilters struct {
 	VatTypes       []string `schema:"vat_types"`
 
 	HasPendingOffers bool `schema:"has_pending_offers"`
+	NotExpired       bool `schema:"not_expired"`
 }
 
 // ValidateStatuses проверяет, что каждое значение Statuses — известный
@@ -158,6 +159,9 @@ func (f *FreightRequestFilters) AppendOptions(opts []projections.FilterOption) [
 	}
 	if f.HasPendingOffers {
 		opts = append(opts, projections.WithHasPendingOffers())
+	}
+	if f.NotExpired {
+		opts = append(opts, projections.WithNotExpired())
 	}
 
 	return opts

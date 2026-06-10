@@ -152,6 +152,12 @@ const router = createRouter({
       meta: { title: 'Транспорт' },
     },
     {
+      path: '/transport/:vehicleId/select-requests',
+      name: 'transport-select-requests',
+      component: () => import('@/views/SelectRequestsView.vue'),
+      meta: { title: 'Выбор заявок' },
+    },
+    {
       path: '/fleet/new',
       name: 'vehicle-add',
       component: () => import('@/views/VehicleAddView.vue'),

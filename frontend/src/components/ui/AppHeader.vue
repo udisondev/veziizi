@@ -39,9 +39,7 @@ import {
   LayoutDashboard,
   Truck,
   Bus,
-  PawPrint,
 } from 'lucide-vue-next'
-import { useLlamaPreference } from '@/composables/useLlamaPreference'
 import Tooltip from '@/components/ui/tooltip/Tooltip.vue'
 
 const router = useRouter()
@@ -50,7 +48,6 @@ const auth = useAuthStore()
 const onboarding = useOnboardingStore()
 const filtersStore = useFreightFiltersStore()
 const { canManageMembers } = usePermissions()
-const { enabled: llamaEnabled } = useLlamaPreference()
 
 const { isMobile } = useBreakpoint()
 const isMenuOpen = ref(false)
@@ -253,14 +250,6 @@ const userInitial = computed(() => {
               </button>
               <Separator class="my-2" />
               <button
-                class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-foreground hover:bg-muted transition-colors"
-                @click="llamaEnabled = !llamaEnabled"
-              >
-                <PawPrint class="h-5 w-5" />
-                {{ llamaEnabled ? 'Скрыть анимацию' : 'Показать анимацию' }}
-              </button>
-              <Separator class="my-2" />
-              <button
                 class="w-full text-left px-3 py-3 rounded-md text-base flex items-center gap-3 text-destructive hover:bg-destructive/10 transition-colors"
                 @click="isProfileOpen = false; logout()"
               >
@@ -317,14 +306,6 @@ const userInitial = computed(() => {
               >
                 <Settings class="mr-2 h-4 w-4" />
                 Настройки
-              </DropdownMenuItem>
-              <DropdownMenuSeparator class="bg-slate-700" />
-              <DropdownMenuItem
-                class="text-slate-200 focus:bg-slate-700 focus:text-white"
-                @click="llamaEnabled = !llamaEnabled"
-              >
-                <PawPrint class="mr-2 h-4 w-4" />
-                {{ llamaEnabled ? 'Скрыть анимацию' : 'Показать анимацию' }}
               </DropdownMenuItem>
               <DropdownMenuSeparator class="bg-slate-700" />
               <DropdownMenuItem
