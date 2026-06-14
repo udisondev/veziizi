@@ -168,7 +168,7 @@ function formatCapacity(val?: number) {
               <button
                 v-if="inviteCountByVehicle.get(vehicle.id)"
                 class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                @click.stop="router.push('/my-offers?tab=invitations')"
+                @click.stop="router.push('/requests?invitations=1')"
               >
                 <Mail class="h-3 w-3" />
                 {{ inviteCountByVehicle.get(vehicle.id) }}

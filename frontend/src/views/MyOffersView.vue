@@ -10,7 +10,6 @@ import {
   type OutgoingOfferListParams,
   type IncomingOfferListParams,
 } from '@/api/offers'
-import { freightRequestsApi } from '@/api/freightRequests'
 import {
   offerStatusLabels,
   paymentMethodOptions,
@@ -22,7 +21,6 @@ import {
   type PaymentMethod,
   type VatType,
   type Currency,
-  type CarrierInviteItem,
 } from '@/types/freightRequest'
 import { offerStatusMap } from '@/constants/statusMaps'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
@@ -40,13 +38,6 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { TabsSlider, type TabSliderItem } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { MultiSelectField } from '@/components/ui/multi-select'
 import { RangeInput, ChipButtonGroup } from '@/components/filters'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -60,7 +51,6 @@ import {
 } from '@/components/ui/dialog'
 import { StatusBadge, LoadingSpinner, EmptyState, ErrorBanner } from '@/components/shared'
 import {
-  Mail,
   SlidersHorizontal,
   HandCoins,
   Package,
@@ -76,7 +66,6 @@ import {
   AlertCircle,
   BadgeCheck,
   Hash,
-  Truck,
 } from 'lucide-vue-next'
 
 const PAGE_SIZE = 20
@@ -88,8 +77,13 @@ const { isBelowLg } = useBreakpoint()
 
 // ─── Direction ──────────────────────────────────────────────────────────────
 
-type Direction = 'outgoing' | 'incoming' | 'invitations'
+type Direction = 'outgoing' | 'incoming'
 const direction = ref<Direction>('outgoing')
+
+const DIRECTION_TABS: TabSliderItem[] = [
+  { value: 'outgoing', label: 'Исходящие' },
+  { value: 'incoming', label: 'Входящие' },
+]
 
 
 
@@ -174,7 +168,6 @@ function resetFilters() {
 
 const outItems = ref<OutgoingOfferListItem[]>([])
 const inItems = ref<IncomingOfferListItem[]>([])
-const invItems = ref<CarrierInviteItem[]>([])
 const isLoading = ref(false)
 const isLoadingMore = ref(false)
 const error = ref<string | null>(null)
@@ -185,13 +178,11 @@ const hasUpdates = ref(false)
 const isEmpty = computed(() => {
   if (isLoading.value) return false
   if (direction.value === 'outgoing') return outItems.value.length === 0
-  if (direction.value === 'incoming') return inItems.value.length === 0
-  return invItems.value.length === 0
+  return inItems.value.length === 0
 })
 const itemsCount = computed(() => {
   if (direction.value === 'outgoing') return outItems.value.length
-  if (direction.value === 'incoming') return inItems.value.length
-  return invItems.value.length
+  return inItems.value.length
 })
 
 function buildOutgoingParams(): OutgoingOfferListParams {
@@ -230,16 +221,10 @@ async function loadItems() {
       outItems.value = res.items
       cursor.value = res.next_cursor
       hasMore.value = res.has_more
-    } else if (direction.value === 'incoming') {
+    } else {
       inItems.value = []
       const res = await offersApi.listIncoming(buildIncomingParams())
       inItems.value = res.items
-      cursor.value = res.next_cursor
-      hasMore.value = res.has_more
-    } else {
-      invItems.value = []
-      const res = await freightRequestsApi.listCarrierInvitations({ limit: PAGE_SIZE })
-      invItems.value = res.items
       cursor.value = res.next_cursor
       hasMore.value = res.has_more
     }
@@ -261,15 +246,10 @@ async function loadMoreItems() {
       outItems.value.push(...res.items)
       cursor.value = res.next_cursor
       hasMore.value = res.has_more
-    } else if (direction.value === 'incoming') {
+    } else {
       const params = { ...buildIncomingParams(), cursor: cursor.value }
       const res = await offersApi.listIncoming(params)
       inItems.value.push(...res.items)
-      cursor.value = res.next_cursor
-      hasMore.value = res.has_more
-    } else {
-      const res = await freightRequestsApi.listCarrierInvitations({ limit: PAGE_SIZE, cursor: cursor.value })
-      invItems.value.push(...res.items)
       cursor.value = res.next_cursor
       hasMore.value = res.has_more
     }
@@ -286,12 +266,9 @@ const canLoadMore = computed(() => hasMore.value && !isLoadingMore.value && !!cu
 // Активный ref задаётся через computed, чтобы useInfiniteScroll переподключался при смене direction.
 const outSentinelRef = ref<HTMLElement | null>(null)
 const inSentinelRef = ref<HTMLElement | null>(null)
-const invSentinelRef = ref<HTMLElement | null>(null)
-const activeSentinel = computed(() => {
-  if (direction.value === 'outgoing') return outSentinelRef.value
-  if (direction.value === 'incoming') return inSentinelRef.value
-  return invSentinelRef.value
-})
+const activeSentinel = computed(() =>
+  direction.value === 'outgoing' ? outSentinelRef.value : inSentinelRef.value
+)
 const { sentinelRef, reset: resetInfiniteScroll } = useInfiniteScroll(loadMoreItems, {
   threshold: 300,
   enabled: canLoadMore,
@@ -475,21 +452,18 @@ watch(lastOfferNotificationId, (newId, oldId) => {
 watch(
   () => route.query.tab,
   (tab) => {
-    const newDir = (tab === 'invitations' || tab === 'incoming') ? tab as Direction : 'outgoing'
+    const newDir: Direction = tab === 'incoming' ? 'incoming' : 'outgoing'
     if (newDir !== direction.value) {
       direction.value = newDir
-      // watch(direction) выполнит сброс + loadItems()
     }
   }
 )
 
 onMounted(() => {
   const tab = route.query.tab
-  if (tab === 'invitations' || tab === 'incoming') {
-    direction.value = tab as Direction
-    // direction изменился с 'outgoing' → watch(direction) вызовет loadItems()
+  if (tab === 'incoming') {
+    direction.value = 'incoming'
   } else {
-    // Нет tab или tab='outgoing': загружаем напрямую
     loadItems()
   }
   eventStream.on('freight_request', handleFreightRequestEvent)
@@ -507,20 +481,16 @@ onMounted(() => {
 
         <!-- Уровень 1: направление (навигация) -->
         <div class="mb-3">
-          <Select v-model="direction">
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="outgoing">Исходящие</SelectItem>
-              <SelectItem value="incoming">Входящие</SelectItem>
-              <SelectItem value="invitations">Приглашения</SelectItem>
-            </SelectContent>
-          </Select>
+          <TabsSlider
+            v-model="direction"
+            :items="DIRECTION_TABS"
+            no-overflow
+            stretch
+          />
         </div>
 
-        <!-- Уровень 2: принадлежность (контекст, только для outgoing/incoming) -->
-        <div v-if="direction !== 'invitations'" class="pb-3 mb-3 border-b">
+        <!-- Уровень 2: принадлежность (контекст) -->
+        <div class="pb-3 mb-3 border-b">
           <TabsSlider
             v-if="direction === 'outgoing'"
             v-model="outOwnership"
@@ -537,8 +507,8 @@ onMounted(() => {
           />
         </div>
 
-        <!-- Mobile: кнопка раскрытия фильтров (только для outgoing/incoming) -->
-        <div v-if="direction !== 'invitations'" class="lg:hidden mb-2">
+        <!-- Mobile: кнопка раскрытия фильтров -->
+        <div class="lg:hidden mb-2">
           <Button variant="outline" class="w-full" @click="mobileFiltersOpen = !mobileFiltersOpen">
             <SlidersHorizontal class="h-4 w-4 mr-2" />
             Фильтры
@@ -551,8 +521,8 @@ onMounted(() => {
           </Button>
         </div>
 
-        <!-- Уровень 3: детальные фильтры (только для outgoing/incoming) -->
-        <div v-if="direction !== 'invitations'" :class="['accordion-grid filters-accordion', mobileFiltersOpen ? 'is-open' : '']">
+        <!-- Уровень 3: детальные фильтры -->
+        <div :class="['accordion-grid filters-accordion', mobileFiltersOpen ? 'is-open' : '']">
           <div class="overflow-hidden lg:overflow-visible">
             <div class="space-y-4 pb-2">
 
@@ -640,8 +610,8 @@ onMounted(() => {
 
       <!-- List column -->
       <div>
-        <!-- Sort bar (скрываем для вкладки приглашений) -->
-        <div v-if="direction !== 'invitations'" class="flex gap-1 mb-4 pb-4 border-b">
+        <!-- Sort bar -->
+        <div class="flex gap-1 mb-4 pb-4 border-b">
           <template v-if="!isBelowLg">
             <Tooltip v-for="opt in SORT_OPTIONS" :key="opt.value" :text="opt.label" side="top">
               <button
@@ -695,15 +665,13 @@ onMounted(() => {
 
         <EmptyState
           v-else-if="isEmpty"
-          :icon="direction === 'invitations' ? Mail : HandCoins"
-          :title="direction === 'outgoing' ? 'Исходящих предложений нет' : direction === 'incoming' ? 'Входящих предложений нет' : 'Приглашений нет'"
+          :icon="HandCoins"
+          :title="direction === 'outgoing' ? 'Исходящих предложений нет' : 'Входящих предложений нет'"
           :description="hasActiveFilters
             ? 'Нет предложений по заданным фильтрам'
             : direction === 'outgoing'
               ? 'Вы ещё не делали предложений на заявки'
-              : direction === 'incoming'
-                ? 'На ваши заявки пока не поступало предложений'
-                : 'Никто ещё не приглашал вас сделать предложение'"
+              : 'На ваши заявки пока не поступало предложений'"
         >
           <template v-if="direction === 'outgoing' && !hasActiveFilters" #actions>
             <Button as-child>
@@ -711,10 +679,6 @@ onMounted(() => {
                 <Package class="mr-2 h-4 w-4" />
                 Найти заявки
               </router-link>
-            </Button>
-            <Button variant="outline" @click="direction = 'invitations'">
-              <Mail class="mr-2 h-4 w-4" />
-              Посмотреть приглашения
             </Button>
           </template>
         </EmptyState>
@@ -900,71 +864,6 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Invitations list -->
-        <div v-else-if="direction === 'invitations'" class="space-y-3">
-          <Card
-            v-for="item in invItems"
-            :key="item.id"
-            interactive
-            @click="router.push(`/freight-requests/${item.freight_request_id}`)"
-          >
-            <CardContent class="p-4">
-              <!-- Header: number + status -->
-              <div class="flex items-center gap-2 mb-2 flex-wrap">
-                <span class="font-semibold text-sm flex items-center gap-1">
-                  <Hash class="h-3.5 w-3.5 text-muted-foreground" />
-                  {{ item.request_number }}
-                </span>
-              </div>
-
-              <!-- Route -->
-              <div v-if="item.origin_address || item.destination_address" class="text-sm mb-2">
-                <span class="text-muted-foreground">
-                  {{ item.origin_address || '—' }}
-                  <span class="mx-1">→</span>
-                  {{ item.destination_address || '—' }}
-                </span>
-              </div>
-
-              <!-- Vehicle -->
-              <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-                <Truck class="h-3.5 w-3.5 shrink-0" />
-                <span class="font-medium text-foreground">
-                  {{ [item.vehicle_brand, item.vehicle_model].filter(Boolean).join(' ') || 'Транспорт' }}
-                </span>
-                <template v-if="item.vehicle_registration">
-                  <span>·</span>
-                  <span class="font-mono">{{ item.vehicle_registration }}</span>
-                </template>
-              </div>
-
-              <!-- Meta -->
-              <div class="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-                <span v-if="item.customer_org_name" class="flex items-center gap-1">
-                  <Building2 class="h-3.5 w-3.5 shrink-0" />
-                  {{ item.customer_org_name }}
-                </span>
-                <span class="flex items-center gap-1">
-                  <CalendarDays class="h-3.5 w-3.5 shrink-0" />
-                  {{ formatDateShort(item.invited_at) }}
-                </span>
-                <Button
-                  variant="ghost" size="sm" class="ml-auto"
-                  @click.stop="router.push(`/freight-requests/${item.freight_request_id}`)"
-                >
-                  К заявке <ArrowRight class="ml-1 h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div ref="invSentinelRef" class="h-16 flex items-center justify-center">
-            <LoadingSpinner v-if="isLoadingMore" text="Загрузка..." />
-            <span v-else-if="!hasMore && itemsCount > 0" class="text-sm text-muted-foreground">
-              Все приглашения загружены ({{ itemsCount }})
-            </span>
-          </div>
-        </div>
 
       </div>
     </div>

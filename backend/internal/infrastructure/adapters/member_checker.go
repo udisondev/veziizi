@@ -26,7 +26,11 @@ func (a *MemberCheckerAdapter) MemberExists(ctx context.Context, orgID, memberID
 	if err != nil {
 		return fmt.Errorf("get organization: %w", err)
 	}
-	if _, ok := org.GetMember(memberID); !ok {
+	member, ok := org.GetMember(memberID)
+	if !ok {
+		return organization.ErrMemberNotFound
+	}
+	if !member.IsActive() {
 		return organization.ErrMemberNotFound
 	}
 	return nil

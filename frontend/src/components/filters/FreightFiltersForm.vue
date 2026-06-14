@@ -68,6 +68,11 @@ interface Props {
   showStatuses?: boolean
   statuses?: FreightRequestStatus[]
 
+  // Section visibility (compact mode only)
+  showCargo?: boolean
+  showVehicle?: boolean
+  showPayment?: boolean
+
   // Layout
   compact?: boolean
 }
@@ -111,6 +116,9 @@ const props = withDefaults(defineProps<Props>(), {
   requestNumber: null,
   showStatuses: false,
   statuses: () => ['published'],
+  showCargo: true,
+  showVehicle: true,
+  showPayment: true,
   compact: false,
 })
 
@@ -238,7 +246,7 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
       </div>
 
       <!-- Cargo -->
-      <div>
+      <div v-if="showCargo">
         <button
           type="button"
           class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
@@ -262,7 +270,7 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
       </div>
 
       <!-- Vehicle -->
-      <div>
+      <div v-if="showVehicle">
         <button
           type="button"
           class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"
@@ -284,7 +292,7 @@ watch(() => [props.minWeight, props.maxWeight, props.minPrice, props.maxPrice, p
       </div>
 
       <!-- Payment -->
-      <div>
+      <div v-if="showPayment">
         <button
           type="button"
           class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-muted text-left hover:bg-muted/80 transition-colors"

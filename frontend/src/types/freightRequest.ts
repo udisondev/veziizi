@@ -260,6 +260,7 @@ export interface CarrierInviteItem {
   request_number: number
   origin_address?: string
   destination_address?: string
+  customer_org_id?: string
   customer_org_name?: string
   freight_status: string
   vehicle_id: string

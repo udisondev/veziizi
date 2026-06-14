@@ -13,19 +13,20 @@ import (
 
 // CarrierInviteItem — элемент входящего инвайта для перевозчика с деталями заявки.
 type CarrierInviteItem struct {
-	ID                   uuid.UUID `db:"id"                    json:"id"`
-	FreightRequestID     uuid.UUID `db:"freight_request_id"    json:"freight_request_id"`
-	RequestNumber        int64     `db:"request_number"        json:"request_number"`
-	OriginAddress        *string   `db:"origin_address"        json:"origin_address,omitempty"`
-	DestinationAddress   *string   `db:"destination_address"   json:"destination_address,omitempty"`
-	CustomerOrgName      *string   `db:"customer_org_name"     json:"customer_org_name,omitempty"`
-	FreightStatus        string    `db:"freight_status"        json:"freight_status"`
-	VehicleID            uuid.UUID `db:"vehicle_id"            json:"vehicle_id"`
-	VehicleRegistration  *string   `db:"vehicle_registration"  json:"vehicle_registration,omitempty"`
-	VehicleBrand         *string   `db:"vehicle_brand"         json:"vehicle_brand,omitempty"`
-	VehicleModel         *string   `db:"vehicle_model"         json:"vehicle_model,omitempty"`
-	InvitedBy            uuid.UUID `db:"invited_by"            json:"invited_by"`
-	InvitedAt            time.Time `db:"invited_at"            json:"invited_at"`
+	ID                   uuid.UUID  `db:"id"                    json:"id"`
+	FreightRequestID     uuid.UUID  `db:"freight_request_id"    json:"freight_request_id"`
+	RequestNumber        int64      `db:"request_number"        json:"request_number"`
+	OriginAddress        *string    `db:"origin_address"        json:"origin_address,omitempty"`
+	DestinationAddress   *string    `db:"destination_address"   json:"destination_address,omitempty"`
+	CustomerOrgID        *uuid.UUID `db:"customer_org_id"       json:"customer_org_id,omitempty"`
+	CustomerOrgName      *string    `db:"customer_org_name"     json:"customer_org_name,omitempty"`
+	FreightStatus        string     `db:"freight_status"        json:"freight_status"`
+	VehicleID            uuid.UUID  `db:"vehicle_id"            json:"vehicle_id"`
+	VehicleRegistration  *string    `db:"vehicle_registration"  json:"vehicle_registration,omitempty"`
+	VehicleBrand         *string    `db:"vehicle_brand"         json:"vehicle_brand,omitempty"`
+	VehicleModel         *string    `db:"vehicle_model"         json:"vehicle_model,omitempty"`
+	InvitedBy            uuid.UUID  `db:"invited_by"            json:"invited_by"`
+	InvitedAt            time.Time  `db:"invited_at"            json:"invited_at"`
 }
 
 // InviteCursor используется для keyset pagination по (invited_at DESC, id ASC).
@@ -123,9 +124,11 @@ func (p *FreightInvitesProjection) CountByFreight(ctx context.Context, freightRe
 func (p *FreightInvitesProjection) ListByCarrierOrg(ctx context.Context, carrierOrgID uuid.UUID, cursor *InviteCursor, limit int) ([]CarrierInviteItem, error) {
 	builder := p.psql.
 		Select(
-			"il.id", "il.freight_request_id", "fr.request_number",
-			"fr.origin_address", "fr.destination_address", "fr.customer_org_name",
-			"fr.status AS freight_status",
+			"il.id", "il.freight_request_id",
+			"COALESCE(fr.request_number, 0) AS request_number",
+			"fr.origin_address", "fr.destination_address",
+			"fr.customer_org_id", "fr.customer_org_name",
+			"COALESCE(fr.status, '') AS freight_status",
 			"il.vehicle_id",
 			"v.registration_number AS vehicle_registration",
 			"v.brand AS vehicle_brand",
@@ -133,7 +136,7 @@ func (p *FreightInvitesProjection) ListByCarrierOrg(ctx context.Context, carrier
 			"il.invited_by", "il.invited_at",
 		).
 		From("freight_request_invites_log il").
-		Join("freight_requests_lookup fr ON fr.id = il.freight_request_id").
+		LeftJoin("freight_requests_lookup fr ON fr.id = il.freight_request_id").
 		LeftJoin("vehicles_lookup v ON v.id = il.vehicle_id").
 		Where(squirrel.Eq{"il.carrier_org_id": carrierOrgID}).
 		OrderBy("il.invited_at DESC", "il.id ASC").
