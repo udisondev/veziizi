@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
@@ -9,7 +9,8 @@ import { usePermissions } from '@/composables/usePermissions'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { freightRequestsApi, type FreightRequestListParams } from '@/api/freightRequests'
-import type { FreightRequestListItem } from '@/types/freightRequest'
+import { eventStream } from '@/services/eventStream'
+import type { FreightRequestListItem, CarrierInviteItem } from '@/types/freightRequest'
 import {
   vehicleTypeLabels,
   vehicleSubTypeLabels,
@@ -22,6 +23,8 @@ import { logger } from '@/utils/logger'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import {
   StatusBadge,
   LoadingSpinner,
@@ -30,7 +33,8 @@ import {
 } from '@/components/shared'
 import { FreightFiltersForm } from '@/components/filters'
 import { Tooltip } from '@/components/ui/tooltip'
-import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer, X, ArrowDownWideNarrow, CalendarClock, Users } from 'lucide-vue-next'
+import SelectField from '@/components/ui/select-field/SelectField.vue'
+import { Clock, Building2, Package, SlidersHorizontal, Weight, Truck, CalendarDays, Timer, X, ArrowDownWideNarrow, CalendarClock, Users, ArrowDownNarrowWide, Mail } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 type SortBy = 'created_at_desc' | 'expires_at_asc' | 'price_desc' | 'weight_desc' | 'loading_date_asc' | 'offers_count_asc'
@@ -46,9 +50,12 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'offers_count_asc', label: 'Меньше офферов', icon: Users },
 ]
 
+const SORT_SELECT_OPTIONS = SORT_OPTIONS.map(({ value, label }) => ({ value, label }))
+
 const PAGE_SIZE = 20
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const onboarding = useOnboardingStore()
 const filtersStore = useFreightFiltersStore()
@@ -66,6 +73,7 @@ const isLoading = ref(false)
 const isLoadingMore = ref(false)
 const error = ref<string | null>(null)
 const mobileFiltersOpen = ref(false)
+const hasUpdates = ref(false)
 
 const {
   ownershipFilter,
@@ -130,6 +138,7 @@ function buildParams(): FreightRequestListParams {
 }
 
 async function loadItems() {
+  hasUpdates.value = false
   isLoading.value = true
   error.value = null
   filtersStore.resetPagination()
@@ -174,6 +183,95 @@ const { sentinelRef, reset: resetInfiniteScroll } = useInfiniteScroll(loadMoreIt
 })
 
 void sentinelRef
+
+// ─── Invitations ─────────────────────────────────────────────────────────────
+
+const showInvitations = ref(false)
+const invItems = ref<CarrierInviteItem[]>([])
+const invLoading = ref(false)
+const invLoadingMore = ref(false)
+const invError = ref<string | null>(null)
+const invCursor = ref<string | undefined>(undefined)
+const invHasMore = ref(false)
+let invLoadSeq = 0
+
+async function loadInvitations() {
+  const seq = ++invLoadSeq
+  invLoading.value = true
+  invError.value = null
+  invItems.value = []
+  invCursor.value = undefined
+  invHasMore.value = false
+  try {
+    const res = await freightRequestsApi.listCarrierInvitations({ limit: PAGE_SIZE })
+    if (seq !== invLoadSeq) return
+    invItems.value = res.items ?? []
+    invCursor.value = res.next_cursor
+    invHasMore.value = res.has_more
+  } catch (e) {
+    if (seq !== invLoadSeq) return
+    invError.value = 'Не удалось загрузить приглашения'
+    logger.error('Failed to load invitations', e)
+  } finally {
+    if (seq === invLoadSeq) invLoading.value = false
+  }
+}
+
+async function loadMoreInvitations() {
+  if (!invHasMore.value || invLoadingMore.value || !invCursor.value) return
+  invLoadingMore.value = true
+  try {
+    const res = await freightRequestsApi.listCarrierInvitations({ limit: PAGE_SIZE, cursor: invCursor.value })
+    invItems.value.push(...(res.items ?? []))
+    invCursor.value = res.next_cursor
+    invHasMore.value = res.has_more
+  } catch (e) {
+    logger.error('Failed to load more invitations', e)
+  } finally {
+    invLoadingMore.value = false
+  }
+}
+
+const canLoadMoreInv = computed(() => invHasMore.value && !invLoadingMore.value && invCursor.value !== undefined)
+const { sentinelRef: invSentinelRef, reset: resetInvScroll } = useInfiniteScroll(loadMoreInvitations, {
+  threshold: 300,
+  enabled: canLoadMoreInv,
+})
+
+void invSentinelRef
+
+watch(showInvitations, (val) => {
+  if (val) {
+    loadInvitations()
+    resetInvScroll()
+  } else {
+    invItems.value = []
+    invCursor.value = undefined
+    invHasMore.value = false
+  }
+})
+
+const filteredInvItems = computed(() => {
+  let result = invItems.value
+
+  if (requestNumber.value) {
+    result = result.filter(item => item.request_number === requestNumber.value)
+  }
+
+  const activePoints = routePoints.value.filter(rp => rp.cityName)
+  if (activePoints.length > 0) {
+    result = result.filter(item => {
+      const haystack = [item.origin_address, item.destination_address]
+        .filter(Boolean).join(' ').toLowerCase()
+      return activePoints.every(rp => {
+        const needle = (rp.cityName ?? '').toLowerCase()
+        return !needle || haystack.includes(needle)
+      })
+    })
+  }
+
+  return result
+})
 
 function goToDetail(id: string) {
   router.push(`/freight-requests/${id}`)
@@ -260,12 +358,34 @@ watch(
   { deep: true }
 )
 
+function handleFreightRequestEvent() {
+  if (showInvitations.value) {
+    loadInvitations()
+    return
+  }
+  if (items.value.length > 0) hasUpdates.value = true
+}
+
+async function applyUpdates() {
+  hasUpdates.value = false
+  await loadItems()
+  await nextTick()
+  resetInfiniteScroll()
+}
+
 onUnmounted(() => {
   if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+  eventStream.off('freight_request', handleFreightRequestEvent)
+  eventStream.offConnected(handleFreightRequestEvent)
 })
 
 onMounted(() => {
+  if (route.query.invitations === '1') {
+    showInvitations.value = true
+  }
   loadItems()
+  eventStream.on('freight_request', handleFreightRequestEvent)
+  eventStream.onConnected(handleFreightRequestEvent)
 })
 </script>
 
@@ -301,6 +421,18 @@ onMounted(() => {
       <div class="lg:sticky lg:top-16">
         <slot name="sidebar-header" />
 
+        <!-- Чекбокс: показать приглашения -->
+        <div class="flex items-center gap-2 pb-3 mb-2 border-b">
+          <Checkbox
+            id="show-invitations"
+            :checked="showInvitations"
+            @update:checked="showInvitations = ($event as boolean)"
+          />
+          <Label for="show-invitations" class="text-sm cursor-pointer mb-0 select-none">
+            Приглашения
+          </Label>
+        </div>
+
         <!-- Mobile filter toggle (под табами) -->
         <div class="lg:hidden mb-2">
           <Button variant="outline" class="w-full" @click="mobileFiltersOpen = !mobileFiltersOpen">
@@ -331,13 +463,16 @@ onMounted(() => {
                 :payment-methods="paymentMethods"
                 :payment-terms="paymentTerms"
                 :vat-types="vatTypes"
-                show-ownership
+                :show-cargo="!showInvitations"
+                :show-vehicle="!showInvitations"
+                :show-payment="!showInvitations"
+                :show-ownership="!showInvitations"
                 :ownership="ownershipFilter"
-                show-i-n-n
+                :show-i-n-n="!showInvitations"
                 :org-i-n-n="orgINNFilter"
                 show-request-number
                 :request-number="requestNumber"
-                show-statuses
+                :show-statuses="!showInvitations"
                 :statuses="statuses"
                 data-tutorial="filters-btn"
                 @add-route-point="filtersStore.addRoutePoint"
@@ -371,152 +506,250 @@ onMounted(() => {
 
       <!-- List -->
       <div>
-        <!-- Sort bar: скрываем во время загрузки и при ошибке -->
-        <div v-if="!isLoading && !error" class="flex gap-1 mb-4 pb-4 border-b">
-          <!-- Desktop: иконки + тултипы -->
-          <template v-if="!isBelowLg">
-            <Tooltip v-for="opt in SORT_OPTIONS" :key="opt.value" :text="opt.label" side="top">
-              <button
-                type="button"
-                class="flex justify-center rounded-md border p-1.5 transition-colors"
-                :class="sortBy === opt.value ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
-                @click="sortBy = opt.value as SortBy"
-              >
-                <component :is="opt.icon" class="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
-          </template>
-          <!-- Mobile: текстовые кнопки -->
+
+        <!-- ── Режим приглашений ───────────────────────────────────────────── -->
+        <template v-if="showInvitations">
+          <LoadingSpinner v-if="invLoading" text="Загрузка приглашений..." />
+          <ErrorBanner v-else-if="invError" :message="invError" @retry="loadInvitations" />
           <template v-else>
-            <button
-              v-for="opt in SORT_OPTIONS"
-              :key="opt.value"
-              type="button"
-              class="rounded-md border px-2 py-1 text-xs font-medium transition-colors"
-              :class="sortBy === opt.value ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
-              @click="sortBy = opt.value as SortBy"
+          <EmptyState
+            v-if="filteredInvItems.length === 0 && !invHasMore"
+            :icon="Mail"
+            title="Приглашений нет"
+            :description="invItems.length > 0 ? 'Нет приглашений по заданным фильтрам' : 'Никто ещё не приглашал вас сделать предложение'"
+          />
+          <div v-else-if="filteredInvItems.length > 0" class="space-y-3">
+            <Card
+              v-for="item in filteredInvItems"
+              :key="item.id"
+              interactive
+              @click="router.push(`/freight-requests/${item.freight_request_id}`)"
             >
-              {{ opt.label }}
-            </button>
-          </template>
-        </div>
-
-        <LoadingSpinner v-if="isLoading" text="Загрузка заявок..." />
-
-        <ErrorBanner
-          v-else-if="error"
-          :message="error"
-          @retry="loadItems"
-        />
-
-        <EmptyState
-          v-else-if="displayItems.length === 0"
-          :icon="Package"
-          title="Заявок пока нет"
-          :description="hasActiveFilters ? 'Нет заявок по заданным фильтрам' : 'Создайте первую заявку на перевозку'"
-          :action-label="canCreateFreightRequest && !hasActiveFilters ? 'Создать заявку' : undefined"
-          @action="emit('go-to-new')"
-        />
-
-        <div v-else class="space-y-3">
-          <Card
-            v-for="item in displayItems"
-            :key="item.id"
-            data-tutorial="freight-request-card"
-            interactive
-            @click="goToDetail(item.id)"
-          >
-            <CardContent class="p-4">
-
-              <!-- Header: number + status | price -->
-              <div class="flex items-start justify-between gap-3 mb-3">
-                <div class="flex items-center gap-2 flex-wrap">
+              <CardContent class="p-4">
+                <!-- Header: number -->
+                <div class="flex items-center gap-2 mb-3">
                   <span class="text-sm font-medium text-muted-foreground">#{{ item.request_number }}</span>
-                  <StatusBadge :status="item.status" :status-map="freightRequestStatusMap" />
-                  <span
-                    v-if="item.status === 'published' && isExpiringSoon(item.expires_at)"
-                    class="inline-flex items-center gap-1 text-xs text-destructive"
-                  >
-                    <Clock class="h-3 w-3" />
-                    Истекает {{ formatDateShort(item.expires_at) }}
-                  </span>
                 </div>
-                <div v-if="item.price_amount" class="text-base font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                  {{ formatPrice(item.price_amount, item.price_currency) }}
-                </div>
-              </div>
 
-              <!-- Route -->
-              <div class="flex items-stretch gap-3 mb-3">
-                <div class="flex flex-col items-center py-2">
-                  <div class="w-2 h-2 rounded-full bg-primary shrink-0" />
-                  <div class="w-px flex-1 min-h-[18px] border-l border-dashed border-muted-foreground/40" />
-                  <div class="w-2 h-2 rounded-full bg-muted-foreground/50 shrink-0" />
-                </div>
-                <div class="flex flex-col justify-between flex-1 min-w-0">
-                  <div class="flex items-baseline gap-1.5 min-w-0">
+                <!-- Route -->
+                <div class="flex items-stretch gap-3 mb-3">
+                  <div class="flex flex-col items-center py-2">
+                    <div class="w-2 h-2 rounded-full bg-primary shrink-0" />
+                    <div class="w-px flex-1 min-h-[18px] border-l border-dashed border-muted-foreground/40" />
+                    <div class="w-2 h-2 rounded-full bg-muted-foreground/50 shrink-0" />
+                  </div>
+                  <div class="flex flex-col justify-between flex-1 min-w-0">
                     <span class="text-base font-semibold text-foreground truncate">{{ item.origin_address || '—' }}</span>
-                    <span
-                      v-if="getTransitPointsCount(item) > 0"
-                      class="text-xs text-primary font-medium shrink-0"
-                    >+{{ getTransitPointsCount(item) }}</span>
-                  </div>
-                  <div class="text-base text-muted-foreground truncate">
-                    {{ item.destination_address || '—' }}
+                    <span class="text-base text-muted-foreground truncate">{{ item.destination_address || '—' }}</span>
                   </div>
                 </div>
-              </div>
 
-              <!-- Footer: meta + offer button -->
-              <div class="flex items-center justify-between gap-3 pt-2.5 border-t">
-                <div class="flex items-center gap-3 flex-wrap text-xs text-muted-foreground min-w-0">
-                  <span v-if="item.cargo_weight" class="flex items-center gap-1">
-                    <Weight class="h-3.5 w-3.5 shrink-0" />
-                    {{ formatWeightDisplay(item.cargo_weight) }}
+                <!-- Vehicle -->
+                <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
+                  <Truck class="h-3.5 w-3.5 shrink-0" />
+                  <span class="font-medium text-foreground">
+                    {{ [item.vehicle_brand, item.vehicle_model].filter(Boolean).join(' ') || 'Транспорт' }}
                   </span>
-                  <span v-if="item.vehicle_type" class="flex items-center gap-1 shrink-0">
-                    <Truck class="h-3.5 w-3.5 shrink-0" />
-                    {{ formatVehicleType(item.vehicle_type, item.vehicle_subtype) }}
-                  </span>
-                  <span v-if="item.customer_org_name" class="flex items-center gap-1 truncate max-w-40">
-                    <Building2 class="h-3.5 w-3.5 shrink-0" />
-                    {{ item.customer_org_name }}
-                  </span>
-                  <span class="flex items-center gap-1">
-                    <CalendarDays class="h-3.5 w-3.5 shrink-0" />
-                    {{ formatDateShort(item.created_at) }}
-                  </span>
-                  <span v-if="item.status === 'published' && item.expires_at && !isExpiringSoon(item.expires_at)" class="flex items-center gap-1">
-                    <Timer class="h-3.5 w-3.5 shrink-0" />
-                    до {{ formatDateShort(item.expires_at) }}
-                  </span>
+                  <template v-if="item.vehicle_registration">
+                    <span>·</span>
+                    <span class="font-mono">{{ item.vehicle_registration }}</span>
+                  </template>
                 </div>
-                <Button
-                  v-if="item.status === 'published' && canCreateOffer(item.customer_org_id)"
-                  size="sm"
-                  variant="outline"
-                  class="shrink-0 text-xs h-7"
-                  @click.stop="router.push({ name: 'freight-request-make-offer', params: { id: item.id } })"
-                >
-                  Сделать оффер
-                </Button>
-              </div>
 
-            </CardContent>
-          </Card>
-
-          <!-- Infinite scroll sentinel -->
-          <div ref="sentinelRef" class="h-16 flex items-center justify-center">
-            <template v-if="isLoadingMore">
-              <LoadingSpinner text="Загрузка..." />
-            </template>
-            <template v-else-if="!hasMore && items.length > 0">
-              <span class="text-sm text-muted-foreground">
-                Все заявки загружены ({{ items.length }})
-              </span>
-            </template>
+                <!-- Footer: meta + offer button -->
+                <div class="flex items-center justify-between gap-3 pt-2.5 border-t">
+                  <div class="flex items-center gap-3 flex-wrap text-xs text-muted-foreground min-w-0">
+                    <span v-if="item.customer_org_name" class="flex items-center gap-1 truncate max-w-40">
+                      <Building2 class="h-3.5 w-3.5 shrink-0" />
+                      {{ item.customer_org_name }}
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <CalendarDays class="h-3.5 w-3.5 shrink-0" />
+                      {{ formatDateShort(item.invited_at) }}
+                    </span>
+                  </div>
+                  <Button
+                    v-if="item.freight_status === 'published' && canCreateOffer(item.customer_org_id ?? '')"
+                    size="sm"
+                    variant="outline"
+                    class="shrink-0 text-xs h-7"
+                    @click.stop="router.push({ name: 'freight-request-make-offer', params: { id: item.freight_request_id } })"
+                  >
+                    Сделать оффер
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </div>
+
+            <!-- Infinite scroll sentinel для приглашений -->
+            <div ref="invSentinelRef" class="h-16 flex items-center justify-center">
+              <template v-if="invLoadingMore">
+                <LoadingSpinner text="Загрузка..." />
+              </template>
+              <template v-else-if="!invHasMore && invItems.length > 0">
+                <span class="text-sm text-muted-foreground">
+                  Все приглашения загружены ({{ invItems.length }})
+                </span>
+              </template>
+            </div>
+          </template>
+        </template>
+
+        <!-- ── Режим заявок ───────────────────────────────────────────────── -->
+        <template v-else>
+          <!-- Sort bar: скрываем во время загрузки и при ошибке -->
+          <div v-if="!isLoading && !error" class="mb-4 pb-4 border-b">
+            <!-- Desktop: иконки + тултипы -->
+            <div v-if="!isBelowLg" class="flex gap-1">
+              <Tooltip v-for="opt in SORT_OPTIONS" :key="opt.value" :text="opt.label" side="top">
+                <button
+                  type="button"
+                  class="flex justify-center rounded-md border p-1.5 transition-colors"
+                  :class="sortBy === opt.value ? 'bg-primary border-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'"
+                  @click="sortBy = opt.value as SortBy"
+                >
+                  <component :is="opt.icon" class="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            </div>
+            <!-- Mobile/tablet: селект -->
+            <SelectField
+              v-else
+              v-model="sortBy"
+              :options="SORT_SELECT_OPTIONS"
+              :icon="ArrowDownNarrowWide"
+              sheet-label="Сортировка"
+            />
+          </div>
+
+          <!-- SSE: баннер новых данных -->
+          <div
+            v-if="hasUpdates && !isLoading"
+            class="mb-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
+          >
+            <span class="text-foreground">Список обновился — есть новые данные</span>
+            <Button size="sm" variant="outline" @click="applyUpdates">Обновить</Button>
+          </div>
+
+          <LoadingSpinner v-if="isLoading" text="Загрузка заявок..." />
+
+          <ErrorBanner
+            v-else-if="error"
+            :message="error"
+            @retry="loadItems"
+          />
+
+          <EmptyState
+            v-else-if="displayItems.length === 0"
+            :icon="Package"
+            title="Заявок пока нет"
+            :description="hasActiveFilters ? 'Нет заявок по заданным фильтрам' : 'Создайте первую заявку на перевозку'"
+            :action-label="canCreateFreightRequest && !hasActiveFilters ? 'Создать заявку' : undefined"
+            @action="emit('go-to-new')"
+          />
+
+          <div v-else class="space-y-3">
+            <Card
+              v-for="item in displayItems"
+              :key="item.id"
+              data-tutorial="freight-request-card"
+              interactive
+              @click="goToDetail(item.id)"
+            >
+              <CardContent class="p-4">
+
+                <!-- Header: number + status | price -->
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-medium text-muted-foreground">#{{ item.request_number }}</span>
+                    <StatusBadge :status="item.status" :status-map="freightRequestStatusMap" />
+                    <span
+                      v-if="item.status === 'published' && isExpiringSoon(item.expires_at)"
+                      class="inline-flex items-center gap-1 text-xs text-destructive"
+                    >
+                      <Clock class="h-3 w-3" />
+                      Истекает {{ formatDateShort(item.expires_at) }}
+                    </span>
+                  </div>
+                  <div v-if="item.price_amount" class="text-base font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                    {{ formatPrice(item.price_amount, item.price_currency) }}
+                  </div>
+                </div>
+
+                <!-- Route -->
+                <div class="flex items-stretch gap-3 mb-3">
+                  <div class="flex flex-col items-center py-2">
+                    <div class="w-2 h-2 rounded-full bg-primary shrink-0" />
+                    <div class="w-px flex-1 min-h-[18px] border-l border-dashed border-muted-foreground/40" />
+                    <div class="w-2 h-2 rounded-full bg-muted-foreground/50 shrink-0" />
+                  </div>
+                  <div class="flex flex-col justify-between flex-1 min-w-0">
+                    <div class="flex items-baseline gap-1.5 min-w-0">
+                      <span class="text-base font-semibold text-foreground truncate">{{ item.origin_address || '—' }}</span>
+                      <span
+                        v-if="getTransitPointsCount(item) > 0"
+                        class="text-xs text-primary font-medium shrink-0"
+                      >+{{ getTransitPointsCount(item) }}</span>
+                    </div>
+                    <div class="text-base text-muted-foreground truncate">
+                      {{ item.destination_address || '—' }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Footer: meta + offer button -->
+                <div class="flex items-center justify-between gap-3 pt-2.5 border-t">
+                  <div class="flex items-center gap-3 flex-wrap text-xs text-muted-foreground min-w-0">
+                    <span v-if="item.cargo_weight" class="flex items-center gap-1">
+                      <Weight class="h-3.5 w-3.5 shrink-0" />
+                      {{ formatWeightDisplay(item.cargo_weight) }}
+                    </span>
+                    <span v-if="item.vehicle_type" class="flex items-center gap-1 shrink-0">
+                      <Truck class="h-3.5 w-3.5 shrink-0" />
+                      {{ formatVehicleType(item.vehicle_type, item.vehicle_subtype) }}
+                    </span>
+                    <span v-if="item.customer_org_name" class="flex items-center gap-1 truncate max-w-40">
+                      <Building2 class="h-3.5 w-3.5 shrink-0" />
+                      {{ item.customer_org_name }}
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <CalendarDays class="h-3.5 w-3.5 shrink-0" />
+                      {{ formatDateShort(item.created_at) }}
+                    </span>
+                    <span v-if="item.status === 'published' && item.expires_at && !isExpiringSoon(item.expires_at)" class="flex items-center gap-1">
+                      <Timer class="h-3.5 w-3.5 shrink-0" />
+                      до {{ formatDateShort(item.expires_at) }}
+                    </span>
+                  </div>
+                  <Button
+                    v-if="item.status === 'published' && canCreateOffer(item.customer_org_id)"
+                    size="sm"
+                    variant="outline"
+                    class="shrink-0 text-xs h-7"
+                    @click.stop="router.push({ name: 'freight-request-make-offer', params: { id: item.id } })"
+                  >
+                    Сделать оффер
+                  </Button>
+                </div>
+
+              </CardContent>
+            </Card>
+
+            <!-- Infinite scroll sentinel -->
+            <div ref="sentinelRef" class="h-16 flex items-center justify-center">
+              <template v-if="isLoadingMore">
+                <LoadingSpinner text="Загрузка..." />
+              </template>
+              <template v-else-if="!hasMore && items.length > 0">
+                <span class="text-sm text-muted-foreground">
+                  Все заявки загружены ({{ items.length }})
+                </span>
+              </template>
+            </div>
+          </div>
+        </template>
+
       </div>
     </div>
   </div>

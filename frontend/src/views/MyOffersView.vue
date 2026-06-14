@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import type { Component } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -29,6 +29,7 @@ import { formatDateShort } from '@/utils/formatters'
 import { logger } from '@/utils/logger'
 import { useNotificationsStore } from '@/stores/notifications'
 import { getCategoryByType } from '@/types/notification'
+import { eventStream } from '@/services/eventStream'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -50,8 +51,6 @@ import {
 } from '@/components/ui/dialog'
 import { StatusBadge, LoadingSpinner, EmptyState, ErrorBanner } from '@/components/shared'
 import {
-  Send,
-  Inbox,
   SlidersHorizontal,
   HandCoins,
   Package,
@@ -72,6 +71,7 @@ import {
 const PAGE_SIZE = 20
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const { isBelowLg } = useBreakpoint()
 
@@ -80,10 +80,12 @@ const { isBelowLg } = useBreakpoint()
 type Direction = 'outgoing' | 'incoming'
 const direction = ref<Direction>('outgoing')
 
-const DIRECTION_ITEMS: TabSliderItem[] = [
-  { value: 'outgoing', label: 'Исходящие', icon: Send },
-  { value: 'incoming', label: 'Входящие', icon: Inbox },
+const DIRECTION_TABS: TabSliderItem[] = [
+  { value: 'outgoing', label: 'Исходящие' },
+  { value: 'incoming', label: 'Входящие' },
 ]
+
+
 
 // ─── Sort ────────────────────────────────────────────────────────────────────
 
@@ -171,13 +173,17 @@ const isLoadingMore = ref(false)
 const error = ref<string | null>(null)
 const cursor = ref<string | undefined>()
 const hasMore = ref(false)
+const hasUpdates = ref(false)
 
-const isEmpty = computed(() =>
-  !isLoading.value && (direction.value === 'outgoing' ? outItems.value.length === 0 : inItems.value.length === 0)
-)
-const itemsCount = computed(() =>
-  direction.value === 'outgoing' ? outItems.value.length : inItems.value.length
-)
+const isEmpty = computed(() => {
+  if (isLoading.value) return false
+  if (direction.value === 'outgoing') return outItems.value.length === 0
+  return inItems.value.length === 0
+})
+const itemsCount = computed(() => {
+  if (direction.value === 'outgoing') return outItems.value.length
+  return inItems.value.length
+})
 
 function buildOutgoingParams(): OutgoingOfferListParams {
   const p: OutgoingOfferListParams = { limit: PAGE_SIZE, sort_by: sortBy.value }
@@ -204,6 +210,7 @@ function buildIncomingParams(): IncomingOfferListParams {
 }
 
 async function loadItems() {
+  hasUpdates.value = false
   isLoading.value = true
   error.value = null
   cursor.value = undefined
@@ -222,8 +229,8 @@ async function loadItems() {
       hasMore.value = res.has_more
     }
   } catch (e) {
-    error.value = 'Не удалось загрузить предложения'
-    logger.error('Failed to load offers', e)
+    error.value = 'Не удалось загрузить данные'
+    logger.error('Failed to load offers/invitations', e)
   } finally {
     isLoading.value = false
   }
@@ -247,7 +254,7 @@ async function loadMoreItems() {
       hasMore.value = res.has_more
     }
   } catch (e) {
-    logger.error('Failed to load more offers', e)
+    logger.error('Failed to load more offers/invitations', e)
   } finally {
     isLoadingMore.value = false
   }
@@ -255,7 +262,7 @@ async function loadMoreItems() {
 
 const canLoadMore = computed(() => hasMore.value && !isLoadingMore.value && !!cursor.value)
 
-// Два отдельных sentinel ref для исходящих и входящих списков.
+// Отдельный sentinel ref для каждого списка.
 // Активный ref задаётся через computed, чтобы useInfiniteScroll переподключался при смене direction.
 const outSentinelRef = ref<HTMLElement | null>(null)
 const inSentinelRef = ref<HTMLElement | null>(null)
@@ -416,17 +423,52 @@ watch(
   { deep: true }
 )
 
-onUnmounted(() => { if (debounceTimer) clearTimeout(debounceTimer) })
+function handleFreightRequestEvent() {
+  if (itemsCount.value > 0) hasUpdates.value = true
+}
+
+async function applyUpdates() {
+  hasUpdates.value = false
+  await loadItems()
+  await nextTick()
+  resetInfiniteScroll()
+}
+
+onUnmounted(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  eventStream.off('freight_request', handleFreightRequestEvent)
+  eventStream.offConnected(handleFreightRequestEvent)
+})
 
 const notificationsStore = useNotificationsStore()
 const lastOfferNotificationId = computed(() =>
   notificationsStore.notifications.find(n => getCategoryByType(n.notification_type) === 'offers')?.id ?? null
 )
 watch(lastOfferNotificationId, (newId, oldId) => {
-  if (newId && newId !== oldId) loadItems()
+  if (newId && newId !== oldId) hasUpdates.value = true
 })
 
-onMounted(() => { loadItems() })
+// Реагируем на изменения ?tab= в URL без перемонтирования компонента
+watch(
+  () => route.query.tab,
+  (tab) => {
+    const newDir: Direction = tab === 'incoming' ? 'incoming' : 'outgoing'
+    if (newDir !== direction.value) {
+      direction.value = newDir
+    }
+  }
+)
+
+onMounted(() => {
+  const tab = route.query.tab
+  if (tab === 'incoming') {
+    direction.value = 'incoming'
+  } else {
+    loadItems()
+  }
+  eventStream.on('freight_request', handleFreightRequestEvent)
+  eventStream.onConnected(handleFreightRequestEvent)
+})
 </script>
 
 <template>
@@ -439,10 +481,15 @@ onMounted(() => { loadItems() })
 
         <!-- Уровень 1: направление (навигация) -->
         <div class="mb-3">
-          <TabsSlider v-model="direction" :items="DIRECTION_ITEMS" no-overflow stretch />
+          <TabsSlider
+            v-model="direction"
+            :items="DIRECTION_TABS"
+            no-overflow
+            stretch
+          />
         </div>
 
-        <!-- Уровень 2: принадлежность (контекст, всегда видна) -->
+        <!-- Уровень 2: принадлежность (контекст) -->
         <div class="pb-3 mb-3 border-b">
           <TabsSlider
             v-if="direction === 'outgoing'"
@@ -603,6 +650,15 @@ onMounted(() => { loadItems() })
           <Button variant="ghost" size="sm" @click="actionError = null">Закрыть</Button>
         </div>
 
+        <!-- SSE: баннер новых данных -->
+        <div
+          v-if="hasUpdates && !isLoading"
+          class="mb-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
+        >
+          <span class="text-foreground">Список обновился — есть новые данные</span>
+          <Button size="sm" variant="outline" @click="applyUpdates">Обновить</Button>
+        </div>
+
         <LoadingSpinner v-if="isLoading" text="Загрузка предложений..." />
 
         <ErrorBanner v-else-if="error" :message="error" @retry="loadItems" />
@@ -617,7 +673,7 @@ onMounted(() => { loadItems() })
               ? 'Вы ещё не делали предложений на заявки'
               : 'На ваши заявки пока не поступало предложений'"
         >
-          <template v-if="direction === 'outgoing' && !hasActiveFilters" #action>
+          <template v-if="direction === 'outgoing' && !hasActiveFilters" #actions>
             <Button as-child>
               <router-link to="/requests">
                 <Package class="mr-2 h-4 w-4" />
@@ -714,7 +770,7 @@ onMounted(() => { loadItems() })
         </div>
 
         <!-- Incoming list -->
-        <div v-else class="space-y-3">
+        <div v-else-if="direction === 'incoming'" class="space-y-3">
           <Card
             v-for="item in inItems"
             :key="item.id"
@@ -807,6 +863,7 @@ onMounted(() => { loadItems() })
             </span>
           </div>
         </div>
+
 
       </div>
     </div>

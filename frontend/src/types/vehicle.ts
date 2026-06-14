@@ -81,6 +81,7 @@ export interface VehicleListParams {
   thermograph?: boolean
   org_name?: string
   org_id?: string
+  exclude_org_id?: string
   limit?: number
   cursor?: string
 }

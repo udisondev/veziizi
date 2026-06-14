@@ -48,11 +48,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background">
+  <div class="min-h-screen bg-background flex flex-col">
     <!-- Account Blocked Banner - Fixed at top, above all content -->
     <AccountBlockedBanner />
 
-    <div :class="{ 'pt-24': showBanner }">
+    <div class="flex-1" :class="{ 'pt-24': showBanner }">
       <AppHeader v-if="showHeader" />
       <AuthHeader v-else-if="showAuthHeader" />
       <RouterView :key="route.path" />

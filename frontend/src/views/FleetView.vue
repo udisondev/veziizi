@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { vehiclesApi } from '@/api/vehicles'
+import { freightRequestsApi } from '@/api/freightRequests'
 import type { Vehicle } from '@/types/vehicle'
+import type { CarrierInviteItem } from '@/types/freightRequest'
 import {
   vehicleTypeLabels,
   vehicleSubTypeLabels,
@@ -18,24 +20,45 @@ import {
 import { LoadingSpinner, StatusBadge } from '@/components/shared'
 import { useToast } from '@/components/ui/toast/use-toast'
 import { logger } from '@/utils/logger'
-import { Truck, Plus, Trash2, AlertCircle, ChevronRight, BadgeCheck } from 'lucide-vue-next'
+import { Truck, Plus, Trash2, AlertCircle, ChevronRight, BadgeCheck, Mail } from 'lucide-vue-next'
 
 const router = useRouter()
 const auth = useAuthStore()
 const { toast } = useToast()
 
 const vehicles = ref<Vehicle[]>([])
+const invitations = ref<CarrierInviteItem[]>([])
 const isLoading = ref(false)
 const loadError = ref<string | null>(null)
+
+// Количество активных приглашений на каждое ТС
+const inviteCountByVehicle = computed(() => {
+  const map = new Map<string, number>()
+  for (const inv of invitations.value) {
+    if (inv.freight_status === 'published') {
+      map.set(inv.vehicle_id, (map.get(inv.vehicle_id) ?? 0) + 1)
+    }
+  }
+  return map
+})
 
 async function loadVehicles() {
   if (!auth.organizationId) return
   isLoading.value = true
   loadError.value = null
   try {
-    vehicles.value = await vehiclesApi.list(auth.organizationId)
-  } catch {
-    loadError.value = 'Не удалось загрузить автопарк'
+    const [vehiclesRes, invitationsRes] = await Promise.allSettled([
+      vehiclesApi.list(auth.organizationId),
+      freightRequestsApi.listCarrierInvitations({ limit: 100 }),
+    ])
+    if (vehiclesRes.status === 'fulfilled') {
+      vehicles.value = vehiclesRes.value
+    } else {
+      loadError.value = 'Не удалось загрузить автопарк'
+    }
+    if (invitationsRes.status === 'fulfilled') {
+      invitations.value = invitationsRes.value.items
+    }
   } finally {
     isLoading.value = false
   }
@@ -142,6 +165,14 @@ function formatCapacity(val?: number) {
                 {{ [vehicle.brand, vehicle.model].filter(Boolean).join(' ') }}
               </span>
               <StatusBadge :status="vehicle.status" :status-map="vehicleStatusMap" class="shrink-0" />
+              <button
+                v-if="inviteCountByVehicle.get(vehicle.id)"
+                class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                @click.stop="router.push('/requests?invitations=1')"
+              >
+                <Mail class="h-3 w-3" />
+                {{ inviteCountByVehicle.get(vehicle.id) }}
+              </button>
             </div>
 
             <!-- Строка 2: тип, кузов, характеристики -->

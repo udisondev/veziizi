@@ -15,6 +15,7 @@ export const vehiclesApi = {
     if (params?.thermograph) p.set('thermograph', 'true')
     if (params?.org_name) p.set('org_name', params.org_name)
     if (params?.org_id) p.set('org_id', params.org_id)
+    if (params?.exclude_org_id) p.set('exclude_org_id', params.exclude_org_id)
     if (params?.limit) p.set('limit', params.limit.toString())
     if (params?.cursor) p.set('cursor', params.cursor)
     const query = p.toString()

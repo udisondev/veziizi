@@ -4,6 +4,7 @@ import type {
   CreateFreightRequestResponse,
   FreightRequest,
   FreightRequestListItem,
+  CarrierInviteItem,
   Offer,
   MakeOfferRequest,
   MakeOfferResponse,
@@ -46,6 +47,7 @@ export interface FreightRequestListParams {
   destination_city_ids?: string // города конца маршрута
   destination_country_ids?: string // страны конца маршрута (без города)
   has_pending_offers?: boolean
+  not_expired?: boolean
   sort_by?: 'created_at_desc' | 'expires_at_asc' | 'price_desc' | 'weight_desc' | 'loading_date_asc' | 'offers_count_asc'
   limit?: number
   cursor?: string // cursor для keyset pagination
@@ -85,6 +87,7 @@ export const freightRequestsApi = {
     if (params?.destination_city_ids) searchParams.set('destination_city_ids', params.destination_city_ids)
     if (params?.destination_country_ids) searchParams.set('destination_country_ids', params.destination_country_ids)
     if (params?.has_pending_offers) searchParams.set('has_pending_offers', 'true')
+    if (params?.not_expired) searchParams.set('not_expired', 'true')
     if (params?.sort_by) searchParams.set('sort_by', params.sort_by)
     // Pagination
     if (params?.limit) searchParams.set('limit', params.limit.toString())
@@ -92,7 +95,8 @@ export const freightRequestsApi = {
 
     const query = searchParams.toString()
     const result = await api.get<CursorPaginatedResponse<FreightRequestListItem> | null>(`/freight-requests${query ? `?${query}` : ''}`)
-    return result ?? { items: [], has_more: false }
+    if (!result) return { items: [], has_more: false }
+    return { ...result, items: result.items ?? [] }
   },
 
   get(id: string): Promise<FreightRequest> {
@@ -105,6 +109,20 @@ export const freightRequestsApi = {
 
   cancel(id: string, reason?: string): Promise<void> {
     return api.delete(`/freight-requests/${id}`, reason ? { reason } : undefined)
+  },
+
+  inviteCarrier(frId: string, vehicleId: string): Promise<void> {
+    return api.post(`/freight-requests/${frId}/invite-carrier`, { vehicle_id: vehicleId })
+  },
+
+  async listCarrierInvitations(params?: { limit?: number; cursor?: string }): Promise<CursorPaginatedResponse<CarrierInviteItem>> {
+    const p = new URLSearchParams()
+    if (params?.limit) p.set('limit', params.limit.toString())
+    if (params?.cursor) p.set('cursor', params.cursor)
+    const query = p.toString()
+    const result = await api.get<CursorPaginatedResponse<CarrierInviteItem> | null>(`/carrier-invitations${query ? `?${query}` : ''}`)
+    if (!result) return { items: [], has_more: false }
+    return { ...result, items: result.items ?? [] }
   },
 
   // Offers

@@ -253,6 +253,24 @@ export interface FreightRequestListItem {
   customer_member_id?: string
 }
 
+// Carrier invitation (incoming invite to make an offer on a freight request)
+export interface CarrierInviteItem {
+  id: string
+  freight_request_id: string
+  request_number: number
+  origin_address?: string
+  destination_address?: string
+  customer_org_id?: string
+  customer_org_name?: string
+  freight_status: string
+  vehicle_id: string
+  vehicle_registration?: string
+  vehicle_brand?: string
+  vehicle_model?: string
+  invited_by: string
+  invited_at: string
+}
+
 // Filter types
 export type OwnershipFilter = 'all' | 'my_org' | 'my' | 'my_as_carrier'
 

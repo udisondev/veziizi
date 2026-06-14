@@ -12,6 +12,7 @@ import {
 } from '@/types/freightRequest'
 import type { VehicleSubType, LoadingType } from '@/types/freightRequest'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
+import { useAuthStore } from '@/stores/auth'
 import { logger } from '@/utils/logger'
 
 import { Button } from '@/components/ui/button'
@@ -31,11 +32,13 @@ import {
   Thermometer,
   Shield,
   CheckSquare,
+  Mail,
 } from 'lucide-vue-next'
 
 const PAGE_SIZE = 20
 
 const router = useRouter()
+const auth = useAuthStore()
 
 // Фильтры
 const vehicleSubTypes = ref<VehicleSubType[]>([])
@@ -93,6 +96,7 @@ function buildParams() {
   if (requiresAdr.value) params.requires_adr = true
   if (thermograph.value) params.thermograph = true
   if (orgName.value) params.org_name = orgName.value
+  if (auth.organizationId) params.exclude_org_id = auth.organizationId
   return params
 }
 
@@ -346,6 +350,19 @@ onMounted(() => { loadItems() })
                 </span>
                 <Badge v-if="item.requires_adr" variant="destructive" class="text-xs">ADR</Badge>
                 <Badge v-if="item.thermograph" variant="secondary" class="text-xs">Термописец</Badge>
+
+                <!-- Кнопка приглашения -->
+                <div class="ml-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="text-xs h-7"
+                    @click.stop="router.push(`/transport/${item.id}/select-requests`)"
+                  >
+                    <Mail class="h-3.5 w-3.5 mr-1.5" />
+                    Пригласить
+                  </Button>
+                </div>
               </div>
 
             </CardContent>

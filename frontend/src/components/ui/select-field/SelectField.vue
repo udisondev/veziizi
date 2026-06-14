@@ -1,5 +1,6 @@
 <script setup lang="ts" generic="T extends string">
 import { ref, computed, watch, onUnmounted } from 'vue'
+import type { Component } from 'vue'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import BottomSheet from '@/components/shared/BottomSheet.vue'
 import { ChevronDown, Check } from 'lucide-vue-next'
@@ -17,6 +18,7 @@ interface Props {
   disabled?: boolean
   clearable?: boolean
   clearLabel?: string
+  icon?: Component
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -26,6 +28,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   clearable: false,
   clearLabel: 'Не выбрано',
+  icon: undefined,
 })
 
 const modelValue = defineModel<T | undefined | null>()
@@ -93,8 +96,11 @@ onUnmounted(() => {
         ]"
         @click="dropdownOpen ? dropdownOpen = false : openDropdown()"
       >
-        <span :class="modelValue ? 'text-foreground' : 'text-muted-foreground'">
-          {{ selectedLabel }}
+        <span class="flex items-center gap-1.5 min-w-0">
+          <component :is="props.icon" v-if="props.icon" class="h-4 w-4 text-muted-foreground shrink-0" />
+          <span class="truncate" :class="modelValue ? 'text-foreground' : 'text-muted-foreground'">
+            {{ selectedLabel }}
+          </span>
         </span>
         <ChevronDown
           class="h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200"
@@ -149,8 +155,11 @@ onUnmounted(() => {
       :class="hasError ? 'border-destructive' : 'border-input'"
       @click="sheetOpen = true"
     >
-      <span :class="modelValue ? 'text-foreground' : 'text-muted-foreground'">
-        {{ selectedLabel }}
+      <span class="flex items-center gap-1.5 min-w-0">
+        <component :is="props.icon" v-if="props.icon" class="h-4 w-4 text-muted-foreground shrink-0" />
+        <span class="truncate" :class="modelValue ? 'text-foreground' : 'text-muted-foreground'">
+          {{ selectedLabel }}
+        </span>
       </span>
       <ChevronDown class="h-4 w-4 text-muted-foreground shrink-0" />
     </button>

@@ -12,7 +12,7 @@ defineProps<{
 <template>
   <span
     v-if="verified"
-    class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+    class="inline-flex items-center gap-1 text-xs font-medium shrink-0 text-emerald-700 dark:text-emerald-400"
   >
     <BadgeCheck class="h-3.5 w-3.5 shrink-0" />
     Подтвержден

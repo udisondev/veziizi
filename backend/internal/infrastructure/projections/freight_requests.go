@@ -248,6 +248,12 @@ func WithHasPendingOffers() FilterOption {
 	}
 }
 
+func WithNotExpired() FilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where("expires_at > NOW()")
+	}
+}
+
 func WithRouteCities(cityIDs []int) FilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		if len(cityIDs) == 0 {
@@ -1020,6 +1026,12 @@ func WithIncomingStatuses(statuses []string) IncomingOfferFilterOption {
 func WithIncomingCarrierMemberID(id uuid.UUID) IncomingOfferFilterOption {
 	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
 		return b.Where(squirrel.Eq{"o.carrier_member_id": id})
+	}
+}
+
+func WithIncomingCustomerMemberID(id uuid.UUID) IncomingOfferFilterOption {
+	return func(b squirrel.SelectBuilder) squirrel.SelectBuilder {
+		return b.Where(squirrel.Eq{"fr.customer_member_id": id})
 	}
 }
 

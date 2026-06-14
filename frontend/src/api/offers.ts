@@ -93,7 +93,7 @@ export const offersApi = {
     const raw = await api.get<CursorPaginatedResponse<OutgoingOfferListItem> | OutgoingOfferListItem[] | null>(`/offers${q ? `?${q}` : ''}`)
     if (!raw) return { items: [], has_more: false }
     if (Array.isArray(raw)) return { items: raw, has_more: false }
-    return raw
+    return { ...raw, items: raw.items ?? [] }
   },
 
   async listIncoming(params?: IncomingOfferListParams): Promise<CursorPaginatedResponse<IncomingOfferListItem>> {
@@ -111,7 +111,8 @@ export const offersApi = {
     if (params?.cursor) p.set('cursor', params.cursor)
     const q = p.toString()
     const result = await api.get<CursorPaginatedResponse<IncomingOfferListItem> | null>(`/offers/incoming${q ? `?${q}` : ''}`)
-    return result ?? { items: [], has_more: false }
+    if (!result) return { items: [], has_more: false }
+    return { ...result, items: result.items ?? [] }
   },
 
   async listMy(params?: OfferListParams): Promise<OutgoingOfferListItem[]> {
